@@ -71,6 +71,7 @@ import net.minecraft.client.network.AbstractClientPlayerEntity;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Arrays;
 import java.lang.reflect.Field;
 import java.util.regex.Pattern;
 
@@ -3167,7 +3168,77 @@ public class Node {
     }
     
     private void executeCollectCommand(CompletableFuture<Void> future) {
-        future.complete(null);
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+
+        NodeMode collectMode = mode != null ? mode : NodeMode.COLLECT_SINGLE;
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+
+        IBaritone baritone = getBaritone();
+        if (baritone == null) {
+            future.completeExceptionally(new RuntimeException("Baritone not available"));
+            return;
+        }
+
+        IMineProcess mineProcess = baritone.getMineProcess();
+        if (mineProcess == null) {
+            sendNodeErrorMessage(client, "Cannot mine: Baritone mine process unavailable.");
+            future.complete(null);
+            return;
+        }
+
+        boolean started;
+        switch (collectMode) {
+            case COLLECT_SINGLE:
+                String blockId = "minecraft:stone";
+                NodeParameter blockParam = getParameter("Block");
+                if (blockParam != null) {
+                    blockId = blockParam.getStringValue();
+                }
+
+                if (blockId == null || blockId.isEmpty()) {
+                    sendNodeErrorMessage(client, "Cannot mine: a block type is required.");
+                    future.complete(null);
+                    return;
+                }
+
+                started = mineProcess.mineByName(blockId);
+                break;
+
+            case COLLECT_MULTIPLE:
+                String blockList = "stone,dirt";
+                NodeParameter blocksParam = getParameter("Blocks");
+                if (blocksParam != null) {
+                    blockList = blocksParam.getStringValue();
+                }
+
+                String[] targets = Arrays.stream(blockList.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toArray(String[]::new);
+
+                if (targets.length == 0) {
+                    sendNodeErrorMessage(client, "Cannot mine: specify at least one block type.");
+                    future.complete(null);
+                    return;
+                }
+
+                started = mineProcess.mineByName(targets);
+                break;
+
+            default:
+                future.completeExceptionally(new IllegalStateException("Unknown COLLECT mode: " + collectMode));
+                return;
+        }
+
+        if (!started) {
+            sendNodeErrorMessage(client, "Failed to start mining task for Mine node.");
+            future.complete(null);
+            return;
+        }
+
+        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
     }
     
     private void executeCraftCommand(CompletableFuture<Void> future) {

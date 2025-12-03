@@ -17,6 +17,7 @@ import baritone.api.IBaritone;
 import baritone.api.process.ICustomGoalProcess;
 import baritone.api.process.IExploreProcess;
 import baritone.api.process.IGetToBlockProcess;
+import baritone.api.process.IMineProcess;
 import baritone.api.process.IFarmProcess;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.utils.BlockOptionalMeta;
@@ -3203,7 +3204,8 @@ public class Node {
                     return;
                 }
 
-                started = mineProcess.mineByName(blockId);
+                mineProcess.mineByName(blockId);
+                started = true;
                 break;
 
             case COLLECT_MULTIPLE:
@@ -3224,7 +3226,8 @@ public class Node {
                     return;
                 }
 
-                started = mineProcess.mineByName(targets);
+                mineProcess.mineByName(targets);
+                started = true;
                 break;
 
             default:

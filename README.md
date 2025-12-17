@@ -70,27 +70,11 @@ A Minecraft Fabric mod that introduces a visual node editor system for creating 
    ./gradlew runClient
    ```
 
-### Project Structure
-
-```
-src/main/java/com/pathmind/
-├── nodes/           # Node system implementation
-│   ├── Node.java    # Core node class
-│   ├── NodeType.java # Node type definitions
-│   └── NodeConnection.java # Connection handling
-├── ui/              # User interface components
-│   └── NodeGraph.java # Main node graph rendering
-├── screen/          # Screen implementations
-│   └── PathmindVisualEditorScreen.java # Main editor screen
-├── PathmindMod.java # Main mod class
-└── PathmindKeybinds.java # Keybind configuration
-```
-
 ## Version Information
 
 | Component | Version |
 |-----------|---------|
-| **Mod Version** | 1.0.0 |
+| **Mod Version** | 1.0.1 |
 | **Minecraft Version** | 1.21.x (built & tested on 1.21.8) |
 | **Yarn Mappings** | 1.21.8+build.1 (with :v2 for compilation) |
 | **Fabric Loader** | 0.17.2 |

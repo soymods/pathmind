@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Download Baritone API dependency
+        run: |
+          mkdir -p libs
+          curl -L -o libs/baritone-api-fabric-1.15.0.jar \
+            https://github.com/cabaletta/baritone/releases/download/v1.15.0/baritone-api-fabric-1.15.0.jar
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build
+        run: ./gradlew build
+
+      - name: Upload mod jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: pathmind-mod-jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar

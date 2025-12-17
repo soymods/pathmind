@@ -1,0 +1,12 @@
+# Gradle caches and build outputs
+.gradle/
+build/
+run/
+
+# IDE files
+*.iml
+.idea/
+.vscode/
+
+# Local dependencies downloaded during builds
+libs/

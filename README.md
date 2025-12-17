@@ -75,7 +75,7 @@ A Minecraft Fabric mod that introduces a visual node editor system for creating 
 | Component | Version |
 |-----------|---------|
 | **Mod Version** | 1.0.1 |
-| **Minecraft Version** | 1.21.x (built & tested on 1.21.8) |
+| **Minecraft Version** | 1.21.x |
 | **Yarn Mappings** | 1.21.8+build.1 (with :v2 for compilation) |
 | **Fabric Loader** | 0.17.2 |
 | **Fabric API** | Latest 1.21.x-compatible release |

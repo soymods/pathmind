@@ -23,6 +23,7 @@ import baritone.api.process.IGetToBlockProcess;
 import baritone.api.process.IFarmProcess;
 import baritone.api.process.IMineProcess;
 import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalNear;
 import baritone.api.utils.BlockOptionalMeta;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
@@ -3369,8 +3370,74 @@ public class Node {
             return false;
         }
 
-        IGetToBlockProcess getToBlockProcess = baritone != null ? baritone.getGetToBlockProcess() : null;
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        RuntimeParameterData parameterData = runtimeParameterData;
+        BlockPos targetPos = parameterData != null ? parameterData.targetBlockPos : null;
+        String sanitized = sanitizeResourceId(blockId);
+        String normalized = (sanitized != null && !sanitized.isEmpty())
+            ? normalizeResourceId(sanitized, "minecraft")
+            : null;
+        Block targetBlock = null;
+
+        if (client != null && client.world != null) {
+            if (normalized == null || normalized.isEmpty()) {
+                sendNodeErrorMessage(client, "Cannot navigate to block: no block selected.");
+                future.complete(null);
+                return true;
+            }
+
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+                sendNodeErrorMessage(client, "Cannot navigate to block \"" + blockId + "\": unknown identifier.");
+                future.complete(null);
+                return true;
+            }
+
+            targetBlock = Registries.BLOCK.get(identifier);
+            if (targetPos == null) {
+                Optional<BlockPos> nearest = findNearestBlock(client, Collections.singletonList(targetBlock), PARAMETER_SEARCH_RADIUS);
+                if (nearest.isEmpty()) {
+                    sendNodeErrorMessage(client, "No " + normalized + " found nearby for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return true;
+                }
+                targetPos = nearest.get();
+            }
+
+            setParameterValueAndPropagate("Block", normalized);
+
+            if (client.player != null && targetPos != null && targetBlock != null
+                && client.world.getBlockState(targetPos).isOf(targetBlock)) {
+                BlockPos playerBlockPos = client.player.getBlockPos();
+                if (playerBlockPos.equals(targetPos)) {
+                    future.complete(null);
+                    return true;
+                }
+                double distanceSq = client.player.squaredDistanceTo(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
+                if (distanceSq <= 2.25D) { // already within ~1.5 blocks, treat as complete
+                    future.complete(null);
+                    return true;
+                }
+            }
+        }
+
+        if (targetPos != null) {
+            ICustomGoalProcess customGoalProcess = baritone != null ? baritone.getCustomGoalProcess() : null;
+            if (customGoalProcess == null) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Cannot navigate to block: goal process unavailable.");
+                }
+                future.complete(null);
+                return true;
+            }
+
+            PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+            GoalNear goal = new GoalNear(targetPos, 1);
+            customGoalProcess.setGoalAndPath(goal);
+            return true;
+        }
+
+        IGetToBlockProcess getToBlockProcess = baritone != null ? baritone.getGetToBlockProcess() : null;
         if (getToBlockProcess == null) {
             if (client != null) {
                 sendNodeErrorMessage(client, "Cannot navigate to block: block search process unavailable.");
@@ -3380,7 +3447,8 @@ public class Node {
         }
 
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
-        getToBlockProcess.getToBlock(new BlockOptionalMeta(blockId));
+        String targetId = (normalized != null && !normalized.isEmpty()) ? normalized : blockId;
+        getToBlockProcess.getToBlock(new BlockOptionalMeta(targetId));
         return true;
     }
 
@@ -6526,13 +6594,6 @@ public class Node {
             }
 
             String blockDisplayName = targetBlock.getName().getString();
-
-            if (state.createScreenHandlerFactory(client.world, targetPos) == null) {
-                restoreSneakState.run();
-                sendNodeErrorMessage(client, blockDisplayName + " cannot be opened.");
-                future.complete(null);
-                return;
-            }
 
             Vec3d eyePos = client.player.getEyePos();
             Vec3d hitVec = Vec3d.ofCenter(targetPos);

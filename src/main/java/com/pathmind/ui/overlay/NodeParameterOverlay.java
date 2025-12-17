@@ -6,10 +6,14 @@ import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.control.InventorySlotSelector;
 import com.pathmind.util.InventorySlotModeHelper;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.MathHelper;
+import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -38,7 +42,6 @@ public class NodeParameterOverlay {
 
     private final Node node;
     private final List<String> parameterValues;
-    private final List<Boolean> fieldFocused;
     private int popupWidth = MIN_POPUP_WIDTH;
     private final int screenWidth;
     private final int screenHeight;
@@ -80,6 +83,12 @@ public class NodeParameterOverlay {
     private Boolean inventorySlotSelectionIsPlayer = null;
     private boolean suppressInventorySelectorCallbacks = false;
     private int textLineHeight = 9;
+    private final List<Integer> caretPositions = new ArrayList<>();
+    private final List<Integer> selectionStarts = new ArrayList<>();
+    private final List<Integer> selectionEnds = new ArrayList<>();
+    private final List<Integer> selectionAnchors = new ArrayList<>();
+    private long caretBlinkLastToggle = 0L;
+    private boolean caretVisible = true;
 
     public NodeParameterOverlay(Node node, int screenWidth, int screenHeight, int topBarHeight, Runnable onClose,
                                 Consumer<Node> onSave,
@@ -88,7 +97,6 @@ public class NodeParameterOverlay {
         this.onClose = onClose;
         this.onSave = onSave;
         this.parameterValues = new ArrayList<>();
-        this.fieldFocused = new ArrayList<>();
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.topBarHeight = topBarHeight;
@@ -350,24 +358,50 @@ public class NodeParameterOverlay {
                     fieldY + 6,
                     functionDropdownEnabled ? 0xFFE0E0E0 : 0xFF555555
                 );
-            } else if (text != null && !text.isEmpty()) {
-                int availableWidth = fieldWidth - 8;
-                String displayText = trimDisplayString(textRenderer, text, availableWidth);
-
-                context.drawTextWithShadow(
-                    textRenderer,
-                    Text.literal(displayText),
-                    fieldX + 4,
-                    fieldY + 6,
-                    0xFFFFFFFF
-                );
-            }
-
-            if (!isDropdownField && isFocused && (System.currentTimeMillis() / 500) % 2 == 0) {
+            } else {
                 String value = text != null ? text : "";
-                int cursorX = fieldX + 4 + textRenderer.getWidth(value);
-                cursorX = Math.min(cursorX, fieldX + fieldWidth - 2);
-                context.fill(cursorX, fieldY + 4, cursorX + 1, fieldY + 16, 0xFFFFFFFF);
+                String displayText = isFocused ? value : trimDisplayString(textRenderer, value, fieldWidth - 8);
+                int textX = fieldX + 4;
+                int textY = fieldY + 6;
+
+                if (isFocused && hasSelectionForField(i)) {
+                    int start = Math.max(0, selectionStarts.get(i));
+                    int end = Math.max(0, selectionEnds.get(i));
+                    int clampedStart = Math.min(start, value.length());
+                    int clampedEnd = Math.min(end, value.length());
+                    if (clampedEnd < clampedStart) {
+                        int tmp = clampedStart;
+                        clampedStart = clampedEnd;
+                        clampedEnd = tmp;
+                    }
+                    int selectionStartX = textX + textRenderer.getWidth(value.substring(0, clampedStart));
+                    int selectionEndX = textX + textRenderer.getWidth(value.substring(0, clampedEnd));
+                    selectionStartX = MathHelper.clamp(selectionStartX, fieldX + 2, fieldX + fieldWidth - 2);
+                    selectionEndX = MathHelper.clamp(selectionEndX, fieldX + 2, fieldX + fieldWidth - 2);
+                    if (selectionEndX != selectionStartX) {
+                        context.fill(selectionStartX, fieldY + 4, selectionEndX, fieldY + fieldHeight - 4, 0x80426AD5);
+                    }
+                }
+
+                if (!displayText.isEmpty()) {
+                    context.drawTextWithShadow(
+                        textRenderer,
+                        Text.literal(displayText),
+                        textX,
+                        textY,
+                        0xFFFFFFFF
+                    );
+                }
+
+                if (isFocused) {
+                    updateCaretBlinkState();
+                    if (caretVisible) {
+                        int caretIndex = MathHelper.clamp(caretPositions.get(i), 0, value.length());
+                        int caretX = textX + textRenderer.getWidth(value.substring(0, caretIndex));
+                        caretX = Math.min(caretX, fieldX + fieldWidth - 2);
+                        context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4, 0xFFFFFFFF);
+                    }
+                }
             }
 
             sectionY = fieldY + fieldHeight + SECTION_SPACING;
@@ -624,6 +658,7 @@ public class NodeParameterOverlay {
         }
 
         // Check field clicks
+        boolean shiftClick = Screen.hasShiftDown();
         for (int i = 0; i < node.getParameters().size(); i++) {
             int fieldX = popupX + 20;
             int fieldY = labelY + LABEL_TO_FIELD_OFFSET; // Match the rendering position
@@ -644,7 +679,8 @@ public class NodeParameterOverlay {
                         toggleFunctionDropdown();
                     }
                 } else {
-                    focusedFieldIndex = i;
+                    focusField(i);
+                    setCaretFromClick(i, mouseX, fieldX, fieldWidth, shiftClick);
                 }
                 return true;
             }
@@ -732,49 +768,42 @@ public class NodeParameterOverlay {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (!visible) return false;
 
-        // Handle text input for focused field
-        if (focusedFieldIndex >= 0 && focusedFieldIndex < parameterValues.size()) {
-            String currentText = parameterValues.get(focusedFieldIndex);
-            
-            // Handle backspace
-            if (keyCode == 259 && currentText.length() > 0) { // Backspace key
-                parameterValues.set(focusedFieldIndex, currentText.substring(0, currentText.length() - 1));
-                return true;
-            }
-            
-            // Handle tab to move to next field
-            if (keyCode == 258) { // Tab key
-                focusNextEditableField();
+        boolean handledFieldInput = false;
+        if (focusedFieldIndex >= 0
+            && focusedFieldIndex < parameterValues.size()
+            && !usesFunctionDropdownForIndex(focusedFieldIndex)) {
+            handledFieldInput = handleFocusedFieldKeyPressed(keyCode, modifiers);
+            if (handledFieldInput) {
                 return true;
             }
         }
+
+        if (keyCode == GLFW.GLFW_KEY_TAB) {
+            focusAdjacentEditableField((modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
+            return true;
+        }
         
-        // Close on Escape
-        if (keyCode == 256) { // Escape key
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             close();
             return true;
         }
         
-        // Save on Enter
-        if (keyCode == 257) { // Enter key
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
             saveParameters();
             return true;
         }
         
-        return false;
+        return handledFieldInput;
     }
 
     public boolean charTyped(char chr, int modifiers) {
         if (!visible) return false;
         
-        if (focusedFieldIndex >= 0 && focusedFieldIndex < parameterValues.size()) {
-            String currentText = parameterValues.get(focusedFieldIndex);
-            
-            // Only allow printable characters and limit length to fit in the field
-            int maxChars = (popupWidth - 44) / 6; // Calculate based on field width
-            if (chr >= 32 && chr <= 126 && currentText.length() < maxChars) {
-                parameterValues.set(focusedFieldIndex, currentText + chr);
-                return true;
+        if (focusedFieldIndex >= 0
+            && focusedFieldIndex < parameterValues.size()
+            && !usesFunctionDropdownForIndex(focusedFieldIndex)) {
+            if (chr >= 32 && chr != 127) {
+                return insertTextForField(focusedFieldIndex, String.valueOf(chr));
             }
         }
         
@@ -819,6 +848,7 @@ public class NodeParameterOverlay {
         modeDropdownHoverIndex = -1;
         functionDropdownOpen = false;
         functionDropdownHoverIndex = -1;
+        focusedFieldIndex = -1;
         if (inventorySlotSelector != null) {
             inventorySlotSelector.closeDropdown();
         }
@@ -844,12 +874,21 @@ public class NodeParameterOverlay {
     
     private void resetParameterFields() {
         parameterValues.clear();
-        fieldFocused.clear();
+        caretPositions.clear();
+        selectionStarts.clear();
+        selectionEnds.clear();
+        selectionAnchors.clear();
         
         for (NodeParameter param : node.getParameters()) {
-            parameterValues.add(param.getStringValue());
-            fieldFocused.add(false);
+            String value = param.getStringValue();
+            parameterValues.add(value);
+            caretPositions.add(value != null ? value.length() : 0);
+            selectionStarts.add(-1);
+            selectionEnds.add(-1);
+            selectionAnchors.add(-1);
         }
+        focusedFieldIndex = -1;
+        resetCaretBlink();
     }
     
     private void updatePopupDimensions() {
@@ -981,16 +1020,24 @@ public class NodeParameterOverlay {
     }
 
     private void focusNextEditableField() {
-        int total = node.getParameters().size();
+        focusAdjacentEditableField(false);
+    }
+
+    private void focusAdjacentEditableField(boolean backwards) {
+        List<NodeParameter> params = node.getParameters();
+        int total = params.size();
         if (total == 0) {
             focusedFieldIndex = -1;
             return;
         }
-        int nextIndex = focusedFieldIndex;
+        int startIndex = focusedFieldIndex;
+        if (startIndex < 0 || startIndex >= total) {
+            startIndex = backwards ? total : -1;
+        }
         for (int attempts = 0; attempts < total; attempts++) {
-            nextIndex = (nextIndex + 1 + total) % total;
-            if (!usesFunctionDropdownForIndex(nextIndex)) {
-                focusedFieldIndex = nextIndex;
+            startIndex = (startIndex + (backwards ? -1 : 1) + total) % total;
+            if (!usesFunctionDropdownForIndex(startIndex)) {
+                focusField(startIndex);
                 return;
             }
         }
@@ -1016,6 +1063,336 @@ public class NodeParameterOverlay {
         functionDropdownOpen = true;
         functionDropdownHoverIndex = -1;
         focusedFieldIndex = -1;
+    }
+
+    private void focusField(int index) {
+        if (index < 0 || index >= parameterValues.size() || usesFunctionDropdownForIndex(index)) {
+            focusedFieldIndex = -1;
+            return;
+        }
+        focusedFieldIndex = index;
+        ensureCaretEntry(index);
+        String value = getFieldValue(index);
+        caretPositions.set(index, MathHelper.clamp(caretPositions.get(index), 0, value.length()));
+        clearSelectionForField(index);
+        resetCaretBlink();
+    }
+
+    private void setCaretFromClick(int index, double mouseX, int fieldX, int fieldWidth, boolean extendSelection) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return;
+        }
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null) {
+            return;
+        }
+        int relativeX = (int)Math.round(mouseX) - (fieldX + 4);
+        int clampedX = MathHelper.clamp(relativeX, 0, fieldWidth - 8);
+        String value = getFieldValue(index);
+        int caretIndex = getCaretIndexForPixel(value, clampedX, textRenderer);
+        moveCaretForField(index, caretIndex, extendSelection);
+    }
+
+    private int getCaretIndexForPixel(String value, int targetX, TextRenderer textRenderer) {
+        if (value == null || value.isEmpty()) {
+            return 0;
+        }
+        int width = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            int charWidth = textRenderer.getWidth(String.valueOf(c));
+            if (width + charWidth / 2 >= targetX) {
+                return i;
+            }
+            width += charWidth;
+        }
+        return value.length();
+    }
+
+    private void moveCaretForField(int index, int position, boolean extendSelection) {
+        ensureCaretEntry(index);
+        String value = getFieldValue(index);
+        int clamped = MathHelper.clamp(position, 0, value.length());
+        if (extendSelection) {
+            if (selectionAnchors.get(index) == -1) {
+                selectionAnchors.set(index, caretPositions.get(index));
+            }
+            int anchor = selectionAnchors.get(index);
+            int start = Math.min(anchor, clamped);
+            int end = Math.max(anchor, clamped);
+            if (start == end) {
+                clearSelectionForField(index);
+            } else {
+                selectionStarts.set(index, start);
+                selectionEnds.set(index, end);
+            }
+        } else {
+            selectionAnchors.set(index, -1);
+            clearSelectionForField(index);
+        }
+        caretPositions.set(index, clamped);
+        resetCaretBlink();
+    }
+
+    private void ensureCaretEntry(int index) {
+        while (caretPositions.size() <= index) {
+            caretPositions.add(0);
+            selectionStarts.add(-1);
+            selectionEnds.add(-1);
+            selectionAnchors.add(-1);
+        }
+    }
+
+    private boolean hasSelectionForField(int index) {
+        if (index < 0 || index >= selectionStarts.size()) {
+            return false;
+        }
+        int start = selectionStarts.get(index);
+        int end = selectionEnds.get(index);
+        return start >= 0 && end >= 0 && start != end;
+    }
+
+    private void clearSelectionForField(int index) {
+        if (index < 0 || index >= selectionStarts.size()) {
+            return;
+        }
+        selectionStarts.set(index, -1);
+        selectionEnds.set(index, -1);
+        selectionAnchors.set(index, -1);
+    }
+
+    private boolean deleteSelectionForField(int index) {
+        if (!hasSelectionForField(index)) {
+            return false;
+        }
+        String value = getFieldValue(index);
+        int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
+        int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
+        if (start < 0 || end < 0 || start >= value.length() + 1) {
+            clearSelectionForField(index);
+            return false;
+        }
+        start = MathHelper.clamp(start, 0, value.length());
+        end = MathHelper.clamp(end, 0, value.length());
+        String updated = value.substring(0, start) + value.substring(end);
+        parameterValues.set(index, updated);
+        caretPositions.set(index, start);
+        clearSelectionForField(index);
+        resetCaretBlink();
+        return true;
+    }
+
+    private void deleteCharBeforeCaret(int index) {
+        String value = getFieldValue(index);
+        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        if (caret == 0) {
+            return;
+        }
+        String updated = value.substring(0, caret - 1) + value.substring(caret);
+        parameterValues.set(index, updated);
+        caretPositions.set(index, caret - 1);
+        resetCaretBlink();
+    }
+
+    private void deleteCharAfterCaret(int index) {
+        String value = getFieldValue(index);
+        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        if (caret >= value.length()) {
+            return;
+        }
+        String updated = value.substring(0, caret) + value.substring(caret + 1);
+        parameterValues.set(index, updated);
+        caretPositions.set(index, caret);
+        resetCaretBlink();
+    }
+
+    private void selectAllForField(int index) {
+        String value = getFieldValue(index);
+        if (value.isEmpty()) {
+            clearSelectionForField(index);
+            caretPositions.set(index, 0);
+            return;
+        }
+        selectionStarts.set(index, 0);
+        selectionEnds.set(index, value.length());
+        selectionAnchors.set(index, 0);
+        caretPositions.set(index, value.length());
+        resetCaretBlink();
+    }
+
+    private void copySelectionForField(int index) {
+        if (!hasSelectionForField(index)) {
+            return;
+        }
+        String value = getFieldValue(index);
+        int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
+        int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
+        start = MathHelper.clamp(start, 0, value.length());
+        end = MathHelper.clamp(end, 0, value.length());
+        if (start >= end) {
+            return;
+        }
+        setClipboardText(value.substring(start, end));
+    }
+
+    private void cutSelectionForField(int index) {
+        if (!hasSelectionForField(index)) {
+            return;
+        }
+        copySelectionForField(index);
+        deleteSelectionForField(index);
+    }
+
+    private boolean insertTextForField(int index, String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null) {
+            return false;
+        }
+        ensureCaretEntry(index);
+        String value = getFieldValue(index);
+        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        if (hasSelectionForField(index)) {
+            int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
+            int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
+            start = MathHelper.clamp(start, 0, value.length());
+            end = MathHelper.clamp(end, 0, value.length());
+            value = value.substring(0, start) + value.substring(end);
+            caret = start;
+            caretPositions.set(index, caret);
+            clearSelectionForField(index);
+        }
+        boolean inserted = false;
+        int availableWidth = getMaxFieldTextWidth();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c < 32 || c == 127) {
+                continue;
+            }
+            String candidate = value.substring(0, caret) + c + value.substring(caret);
+            if (textRenderer.getWidth(candidate) > availableWidth) {
+                break;
+            }
+            value = candidate;
+            caret++;
+            inserted = true;
+        }
+        if (inserted) {
+            parameterValues.set(index, value);
+            caretPositions.set(index, caret);
+            resetCaretBlink();
+        }
+        return inserted;
+    }
+
+    private String getFieldValue(int index) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return "";
+        }
+        String value = parameterValues.get(index);
+        return value == null ? "" : value;
+    }
+
+    private void resetCaretBlink() {
+        caretVisible = true;
+        caretBlinkLastToggle = System.currentTimeMillis();
+    }
+
+    private void updateCaretBlinkState() {
+        long now = System.currentTimeMillis();
+        if (now - caretBlinkLastToggle >= 500L) {
+            caretVisible = !caretVisible;
+            caretBlinkLastToggle = now;
+        }
+    }
+
+    private TextRenderer getClientTextRenderer() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client != null ? client.textRenderer : null;
+    }
+
+    private String getClipboardText() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null && client.keyboard != null) {
+            return client.keyboard.getClipboard();
+        }
+        return "";
+    }
+
+    private void setClipboardText(String text) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null && client.keyboard != null) {
+            client.keyboard.setClipboard(text == null ? "" : text);
+        }
+    }
+
+    private int getMaxFieldTextWidth() {
+        return Math.max(10, popupWidth - 48);
+    }
+
+    private boolean handleFocusedFieldKeyPressed(int keyCode, int modifiers) {
+        if (focusedFieldIndex < 0 || focusedFieldIndex >= parameterValues.size()) {
+            return false;
+        }
+        int index = focusedFieldIndex;
+        ensureCaretEntry(index);
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = Screen.hasControlDown();
+
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (!deleteSelectionForField(index)) {
+                    deleteCharBeforeCaret(index);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (!deleteSelectionForField(index)) {
+                    deleteCharAfterCaret(index);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveCaretForField(index, caretPositions.get(index) - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveCaretForField(index, caretPositions.get(index) + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveCaretForField(index, 0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveCaretForField(index, getFieldValue(index).length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllForField(index);
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copySelectionForField(index);
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutSelectionForField(index);
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    String clipboardText = getClipboardText();
+                    if (clipboardText != null) {
+                        insertTextForField(index, clipboardText);
+                    }
+                    return true;
+                }
+                break;
+        }
+        return false;
     }
 
     private boolean handleFunctionDropdownClick(double mouseX, double mouseY) {

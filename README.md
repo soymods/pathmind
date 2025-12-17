@@ -112,7 +112,7 @@ Found a bug or have an idea? We'd love to hear from you!
 ## Acknowledgments
 
 - **FabricMC Team** for the modding framework
-- **Minecraft Community** for inspiration and feedback
+- **Baritone Team** for the pathfinding API
 - **Blender Foundation** & **Scratch Foundation** for inspiring the node-based interface design
 
 ## Support

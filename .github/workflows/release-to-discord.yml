@@ -22,6 +22,12 @@ jobs:
       - name: Grant execute permission for Gradle
         run: chmod +x ./gradlew
 
+      - name: Download Baritone API dependency
+        run: |
+          mkdir -p libs
+          curl -L -o libs/baritone-api-fabric-1.15.0.jar \
+            https://github.com/cabaletta/baritone/releases/download/v1.15.0/baritone-api-fabric-1.15.0.jar
+        
       - name: Build
         run: ./gradlew build
 

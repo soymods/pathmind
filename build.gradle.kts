@@ -3,7 +3,7 @@ import org.gradle.api.tasks.GradleBuild
 import org.gradle.api.tasks.TaskProvider
 
 plugins {
-    id("fabric-loom") version "1.10.3"
+    id("fabric-loom") version "1.10.5"
     id("maven-publish")
 }
 

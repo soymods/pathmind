@@ -142,28 +142,43 @@ tasks.jar {
 }
 
 val cleanTask = tasks.named("clean")
-val multiVersionBuildTasks = mutableListOf<TaskProvider<GradleBuild>>()
-var previousVersionTask: TaskProvider<GradleBuild>? = null
+val multiVersionBuildTasks = mutableListOf<TaskProvider<Task>>()
 supportedMinecraftVersions.keys.forEach { version ->
     val taskName = "buildMc${version.toTaskSuffix()}"
-    val provider = tasks.register<GradleBuild>(taskName) {
+    val provider = tasks.register(taskName) {
         group = "build"
         description = "Build Pathmind for Minecraft $version"
-        dir = projectDir
-        tasks = listOf("build")
-        startParameter.projectProperties = mapOf("mc_version" to version)
+        val versionOutputDir = layout.buildDirectory.dir("multiVersion/$version")
+        outputs.dir(versionOutputDir)
+        doLast {
+            project.delete(versionOutputDir)
+            exec {
+                workingDir = projectDir
+                if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+                    commandLine("cmd", "/c", "gradlew.bat", "build", "-Pmc_version=$version")
+                } else {
+                    commandLine("./gradlew", "build", "-Pmc_version=$version")
+                }
+            }
+            copy {
+                from(layout.buildDirectory.dir("libs")) {
+                    include("*mc$version.jar")
+                    include("*mc$version-sources.jar")
+                }
+                into(versionOutputDir)
+            }
+        }
     }
     provider.configure {
         mustRunAfter(cleanTask)
-        previousVersionTask?.let { mustRunAfter(it) }
     }
     multiVersionBuildTasks += provider
-    previousVersionTask = provider
 }
 
 tasks.register("buildAllTargets") {
     group = "build"
     description = "Build Pathmind for every configured Minecraft target"
+    val cleanTask = tasks.named("clean")
     dependsOn(cleanTask)
     multiVersionBuildTasks.forEach { dependsOn(it) }
 }

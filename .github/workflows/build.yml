@@ -31,10 +31,27 @@ jobs:
       - name: Build
         run: ./gradlew build
 
-      - name: Upload mod jar
+      - name: Pick main mod jar
+        id: jar
+        shell: bash
+        run: |
+          # Choose the primary jar (ignore common extra jars)
+          JAR="$(ls -1 build/libs/*.jar \
+            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
+            | head -n 1)"
+
+          if [ -z "$JAR" ]; then
+            echo "No suitable jar found in build/libs/"
+            ls -la build/libs || true
+            exit 1
+          fi
+
+          BASENAME="$(basename "$JAR" .jar)"
+          echo "jar_path=$JAR" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$BASENAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload mod jar (named like the jar)
         uses: actions/upload-artifact@v4
         with:
-          name: pathmind-mod-jar
-          path: |
-            build/libs/*.jar
-            !build/libs/*-sources.jar
+          name: ${{ steps.jar.outputs.artifact_name }}
+          path: ${{ steps.jar.outputs.jar_path }}

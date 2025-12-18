@@ -1,4 +1,4 @@
-name: Release -> Discord
+name: Release to Discord
 
 on:
   release:
@@ -17,6 +17,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle
 
       - name: Grant execute permission for Gradle
         run: chmod +x ./gradlew
@@ -24,33 +25,33 @@ jobs:
       - name: Build
         run: ./gradlew build
 
-      - name: Find built jar
-        id: jar
-        shell: bash
-        run: |
-          # pick the main jar from build/libs; ignore extra jars
-          JAR="$(ls -1 build/libs/*.jar \
-            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
-            | head -n 1)"
-
-          if [ -z "$JAR" ]; then
-            echo "No suitable jar found in build/libs/"
-            ls -la build/libs || true
-            exit 1
-          fi
-
-          echo "Found jar: $JAR"
-          echo "jar_path=$JAR" >> "$GITHUB_OUTPUT"
-
-      - name: Post to Discord (message + jar attachment)
+      - name: Post to Discord (message + all jar attachments)
         shell: bash
         run: |
           TAG="${{ github.event.release.tag_name }}"
           URL="${{ github.event.release.html_url }}"
           NAME="${{ github.event.repository.name }}"
-          JAR="${{ steps.jar.outputs.jar_path }}"
+
+          # Collect all "main" jars (ignore common extra jars)
+          mapfile -t JARS < <(ls -1 build/libs/*.jar 2>/dev/null \
+            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' || true)
+
+          if [ "${#JARS[@]}" -eq 0 ]; then
+            echo "No suitable jars found in build/libs/"
+            ls -la build/libs || true
+            exit 1
+          fi
+
+          # Build curl args for multiple attachments: file1, file2, file3...
+          CURL_FILES=()
+          i=1
+          for jar in "${JARS[@]}"; do
+            echo "Attaching: $jar"
+            CURL_FILES+=(-F "file${i}=@\"${jar}\"")
+            i=$((i+1))
+          done
 
           curl \
-            -F "payload_json={\"content\":\"**${NAME} ${TAG}**\\nGitHub Release: ${URL}\\n\\n📦 **Download:** (file attached)\"}" \
-            -F "file=@\"${JAR}\"" \
+            -F "payload_json={\"content\":\"@here\\n**${NAME} ${TAG}**\\nGitHub Release: ${URL}\\n\\n**Downloads:** (files attached)\"}" \
+            "${CURL_FILES[@]}" \
             "${{ secrets.DISCORD_WEBHOOK_URL }}"

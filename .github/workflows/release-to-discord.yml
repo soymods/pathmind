@@ -103,8 +103,14 @@ jobs:
             i=$((i+1))
           done
 
+          # Build a nice downloads list for the message body (string with newlines)
+          DOWNLOAD_LIST=""
+          for jar in "${JARS[@]}"; do
+            DOWNLOAD_LIST="${DOWNLOAD_LIST}• $(basename "$jar")\n"
+          done
+
           # Send message + attachments
           curl \
-            -F "payload_json={\"content\":\"${MENTION}**${NAME} ${TAG}**\nGitHub Release: ${URL}\n\nDownloads: (files attached)\"}" \
+            -F "payload_json={\"content\":\"${MENTION}**${NAME} ${TAG}**\n\nGitHub Release:\n${URL}\n\nDownloads:\n${DOWNLOAD_LIST}\"}" \
             "${CURL_FILES[@]}" \
             "${DISCORD_WEBHOOK_URL}"

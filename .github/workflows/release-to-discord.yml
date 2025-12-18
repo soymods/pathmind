@@ -24,12 +24,22 @@ jobs:
 
       - name: Download Baritone API dependency
         run: |
+          set -euo pipefail
           mkdir -p libs
-          curl -L -o libs/baritone-api-fabric-1.15.0.jar \
+          curl --fail -L -o libs/baritone-api-fabric-1.15.0.jar \
             https://github.com/cabaletta/baritone/releases/download/v1.15.0/baritone-api-fabric-1.15.0.jar
+          ls -l libs/baritone-api-fabric-1.15.0.jar
         
       - name: Build
-        run: ./gradlew build
+        env:
+          BARITONE_API_JAR: libs/baritone-api-fabric-1.15.0.jar
+        run: |
+          if [ ! -f libs/baritone-api-fabric-1.15.0.jar ]; then
+            echo "Baritone API jar missing; listing libs:"
+            ls -l libs || true
+            exit 1
+          fi
+          ./gradlew build -PbaritoneApiPath=libs/baritone-api-fabric-1.15.0.jar
 
       - name: Post to Discord (message + all jar attachments)
         shell: bash

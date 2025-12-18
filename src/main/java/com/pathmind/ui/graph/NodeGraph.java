@@ -10,6 +10,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.util.MatrixStackBridge;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -1798,8 +1799,12 @@ public class NodeGraph {
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta, boolean onlyDragged) {
         var matrices = context.getMatrices();
-        matrices.pushMatrix();
-        matrices.scale(getZoomScale(), getZoomScale());
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.scale(matrices, getZoomScale(), getZoomScale());
+        if (onlyDragged) {
+            // Lift dragged nodes above other GUI layers on matrix-stack renderers.
+            MatrixStackBridge.translateZ(matrices, 250.0f);
+        }
 
         if (!onlyDragged) {
             updateCascadeDeletionPreview();
@@ -1818,7 +1823,7 @@ public class NodeGraph {
             renderHierarchy(root, context, textRenderer, mouseX, mouseY, delta, onlyDragged, false, renderedNodes);
         }
 
-        matrices.popMatrix();
+        MatrixStackBridge.pop(matrices);
     }
 
     public void renderSelectionBox(DrawContext context) {
@@ -3230,7 +3235,7 @@ public class NodeGraph {
         if (!shouldRenderNodeText()) {
             return;
         }
-        context.drawTextWithShadow(renderer, text, x, y, color);
+        context.drawText(renderer, text, x, y, color, false);
     }
 
     private void drawNodeText(DrawContext context, TextRenderer renderer, String text, int x, int y, int color) {

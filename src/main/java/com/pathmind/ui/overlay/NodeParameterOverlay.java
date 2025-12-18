@@ -5,6 +5,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.control.InventorySlotSelector;
+import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -16,6 +17,7 @@ import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -82,6 +84,17 @@ public class NodeParameterOverlay {
     private final InventorySlotSelector inventorySlotSelector;
     private Boolean inventorySlotSelectionIsPlayer = null;
     private boolean suppressInventorySelectorCallbacks = false;
+    private boolean blockStateEditorActive;
+    private int blockParameterIndex;
+    private int blockStateParamIndex;
+    private final List<BlockSelection.StateOption> blockStateOptions = new ArrayList<>();
+    private String cachedBlockIdForStateOptions = "";
+    private boolean blockStateDropdownOpen = false;
+    private int blockStateDropdownHoverIndex = -1;
+    private int blockStateFieldX;
+    private int blockStateFieldY;
+    private int blockStateFieldWidth;
+    private int blockStateFieldHeight;
     private int textLineHeight = 9;
     private final List<Integer> caretPositions = new ArrayList<>();
     private final List<Integer> selectionStarts = new ArrayList<>();
@@ -144,7 +157,7 @@ public class NodeParameterOverlay {
                     }
                     inventorySlotSelectionIsPlayer = isPlayerSection;
                     if (inventorySlotParamIndex >= 0 && inventorySlotParamIndex < parameterValues.size()) {
-                        parameterValues.set(inventorySlotParamIndex, String.valueOf(slotId));
+                        setParameterValue(inventorySlotParamIndex, String.valueOf(slotId));
                     }
                     persistInventorySlotModeValue();
                 }
@@ -156,7 +169,7 @@ public class NodeParameterOverlay {
                     }
                     inventorySlotSelectionIsPlayer = null;
                     if (inventoryModeParamIndex >= 0 && inventoryModeParamIndex < parameterValues.size()) {
-                        parameterValues.set(inventoryModeParamIndex, InventorySlotModeHelper.buildStoredModeValue(modeId, null));
+                        setParameterValue(inventoryModeParamIndex, InventorySlotModeHelper.buildStoredModeValue(modeId, null));
                     }
                 }
 
@@ -169,6 +182,27 @@ public class NodeParameterOverlay {
         } else {
             this.inventorySlotSelector = null;
         }
+
+        int tempBlockIndex = -1;
+        int tempBlockStateIndex = -1;
+        if (node.getType() == NodeType.PARAM_BLOCK) {
+            List<NodeParameter> params = node.getParameters();
+            for (int i = 0; i < params.size(); i++) {
+                NodeParameter param = params.get(i);
+                if (param == null) {
+                    continue;
+                }
+                String name = param.getName();
+                if ("Block".equalsIgnoreCase(name)) {
+                    tempBlockIndex = i;
+                } else if ("State".equalsIgnoreCase(name)) {
+                    tempBlockStateIndex = i;
+                }
+            }
+        }
+        this.blockParameterIndex = tempBlockIndex;
+        this.blockStateParamIndex = tempBlockStateIndex;
+        this.blockStateEditorActive = tempBlockStateIndex >= 0;
         
         updatePopupDimensions();
     }
@@ -204,6 +238,7 @@ public class NodeParameterOverlay {
             }
             persistInventorySlotModeValue();
         }
+
         updatePopupDimensions();
         recreateButtons();
         scrollOffset = Math.min(scrollOffset, maxScroll);
@@ -212,6 +247,7 @@ public class NodeParameterOverlay {
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
         if (!visible) return;
+        updateBlockStateOptions(false);
 
         // Render semi-transparent background overlay
         context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), 0x80000000);
@@ -283,7 +319,7 @@ public class NodeParameterOverlay {
 
         this.textLineHeight = textRenderer.fontHeight;
         for (int i = 0; i < node.getParameters().size(); i++) {
-            if (inventorySlotEditorActive && i == inventoryModeParamIndex) {
+            if (!shouldDisplayParameter(i)) {
                 continue;
             }
             NodeParameter param = node.getParameters().get(i);
@@ -302,6 +338,13 @@ public class NodeParameterOverlay {
             if (inventorySlotEditorActive && i == inventorySlotParamIndex && inventorySlotSelector != null) {
                 int selectorHeight = inventorySlotSelector.render(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
+                continue;
+            }
+
+            boolean isBlockStateField = blockStateEditorActive && i == blockStateParamIndex && !blockStateOptions.isEmpty();
+            if (isBlockStateField) {
+                renderBlockStateField(context, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight, mouseX, mouseY);
+                sectionY = fieldY + fieldHeight + SECTION_SPACING;
                 continue;
             }
 
@@ -458,6 +501,9 @@ public class NodeParameterOverlay {
         if (functionDropdownOpen) {
             renderFunctionDropdown(context, textRenderer, mouseX, mouseY);
         }
+        if (blockStateDropdownOpen) {
+            renderBlockStateDropdown(context, textRenderer, mouseX, mouseY);
+        }
 
         renderScrollbar(context, contentTop, contentBottom);
     }
@@ -515,13 +561,90 @@ public class NodeParameterOverlay {
         if (inventoryModeParamIndex < 0 || inventoryModeParamIndex >= parameterValues.size()) {
             return;
         }
-        parameterValues.set(
+        setParameterValue(
             inventoryModeParamIndex,
             InventorySlotModeHelper.buildStoredModeValue(
                 inventorySlotSelector.getModeId(),
                 inventorySlotSelectionIsPlayer
             )
         );
+    }
+
+    private void setParameterValue(int index, String value) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return;
+        }
+        parameterValues.set(index, value != null ? value : "");
+        handleParameterValueChanged(index);
+    }
+
+    private void handleParameterValueChanged(int index) {
+        if (blockStateEditorActive && index == blockParameterIndex) {
+            updateBlockStateOptions(true);
+        }
+    }
+
+    private boolean shouldDisplayParameter(int index) {
+        if (inventorySlotEditorActive && index == inventoryModeParamIndex) {
+            return false;
+        }
+        if (blockStateEditorActive && index == blockStateParamIndex && blockStateOptions.isEmpty()) {
+            return false;
+        }
+        return true;
+    }
+
+    private void updateBlockStateOptions(boolean forceRefresh) {
+        boolean previouslyHadOptions = !blockStateOptions.isEmpty();
+        if (!blockStateEditorActive || blockParameterIndex < 0 || blockParameterIndex >= parameterValues.size()) {
+            blockStateOptions.clear();
+            cachedBlockIdForStateOptions = "";
+            blockStateDropdownOpen = false;
+            return;
+        }
+
+        String rawBlock = parameterValues.get(blockParameterIndex);
+        String normalized = rawBlock != null ? rawBlock.trim() : "";
+        if (!normalized.isEmpty()) {
+            String stripped = BlockSelection.stripState(normalized);
+            normalized = stripped != null ? stripped : normalized;
+        }
+        if (!forceRefresh && Objects.equals(normalized, cachedBlockIdForStateOptions)) {
+            return;
+        }
+
+        cachedBlockIdForStateOptions = normalized;
+        blockStateDropdownOpen = false;
+        blockStateDropdownHoverIndex = -1;
+        blockStateOptions.clear();
+        if (!normalized.isEmpty()) {
+            List<BlockSelection.StateOption> resolvedOptions = BlockSelection.getStateOptions(normalized);
+            if (!resolvedOptions.isEmpty()) {
+                blockStateOptions.add(new BlockSelection.StateOption("", "Any State"));
+                blockStateOptions.addAll(resolvedOptions);
+            }
+        }
+        ensureValidBlockStateSelection();
+        boolean currentlyHasOptions = !blockStateOptions.isEmpty();
+        if (previouslyHadOptions != currentlyHasOptions) {
+            updatePopupDimensions();
+            recreateButtons();
+        }
+    }
+
+    private void ensureValidBlockStateSelection() {
+        if (!blockStateEditorActive || blockStateParamIndex < 0 || blockStateParamIndex >= parameterValues.size()) {
+            return;
+        }
+        String currentValue = parameterValues.get(blockStateParamIndex);
+        boolean valid = blockStateOptions.stream().anyMatch(option -> option.value().equalsIgnoreCase(currentValue));
+        if (!valid) {
+            if (blockStateOptions.isEmpty()) {
+                setParameterValue(blockStateParamIndex, "");
+            } else {
+                setParameterValue(blockStateParamIndex, blockStateOptions.get(0).value());
+            }
+        }
     }
 
     private void renderFunctionDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
@@ -587,6 +710,116 @@ public class NodeParameterOverlay {
         }
     }
 
+    private void renderBlockStateField(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth, int fieldHeight, int mouseX, int mouseY) {
+        blockStateFieldX = fieldX;
+        blockStateFieldY = fieldY;
+        blockStateFieldWidth = fieldWidth;
+        blockStateFieldHeight = fieldHeight;
+
+        boolean hasOptions = !blockStateOptions.isEmpty();
+        boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
+                          mouseY >= fieldY && mouseY <= fieldY + fieldHeight;
+        boolean dropdownActive = blockStateDropdownOpen;
+        int bgColor;
+        int borderColor;
+        if (dropdownActive) {
+            bgColor = adjustColorBrightness(0xFF1A1A1A, 1.2f);
+            borderColor = 0xFF87CEEB;
+        } else if (hovered) {
+            bgColor = adjustColorBrightness(0xFF1A1A1A, 1.1f);
+            borderColor = 0xFF87CEEB;
+        } else {
+            bgColor = 0xFF1A1A1A;
+            borderColor = 0xFF666666;
+        }
+
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
+        context.drawBorder(fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+
+        String display = getBlockStateDisplayText(hasOptions);
+        int textColor = hasOptions ? 0xFFFFFFFF : 0xFF777777;
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(display),
+            fieldX + 4,
+            fieldY + 6,
+            textColor
+        );
+
+        int arrowColor = hasOptions ? 0xFFE0E0E0 : 0xFF555555;
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal("▼"),
+            fieldX + fieldWidth - 14,
+            fieldY + 6,
+            arrowColor
+        );
+    }
+
+    private String getBlockStateDisplayText(boolean hasOptions) {
+        String currentValue = "";
+        if (blockStateParamIndex >= 0 && blockStateParamIndex < parameterValues.size()) {
+            currentValue = parameterValues.get(blockStateParamIndex);
+        }
+        for (BlockSelection.StateOption option : blockStateOptions) {
+            if (option.value().equalsIgnoreCase(currentValue)) {
+                return option.displayText();
+            }
+        }
+        if (!hasOptions) {
+            return "no states available";
+        }
+        return "select block state";
+    }
+
+    private void renderBlockStateDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!blockStateDropdownOpen || !blockStateEditorActive || blockStateParamIndex < 0 || blockStateOptions.isEmpty()) {
+            return;
+        }
+
+        int dropdownX = blockStateFieldX;
+        int dropdownY = blockStateFieldY + blockStateFieldHeight;
+        int dropdownWidth = blockStateFieldWidth;
+        int optionCount = blockStateOptions.size();
+        int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
+
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
+        context.drawBorder(dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+
+        blockStateDropdownHoverIndex = -1;
+        if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+            mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
+            int hoverIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+            if (hoverIndex >= 0 && hoverIndex < optionCount) {
+                blockStateDropdownHoverIndex = hoverIndex;
+            }
+        }
+
+        String currentValue = "";
+        if (blockStateParamIndex >= 0 && blockStateParamIndex < parameterValues.size()) {
+            currentValue = parameterValues.get(blockStateParamIndex);
+        }
+
+        for (int i = 0; i < optionCount; i++) {
+            int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
+            BlockSelection.StateOption option = blockStateOptions.get(i);
+            boolean isSelected = option.value().equalsIgnoreCase(currentValue);
+            boolean isHovered = i == blockStateDropdownHoverIndex;
+            int optionColor = isSelected ? adjustColorBrightness(0xFF1A1A1A, 0.9f) : 0xFF1A1A1A;
+            if (isHovered) {
+                optionColor = adjustColorBrightness(optionColor, 1.2f);
+            }
+            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT, optionColor);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(option.displayText()),
+                dropdownX + 4,
+                optionTop + 6,
+                0xFFFFFFFF
+            );
+        }
+    }
+
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!visible) return false;
 
@@ -598,6 +831,8 @@ public class NodeParameterOverlay {
                 functionDropdownHoverIndex = -1;
                 modeDropdownOpen = false;
                 modeDropdownHoverIndex = -1;
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
                 return true;
             }
         }
@@ -639,12 +874,31 @@ public class NodeParameterOverlay {
                 mouseY >= Math.max(modeButtonY, contentTop) && mouseY <= Math.min(modeButtonY + modeButtonHeight, contentBottom)) {
                 functionDropdownOpen = false;
                 functionDropdownHoverIndex = -1;
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
                 modeDropdownOpen = !modeDropdownOpen;
                 modeDropdownHoverIndex = -1;
                 return true;
             }
 
             labelY = modeButtonY + modeButtonHeight + SECTION_SPACING;
+        }
+
+        if (blockStateDropdownOpen && blockStateEditorActive && blockStateParamIndex >= 0 && !blockStateOptions.isEmpty()) {
+            int dropdownX = blockStateFieldX;
+            int dropdownY = blockStateFieldY + blockStateFieldHeight;
+            int dropdownWidth = blockStateFieldWidth;
+            int dropdownHeight = blockStateOptions.size() * DROPDOWN_OPTION_HEIGHT;
+            if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
+                int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+                if (optionIndex >= 0 && optionIndex < blockStateOptions.size()) {
+                    setParameterValue(blockStateParamIndex, blockStateOptions.get(optionIndex).value());
+                }
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
+                return true;
+            }
         }
 
         // Check button clicks after handling dropdown interactions so dropdown selections aren't swallowed by buttons beneath
@@ -660,6 +914,9 @@ public class NodeParameterOverlay {
         // Check field clicks
         boolean shiftClick = Screen.hasShiftDown();
         for (int i = 0; i < node.getParameters().size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
             int fieldX = popupX + 20;
             int fieldY = labelY + LABEL_TO_FIELD_OFFSET; // Match the rendering position
             int fieldWidth = popupWidth - 40;
@@ -674,6 +931,17 @@ public class NodeParameterOverlay {
 
             if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
                 mouseY >= Math.max(fieldY, contentTop) && mouseY <= Math.min(fieldY + fieldHeight, contentBottom)) {
+                if (blockStateEditorActive && i == blockStateParamIndex) {
+                    if (!blockStateOptions.isEmpty()) {
+                        blockStateDropdownOpen = !blockStateDropdownOpen;
+                        blockStateDropdownHoverIndex = -1;
+                        functionDropdownOpen = false;
+                        functionDropdownHoverIndex = -1;
+                        modeDropdownOpen = false;
+                        modeDropdownHoverIndex = -1;
+                    }
+                    return true;
+                }
                 if (isDropdownField) {
                     if (functionDropdownEnabled) {
                         toggleFunctionDropdown();
@@ -722,6 +990,21 @@ public class NodeParameterOverlay {
             if (!insideField && !insideDropdown) {
                 functionDropdownOpen = false;
                 functionDropdownHoverIndex = -1;
+            }
+        }
+
+        if (blockStateDropdownOpen) {
+            int dropdownX = blockStateFieldX;
+            int dropdownY = blockStateFieldY + blockStateFieldHeight;
+            int dropdownWidth = blockStateFieldWidth;
+            int dropdownHeight = blockStateOptions.size() * DROPDOWN_OPTION_HEIGHT;
+            boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
+                                  mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
+            boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                                     mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+            if (!insideField && !insideDropdown) {
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
             }
         }
         
@@ -848,6 +1131,8 @@ public class NodeParameterOverlay {
         modeDropdownHoverIndex = -1;
         functionDropdownOpen = false;
         functionDropdownHoverIndex = -1;
+        blockStateDropdownOpen = false;
+        blockStateDropdownHoverIndex = -1;
         focusedFieldIndex = -1;
         if (inventorySlotSelector != null) {
             inventorySlotSelector.closeDropdown();
@@ -864,6 +1149,8 @@ public class NodeParameterOverlay {
         modeDropdownHoverIndex = -1;
         functionDropdownOpen = false;
         functionDropdownHoverIndex = -1;
+        blockStateDropdownOpen = false;
+        blockStateDropdownHoverIndex = -1;
         scrollOffset = 0;
         updateButtonPositions();
     }
@@ -889,6 +1176,37 @@ public class NodeParameterOverlay {
         }
         focusedFieldIndex = -1;
         resetCaretBlink();
+        refreshBlockStateIndices();
+        updateBlockStateOptions(true);
+    }
+
+    private void refreshBlockStateIndices() {
+        int tempBlockIndex = -1;
+        int tempBlockStateIndex = -1;
+        if (node.getType() == NodeType.PARAM_BLOCK) {
+            List<NodeParameter> params = node.getParameters();
+            for (int i = 0; i < params.size(); i++) {
+                NodeParameter param = params.get(i);
+                if (param == null) {
+                    continue;
+                }
+                String name = param.getName();
+                if ("Block".equalsIgnoreCase(name)) {
+                    tempBlockIndex = i;
+                } else if ("State".equalsIgnoreCase(name)) {
+                    tempBlockStateIndex = i;
+                }
+            }
+        }
+        blockParameterIndex = tempBlockIndex;
+        blockStateParamIndex = tempBlockStateIndex;
+        blockStateEditorActive = tempBlockStateIndex >= 0;
+        if (!blockStateEditorActive) {
+            blockStateDropdownOpen = false;
+            blockStateDropdownHoverIndex = -1;
+            blockStateOptions.clear();
+            cachedBlockIdForStateOptions = "";
+        }
     }
     
     private void updatePopupDimensions() {
@@ -900,7 +1218,11 @@ public class NodeParameterOverlay {
             longestLineLength = Math.max(longestLineLength, modeText.length());
         }
 
-        for (NodeParameter param : node.getParameters()) {
+        for (int i = 0; i < node.getParameters().size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
+            NodeParameter param = node.getParameters().get(i);
             String label = param.getName() + " (" + param.getType().getDisplayName() + "):";
             longestLineLength = Math.max(longestLineLength, label.length());
             String value = param.getStringValue();
@@ -909,7 +1231,11 @@ public class NodeParameterOverlay {
             }
         }
 
-        for (String value : parameterValues) {
+        for (int i = 0; i < parameterValues.size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
+            String value = parameterValues.get(i);
             if (value != null) {
                 longestLineLength = Math.max(longestLineLength, value.length());
             }
@@ -928,8 +1254,15 @@ public class NodeParameterOverlay {
         }
 
         int paramCount = node.getParameters().size();
+        int visibleProcessed = 0;
+        int visibleTotal = 0;
         for (int i = 0; i < paramCount; i++) {
-            if (inventorySlotEditorActive && i == inventoryModeParamIndex) {
+            if (shouldDisplayParameter(i)) {
+                visibleTotal++;
+            }
+        }
+        for (int i = 0; i < paramCount; i++) {
+            if (!shouldDisplayParameter(i)) {
                 continue;
             }
             if (inventorySlotEditorActive && i == inventorySlotParamIndex && inventorySlotSelector != null) {
@@ -938,7 +1271,8 @@ public class NodeParameterOverlay {
             } else {
                 contentHeight += LABEL_TO_FIELD_OFFSET + FIELD_HEIGHT;
             }
-            if (i < paramCount - 1) {
+            visibleProcessed++;
+            if (visibleProcessed < visibleTotal) {
                 contentHeight += SECTION_SPACING;
             }
         }
@@ -1175,7 +1509,7 @@ public class NodeParameterOverlay {
         start = MathHelper.clamp(start, 0, value.length());
         end = MathHelper.clamp(end, 0, value.length());
         String updated = value.substring(0, start) + value.substring(end);
-        parameterValues.set(index, updated);
+        setParameterValue(index, updated);
         caretPositions.set(index, start);
         clearSelectionForField(index);
         resetCaretBlink();
@@ -1189,7 +1523,7 @@ public class NodeParameterOverlay {
             return;
         }
         String updated = value.substring(0, caret - 1) + value.substring(caret);
-        parameterValues.set(index, updated);
+        setParameterValue(index, updated);
         caretPositions.set(index, caret - 1);
         resetCaretBlink();
     }
@@ -1201,7 +1535,7 @@ public class NodeParameterOverlay {
             return;
         }
         String updated = value.substring(0, caret) + value.substring(caret + 1);
-        parameterValues.set(index, updated);
+        setParameterValue(index, updated);
         caretPositions.set(index, caret);
         resetCaretBlink();
     }
@@ -1280,7 +1614,7 @@ public class NodeParameterOverlay {
             inserted = true;
         }
         if (inserted) {
-            parameterValues.set(index, value);
+            setParameterValue(index, value);
             caretPositions.set(index, caret);
             resetCaretBlink();
         }
@@ -1409,9 +1743,9 @@ public class NodeParameterOverlay {
             mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
             if (!functionNameOptions.isEmpty()) {
                 int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-                if (optionIndex >= 0 && optionIndex < functionNameOptions.size()) {
-                    parameterValues.set(functionDropdownParamIndex, functionNameOptions.get(optionIndex));
-                }
+                    if (optionIndex >= 0 && optionIndex < functionNameOptions.size()) {
+                        setParameterValue(functionDropdownParamIndex, functionNameOptions.get(optionIndex));
+                    }
             }
             functionDropdownOpen = false;
             functionDropdownHoverIndex = -1;

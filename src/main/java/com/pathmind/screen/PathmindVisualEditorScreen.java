@@ -8,6 +8,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.overlay.NodeParameterOverlay;
+import com.pathmind.util.VersionSupport;
 import com.pathmind.ui.sidebar.Sidebar;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -76,7 +77,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PRESET_DELETE_POPUP_HEIGHT = 160;
     private static final int TITLE_INTERACTION_PADDING = 4;
     private static final String INFO_POPUP_AUTHOR = "ryduzz";
-    private static final String INFO_POPUP_TARGET_VERSION = "1.21.x";
+    private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
     private static final Text TITLE_TEXT = Text.literal("Pathmind Node Editor");
 
     private NodeGraph nodeGraph;

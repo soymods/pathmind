@@ -27,7 +27,10 @@ import baritone.api.pathing.goals.GoalNear;
 import baritone.api.utils.BlockOptionalMeta;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
+import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
+import com.pathmind.util.PlayerInventoryBridge;
+import com.pathmind.util.RecipeCompatibilityBridge;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
@@ -64,7 +67,6 @@ import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
-import net.minecraft.recipe.IngredientPlacement;
 import net.minecraft.recipe.RecipeEntry;
 import net.minecraft.recipe.ShapedRecipe;
 import net.minecraft.screen.CraftingScreenHandler;
@@ -74,12 +76,10 @@ import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.recipe.input.CraftingRecipeInput;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.recipe.ServerRecipeManager;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.lang.reflect.Field;
 import java.util.regex.Pattern;
 
 /**
@@ -1619,7 +1619,8 @@ public class Node {
                 case STOP_FORCE:
                     // No parameters needed
                     break;
-                    
+
+                // Parameter block modes
                 default:
                     // No parameters needed
                     break;
@@ -1771,6 +1772,7 @@ public class Node {
                 break;
             case PARAM_BLOCK:
                 parameters.add(new NodeParameter("Block", ParameterType.STRING, "minecraft:stone"));
+                parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_BLOCK_LIST:
                 parameters.add(new NodeParameter("Blocks", ParameterType.STRING, "minecraft:stone,minecraft:dirt"));
@@ -2432,7 +2434,7 @@ public class Node {
                 BlockPos pos = new BlockPos(x, y, z);
                 if (data != null) {
                     data.targetBlockPos = pos;
-                    data.targetBlockId = getParameterString(parameterNode, "Block");
+                    data.targetBlockId = getBlockParameterValue(parameterNode);
                 }
                 return Optional.of(Vec3d.ofCenter(pos));
             }
@@ -2519,7 +2521,7 @@ public class Node {
                 if (client == null || client.player == null || client.world == null) {
                     return Optional.empty();
                 }
-                List<Block> blocks = resolveBlocksFromParameter(parameterNode);
+                List<BlockSelection> blocks = resolveBlocksFromParameter(parameterNode);
                 if (blocks.isEmpty()) {
                     sendParameterSearchFailure("No blocks defined on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
@@ -2533,10 +2535,10 @@ public class Node {
                 if (data != null) {
                     data.targetBlockPos = match.get();
                     data.targetBlockIds = new ArrayList<>();
-                    for (Block block : blocks) {
-                        Identifier id = Registries.BLOCK.getId(block);
+                    for (BlockSelection selection : blocks) {
+                        Identifier id = selection.getBlockId();
                         if (id != null) {
-                            data.targetBlockIds.add(id.toString());
+                            data.targetBlockIds.add(selection.asString());
                         }
                     }
                 }
@@ -2807,29 +2809,33 @@ public class Node {
         }
     }
 
-    private List<Block> resolveBlocksFromParameter(Node parameterNode) {
-        List<Block> blocks = new ArrayList<>();
-        String primary = getParameterString(parameterNode, "Block");
+    private List<BlockSelection> resolveBlocksFromParameter(Node parameterNode) {
+        List<BlockSelection> selections = new ArrayList<>();
+        String primary = getBlockParameterValue(parameterNode);
         String listValue = getParameterString(parameterNode, "Blocks");
         if (listValue != null && !listValue.isEmpty()) {
             for (String entry : listValue.split(",")) {
-                addBlockById(blocks, entry.trim());
+                addBlockSelection(selections, entry.trim());
             }
         }
         if (primary != null && !primary.isEmpty()) {
-            addBlockById(blocks, primary.trim());
+            addBlockSelection(selections, primary.trim());
         }
-        return blocks;
+        return selections;
     }
 
-    private void addBlockById(List<Block> blocks, String idString) {
-        if (idString == null || idString.isEmpty()) {
+    private void addBlockSelection(List<BlockSelection> selections, String rawValue) {
+        if (rawValue == null || rawValue.isEmpty()) {
             return;
         }
-        Identifier identifier = Identifier.tryParse(idString);
-        if (identifier != null && Registries.BLOCK.containsId(identifier)) {
-            blocks.add(Registries.BLOCK.get(identifier));
-        }
+        BlockSelection.parse(rawValue).ifPresent(selection -> {
+            if (selection.getBlock() != null) {
+                boolean exists = selections.stream().anyMatch(existing -> existing.asString().equals(selection.asString()));
+                if (!exists) {
+                    selections.add(selection);
+                }
+            }
+        });
     }
 
     private List<String> resolveCollectTargets(CompletableFuture<Void> future) {
@@ -2872,14 +2878,23 @@ public class Node {
         }
         for (String entry : rawValue.split(",")) {
             String trimmed = entry.trim();
-            if (!trimmed.isEmpty() && !blockIds.contains(trimmed)) {
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            Identifier identifier = BlockSelection.extractBlockIdentifier(trimmed);
+            if (identifier != null) {
+                String normalized = identifier.toString();
+                if (!blockIds.contains(normalized)) {
+                    blockIds.add(normalized);
+                }
+            } else if (!blockIds.contains(trimmed)) {
                 blockIds.add(trimmed);
             }
         }
     }
 
-    private Optional<BlockPos> findNearestBlock(net.minecraft.client.MinecraftClient client, List<Block> blocks, double range) {
-        if (client == null || client.player == null || client.world == null || blocks == null || blocks.isEmpty()) {
+    private Optional<BlockPos> findNearestBlock(net.minecraft.client.MinecraftClient client, List<BlockSelection> selections, double range) {
+        if (client == null || client.player == null || client.world == null || selections == null || selections.isEmpty()) {
             return Optional.empty();
         }
         int radius = Math.max(1, Math.min((int) Math.ceil(range), 64));
@@ -2893,12 +2908,23 @@ public class Node {
                 for (int dz = -radius; dz <= radius; dz++) {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
                     BlockState state = client.world.getBlockState(mutable);
-                    if (blocks.contains(state.getBlock())) {
-                        double distance = mutable.getSquaredDistance(playerPos);
-                        if (distance < bestDistance) {
-                            bestDistance = distance;
-                            bestPos = mutable.toImmutable();
+                    if (state.isAir()) {
+                        continue;
+                    }
+                    boolean matches = false;
+                    for (BlockSelection selection : selections) {
+                        if (selection.matches(state)) {
+                            matches = true;
+                            break;
                         }
+                    }
+                    if (!matches) {
+                        continue;
+                    }
+                    double distance = mutable.getSquaredDistance(playerPos);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestPos = mutable.toImmutable();
                     }
                 }
             }
@@ -3365,7 +3391,7 @@ public class Node {
     }
 
     private boolean gotoBlockFromParameter(Node parameterNode, IBaritone baritone, CompletableFuture<Void> future) {
-        String blockId = getParameterString(parameterNode, "Block");
+        String blockId = getBlockParameterValue(parameterNode);
         if (blockId == null || blockId.isEmpty()) {
             return false;
         }
@@ -3395,7 +3421,9 @@ public class Node {
 
             targetBlock = Registries.BLOCK.get(identifier);
             if (targetPos == null) {
-                Optional<BlockPos> nearest = findNearestBlock(client, Collections.singletonList(targetBlock), PARAMETER_SEARCH_RADIUS);
+                List<BlockSelection> selections = new ArrayList<>();
+                BlockSelection.parse(blockId).ifPresent(selections::add);
+                Optional<BlockPos> nearest = findNearestBlock(client, selections, PARAMETER_SEARCH_RADIUS);
                 if (nearest.isEmpty()) {
                     sendNodeErrorMessage(client, "No " + normalized + " found nearby for " + type.getDisplayName() + ".");
                     future.complete(null);
@@ -3609,7 +3637,7 @@ public class Node {
         if (client == null || client.player == null || blockId == null) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
+        Identifier identifier = BlockSelection.extractBlockIdentifier(blockId);
         if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
             return false;
         }
@@ -3894,15 +3922,8 @@ public class Node {
             return null;
         }
 
-        ServerRecipeManager recipeManager = server.getRecipeManager();
-        List<ServerRecipeManager.ServerRecipe> serverRecipes = getServerRecipeList(recipeManager);
-        if (serverRecipes.isEmpty()) {
-            return null;
-        }
-
         List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
-        for (ServerRecipeManager.ServerRecipe serverRecipe : serverRecipes) {
-            RecipeEntry<?> entry = serverRecipe.parent();
+        for (RecipeEntry<?> entry : server.getRecipeManager().values()) {
             if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
                 continue;
             }
@@ -3927,19 +3948,6 @@ public class Node {
         return null;
     }
 
-    private List<ServerRecipeManager.ServerRecipe> getServerRecipeList(ServerRecipeManager manager) {
-        if (SERVER_RECIPES_FIELD == null) {
-            return Collections.emptyList();
-        }
-        try {
-            @SuppressWarnings("unchecked")
-            List<ServerRecipeManager.ServerRecipe> recipes = (List<ServerRecipeManager.ServerRecipe>) SERVER_RECIPES_FIELD.get(manager);
-            return recipes != null ? recipes : Collections.emptyList();
-        } catch (IllegalAccessException e) {
-            return Collections.emptyList();
-        }
-    }
-
     private boolean recipeFitsPlayerGrid(CraftingRecipe recipe) {
         if (recipe == null) {
             return false;
@@ -3949,18 +3957,18 @@ public class Node {
             return shapedRecipe.getWidth() <= 2 && shapedRecipe.getHeight() <= 2;
         }
 
-        IngredientPlacement placement = recipe.getIngredientPlacement();
+        Object placement = RecipeCompatibilityBridge.getIngredientPlacement(recipe);
         if (placement == null) {
             return false;
         }
 
-        if (placement.hasNoPlacement()) {
-            return placement.getIngredients().size() <= 4;
+        if (RecipeCompatibilityBridge.hasNoPlacement(placement)) {
+            return RecipeCompatibilityBridge.getPlacementIngredients(placement).size() <= 4;
         }
 
-        IntList slots = placement.getPlacementSlots();
+        IntList slots = RecipeCompatibilityBridge.toPlacementSlots(placement);
         if (slots == null || slots.isEmpty()) {
-            return placement.getIngredients().size() <= 4;
+            return RecipeCompatibilityBridge.getPlacementIngredients(placement).size() <= 4;
         }
 
         int minX = 3;
@@ -3988,18 +3996,6 @@ public class Node {
         int height = maxY - minY + 1;
         return width <= 2 && height <= 2;
     }
-
-    private static Field initServerRecipesField() {
-        try {
-            Field field = ServerRecipeManager.class.getDeclaredField("field_54641");
-            field.setAccessible(true);
-            return field;
-        } catch (NoSuchFieldException e) {
-            return null;
-        }
-    }
-
-    private static final Field SERVER_RECIPES_FIELD = initServerRecipesField();
 
     private CraftingSummary craftRecipeUsingScreen(net.minecraft.client.MinecraftClient client,
                                                    NodeMode craftMode,
@@ -4093,7 +4089,7 @@ public class Node {
                 throw new InterruptedException();
             }
 
-            if (ingredient == null || ingredient.ingredient().isEmpty()) {
+            if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient.ingredient())) {
                 continue;
             }
 
@@ -4235,7 +4231,7 @@ public class Node {
     }
 
     private int findIngredientSourceSlot(ScreenHandler handler, Ingredient ingredient) {
-        if (handler == null || ingredient == null || ingredient.isEmpty()) {
+        if (handler == null || ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
             return -1;
         }
 
@@ -4331,24 +4327,24 @@ public class Node {
             return resolveCraftingTableGridIngredients(shapedRecipe);
         }
 
-        IngredientPlacement placement = recipe.getIngredientPlacement();
+        Object placement = RecipeCompatibilityBridge.getIngredientPlacement(recipe);
         if (placement == null) {
             return result;
         }
 
-        List<Ingredient> ingredients = placement.getIngredients();
+        List<Ingredient> ingredients = RecipeCompatibilityBridge.getPlacementIngredients(placement);
         if (ingredients == null || ingredients.isEmpty()) {
             return result;
         }
 
-        IntList slots = placement.getPlacementSlots();
+        IntList slots = RecipeCompatibilityBridge.toPlacementSlots(placement);
         int gridLimit = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 9 : 4;
 
-        if (placement.hasNoPlacement() || slots == null || slots.isEmpty()) {
+        if (RecipeCompatibilityBridge.hasNoPlacement(placement) || slots == null || slots.isEmpty()) {
             int limit = Math.min(ingredients.size(), gridLimit);
             for (int i = 0; i < limit; i++) {
                 Ingredient ingredient = ingredients.get(i);
-                if (ingredient == null || ingredient.isEmpty()) {
+                if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
                     continue;
                 }
                 result.add(new GridIngredient(1 + i, ingredient));
@@ -4359,7 +4355,7 @@ public class Node {
         int limit = Math.min(ingredients.size(), slots.size());
         for (int i = 0; i < limit; i++) {
             Ingredient ingredient = ingredients.get(i);
-            if (ingredient == null || ingredient.isEmpty()) {
+            if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
                 continue;
             }
 
@@ -4390,7 +4386,7 @@ public class Node {
 
     private List<GridIngredient> resolvePlayerGridIngredients(ShapedRecipe recipe) {
         List<GridIngredient> result = new ArrayList<>();
-        List<Optional<Ingredient>> ingredients = recipe.getIngredients();
+        List<?> ingredients = recipe.getIngredients();
         if (ingredients == null || ingredients.isEmpty()) {
             return result;
         }
@@ -4406,13 +4402,8 @@ public class Node {
                     continue;
                 }
 
-                Optional<Ingredient> optional = ingredients.get(index);
-                if (optional == null || optional.isEmpty()) {
-                    continue;
-                }
-
-                Ingredient ingredient = optional.get();
-                if (ingredient.isEmpty()) {
+                Ingredient ingredient = unwrapRecipeIngredient(ingredients.get(index));
+                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
                     continue;
                 }
 
@@ -4426,7 +4417,7 @@ public class Node {
 
     private List<GridIngredient> resolveCraftingTableGridIngredients(ShapedRecipe recipe) {
         List<GridIngredient> result = new ArrayList<>();
-        List<Optional<Ingredient>> ingredients = recipe.getIngredients();
+        List<?> ingredients = recipe.getIngredients();
         if (ingredients == null || ingredients.isEmpty()) {
             return result;
         }
@@ -4442,13 +4433,8 @@ public class Node {
                     continue;
                 }
 
-                Optional<Ingredient> optional = ingredients.get(index);
-                if (optional == null || optional.isEmpty()) {
-                    continue;
-                }
-
-                Ingredient ingredient = optional.get();
-                if (ingredient.isEmpty()) {
+                Ingredient ingredient = unwrapRecipeIngredient(ingredients.get(index));
+                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
                     continue;
                 }
 
@@ -4458,6 +4444,19 @@ public class Node {
         }
 
         return result;
+    }
+
+    private Ingredient unwrapRecipeIngredient(Object entry) {
+        if (entry instanceof Ingredient ingredient) {
+            return ingredient;
+        }
+        if (entry instanceof Optional<?> optional) {
+            Object value = optional.orElse(null);
+            if (value instanceof Ingredient ingredient) {
+                return ingredient;
+            }
+        }
+        return null;
     }
 
     private int[] getCraftingGridSlots(NodeMode craftMode) {
@@ -4721,6 +4720,7 @@ public class Node {
         NodeType parameterType = parameterNode.getType();
         switch (parameterType) {
             case PARAM_BLOCK:
+                return getBlockParameterValue(parameterNode);
             case PARAM_PLACE_TARGET:
                 return getParameterString(parameterNode, "Block");
             case PARAM_BLOCK_LIST: {
@@ -5353,7 +5353,7 @@ public class Node {
             slot = MathHelper.clamp(getIntParameter("Slot", 0), 0, 8);
         }
 
-        client.player.getInventory().setSelectedSlot(slot);
+        PlayerInventoryBridge.setSelectedSlot(client.player.getInventory(), slot);
         client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
         future.complete(null);
     }
@@ -5993,7 +5993,7 @@ public class Node {
             return;
         }
 
-        Identifier identifier = Identifier.tryParse(blockId);
+        Identifier identifier = BlockSelection.extractBlockIdentifier(blockId);
         if (identifier == null || !Registries.ITEM.containsId(identifier)) {
             throw new PlacementFailure("Cannot place block \"" + blockId + "\": unknown block item.");
         }
@@ -6023,8 +6023,8 @@ public class Node {
         }
 
         if (hand == Hand.MAIN_HAND) {
-            if (inventory.getSelectedSlot() != slot) {
-                inventory.setSelectedSlot(slot);
+            if (PlayerInventoryBridge.getSelectedSlot(inventory) != slot) {
+                PlayerInventoryBridge.setSelectedSlot(inventory, slot);
                 if (client.player.networkHandler != null) {
                     client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
                 }
@@ -6037,7 +6037,7 @@ public class Node {
             return;
         }
 
-        inventory.setSelectedSlot(slot);
+        PlayerInventoryBridge.setSelectedSlot(inventory, slot);
         if (client.player.networkHandler != null) {
             client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
         }
@@ -6111,7 +6111,7 @@ public class Node {
 
         int targetHotbarSlot = findEmptyHotbarSlot(inventory);
         if (targetHotbarSlot == -1) {
-            targetHotbarSlot = inventory.getSelectedSlot();
+            targetHotbarSlot = PlayerInventoryBridge.getSelectedSlot(inventory);
         }
 
         int handlerSlot = mapPlayerInventorySlot(handler, inventorySlot);
@@ -6274,6 +6274,10 @@ public class Node {
             return "";
         }
         String lower = trimmed.toLowerCase(Locale.ROOT).replace(' ', '_');
+        int bracketIndex = lower.indexOf('[');
+        if (bracketIndex >= 0) {
+            lower = lower.substring(0, bracketIndex);
+        }
         String sanitized = UNSAFE_RESOURCE_ID_PATTERN.matcher(lower).replaceAll("");
         int firstColon = sanitized.indexOf(':');
         if (firstColon != -1) {
@@ -6311,7 +6315,7 @@ public class Node {
             return null;
         }
 
-        Identifier identifier = Identifier.tryParse(blockId);
+        Identifier identifier = BlockSelection.extractBlockIdentifier(blockId);
         if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
             return null;
         }
@@ -6529,6 +6533,8 @@ public class Node {
             requestedBlockLabel = configuredBlockId;
         }
 
+        String configuredBlockSelection = configuredBlockId;
+
         Block targetBlock = null;
         if (configuredBlockId != null && !configuredBlockId.isEmpty()) {
             String sanitized = sanitizeResourceId(configuredBlockId);
@@ -6553,7 +6559,14 @@ public class Node {
         if (targetBlock != null || parameterTargetPos != null) {
             BlockPos targetPos = parameterTargetPos;
             if (targetPos == null && targetBlock != null) {
-                Optional<BlockPos> nearest = findNearestBlock(client, Collections.singletonList(targetBlock), PARAMETER_SEARCH_RADIUS);
+                String selectionSource = configuredBlockSelection != null && !configuredBlockSelection.isEmpty()
+                    ? configuredBlockSelection
+                    : configuredBlockId;
+                List<BlockSelection> selections = new ArrayList<>();
+                if (selectionSource != null && !selectionSource.isEmpty()) {
+                    BlockSelection.parse(selectionSource).ifPresent(selections::add);
+                }
+                Optional<BlockPos> nearest = findNearestBlock(client, selections, PARAMETER_SEARCH_RADIUS);
                 if (nearest.isPresent()) {
                     targetPos = nearest.get();
                 }
@@ -6954,6 +6967,26 @@ public class Node {
         return parameter.getStringValue();
     }
 
+    private String getBlockParameterValue(Node node) {
+        if (node == null) {
+            return null;
+        }
+        String blockId = getParameterString(node, "Block");
+        if (blockId == null || blockId.isEmpty()) {
+            return null;
+        }
+        String state = getParameterString(node, "State");
+        if (state == null || state.isEmpty()) {
+            return blockId;
+        }
+        Optional<String> combined = BlockSelection.combine(blockId, state);
+        if (combined.isPresent()) {
+            return combined.get();
+        }
+        notifyInvalidBlockStateSelection(blockId, state);
+        return null;
+    }
+
     private double getDoubleParameter(String name, double defaultValue) {
         NodeParameter param = getParameter(name);
         if (param == null) {
@@ -6993,6 +7026,13 @@ public class Node {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private void notifyInvalidBlockStateSelection(String blockId, String state) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        String blockLabel = (blockId == null || blockId.isEmpty()) ? "the selected block" : blockId;
+        String stateLabel = state == null || state.isEmpty() ? "(unspecified state)" : state;
+        sendNodeErrorMessage(client, "State \"" + stateLabel + "\" is not valid for " + blockLabel + " on " + type.getDisplayName() + ".");
     }
 
     private Optional<BlockPos> findNearestDroppedItem(net.minecraft.client.MinecraftClient client, Item item, double range) {
@@ -7103,7 +7143,7 @@ public class Node {
                 String blockId = getStringParameter("Block", "minecraft:stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getParameterString(parameterNode, "Block");
+                    String nodeBlock = getBlockParameterValue(parameterNode);
                     if (nodeBlock != null && !nodeBlock.isEmpty()) {
                         blockId = nodeBlock;
                     }
@@ -7140,7 +7180,7 @@ public class Node {
                 String blockId = getStringParameter("Block", "minecraft:stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getParameterString(parameterNode, "Block");
+                    String nodeBlock = getBlockParameterValue(parameterNode);
                     if (nodeBlock != null && !nodeBlock.isEmpty()) {
                         blockId = nodeBlock;
                     }
@@ -7152,7 +7192,7 @@ public class Node {
                 String blockId = getStringParameter("Block", "minecraft:stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getParameterString(parameterNode, "Block");
+                    String nodeBlock = getBlockParameterValue(parameterNode);
                     if (nodeBlock != null && !nodeBlock.isEmpty()) {
                         blockId = nodeBlock;
                     }
@@ -7272,7 +7312,7 @@ public class Node {
                             break;
                         }
                         default: {
-                            String nodeBlock = getParameterString(parameterNode, "Block");
+                            String nodeBlock = getBlockParameterValue(parameterNode);
                             if (nodeBlock != null && !nodeBlock.isEmpty()) {
                                 resourceId = nodeBlock;
                             }
@@ -7332,11 +7372,11 @@ public class Node {
         if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        Optional<BlockSelection> selectionOptional = BlockSelection.parse(blockId);
+        if (selectionOptional.isEmpty()) {
             return false;
         }
-        Block block = Registries.BLOCK.get(identifier);
+        BlockSelection selection = selectionOptional.get();
         Box box = client.player.getBoundingBox().expand(0.05);
         int minX = MathHelper.floor(box.minX);
         int maxX = MathHelper.floor(box.maxX);
@@ -7349,7 +7389,8 @@ public class Node {
             for (int by = minY; by <= maxY; by++) {
                 for (int bz = minZ; bz <= maxZ; bz++) {
                     mutable.set(bx, by, bz);
-                    if (client.player.getWorld().getBlockState(mutable).isOf(block)) {
+                    BlockState state = client.player.getWorld().getBlockState(mutable);
+                    if (selection.matches(state)) {
                         return true;
                     }
                 }
@@ -7390,14 +7431,15 @@ public class Node {
         if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        Optional<BlockSelection> selectionOptional = BlockSelection.parse(blockId);
+        if (selectionOptional.isEmpty()) {
             return false;
         }
-        Block block = Registries.BLOCK.get(identifier);
+        BlockSelection selection = selectionOptional.get();
         Direction facing = client.player.getHorizontalFacing();
         BlockPos targetPos = client.player.getBlockPos().offset(facing);
-        return client.player.getWorld().getBlockState(targetPos).isOf(block);
+        BlockState state = client.player.getWorld().getBlockState(targetPos);
+        return selection.matches(state);
     }
 
     private boolean isBlockBelow(String blockId) {
@@ -7405,13 +7447,14 @@ public class Node {
         if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        Optional<BlockSelection> selectionOptional = BlockSelection.parse(blockId);
+        if (selectionOptional.isEmpty()) {
             return false;
         }
-        Block block = Registries.BLOCK.get(identifier);
+        BlockSelection selection = selectionOptional.get();
         BlockPos below = client.player.getBlockPos().down();
-        return client.player.getWorld().getBlockState(below).isOf(block);
+        BlockState state = client.player.getWorld().getBlockState(below);
+        return selection.matches(state);
     }
 
     private boolean isLightLevelBelow(int threshold) {
@@ -7513,6 +7556,10 @@ public class Node {
         if (client == null || client.player == null || client.world == null || resourceId == null || resourceId.isEmpty()) {
             return false;
         }
+        Optional<BlockSelection> selectionOptional = BlockSelection.parse(resourceId);
+        if (selectionOptional.isPresent()) {
+            return isBlockRendered(client, selectionOptional.get());
+        }
         String normalized = resourceId.contains(":")
             ? resourceId.toLowerCase(Locale.ROOT)
             : resourceId;
@@ -7535,6 +7582,21 @@ public class Node {
     }
 
     private boolean isBlockRendered(net.minecraft.client.MinecraftClient client, Block block) {
+        return isBlockRendered(client, block, null);
+    }
+
+    private boolean isBlockRendered(net.minecraft.client.MinecraftClient client, BlockSelection selection) {
+        if (selection == null) {
+            return false;
+        }
+        Block block = selection.getBlock();
+        if (block == null) {
+            return false;
+        }
+        return isBlockRendered(client, block, selection);
+    }
+
+    private boolean isBlockRendered(net.minecraft.client.MinecraftClient client, Block block, BlockSelection selection) {
         if (client == null || client.player == null || client.world == null || block == null) {
             return false;
         }
@@ -7542,7 +7604,9 @@ public class Node {
         HitResult hitResult = client.crosshairTarget;
         if (hitResult instanceof BlockHitResult blockHit) {
             BlockPos hitPos = blockHit.getBlockPos();
-            if (client.world.getBlockState(hitPos).isOf(block)) {
+            BlockState state = client.world.getBlockState(hitPos);
+            boolean matches = selection != null ? selection.matches(state) : state.isOf(block);
+            if (matches) {
                 return true;
             }
         }
@@ -7558,7 +7622,8 @@ public class Node {
                 for (int dz = -horizontalRadius; dz <= horizontalRadius; dz++) {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
                     BlockState state = client.world.getBlockState(mutable);
-                    if (state.isOf(block) && isBlockVisible(client, mutable)) {
+                    boolean matches = selection != null ? selection.matches(state) : state.isOf(block);
+                    if (matches && isBlockVisible(client, mutable)) {
                         return true;
                     }
                 }

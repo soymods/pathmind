@@ -1,0 +1,56 @@
+name: Release -> Discord
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Grant execute permission for Gradle
+        run: chmod +x ./gradlew
+
+      - name: Build
+        run: ./gradlew build
+
+      - name: Find built jar
+        id: jar
+        shell: bash
+        run: |
+          # pick the main jar from build/libs; ignore extra jars
+          JAR="$(ls -1 build/libs/*.jar \
+            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
+            | head -n 1)"
+
+          if [ -z "$JAR" ]; then
+            echo "No suitable jar found in build/libs/"
+            ls -la build/libs || true
+            exit 1
+          fi
+
+          echo "Found jar: $JAR"
+          echo "jar_path=$JAR" >> "$GITHUB_OUTPUT"
+
+      - name: Post to Discord (message + jar attachment)
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          URL="${{ github.event.release.html_url }}"
+          NAME="${{ github.event.repository.name }}"
+          JAR="${{ steps.jar.outputs.jar_path }}"
+
+          curl \
+            -F "payload_json={\"content\":\"**${NAME} ${TAG}**\\nGitHub Release: ${URL}\\n\\n📦 **Download:** (file attached)\"}" \
+            -F "file=@\"${JAR}\"" \
+            "${{ secrets.DISCORD_WEBHOOK_URL }}"

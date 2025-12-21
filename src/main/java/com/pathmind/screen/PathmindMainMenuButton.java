@@ -41,7 +41,7 @@ public class PathmindMainMenuButton extends ButtonWidget {
 
         int alphaComponent = MathHelper.ceil(this.alpha * 255.0F);
         if (alphaComponent <= 0) {
-            alphaComponent = 0xFF;
+            return; // let the icon fade in with the button instead of flashing
         }
         int color = (alphaComponent << 24) | rgb;
 

@@ -141,6 +141,14 @@ public class NodeGraphPersistence {
                     }
                 }
             }
+            if (node.hasBooleanToggle()) {
+                Boolean storedToggle = nodeData.getBooleanToggleValue();
+                if (storedToggle != null) {
+                    node.setBooleanToggleValue(storedToggle);
+                } else {
+                    node.setBooleanToggleValue(true);
+                }
+            }
             node.recalculateDimensions();
 
             nodes.add(node);
@@ -349,6 +357,11 @@ public class NodeGraphPersistence {
             }
             nodeData.setParameterAttachments(attachmentData);
             nodeData.setParentParameterHostId(node.getParentParameterHostId());
+            if (node.hasBooleanToggle()) {
+                nodeData.setBooleanToggleValue(node.getBooleanToggleValue());
+            } else {
+                nodeData.setBooleanToggleValue(null);
+            }
 
             data.getNodes().add(nodeData);
         }

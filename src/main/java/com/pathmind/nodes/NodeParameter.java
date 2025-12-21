@@ -7,6 +7,7 @@ package com.pathmind.nodes;
 public class NodeParameter {
     private final String name;
     private final ParameterType type;
+    private final String defaultValue;
     private String stringValue;
     private int intValue;
     private double doubleValue;
@@ -15,7 +16,9 @@ public class NodeParameter {
     public NodeParameter(String name, ParameterType type, String defaultValue) {
         this.name = name;
         this.type = type;
-        this.stringValue = defaultValue;
+        String initialValue = defaultValue != null ? defaultValue : "";
+        this.defaultValue = initialValue;
+        this.stringValue = initialValue;
         this.intValue = 0;
         this.doubleValue = 0.0;
         this.boolValue = false;
@@ -44,6 +47,10 @@ public class NodeParameter {
 
     public ParameterType getType() {
         return type;
+    }
+
+    public String getDefaultValue() {
+        return defaultValue;
     }
 
     public String getStringValue() {

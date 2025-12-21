@@ -55,6 +55,7 @@ public class NodeGraphData {
         private String attachedParameterId;
         private String parentParameterHostId;
         private List<ParameterAttachmentData> parameterAttachments;
+        private Boolean booleanToggleValue;
 
         public NodeData() {
             this.parameters = new ArrayList<>();
@@ -116,6 +117,14 @@ public class NodeGraphData {
 
         public List<ParameterAttachmentData> getParameterAttachments() { return parameterAttachments; }
         public void setParameterAttachments(List<ParameterAttachmentData> parameterAttachments) { this.parameterAttachments = parameterAttachments; }
+
+        public Boolean getBooleanToggleValue() {
+            return booleanToggleValue;
+        }
+
+        public void setBooleanToggleValue(Boolean booleanToggleValue) {
+            this.booleanToggleValue = booleanToggleValue;
+        }
     }
     
     /**

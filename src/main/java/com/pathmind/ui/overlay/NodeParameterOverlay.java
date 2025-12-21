@@ -4,6 +4,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.control.InventorySlotSelector;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
@@ -44,6 +45,7 @@ public class NodeParameterOverlay {
 
     private final Node node;
     private final List<String> parameterValues;
+    private final List<Boolean> placeholderActive = new ArrayList<>();
     private int popupWidth = MIN_POPUP_WIDTH;
     private final int screenWidth;
     private final int screenHeight;
@@ -402,12 +404,26 @@ public class NodeParameterOverlay {
                     functionDropdownEnabled ? 0xFFE0E0E0 : 0xFF555555
                 );
             } else {
-                String value = text != null ? text : "";
-                String displayText = isFocused ? value : trimDisplayString(textRenderer, value, fieldWidth - 8);
+                String baseValue = text != null ? text : "";
+                boolean showingPlaceholder = isPlaceholderActive(i);
+                String displayText;
+                int textColor;
+                if (showingPlaceholder) {
+                    String placeholder = getPlaceholderText(i);
+                    displayText = trimDisplayString(textRenderer, placeholder, fieldWidth - 8);
+                    textColor = 0xFF888888;
+                } else if (isFocused) {
+                    displayText = baseValue;
+                    textColor = 0xFFFFFFFF;
+                } else {
+                    displayText = trimDisplayString(textRenderer, baseValue, fieldWidth - 8);
+                    textColor = 0xFFFFFFFF;
+                }
                 int textX = fieldX + 4;
                 int textY = fieldY + 6;
 
-                if (isFocused && hasSelectionForField(i)) {
+                if (!showingPlaceholder && isFocused && hasSelectionForField(i)) {
+                    String value = baseValue;
                     int start = Math.max(0, selectionStarts.get(i));
                     int end = Math.max(0, selectionEnds.get(i));
                     int clampedStart = Math.min(start, value.length());
@@ -432,15 +448,15 @@ public class NodeParameterOverlay {
                         Text.literal(displayText),
                         textX,
                         textY,
-                        0xFFFFFFFF
+                        textColor
                     );
                 }
 
                 if (isFocused) {
                     updateCaretBlinkState();
                     if (caretVisible) {
-                        int caretIndex = MathHelper.clamp(caretPositions.get(i), 0, value.length());
-                        int caretX = textX + textRenderer.getWidth(value.substring(0, caretIndex));
+                        int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
+                        int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
                         caretX = Math.min(caretX, fieldX + fieldWidth - 2);
                         context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4, 0xFFFFFFFF);
                     }
@@ -574,7 +590,11 @@ public class NodeParameterOverlay {
         if (index < 0 || index >= parameterValues.size()) {
             return;
         }
-        parameterValues.set(index, value != null ? value : "");
+        ensureCaretEntry(index);
+        String normalized = value != null ? value : "";
+        parameterValues.set(index, normalized);
+        caretPositions.set(index, normalized.length());
+        placeholderActive.set(index, false);
         handleParameterValueChanged(index);
     }
 
@@ -1101,6 +1121,24 @@ public class NodeParameterOverlay {
         
         // Update node parameters with field values
         List<NodeParameter> parameters = node.getParameters();
+        List<String> emptyParameterNames = new ArrayList<>();
+        for (int i = 0; i < parameters.size() && i < parameterValues.size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
+            NodeParameter param = parameters.get(i);
+            if (param == null || param.getType() != ParameterType.STRING) {
+                continue;
+            }
+            String value = parameterValues.get(i);
+            boolean empty = value == null || value.trim().isEmpty();
+            if (empty && !isPlaceholderActive(i)) {
+                emptyParameterNames.add(param.getName());
+            }
+        }
+        if (!emptyParameterNames.isEmpty()) {
+            warnEmptyParameters(emptyParameterNames);
+        }
         for (int i = 0; i < parameters.size() && i < parameterValues.size(); i++) {
             NodeParameter param = parameters.get(i);
             String value = parameterValues.get(i);
@@ -1123,6 +1161,18 @@ public class NodeParameterOverlay {
         }
 
         close();
+    }
+
+    private void warnEmptyParameters(List<String> parameterNames) {
+        if (parameterNames == null || parameterNames.isEmpty()) {
+            return;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return;
+        }
+        String joined = String.join(", ", parameterNames);
+        client.player.sendMessage(Text.literal("Pathmind: " + joined + " cannot be empty."), false);
     }
 
     public void close() {
@@ -1165,19 +1215,34 @@ public class NodeParameterOverlay {
         selectionStarts.clear();
         selectionEnds.clear();
         selectionAnchors.clear();
-        
+        placeholderActive.clear();
+       
         for (NodeParameter param : node.getParameters()) {
             String value = param.getStringValue();
+            boolean usesPlaceholder = shouldUsePlaceholder(param, value);
             parameterValues.add(value);
-            caretPositions.add(value != null ? value.length() : 0);
+            int caretPos = usesPlaceholder ? 0 : (value != null ? value.length() : 0);
+            caretPositions.add(caretPos);
             selectionStarts.add(-1);
             selectionEnds.add(-1);
             selectionAnchors.add(-1);
+            placeholderActive.add(usesPlaceholder);
         }
         focusedFieldIndex = -1;
         resetCaretBlink();
         refreshBlockStateIndices();
         updateBlockStateOptions(true);
+    }
+
+    private boolean shouldUsePlaceholder(NodeParameter parameter, String value) {
+        if (parameter == null || parameter.getType() != ParameterType.STRING) {
+            return false;
+        }
+        String placeholder = parameter.getDefaultValue();
+        if (placeholder == null || placeholder.isEmpty()) {
+            return false;
+        }
+        return Objects.equals(placeholder, value);
     }
 
     private void refreshBlockStateIndices() {
@@ -1474,7 +1539,35 @@ public class NodeParameterOverlay {
             selectionStarts.add(-1);
             selectionEnds.add(-1);
             selectionAnchors.add(-1);
+            placeholderActive.add(false);
         }
+    }
+
+    private boolean isPlaceholderActive(int index) {
+        return index >= 0 && index < placeholderActive.size() && placeholderActive.get(index);
+    }
+
+    private String getPlaceholderText(int index) {
+        if (index < 0 || index >= node.getParameters().size()) {
+            return "";
+        }
+        NodeParameter param = node.getParameters().get(index);
+        return param != null ? param.getDefaultValue() : "";
+    }
+
+    private boolean clearPlaceholderIfActive(int index) {
+        if (!isPlaceholderActive(index)) {
+            return false;
+        }
+        ensureCaretEntry(index);
+        placeholderActive.set(index, false);
+        parameterValues.set(index, "");
+        selectionStarts.set(index, -1);
+        selectionEnds.set(index, -1);
+        selectionAnchors.set(index, -1);
+        caretPositions.set(index, 0);
+        resetCaretBlink();
+        return true;
     }
 
     private boolean hasSelectionForField(int index) {
@@ -1496,6 +1589,9 @@ public class NodeParameterOverlay {
     }
 
     private boolean deleteSelectionForField(int index) {
+        if (clearPlaceholderIfActive(index)) {
+            return false;
+        }
         if (!hasSelectionForField(index)) {
             return false;
         }
@@ -1517,6 +1613,9 @@ public class NodeParameterOverlay {
     }
 
     private void deleteCharBeforeCaret(int index) {
+        if (clearPlaceholderIfActive(index)) {
+            return;
+        }
         String value = getFieldValue(index);
         int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
         if (caret == 0) {
@@ -1529,6 +1628,9 @@ public class NodeParameterOverlay {
     }
 
     private void deleteCharAfterCaret(int index) {
+        if (clearPlaceholderIfActive(index)) {
+            return;
+        }
         String value = getFieldValue(index);
         int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
         if (caret >= value.length()) {
@@ -1586,6 +1688,7 @@ public class NodeParameterOverlay {
             return false;
         }
         ensureCaretEntry(index);
+        clearPlaceholderIfActive(index);
         String value = getFieldValue(index);
         int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
         if (hasSelectionForField(index)) {
@@ -1623,6 +1726,9 @@ public class NodeParameterOverlay {
 
     private String getFieldValue(int index) {
         if (index < 0 || index >= parameterValues.size()) {
+            return "";
+        }
+        if (isPlaceholderActive(index)) {
             return "";
         }
         String value = parameterValues.get(index);
@@ -1677,11 +1783,17 @@ public class NodeParameterOverlay {
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
+                if (clearPlaceholderIfActive(index)) {
+                    return true;
+                }
                 if (!deleteSelectionForField(index)) {
                     deleteCharBeforeCaret(index);
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:
+                if (clearPlaceholderIfActive(index)) {
+                    return true;
+                }
                 if (!deleteSelectionForField(index)) {
                     deleteCharAfterCaret(index);
                 }

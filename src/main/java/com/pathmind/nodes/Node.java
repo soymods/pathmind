@@ -13,8 +13,10 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import baritone.api.BaritoneAPI;
+import baritone.api.Settings;
 import baritone.api.IBaritone;
 import baritone.api.behavior.IPathingBehavior;
 import baritone.api.process.ICustomGoalProcess;
@@ -123,6 +125,10 @@ public class Node {
     private static final int SLOT_AREA_PADDING_TOP = 0;
     private static final int SLOT_AREA_PADDING_BOTTOM = 6;
     private static final int SLOT_VERTICAL_SPACING = 6;
+    private static final int BOOLEAN_TOGGLE_MARGIN_HORIZONTAL = 6;
+    private static final int BOOLEAN_TOGGLE_TOP_MARGIN = 8;
+    private static final int BOOLEAN_TOGGLE_HEIGHT = 16;
+    private static final int BOOLEAN_TOGGLE_BOTTOM_MARGIN = 8;
     private static final int COORDINATE_FIELD_WIDTH = 44;
     private static final int COORDINATE_FIELD_HEIGHT = 16;
     private static final int COORDINATE_FIELD_SPACING = 6;
@@ -136,6 +142,9 @@ public class Node {
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
     private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
     private static final Pattern UNSAFE_RESOURCE_ID_PATTERN = Pattern.compile("[^a-z0-9_:/.-]");
+    private static final Object GOTO_BREAK_LOCK = new Object();
+    private static final AtomicInteger ACTIVE_GOTO_BLOCKING_REQUESTS = new AtomicInteger(0);
+    private static Boolean gotoBreakOriginalValue = null;
     private int width;
     private int height;
     private int nextOutputSocket = 0;
@@ -154,6 +163,7 @@ public class Node {
     private Node parentParameterHost;
     private int parentParameterSlotIndex;
     private boolean socketsHidden;
+    private boolean booleanToggleValue = true;
     private RuntimeParameterData runtimeParameterData;
     private transient Node owningStartNode;
 
@@ -462,6 +472,9 @@ public class Node {
         if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL) {
             return false;
         }
+        if (hasBooleanToggle()) {
+            return false;
+        }
         return !isParameterNode()
             && type != NodeType.START
             && type != NodeType.EVENT_CALL
@@ -768,6 +781,8 @@ public class Node {
             }
         } else if (hasSensorSlot() || hasActionSlot()) {
             top += SLOT_AREA_PADDING_TOP;
+        } else if (hasBooleanToggle()) {
+            top += getBooleanToggleAreaHeight();
         } else {
             top += BODY_PADDING_NO_PARAMS;
         }
@@ -1555,7 +1570,7 @@ public class Node {
                     
                 // COLLECT modes
                 case COLLECT_SINGLE:
-                    parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "minecraft:stone"));
+                    parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
                     parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                     break;
                 case COLLECT_MULTIPLE:
@@ -1620,7 +1635,6 @@ public class Node {
                     // No parameters needed
                     break;
 
-                // Parameter block modes
                 default:
                     // No parameters needed
                     break;
@@ -1763,7 +1777,7 @@ public class Node {
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
                 break;
             case SENSOR_IS_RENDERED:
-                parameters.add(new NodeParameter("Resource", ParameterType.STRING, "minecraft:stone"));
+                parameters.add(new NodeParameter("Resource", ParameterType.STRING, "stone"));
                 break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
@@ -1771,17 +1785,17 @@ public class Node {
                 parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
                 break;
             case PARAM_BLOCK:
-                parameters.add(new NodeParameter("Block", ParameterType.STRING, "minecraft:stone"));
+                parameters.add(new NodeParameter("Block", ParameterType.STRING, "stone"));
                 parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_BLOCK_LIST:
-                parameters.add(new NodeParameter("Blocks", ParameterType.STRING, "minecraft:stone,minecraft:dirt"));
+                parameters.add(new NodeParameter("Blocks", ParameterType.STRING, "stone,dirt"));
                 break;
             case PARAM_ITEM:
-                parameters.add(new NodeParameter("Item", ParameterType.STRING, "minecraft:stick"));
+                parameters.add(new NodeParameter("Item", ParameterType.STRING, "stick"));
                 break;
             case PARAM_ENTITY:
-                parameters.add(new NodeParameter("Entity", ParameterType.STRING, "minecraft:cow"));
+                parameters.add(new NodeParameter("Entity", ParameterType.STRING, "cow"));
                 parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "6"));
                 break;
             case PARAM_PLAYER:
@@ -1826,7 +1840,7 @@ public class Node {
                 parameters.add(new NodeParameter("PitchOffset", ParameterType.DOUBLE, "0.0"));
                 break;
             case PARAM_PLACE_TARGET:
-                parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "minecraft:stone"));
+                parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
@@ -1883,8 +1897,28 @@ public class Node {
         }
     }
 
+    private boolean shouldShowStateParameter() {
+        String blockValue = getParameterString(this, "Block");
+        if (blockValue == null || blockValue.isEmpty()) {
+            return false;
+        }
+        String stripped = BlockSelection.stripState(blockValue);
+        if (stripped == null || stripped.isEmpty()) {
+            return false;
+        }
+        String sanitized = sanitizeResourceId(stripped);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return false;
+        }
+        String normalized = normalizeResourceId(sanitized, "minecraft");
+        return !BlockSelection.getStateOptions(normalized).isEmpty();
+    }
+
     public String getParameterLabel(NodeParameter parameter) {
         if (parameter == null) {
+            return "";
+        }
+        if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
             return "";
         }
         String text = parameter.getName() + ": " + parameter.getDisplayValue();
@@ -1938,6 +1972,26 @@ public class Node {
                 break;
             }
             case PARAM_ITEM: {
+                String items = values.get("Items");
+                String item = values.get("Item");
+                if ((items == null || items.isEmpty()) && item != null && !item.isEmpty()) {
+                    values.put("Items", item);
+                    values.put(normalizeParameterKey("Items"), item);
+                }
+                if ((item == null || item.isEmpty()) && items != null && !items.isEmpty()) {
+                    for (String entry : items.split(",")) {
+                        String trimmed = entry == null ? null : entry.trim();
+                        if (trimmed == null || trimmed.isEmpty()) {
+                            continue;
+                        }
+                        item = trimmed;
+                        break;
+                    }
+                    if (item != null && !item.isEmpty()) {
+                        values.put("Item", item);
+                        values.put(normalizeParameterKey("Item"), item);
+                    }
+                }
                 String amount = values.get("Amount");
                 if (amount != null) {
                     values.put("Count", amount);
@@ -1990,9 +2044,24 @@ public class Node {
             }
             case PARAM_BLOCK: {
                 String block = values.get("Block");
-                if (block != null) {
+                String blocks = values.get("Blocks");
+                if ((blocks == null || blocks.isEmpty()) && block != null && !block.isEmpty()) {
                     values.put("Blocks", block);
                     values.put(normalizeParameterKey("Blocks"), block);
+                }
+                if ((block == null || block.isEmpty()) && blocks != null && !blocks.isEmpty()) {
+                    for (String entry : blocks.split(",")) {
+                        String trimmed = entry == null ? null : entry.trim();
+                        if (trimmed == null || trimmed.isEmpty()) {
+                            continue;
+                        }
+                        block = trimmed;
+                        break;
+                    }
+                    if (block != null && !block.isEmpty()) {
+                        values.put("Block", block);
+                        values.put(normalizeParameterKey("Block"), block);
+                    }
                 }
                 break;
             }
@@ -2075,6 +2144,52 @@ public class Node {
      */
     public boolean hasParameters() {
         return !parameters.isEmpty();
+    }
+
+    public boolean hasBooleanToggle() {
+        switch (type) {
+            case SENSOR_IS_SWIMMING:
+            case SENSOR_IS_IN_LAVA:
+            case SENSOR_IS_UNDERWATER:
+            case SENSOR_IS_FALLING:
+            case SENSOR_IS_DAYTIME:
+            case SENSOR_IS_RAINING:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public boolean getBooleanToggleValue() {
+        return booleanToggleValue;
+    }
+
+    public void setBooleanToggleValue(boolean value) {
+        this.booleanToggleValue = value;
+    }
+
+    public void toggleBooleanToggleValue() {
+        this.booleanToggleValue = !this.booleanToggleValue;
+    }
+
+    public int getBooleanToggleLeft() {
+        return x + BOOLEAN_TOGGLE_MARGIN_HORIZONTAL;
+    }
+
+    public int getBooleanToggleTop() {
+        return y + HEADER_HEIGHT + BOOLEAN_TOGGLE_TOP_MARGIN;
+    }
+
+    public int getBooleanToggleWidth() {
+        return Math.max(48, width - 2 * BOOLEAN_TOGGLE_MARGIN_HORIZONTAL);
+    }
+
+    public int getBooleanToggleHeight() {
+        return BOOLEAN_TOGGLE_HEIGHT;
+    }
+
+    public int getBooleanToggleAreaHeight() {
+        return BOOLEAN_TOGGLE_TOP_MARGIN + BOOLEAN_TOGGLE_HEIGHT + BOOLEAN_TOGGLE_BOTTOM_MARGIN;
     }
 
     public boolean supportsModeSelection() {
@@ -2184,6 +2299,8 @@ public class Node {
             }
         } else if (hasSlots) {
             contentHeight += SLOT_AREA_PADDING_TOP;
+        } else if (hasBooleanToggle()) {
+            contentHeight += getBooleanToggleAreaHeight();
         } else {
             contentHeight += BODY_PADDING_NO_PARAMS;
         }
@@ -2442,29 +2559,39 @@ public class Node {
                 if (client == null || client.player == null) {
                     return Optional.empty();
                 }
-                String itemId = getParameterString(parameterNode, "Item");
-                if (itemId == null || itemId.isEmpty()) {
+                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+                if (itemIds.isEmpty()) {
                     sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
-                Identifier identifier = Identifier.tryParse(itemId);
-                if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-                    sendParameterSearchFailure("Unknown item \"" + itemId + "\" for " + type.getDisplayName() + ".", future);
-                    return Optional.empty();
-                }
-                Item item = Registries.ITEM.get(identifier);
                 double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
-                Optional<BlockPos> match = findNearestDroppedItem(client, item, range);
-                if (match.isEmpty()) {
-                    sendParameterSearchFailure("No dropped " + itemId + " found for " + type.getDisplayName() + ".", future);
+                boolean hasValidCandidate = false;
+                for (String candidateId : itemIds) {
+                    Identifier identifier = Identifier.tryParse(candidateId);
+                    if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                        continue;
+                    }
+                    hasValidCandidate = true;
+                    Item item = Registries.ITEM.get(identifier);
+                    Optional<BlockPos> match = findNearestDroppedItem(client, item, range);
+                    if (match.isEmpty()) {
+                        continue;
+                    }
+                    if (data != null) {
+                        data.targetBlockPos = match.get();
+                        data.targetItem = item;
+                        data.targetItemId = candidateId;
+                    }
+                    return Optional.of(Vec3d.ofCenter(match.get()));
+                }
+                if (!hasValidCandidate) {
+                    String reference = itemIds.get(0);
+                    sendParameterSearchFailure("Unknown item \"" + reference + "\" for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
-                if (data != null) {
-                    data.targetBlockPos = match.get();
-                    data.targetItem = item;
-                    data.targetItemId = itemId;
-                }
-                return Optional.of(Vec3d.ofCenter(match.get()));
+                String joined = String.join(", ", itemIds);
+                sendParameterSearchFailure("No dropped " + joined + " found for " + type.getDisplayName() + ".", future);
+                return Optional.empty();
             }
             case PARAM_ENTITY: {
                 if (client == null || client.player == null) {
@@ -2838,6 +2965,35 @@ public class Node {
         });
     }
 
+    private List<String> resolveItemIdsFromParameter(Node parameterNode) {
+        List<String> itemIds = new ArrayList<>();
+        if (parameterNode == null) {
+            return itemIds;
+        }
+        String listValue = getParameterString(parameterNode, "Items");
+        if (listValue != null && !listValue.isEmpty()) {
+            for (String entry : listValue.split(",")) {
+                addItemIdentifier(itemIds, entry);
+            }
+        }
+        addItemIdentifier(itemIds, getParameterString(parameterNode, "Item"));
+        return itemIds;
+    }
+
+    private void addItemIdentifier(List<String> itemIds, String rawValue) {
+        if (rawValue == null || rawValue.isEmpty()) {
+            return;
+        }
+        String sanitized = sanitizeResourceId(rawValue);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return;
+        }
+        String normalized = normalizeResourceId(sanitized, "minecraft");
+        if (!itemIds.contains(normalized)) {
+            itemIds.add(normalized);
+        }
+    }
+
     private List<String> resolveCollectTargets(CompletableFuture<Void> future) {
         List<String> blockIds = new ArrayList<>();
 
@@ -3188,7 +3344,7 @@ public class Node {
                 }
 
                 System.out.println("Executing goto to: " + x + ", " + y + ", " + z);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 GoalBlock goal = new GoalBlock(x, y, z);
                 customGoalProcess.setGoalAndPath(goal);
                 break;
@@ -3207,7 +3363,7 @@ public class Node {
                 }
 
                 System.out.println("Executing goto to: " + x2 + ", " + z2);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 GoalBlock goal2 = new GoalBlock(x2, 0, z2); // Y will be determined by pathfinding
                 customGoalProcess.setGoalAndPath(goal2);
                 break;
@@ -3218,7 +3374,7 @@ public class Node {
                 if (yParam3 != null) y3 = yParam3.getIntValue();
                 
                 System.out.println("Executing goto to Y level: " + y3);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 // For Y-only movement, we need to get current X,Z and set goal there
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client != null && client.player != null) {
@@ -3247,13 +3403,54 @@ public class Node {
                     break;
                 }
 
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 getToBlockProcess.getToBlock(new BlockOptionalMeta(block));
                 break;
                 
             default:
                 future.completeExceptionally(new RuntimeException("Unknown GOTO mode: " + mode));
                 break;
+        }
+    }
+
+    private void startGotoTaskWithBreakGuard(CompletableFuture<Void> future) {
+        disableBaritoneBlockBreakingDuringGoto(future);
+        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+    }
+
+    private void disableBaritoneBlockBreakingDuringGoto(CompletableFuture<Void> future) {
+        if (future == null) {
+            return;
+        }
+        Settings settings = BaritoneAPI.getSettings();
+        if (settings == null) {
+            return;
+        }
+
+        synchronized (GOTO_BREAK_LOCK) {
+            if (ACTIVE_GOTO_BLOCKING_REQUESTS.getAndIncrement() == 0) {
+                gotoBreakOriginalValue = settings.allowBreak.value;
+                settings.allowBreak.value = false;
+            }
+        }
+
+        future.whenComplete((result, throwable) -> restoreBaritoneBlockBreakingAfterGoto());
+    }
+
+    private static void restoreBaritoneBlockBreakingAfterGoto() {
+        Settings settings = BaritoneAPI.getSettings();
+        if (settings == null) {
+            return;
+        }
+
+        synchronized (GOTO_BREAK_LOCK) {
+            int remaining = ACTIVE_GOTO_BLOCKING_REQUESTS.decrementAndGet();
+            if (remaining <= 0) {
+                ACTIVE_GOTO_BLOCKING_REQUESTS.set(0);
+                Boolean originalValue = gotoBreakOriginalValue;
+                gotoBreakOriginalValue = null;
+                settings.allowBreak.value = originalValue != null ? originalValue : Boolean.TRUE;
+            }
         }
     }
 
@@ -3285,23 +3482,34 @@ public class Node {
             return false;
         }
 
-        String itemId = getParameterString(parameterNode, "Item");
-        if (itemId == null || itemId.isEmpty()) {
+        List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+        if (itemIds.isEmpty()) {
             return false;
         }
 
-        Identifier identifier = Identifier.tryParse(itemId);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-            sendNodeErrorMessage(client, "Cannot navigate to item \"" + itemId + "\": unknown identifier.");
-            future.complete(null);
-            return true;
+        double searchRange = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+        Optional<BlockPos> matchedPosition = Optional.empty();
+        Item matchedItem = null;
+        String matchedItemId = null;
+
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item candidateItem = Registries.ITEM.get(identifier);
+            Optional<BlockPos> target = findNearestDroppedItem(client, candidateItem, searchRange);
+            if (target.isPresent()) {
+                matchedPosition = target;
+                matchedItem = candidateItem;
+                matchedItemId = candidateId;
+                break;
+            }
         }
 
-        Item item = Registries.ITEM.get(identifier);
-        double searchRange = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
-        Optional<BlockPos> target = findNearestDroppedItem(client, item, searchRange);
-        if (target.isEmpty()) {
-            sendNodeErrorMessage(client, "No dropped " + itemId + " found nearby for " + type.getDisplayName() + ".");
+        if (matchedPosition.isEmpty()) {
+            String reference = String.join(", ", itemIds);
+            sendNodeErrorMessage(client, "No dropped " + reference + " found nearby for " + type.getDisplayName() + ".");
             future.complete(null);
             return true;
         }
@@ -3312,8 +3520,14 @@ public class Node {
             return true;
         }
 
-        BlockPos pos = target.get();
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        BlockPos pos = matchedPosition.get();
+        if (runtimeParameterData != null) {
+            runtimeParameterData.targetBlockPos = pos;
+            runtimeParameterData.targetItem = matchedItem;
+            runtimeParameterData.targetItemId = matchedItemId;
+        }
+
+        startGotoTaskWithBreakGuard(future);
         customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
         return true;
     }
@@ -3352,7 +3566,7 @@ public class Node {
         }
 
         BlockPos pos = target.get().getBlockPos();
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        startGotoTaskWithBreakGuard(future);
         customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
         return true;
     }
@@ -3385,7 +3599,7 @@ public class Node {
         }
 
         BlockPos pos = match.get().getBlockPos();
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        startGotoTaskWithBreakGuard(future);
         customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
         return true;
     }
@@ -3459,7 +3673,7 @@ public class Node {
                 return true;
             }
 
-            PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+            startGotoTaskWithBreakGuard(future);
             GoalNear goal = new GoalNear(targetPos, 1);
             customGoalProcess.setGoalAndPath(goal);
             return true;
@@ -3474,7 +3688,7 @@ public class Node {
             return true;
         }
 
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        startGotoTaskWithBreakGuard(future);
         String targetId = (normalized != null && !normalized.isEmpty()) ? normalized : blockId;
         getToBlockProcess.getToBlock(new BlockOptionalMeta(targetId));
         return true;
@@ -3514,7 +3728,7 @@ public class Node {
             future.complete(null);
             return true;
         }
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        startGotoTaskWithBreakGuard(future);
         getToBlockProcess.getToBlock(new BlockOptionalMeta(blockId));
         return true;
     }
@@ -5607,39 +5821,39 @@ public class Node {
             return false;
         }
 
-        String requestedItem = getParameterString(parameterNode, "Item");
-        if (requestedItem == null || requestedItem.trim().isEmpty()) {
+        List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+        if (itemIds.isEmpty()) {
             sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
             return false;
         }
 
-        String sanitized = sanitizeResourceId(requestedItem);
-        if (sanitized == null || sanitized.isEmpty()) {
-            sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
-            return false;
+        int foundSlot = -1;
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item candidateItem = Registries.ITEM.get(identifier);
+            int slot = findFirstSlotWithItem(client.player.getInventory(), candidateItem);
+            if (slot >= 0) {
+                foundSlot = slot;
+                break;
+            }
         }
 
-        String normalized = normalizeResourceId(sanitized, "minecraft");
-        Identifier identifier = Identifier.tryParse(normalized);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-            sendParameterSearchFailure("Unknown item \"" + requestedItem + "\" for " + type.getDisplayName() + ".", future);
-            return false;
-        }
-
-        Item item = Registries.ITEM.get(identifier);
-        int slot = findFirstSlotWithItem(client.player.getInventory(), item);
-        if (slot < 0) {
-            sendParameterSearchFailure("No " + normalized + " found in inventory for " + type.getDisplayName() + ".", future);
+        if (foundSlot < 0) {
+            String reference = String.join(", ", itemIds);
+            sendParameterSearchFailure("No " + reference + " found in inventory for " + type.getDisplayName() + ".", future);
             return false;
         }
 
         String targetParameter = slotIndex == 0 ? "SourceSlot" : "TargetSlot";
-        setParameterValueAndPropagate(targetParameter, Integer.toString(slot));
+        setParameterValueAndPropagate(targetParameter, Integer.toString(foundSlot));
         if (slotIndex == 0) {
             if (runtimeParameterData == null) {
                 runtimeParameterData = new RuntimeParameterData();
             }
-            runtimeParameterData.slotIndex = slot;
+            runtimeParameterData.slotIndex = foundSlot;
         }
         return true;
     }
@@ -7140,19 +7354,20 @@ public class Node {
         boolean result;
         switch (type) {
             case SENSOR_TOUCHING_BLOCK: {
-                String blockId = getStringParameter("Block", "minecraft:stone");
+                String blockId = getStringParameter("Block", "stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getBlockParameterValue(parameterNode);
-                    if (nodeBlock != null && !nodeBlock.isEmpty()) {
-                        blockId = nodeBlock;
+                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                    if (!selections.isEmpty()) {
+                        result = isTouchingBlock(selections);
+                        break;
                     }
                 }
                 result = evaluateSensorCondition(SensorConditionType.TOUCHING_BLOCK, blockId, null, 0, 0, 0);
                 break;
             }
             case SENSOR_TOUCHING_ENTITY: {
-                String entityId = getStringParameter("Entity", "minecraft:zombie");
+                String entityId = getStringParameter("Entity", "zombie");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ENTITY);
                 if (parameterNode != null) {
                     String nodeEntity = getParameterString(parameterNode, "Entity");
@@ -7177,26 +7392,28 @@ public class Node {
                 break;
             }
             case SENSOR_BLOCK_AHEAD: {
-                String blockId = getStringParameter("Block", "minecraft:stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getBlockParameterValue(parameterNode);
-                    if (nodeBlock != null && !nodeBlock.isEmpty()) {
-                        blockId = nodeBlock;
+                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                    if (!selections.isEmpty()) {
+                        result = isBlockAhead(selections);
+                        break;
                     }
                 }
+                String blockId = getStringParameter("Block", "stone");
                 result = isBlockAhead(blockId);
                 break;
             }
             case SENSOR_BLOCK_BELOW: {
-                String blockId = getStringParameter("Block", "minecraft:stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getBlockParameterValue(parameterNode);
-                    if (nodeBlock != null && !nodeBlock.isEmpty()) {
-                        blockId = nodeBlock;
+                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                    if (!selections.isEmpty()) {
+                        result = isBlockBelow(selections);
+                        break;
                     }
                 }
+                String blockId = getStringParameter("Block", "stone");
                 result = isBlockBelow(blockId);
                 break;
             }
@@ -7231,7 +7448,7 @@ public class Node {
                 break;
             }
             case SENSOR_ENTITY_NEARBY: {
-                String entityId = getStringParameter("Entity", "minecraft:zombie");
+                String entityId = getStringParameter("Entity", "zombie");
                 double range = Math.max(1.0, getIntParameter("Range", 6));
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ENTITY);
                 if (parameterNode != null) {
@@ -7245,12 +7462,20 @@ public class Node {
                 break;
             }
             case SENSOR_ITEM_IN_INVENTORY: {
-                String itemId = getStringParameter("Item", "minecraft:stone");
+                String itemId = getStringParameter("Item", "stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ITEM);
                 if (parameterNode != null) {
-                    String nodeItem = getParameterString(parameterNode, "Item");
-                    if (nodeItem != null && !nodeItem.isEmpty()) {
-                        itemId = nodeItem;
+                    List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
+                    if (!nodeItems.isEmpty()) {
+                        boolean hasAny = false;
+                        for (String candidate : nodeItems) {
+                            if (hasItemInInventory(candidate)) {
+                                hasAny = true;
+                                break;
+                            }
+                        }
+                        result = hasAny;
+                        break;
                     }
                 }
                 result = hasItemInInventory(itemId);
@@ -7271,7 +7496,7 @@ public class Node {
                 break;
             }
             case SENSOR_IS_RENDERED: {
-                String resourceId = getStringParameter("Resource", "minecraft:stone");
+                String resourceId = getStringParameter("Resource", "stone");
                 Node parameterNode = getAttachedParameterOfType(
                     NodeType.PARAM_BLOCK,
                     NodeType.PARAM_BLOCK_LIST,
@@ -7284,9 +7509,9 @@ public class Node {
                     NodeType parameterType = parameterNode.getType();
                     switch (parameterType) {
                         case PARAM_ITEM: {
-                            String nodeItem = getParameterString(parameterNode, "Item");
-                            if (nodeItem != null && !nodeItem.isEmpty()) {
-                                resourceId = nodeItem;
+                            List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
+                            if (!nodeItems.isEmpty()) {
+                                resourceId = String.join(",", nodeItems);
                             }
                             break;
                         }
@@ -7327,9 +7552,16 @@ public class Node {
                 result = false;
                 break;
         }
-
+        result = adjustBooleanToggleResult(result);
         this.lastSensorResult = result;
         return result;
+    }
+
+    private boolean adjustBooleanToggleResult(boolean rawResult) {
+        if (!hasBooleanToggle()) {
+            return rawResult;
+        }
+        return booleanToggleValue == rawResult;
     }
 
     private boolean evaluateConditionFromParameters() {
@@ -7341,8 +7573,8 @@ public class Node {
 
         // Legacy fallback when no sensor is attached
         String condition = getStringParameter("Condition", "Touching Block");
-        String blockId = getStringParameter("Block", "minecraft:stone");
-        String entityId = getStringParameter("Entity", "minecraft:zombie");
+        String blockId = getStringParameter("Block", "stone");
+        String entityId = getStringParameter("Entity", "zombie");
         int x = getIntParameter("X", 0);
         int y = getIntParameter("Y", 64);
         int z = getIntParameter("Z", 0);
@@ -7368,15 +7600,17 @@ public class Node {
     }
     
     private boolean isTouchingBlock(String blockId) {
+        return isTouchingBlock(parseBlockSelectionList(blockId));
+    }
+
+    private boolean isTouchingBlock(List<BlockSelection> selections) {
+        if (selections == null || selections.isEmpty()) {
+            return false;
+        }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
+        if (client == null || client.player == null) {
             return false;
         }
-        Optional<BlockSelection> selectionOptional = BlockSelection.parse(blockId);
-        if (selectionOptional.isEmpty()) {
-            return false;
-        }
-        BlockSelection selection = selectionOptional.get();
         Box box = client.player.getBoundingBox().expand(0.05);
         int minX = MathHelper.floor(box.minX);
         int maxX = MathHelper.floor(box.maxX);
@@ -7390,7 +7624,7 @@ public class Node {
                 for (int bz = minZ; bz <= maxZ; bz++) {
                     mutable.set(bx, by, bz);
                     BlockState state = client.player.getWorld().getBlockState(mutable);
-                    if (selection.matches(state)) {
+                    if (matchesAnyBlock(selections, state)) {
                         return true;
                     }
                 }
@@ -7427,34 +7661,65 @@ public class Node {
     }
 
     private boolean isBlockAhead(String blockId) {
+        return isBlockAhead(parseBlockSelectionList(blockId));
+    }
+
+    private boolean isBlockAhead(List<BlockSelection> selections) {
+        if (selections == null || selections.isEmpty()) {
+            return false;
+        }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
+        if (client == null || client.player == null) {
             return false;
         }
-        Optional<BlockSelection> selectionOptional = BlockSelection.parse(blockId);
-        if (selectionOptional.isEmpty()) {
-            return false;
-        }
-        BlockSelection selection = selectionOptional.get();
         Direction facing = client.player.getHorizontalFacing();
         BlockPos targetPos = client.player.getBlockPos().offset(facing);
         BlockState state = client.player.getWorld().getBlockState(targetPos);
-        return selection.matches(state);
+        return matchesAnyBlock(selections, state);
     }
 
     private boolean isBlockBelow(String blockId) {
+        return isBlockBelow(parseBlockSelectionList(blockId));
+    }
+
+    private boolean isBlockBelow(List<BlockSelection> selections) {
+        if (selections == null || selections.isEmpty()) {
+            return false;
+        }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
+        if (client == null || client.player == null) {
             return false;
         }
-        Optional<BlockSelection> selectionOptional = BlockSelection.parse(blockId);
-        if (selectionOptional.isEmpty()) {
-            return false;
-        }
-        BlockSelection selection = selectionOptional.get();
         BlockPos below = client.player.getBlockPos().down();
         BlockState state = client.player.getWorld().getBlockState(below);
-        return selection.matches(state);
+        return matchesAnyBlock(selections, state);
+    }
+
+    private List<BlockSelection> parseBlockSelectionList(String blockId) {
+        if (blockId == null || blockId.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<BlockSelection> selections = new ArrayList<>();
+        for (String entry : blockId.split("[,;]")) {
+            String trimmed = entry == null ? null : entry.trim();
+            if (trimmed == null || trimmed.isEmpty()) {
+                continue;
+            }
+            BlockSelection.parse(trimmed).ifPresent(selections::add);
+        }
+        return selections;
+    }
+
+    private boolean matchesAnyBlock(List<BlockSelection> selections, BlockState state) {
+        if (selections == null || selections.isEmpty() || state == null) {
+            return false;
+        }
+        for (BlockSelection selection : selections) {
+            if (selection != null && selection.matches(state)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isLightLevelBelow(int threshold) {

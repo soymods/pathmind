@@ -2173,6 +2173,9 @@ public class NodeGraph {
 
                     for (NodeParameter param : parameters) {
                         String displayText = node.getParameterLabel(param);
+                        if (displayText == null || displayText.isEmpty()) {
+                            continue;
+                        }
                         displayText = trimTextToWidth(displayText, textRenderer, width - 10);
 
                         int paramTextColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0; // Grey text when over sidebar
@@ -2202,6 +2205,9 @@ public class NodeGraph {
                 }
             }
 
+            if (node.hasBooleanToggle()) {
+                renderBooleanToggleButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            }
             if (node.hasSensorSlot()) {
                 renderSensorSlot(context, textRenderer, node, isOverSidebar);
             }
@@ -2209,6 +2215,33 @@ public class NodeGraph {
                 renderActionSlot(context, textRenderer, node, isOverSidebar);
             }
         }
+    }
+
+    private void renderBooleanToggleButton(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        int buttonLeft = node.getBooleanToggleLeft() - cameraX;
+        int buttonTop = node.getBooleanToggleTop() - cameraY;
+        int buttonWidth = node.getBooleanToggleWidth();
+        int buttonHeight = node.getBooleanToggleHeight();
+
+        boolean hovered = isPointInsideBooleanToggle(node, mouseX, mouseY);
+        int borderColor = node.getBooleanToggleValue() ? 0xFF5FB470 : 0xFFE07A7A;
+        int fillColor = node.getBooleanToggleValue() ? 0xFF1F3C28 : 0xFF4C1F1F;
+        if (isOverSidebar) {
+            borderColor = adjustColorBrightness(borderColor, 0.85f);
+            fillColor = adjustColorBrightness(fillColor, 0.85f);
+        } else if (hovered) {
+            fillColor = adjustColorBrightness(fillColor, 1.15f);
+        }
+
+        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, fillColor);
+        context.drawBorder(buttonLeft, buttonTop, buttonWidth, buttonHeight, borderColor);
+
+        String label = node.getBooleanToggleValue() ? "TRUE" : "FALSE";
+        int textColor = isOverSidebar ? 0xFFE0E0E0 : 0xFFFFFFFF;
+        int textWidth = textRenderer.getWidth(label);
+        int textX = buttonLeft + Math.max(2, (buttonWidth - textWidth) / 2);
+        int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal(label), textX, textY, textColor);
     }
 
     private void renderSensorSlot(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -2271,6 +2304,27 @@ public class NodeGraph {
             int textColor = actionDropTarget == node ? 0xFF8BC34A : 0xFF888888;
             drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
         }
+    }
+
+    private boolean isPointInsideBooleanToggle(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasBooleanToggle()) {
+            return false;
+        }
+        int buttonLeft = node.getBooleanToggleLeft() - cameraX;
+        int buttonTop = node.getBooleanToggleTop() - cameraY;
+        int buttonWidth = node.getBooleanToggleWidth();
+        int buttonHeight = node.getBooleanToggleHeight();
+        return mouseX >= buttonLeft && mouseX <= buttonLeft + buttonWidth &&
+               mouseY >= buttonTop && mouseY <= buttonTop + buttonHeight;
+    }
+
+    public boolean handleBooleanToggleClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideBooleanToggle(node, mouseX, mouseY)) {
+            return false;
+        }
+        node.toggleBooleanToggleValue();
+        notifyNodeParametersChanged(node);
+        return true;
     }
 
     private int adjustColorBrightness(int color, float factor) {

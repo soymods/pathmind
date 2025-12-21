@@ -572,6 +572,10 @@ public class PathmindVisualEditorScreen extends Screen {
         if (clickedNode != null) {
             // Node body clicked (not socket)
             if (button == 0) { // Left click - select node or start dragging
+                if (nodeGraph.handleBooleanToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
+
                 int coordinateAxis = nodeGraph.getCoordinateFieldAxisAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (coordinateAxis != -1) {
                     nodeGraph.selectNode(clickedNode);
@@ -1100,8 +1104,8 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean exportHovered = isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered, Text.literal("Import"), false);
-        drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered, Text.literal("Export"), false);
+        drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered, Text.literal("Import"), PopupButtonStyle.ACCENT);
+        drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered, Text.literal("Export"), PopupButtonStyle.ACCENT);
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Close"), false);
     }
 
@@ -1261,10 +1265,27 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered, Text label, boolean primary) {
-        int bgColor = primary ? (hovered ? 0xFF3B6A7D : 0xFF2F4F5C) : (hovered ? 0xFF505050 : 0xFF3A3A3A);
-        int borderColor = primary
-                ? ACCENT_COLOR
-                : (hovered ? 0xFF888888 : 0xFF666666);
+        PopupButtonStyle style = primary ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
+        drawPopupButton(context, x, y, width, height, hovered, label, style);
+    }
+
+    private void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered, Text label, PopupButtonStyle style) {
+        int bgColor;
+        int borderColor;
+        switch (style) {
+            case PRIMARY:
+                bgColor = hovered ? 0xFF3B6A7D : 0xFF2F4F5C;
+                borderColor = ACCENT_COLOR;
+                break;
+            case ACCENT:
+                bgColor = hovered ? 0xFF5EA3DC : 0xFF3B7FC1;
+                borderColor = ACCENT_COLOR;
+                break;
+            default:
+                bgColor = hovered ? 0xFF505050 : 0xFF3A3A3A;
+                borderColor = hovered ? 0xFF888888 : 0xFF666666;
+                break;
+        }
         context.fill(x, y, x + width, y + height, bgColor);
         context.drawBorder(x, y, width, height, borderColor);
         context.drawCenteredTextWithShadow(
@@ -1274,6 +1295,12 @@ public class PathmindVisualEditorScreen extends Screen {
             y + (height - this.textRenderer.fontHeight) / 2 + 1,
             WHITE
         );
+    }
+
+    private enum PopupButtonStyle {
+        DEFAULT,
+        PRIMARY,
+        ACCENT
     }
 
     private void openInfoPopup() {
@@ -1874,20 +1901,27 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         int fieldX = popupX + 20;
-        int fieldY = popupY + 74;
+        int fieldY = popupY + 70;
         int fieldWidth = popupWidth - 40;
-        int fieldHeight = 20;
+        int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, 0xFF1F1F1F);
         boolean focused = createPresetField != null && createPresetField.isFocused();
-        int borderColor = focused ? ACCENT_COLOR : (fieldHovered ? 0xFF888888 : 0xFF555555);
+        int borderColor;
+        if (focused) {
+            borderColor = ACCENT_COLOR;
+        } else if (fieldHovered) {
+            borderColor = 0xFF666666;
+        } else {
+            borderColor = 0xFF000000;
+        }
         context.drawBorder(fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
         if (createPresetField != null) {
             createPresetField.setVisible(true);
             createPresetField.setEditable(true);
-            createPresetField.setPosition(fieldX + 4, fieldY + 2);
+            createPresetField.setPosition(fieldX + 4, fieldY + 1);
             createPresetField.setWidth(fieldWidth - 8);
             createPresetField.render(context, mouseX, mouseY, delta);
         }

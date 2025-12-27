@@ -321,7 +321,7 @@ public class NodeGraph {
         }
         pushUndoState();
         removeNodeInternal(node, true, true);
-        workspaceDirty = true;
+        markWorkspaceDirty();
     }
 
     private void removeNodeInternal(Node node, boolean autoReconnect, boolean repositionDetachments) {
@@ -410,15 +410,20 @@ public class NodeGraph {
                 }
             }
 
-            for (NodeConnection inputConn : inputConnections) {
-                Node inputSource = inputConn.getOutputNode();
-                int inputSocket = inputConn.getOutputSocket();
+            // Avoid reconnecting nodes that previously fanned out to multiple outputs,
+            // otherwise the upstream node ends up with duplicate outgoing lines.
+            boolean hasMultipleOutputs = outputConnections.size() > 1;
+            if (!hasMultipleOutputs) {
+                for (NodeConnection inputConn : inputConnections) {
+                    Node inputSource = inputConn.getOutputNode();
+                    int inputSocket = inputConn.getOutputSocket();
 
-                for (NodeConnection outputConn : outputConnections) {
-                    Node outputTarget = outputConn.getInputNode();
-                    int outputSocket = outputConn.getInputSocket();
+                    for (NodeConnection outputConn : outputConnections) {
+                        Node outputTarget = outputConn.getInputNode();
+                        int outputSocket = outputConn.getInputSocket();
 
-                    connections.add(new NodeConnection(inputSource, outputTarget, inputSocket, outputSocket));
+                        connections.add(new NodeConnection(inputSource, outputTarget, inputSocket, outputSocket));
+                    }
                 }
             }
         }
@@ -761,7 +766,7 @@ public class NodeGraph {
             removeNodeCascade(node, false);
         }
         clearSelection();
-        workspaceDirty = true;
+        markWorkspaceDirty();
         return true;
     }
 
@@ -831,6 +836,9 @@ public class NodeGraph {
                     }
                     String value = paramData.getValue() == null ? "" : paramData.getValue();
                     NodeParameter parameter = new NodeParameter(paramData.getName(), parameterType, value);
+                    if (paramData.getUserEdited() != null) {
+                        parameter.setUserEdited(paramData.getUserEdited());
+                    }
                     newNode.getParameters().add(parameter);
                 }
                 newNode.recalculateDimensions();
@@ -906,7 +914,7 @@ public class NodeGraph {
             bringNodeToFront(primaryClone);
         }
 
-        workspaceDirty = true;
+        markWorkspaceDirty();
         return primaryClone;
     }
 
@@ -933,6 +941,7 @@ public class NodeGraph {
                 paramData.setName(param.getName());
                 paramData.setValue(param.getStringValue());
                 paramData.setType(param.getType().name());
+                paramData.setUserEdited(param.isUserEdited());
                 paramDataList.add(paramData);
             }
             nodeData.setParameters(paramDataList);
@@ -1026,7 +1035,7 @@ public class NodeGraph {
         suppressUndoCapture = true;
         applyLoadedData(data);
         suppressUndoCapture = false;
-        workspaceDirty = true;
+        markWorkspaceDirty();
     }
 
     public boolean undo() {
@@ -1342,7 +1351,7 @@ public class NodeGraph {
                 if (node.isPointInsideSensorSlot(worldMouseX, worldMouseY)) {
                     nodes.add(newNode);
                     node.attachSensor(newNode);
-                    workspaceDirty = true;
+                    markWorkspaceDirty();
                     return newNode;
                 }
             }
@@ -1355,7 +1364,7 @@ public class NodeGraph {
                 if (slotIndex >= 0 && node.canAcceptParameterNode(newNode, slotIndex)) {
                     nodes.add(newNode);
                     node.attachParameter(newNode, slotIndex);
-                    workspaceDirty = true;
+                    markWorkspaceDirty();
                     return newNode;
                 }
             }
@@ -1370,7 +1379,7 @@ public class NodeGraph {
                 if (node.isPointInsideActionSlot(worldMouseX, worldMouseY)) {
                     nodes.add(newNode);
                     node.attachActionNode(newNode);
-                    workspaceDirty = true;
+                    markWorkspaceDirty();
                     return newNode;
                 }
             }
@@ -1380,7 +1389,7 @@ public class NodeGraph {
         int nodeY = worldMouseY - newNode.getHeight() / 2;
         newNode.setPosition(nodeX, nodeY);
         nodes.add(newNode);
-        workspaceDirty = true;
+        markWorkspaceDirty();
         return newNode;
     }
     
@@ -1484,7 +1493,7 @@ public class NodeGraph {
 
         if (dragOperationChanged) {
             pushUndoSnapshot(pendingDragUndoSnapshot);
-            workspaceDirty = true;
+            markWorkspaceDirty();
         }
         pendingDragUndoSnapshot = null;
         dragOperationChanged = false;
@@ -1578,7 +1587,7 @@ public class NodeGraph {
         }
 
         if (connectionChanged) {
-            workspaceDirty = true;
+            markWorkspaceDirty();
         }
         
         isDraggingConnection = false;
@@ -1709,7 +1718,7 @@ public class NodeGraph {
             boolean shouldReconnect = toRemove == node;
             removeNodeInternal(toRemove, shouldReconnect, false);
         }
-        workspaceDirty = true;
+        markWorkspaceDirty();
     }
 
     private void collectNodesForCascade(Node node, List<Node> order, Set<Node> visited) {
@@ -3585,7 +3594,7 @@ public class NodeGraph {
             return manager.requestStopForStart(startNode);
         }
 
-        boolean started = manager.executeBranch(startNode, nodes, connections);
+        boolean started = manager.executeBranch(startNode, nodes, connections, activePreset);
         if (started) {
             lastStartButtonTriggeredExecution = true;
         }
@@ -3673,7 +3682,7 @@ public class NodeGraph {
         if (data != null) {
             boolean applied = applyLoadedData(data);
             if (applied) {
-                workspaceDirty = true;
+                markWorkspaceDirty();
             }
             return applied;
         }
@@ -3690,6 +3699,7 @@ public class NodeGraph {
 
     public void markWorkspaceDirty() {
         workspaceDirty = true;
+        save();
     }
 
     public void markWorkspaceClean() {
@@ -3705,7 +3715,6 @@ public class NodeGraph {
             return;
         }
         markWorkspaceDirty();
-        save();
     }
 
     public void clearWorkspace() {
@@ -3798,6 +3807,9 @@ public class NodeGraph {
                 for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
                     ParameterType paramType = ParameterType.valueOf(paramData.getType());
                     NodeParameter param = new NodeParameter(paramData.getName(), paramType, paramData.getValue());
+                    if (paramData.getUserEdited() != null) {
+                        param.setUserEdited(paramData.getUserEdited());
+                    }
                     node.getParameters().add(param);
                 }
             }

@@ -12,6 +12,7 @@ public class NodeParameter {
     private int intValue;
     private double doubleValue;
     private boolean boolValue;
+    private boolean userEdited;
 
     public NodeParameter(String name, ParameterType type, String defaultValue) {
         this.name = name;
@@ -22,6 +23,7 @@ public class NodeParameter {
         this.intValue = 0;
         this.doubleValue = 0.0;
         this.boolValue = false;
+        this.userEdited = false;
         
         // Try to parse the default value based on type
         if (type == ParameterType.INTEGER) {
@@ -76,6 +78,19 @@ public class NodeParameter {
         } else if (type == ParameterType.BOOLEAN) {
             this.boolValue = Boolean.parseBoolean(value);
         }
+    }
+
+    public void setStringValueFromUser(String value) {
+        setStringValue(value);
+        this.userEdited = true;
+    }
+
+    public boolean isUserEdited() {
+        return userEdited;
+    }
+
+    public void setUserEdited(boolean userEdited) {
+        this.userEdited = userEdited;
     }
 
     public int getIntValue() {

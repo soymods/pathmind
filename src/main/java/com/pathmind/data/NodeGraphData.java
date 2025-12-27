@@ -166,6 +166,7 @@ public class NodeGraphData {
         private String name;
         private String value;
         private String type;
+        private Boolean userEdited;
         
         public ParameterData() {}
         
@@ -184,6 +185,9 @@ public class NodeGraphData {
         
         public String getType() { return type; }
         public void setType(String type) { this.type = type; }
+
+        public Boolean getUserEdited() { return userEdited; }
+        public void setUserEdited(Boolean userEdited) { this.userEdited = userEdited; }
     }
 
     public static class ParameterAttachmentData {

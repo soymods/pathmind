@@ -121,9 +121,13 @@ public class NodeGraphPersistence {
 
             // Save parameter values before setting mode (which will reinitialize parameters)
             Map<String, String> savedParamValues = new HashMap<>();
+            Map<String, Boolean> savedParamEdited = new HashMap<>();
             if (nodeData.getParameters() != null) {
                 for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
                     savedParamValues.put(paramData.getName(), paramData.getValue());
+                    if (paramData.getUserEdited() != null) {
+                        savedParamEdited.put(paramData.getName(), paramData.getUserEdited());
+                    }
                 }
             }
 
@@ -138,6 +142,10 @@ public class NodeGraphPersistence {
                     String savedValue = savedParamValues.get(param.getName());
                     if (savedValue != null) {
                         param.setStringValue(savedValue);
+                    }
+                    Boolean edited = savedParamEdited.get(param.getName());
+                    if (edited != null) {
+                        param.setUserEdited(edited);
                     }
                 }
             }
@@ -330,6 +338,7 @@ public class NodeGraphPersistence {
                 paramData.setName(param.getName());
                 paramData.setValue(param.getStringValue());
                 paramData.setType(param.getType().name());
+                paramData.setUserEdited(param.isUserEdited());
                 paramDataList.add(paramData);
             }
             nodeData.setParameters(paramDataList);

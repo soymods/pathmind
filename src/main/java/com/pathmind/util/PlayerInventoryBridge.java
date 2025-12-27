@@ -1,6 +1,8 @@
 package com.pathmind.util;
 
 import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -13,6 +15,7 @@ public final class PlayerInventoryBridge {
     private static final Method GET_SELECTED_SLOT_METHOD = resolveGetter();
     private static final Method SET_SELECTED_SLOT_METHOD = resolveSetter();
     private static final Field SELECTED_SLOT_FIELD = resolveField();
+    private static final Field PLAYER_FIELD = resolvePlayerField();
 
     private PlayerInventoryBridge() {
     }
@@ -34,6 +37,10 @@ public final class PlayerInventoryBridge {
             } catch (IllegalAccessException e) {
                 throw new IllegalStateException("Failed to read PlayerInventory.selectedSlot", e);
             }
+        }
+        int inferred = inferSelectedSlot(inventory);
+        if (inferred >= 0) {
+            return inferred;
         }
         throw new IllegalStateException("No compatible way to read PlayerInventory selected slot");
     }
@@ -57,6 +64,9 @@ public final class PlayerInventoryBridge {
             } catch (IllegalAccessException e) {
                 throw new IllegalStateException("Failed to set PlayerInventory.selectedSlot", e);
             }
+        }
+        if (trySetInferredSelectedSlot(inventory, slot)) {
+            return;
         }
         throw new IllegalStateException("No compatible way to update PlayerInventory selected slot");
     }
@@ -83,6 +93,78 @@ public final class PlayerInventoryBridge {
         try {
             return PlayerInventory.class.getMethod("setSelectedSlot", int.class);
         } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Field resolvePlayerField() {
+        for (Field field : PlayerInventory.class.getDeclaredFields()) {
+            if (PlayerEntity.class.isAssignableFrom(field.getType())) {
+                field.setAccessible(true);
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private static int inferSelectedSlot(PlayerInventory inventory) {
+        PlayerEntity player = resolvePlayer(inventory);
+        if (player == null) {
+            return -1;
+        }
+        ItemStack mainHand = player.getMainHandStack();
+        if (mainHand == null) {
+            return -1;
+        }
+        int hotbarSize = PlayerInventory.getHotbarSize();
+        for (int slot = 0; slot < hotbarSize; slot++) {
+            ItemStack stack = inventory.getStack(slot);
+            if (stack == mainHand) {
+                return slot;
+            }
+        }
+        if (!mainHand.isEmpty()) {
+            for (int slot = 0; slot < hotbarSize; slot++) {
+                ItemStack stack = inventory.getStack(slot);
+                if (!stack.isEmpty() && ItemStack.areItemsEqual(stack, mainHand)) {
+                    return slot;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static boolean trySetInferredSelectedSlot(PlayerInventory inventory, int slot) {
+        int current = inferSelectedSlot(inventory);
+        if (current < 0) {
+            return false;
+        }
+        for (Field field : PlayerInventory.class.getDeclaredFields()) {
+            if (field.getType() != int.class) {
+                continue;
+            }
+            field.setAccessible(true);
+            try {
+                int value = field.getInt(inventory);
+                if (value == current) {
+                    field.setInt(inventory, slot);
+                    return true;
+                }
+            } catch (IllegalAccessException ignored) {
+                // Keep looking for a compatible field.
+            }
+        }
+        return false;
+    }
+
+    private static PlayerEntity resolvePlayer(PlayerInventory inventory) {
+        if (PLAYER_FIELD == null) {
+            return null;
+        }
+        try {
+            Object value = PLAYER_FIELD.get(inventory);
+            return value instanceof PlayerEntity player ? player : null;
+        } catch (IllegalAccessException ignored) {
             return null;
         }
     }

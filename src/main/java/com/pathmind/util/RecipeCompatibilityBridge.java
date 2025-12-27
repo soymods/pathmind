@@ -3,12 +3,15 @@ package com.pathmind.util;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntLists;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
-import net.minecraft.item.ItemStack;
+import net.minecraft.registry.entry.RegistryEntry;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -19,8 +22,9 @@ import java.util.Optional;
  */
 public final class RecipeCompatibilityBridge {
     private static final Method INGREDIENT_IS_EMPTY_METHOD = resolveIngredientEmptyMethod();
-    private static final Method INGREDIENT_MATCHING_STACKS_METHOD = resolveMatchingStacksMethod();
+    private static final Method INGREDIENT_MATCHING_ITEMS_METHOD = resolveMatchingItemsMethod();
     private static final Method RECIPE_PLACEMENT_METHOD = resolveRecipePlacementMethod();
+    private static final Method RECIPE_INGREDIENTS_METHOD = resolveRecipeIngredientsMethod();
 
     private RecipeCompatibilityBridge() {
     }
@@ -72,7 +76,28 @@ public final class RecipeCompatibilityBridge {
         return Collections.emptyList();
     }
 
+    public static List<?> getRecipeIngredients(CraftingRecipe recipe) {
+        if (recipe == null || RECIPE_INGREDIENTS_METHOD == null) {
+            return Collections.emptyList();
+        }
+        try {
+            Object result = RECIPE_INGREDIENTS_METHOD.invoke(recipe);
+            if (result instanceof List<?> list) {
+                return list;
+            }
+            if (result instanceof Object[] array) {
+                return Arrays.asList(array);
+            }
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+        }
+        return Collections.emptyList();
+    }
+
     public static boolean isIngredientEmpty(Ingredient ingredient) {
+        return isIngredientEmpty(ingredient, null);
+    }
+
+    public static boolean isIngredientEmpty(Ingredient ingredient, Object registryManager) {
         if (ingredient == null) {
             return true;
         }
@@ -82,17 +107,7 @@ public final class RecipeCompatibilityBridge {
             } catch (IllegalAccessException | InvocationTargetException ignored) {
             }
         }
-
-        ItemStack[] stacks = getMatchingStacks(ingredient);
-        if (stacks == null || stacks.length == 0) {
-            return true;
-        }
-        for (ItemStack stack : stacks) {
-            if (stack != null && !stack.isEmpty()) {
-                return false;
-            }
-        }
-        return true;
+        return ingredient.isEmpty();
     }
 
     public static IntList toPlacementSlots(Object placement) {
@@ -131,21 +146,29 @@ public final class RecipeCompatibilityBridge {
         }
     }
 
-    private static Method resolveMatchingStacksMethod() {
-        for (String name : new String[]{"getMatchingStacks", "getMatchingStacksClient"}) {
-            try {
-                Method method = Ingredient.class.getMethod(name);
-                method.setAccessible(true);
-                return method;
-            } catch (NoSuchMethodException ignored) {
-            }
+    private static Method resolveMatchingItemsMethod() {
+        try {
+            Method method = Ingredient.class.getMethod("getMatchingItems");
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
         }
-        return null;
     }
 
     private static Method resolveRecipePlacementMethod() {
         try {
             Method method = CraftingRecipe.class.getMethod("getIngredientPlacement");
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveRecipeIngredientsMethod() {
+        try {
+            Method method = CraftingRecipe.class.getMethod("getIngredients");
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {
@@ -180,14 +203,31 @@ public final class RecipeCompatibilityBridge {
         }
     }
 
-    private static ItemStack[] getMatchingStacks(Ingredient ingredient) {
-        if (INGREDIENT_MATCHING_STACKS_METHOD == null) {
-            return new ItemStack[0];
+    public static List<ItemStack> getIngredientStacks(Ingredient ingredient, Object registryManager) {
+        List<ItemStack> stacks = new ArrayList<>();
+        if (ingredient == null) {
+            return stacks;
+        }
+        if (INGREDIENT_MATCHING_ITEMS_METHOD == null) {
+            return stacks;
         }
         try {
-            return (ItemStack[]) INGREDIENT_MATCHING_STACKS_METHOD.invoke(ingredient);
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            return new ItemStack[0];
+            Object result = INGREDIENT_MATCHING_ITEMS_METHOD.invoke(ingredient);
+            if (result instanceof java.util.stream.Stream<?> stream) {
+                stream.forEach(entry -> collectItemStack(entry, stacks));
+            }
+        } catch (IllegalAccessException | InvocationTargetException | RuntimeException ignored) {
+            // Return whatever we collected so far.
+        }
+        return stacks;
+    }
+
+    private static void collectItemStack(Object entry, List<ItemStack> stacks) {
+        if (entry instanceof RegistryEntry<?> registryEntry) {
+            Object value = registryEntry.value();
+            if (value instanceof Item item) {
+                stacks.add(new ItemStack(item));
+            }
         }
     }
 }

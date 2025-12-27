@@ -1142,7 +1142,11 @@ public class NodeParameterOverlay {
         for (int i = 0; i < parameters.size() && i < parameterValues.size(); i++) {
             NodeParameter param = parameters.get(i);
             String value = parameterValues.get(i);
-            param.setStringValue(value);
+            if (isPlaceholderActive(i)) {
+                param.setStringValue(value);
+            } else {
+                param.setStringValueFromUser(value);
+            }
         }
 
         if (node.isParameterNode() && node.getParentParameterHost() != null) {
@@ -1236,6 +1240,9 @@ public class NodeParameterOverlay {
 
     private boolean shouldUsePlaceholder(NodeParameter parameter, String value) {
         if (parameter == null || parameter.getType() != ParameterType.STRING) {
+            return false;
+        }
+        if (parameter.isUserEdited()) {
             return false;
         }
         String placeholder = parameter.getDefaultValue();

@@ -69,8 +69,12 @@ import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
+import net.minecraft.recipe.RecipeManager;
 import net.minecraft.recipe.RecipeEntry;
+import net.minecraft.recipe.RecipeType;
 import net.minecraft.recipe.ShapedRecipe;
+import net.minecraft.registry.RegistryWrapper;
+import java.util.Arrays;
 import net.minecraft.screen.CraftingScreenHandler;
 import net.minecraft.screen.PlayerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
@@ -121,6 +125,8 @@ public class Node {
     private static final int PARAMETER_SLOT_MIN_CONTENT_WIDTH = 88;
     private static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
     private static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
+    private static final int PLAYER_ARMOR_SLOT_COUNT = 4;
+    private static final int PLAYER_OFFHAND_INVENTORY_INDEX = PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
     private static final int PARAMETER_SLOT_BOTTOM_PADDING = 6;
     private static final int SLOT_AREA_PADDING_TOP = 0;
     private static final int SLOT_AREA_PADDING_BOTTOM = 6;
@@ -203,6 +209,7 @@ public class Node {
         private Boolean booleanValue;
         private String handName;
         private Integer slotIndex;
+        private SlotSelectionType slotSelectionType;
         private String schematicName;
         private Double rangeValue;
         private Float resolvedYaw;
@@ -521,7 +528,7 @@ public class Node {
         }
         if (type == NodeType.PLACE) {
             if (slotIndex == 0) {
-                return true;
+                return false;
             }
             Node coordinateParameter = getAttachedParameter(slotIndex);
             if (coordinateParameter != null) {
@@ -548,6 +555,7 @@ public class Node {
             switch (parameterType) {
                 case PARAM_BLOCK:
                 case PARAM_BLOCK_LIST:
+                case PARAM_INVENTORY_SLOT:
                 case PARAM_PLACE_TARGET:
                     return true;
                 default:
@@ -565,7 +573,18 @@ public class Node {
             return false;
         }
         NodeType parameterType = parameter.getType();
+        if (type == NodeType.INTERACT && parameterType == NodeType.PARAM_ITEM) {
+            return false;
+        }
+        if (type == NodeType.USE) {
+            return parameterType == NodeType.PARAM_ITEM || parameterType == NodeType.PARAM_INVENTORY_SLOT;
+        }
         if (type == NodeType.MOVE_ITEM && slotIndex >= 0 && slotIndex <= 1 && parameterType == NodeType.PARAM_ITEM) {
+            return true;
+        }
+        if ((type == NodeType.PLACE || type == NodeType.PLACE_HAND)
+            && slotIndex == 0
+            && parameterType == NodeType.PARAM_INVENTORY_SLOT) {
             return true;
         }
         if (supportsDirectSensorParameter(parameterType)) {
@@ -848,7 +867,7 @@ public class Node {
 
     public String getParameterSlotLabel(int slotIndex) {
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
-            return slotIndex == 0 ? "Block" : "Position";
+            return slotIndex == 0 ? "Source" : "Position";
         }
         if (type == NodeType.MOVE_ITEM) {
             return slotIndex == 0 ? "Source Slot" : "Target Slot";
@@ -1139,6 +1158,7 @@ public class Node {
             NodeType parameterType = parameter.getType();
             if (parameterType == NodeType.PARAM_BLOCK
                 || parameterType == NodeType.PARAM_BLOCK_LIST
+                || parameterType == NodeType.PARAM_INVENTORY_SLOT
                 || parameterType == NodeType.PARAM_PLACE_TARGET) {
                 // Block-type parameters should always occupy the first slot
                 slotIndex = 0;
@@ -2492,6 +2512,13 @@ public class Node {
                 return ParameterHandlingResult.COMPLETE;
             }
         }
+        if (!handled && type == NodeType.USE) {
+            if (resolveUseParameterSelection(parameterNode, future)) {
+                handled = true;
+            } else {
+                return ParameterHandlingResult.COMPLETE;
+            }
+        }
 
         // Special case: block parameters in slot 0 of PLACE/PLACE_HAND nodes are valid
         // even when usages is empty (they provide block type, not position)
@@ -2499,6 +2526,9 @@ public class Node {
             NodeType parameterType = parameterNode.getType();
             if ((parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_BLOCK_LIST)
                 && parameterNode.parentParameterSlotIndex == 0) {
+                handled = true;
+            }
+            if (parameterType == NodeType.PARAM_INVENTORY_SLOT && parameterNode.parentParameterSlotIndex == 0) {
                 handled = true;
             }
         }
@@ -3956,8 +3986,14 @@ public class Node {
             return;
         }
 
-        List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
-        ItemStack outputTemplate = recipeEntry.value().craft(CraftingRecipeInput.create(3, 3, emptyGrid), client.player.getWorld().getRegistryManager());
+        Object serverRegistryManager = client.getServer() != null
+            ? client.getServer().getRegistryManager()
+            : null;
+        Object clientRegistryManager = client.player.getWorld().getRegistryManager();
+        ItemStack outputTemplate = getRecipeOutput(recipeEntry.value(), serverRegistryManager);
+        if (outputTemplate.isEmpty() && clientRegistryManager != serverRegistryManager) {
+            outputTemplate = getRecipeOutput(recipeEntry.value(), clientRegistryManager);
+        }
         if (outputTemplate.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe produced no output.");
             future.complete(null);
@@ -3968,7 +4004,8 @@ public class Node {
         int perCraftOutput = Math.max(1, outputTemplate.getCount());
         int craftsRequested = Math.max(1, (int) Math.ceil(desiredCount / (double) perCraftOutput));
 
-        List<GridIngredient> gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode);
+        Object ingredientRegistryManager = client.player.getWorld().getRegistryManager();
+        List<GridIngredient> gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode, ingredientRegistryManager);
         if (gridIngredients.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe has no ingredients.");
             future.complete(null);
@@ -3980,7 +4017,7 @@ public class Node {
         CompletableFuture
             .supplyAsync(() -> {
                 try {
-                    return craftRecipeUsingScreen(client, effectiveCraftMode, recipeEntry, targetItem, craftsRequested, desiredCount, itemDisplayName, gridIngredients, craftingGridSlots);
+                    return craftRecipeUsingScreen(client, effectiveCraftMode, recipeEntry, targetItem, craftsRequested, desiredCount, itemDisplayName, gridIngredients, craftingGridSlots, ingredientRegistryManager);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new java.util.concurrent.CompletionException(e);
@@ -4131,34 +4168,428 @@ public class Node {
                                                            Item targetItem,
                                                            NodeMode craftMode,
                                                            java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable) {
-        MinecraftServer server = client.getServer();
-        if (server == null) {
+        List<RecipeManager> managers = getRecipeManagers(client);
+        if (managers.isEmpty()) {
             return null;
         }
 
-        List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
-        for (RecipeEntry<?> entry : server.getRecipeManager().values()) {
-            if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
+        int totalEntries = 0;
+        int craftingEntries = 0;
+        int emptyOutputs = 0;
+        int matchingOutputs = 0;
+        List<String> sampleOutputs = new ArrayList<>();
+        boolean debugLogged = false;
+        Object serverRegistryManager = client.getServer() != null ? client.getServer().getRegistryManager() : null;
+        Object clientRegistryManager = client.player.getWorld().getRegistryManager();
+        for (RecipeManager manager : managers) {
+            if (manager == null) {
                 continue;
             }
-
-            ItemStack result = craftingRecipe.craft(CraftingRecipeInput.create(3, 3, emptyGrid), client.player.getWorld().getRegistryManager());
-            if (!result.isOf(targetItem)) {
-                continue;
-            }
-
-            if (craftMode == NodeMode.CRAFT_PLAYER_GUI && !recipeFitsPlayerGrid(craftingRecipe)) {
-                if (requiresCraftingTable != null) {
-                    requiresCraftingTable.set(true);
+            for (RecipeEntry<?> entry : getCraftingRecipeEntries(manager)) {
+                totalEntries++;
+                if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
+                    continue;
                 }
-                continue;
-            }
+                craftingEntries++;
 
-            @SuppressWarnings("unchecked")
-            RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) entry;
-            return castEntry;
+                ItemStack result = getRecipeOutput(craftingRecipe, serverRegistryManager);
+                if (result.isEmpty() && clientRegistryManager != serverRegistryManager) {
+                    result = getRecipeOutput(craftingRecipe, clientRegistryManager);
+                }
+                if (result.isEmpty()) {
+                    emptyOutputs++;
+                    if (!debugLogged) {
+                        logRecipeOutputDebug(craftingRecipe, serverRegistryManager, clientRegistryManager);
+                        debugLogged = true;
+                    }
+                } else if (sampleOutputs.size() < 5) {
+                    Identifier itemId = Registries.ITEM.getId(result.getItem());
+                    if (itemId != null) {
+                        sampleOutputs.add(itemId.toString());
+                    }
+                }
+                if (!result.isOf(targetItem)) {
+                    continue;
+                }
+                matchingOutputs++;
+
+                if (craftMode == NodeMode.CRAFT_PLAYER_GUI && !recipeFitsPlayerGrid(craftingRecipe)) {
+                    if (requiresCraftingTable != null) {
+                        requiresCraftingTable.set(true);
+                    }
+                    continue;
+                }
+
+                @SuppressWarnings("unchecked")
+                RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) entry;
+                return castEntry;
+            }
         }
 
+        logCraftDebug(targetItem, craftMode, managers.size(), totalEntries, craftingEntries, emptyOutputs, matchingOutputs, sampleOutputs);
+        return null;
+    }
+
+    private void logRecipeOutputDebug(CraftingRecipe recipe, Object serverRegistryManager, Object clientRegistryManager) {
+        String recipeClass = recipe != null ? recipe.getClass().getName() : "null";
+        String serverMgr = serverRegistryManager != null ? serverRegistryManager.getClass().getName() : "null";
+        String clientMgr = clientRegistryManager != null ? clientRegistryManager.getClass().getName() : "null";
+        boolean serverLookup = resolveWrapperLookup(serverRegistryManager) != null;
+        boolean clientLookup = resolveWrapperLookup(clientRegistryManager) != null;
+        List<String> outputMethods = new ArrayList<>();
+        List<String> craftMethods = new ArrayList<>();
+        List<String> allMethodsSample = new ArrayList<>();
+        if (recipe != null) {
+            int sampleLimit = 8;
+            for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+                if (ItemStack.class.isAssignableFrom(method.getReturnType()) && method.getParameterCount() == 1) {
+                    Class<?> paramType = method.getParameterTypes()[0];
+                    outputMethods.add(method.getName() + "(" + paramType.getName() + ")");
+                }
+                if ("craft".equals(method.getName()) && method.getParameterCount() == 2) {
+                    Class<?>[] params = method.getParameterTypes();
+                    craftMethods.add(method.getName() + "(" + params[0].getName() + "," + params[1].getName() + ")");
+                }
+                if (allMethodsSample.size() < sampleLimit) {
+                    allMethodsSample.add(method.getName() + Arrays.toString(method.getParameterTypes()) + " -> " + method.getReturnType().getName());
+                }
+            }
+        }
+        System.out.println(
+            "Pathmind craft output debug: recipeClass=" + recipeClass
+                + " serverRegistry=" + serverMgr
+                + " clientRegistry=" + clientMgr
+                + " serverLookup=" + serverLookup
+                + " clientLookup=" + clientLookup
+                + " outputMethods=" + outputMethods
+                + " craftMethods=" + craftMethods
+                + " methodsSample=" + allMethodsSample
+        );
+    }
+
+    private List<java.lang.reflect.Method> getAllMethods(Class<?> type) {
+        List<java.lang.reflect.Method> methods = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        collectMethodsRecursive(type, methods, seen);
+        return methods;
+    }
+
+    private void collectMethodsRecursive(Class<?> type, List<java.lang.reflect.Method> methods, java.util.Set<String> seen) {
+        if (type == null || type == Object.class) {
+            return;
+        }
+        try {
+            for (java.lang.reflect.Method method : type.getDeclaredMethods()) {
+                String key = method.getName() + Arrays.toString(method.getParameterTypes()) + method.getReturnType().getName();
+                if (seen.add(key)) {
+                    method.setAccessible(true);
+                    methods.add(method);
+                }
+            }
+        } catch (SecurityException ignored) {
+            // Skip inaccessible class declarations.
+        }
+        for (Class<?> iface : type.getInterfaces()) {
+            collectMethodsRecursive(iface, methods, seen);
+        }
+        collectMethodsRecursive(type.getSuperclass(), methods, seen);
+    }
+
+    private void logCraftDebug(Item targetItem,
+                               NodeMode craftMode,
+                               int managerCount,
+                               int totalEntries,
+                               int craftingEntries,
+                               int emptyOutputs,
+                               int matchingOutputs,
+                               List<String> sampleOutputs) {
+        String targetId = targetItem != null ? Registries.ITEM.getId(targetItem).toString() : "unknown";
+        System.out.println(
+            "Pathmind craft debug: target=" + targetId
+                + " mode=" + craftMode
+                + " managers=" + managerCount
+                + " entries=" + totalEntries
+                + " craftingEntries=" + craftingEntries
+                + " emptyOutputs=" + emptyOutputs
+                + " matchingOutputs=" + matchingOutputs
+                + " sampleOutputs=" + sampleOutputs
+        );
+    }
+
+    private List<RecipeEntry<?>> getCraftingRecipeEntries(RecipeManager manager) {
+        if (manager == null) {
+            return List.of();
+        }
+
+        List<RecipeEntry<?>> entries = new ArrayList<>();
+        RecipeType<?> craftingType = RecipeType.CRAFTING;
+        List<String> preferredNames = List.of("listAllOfType", "getAllOfType", "getAllRecipes", "getRecipes");
+        for (String name : preferredNames) {
+            try {
+                java.lang.reflect.Method method = manager.getClass().getMethod(name, RecipeType.class);
+                method.setAccessible(true);
+                Object result = method.invoke(manager, craftingType);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next candidate.
+            }
+        }
+
+        for (java.lang.reflect.Method method : manager.getClass().getMethods()) {
+            if (method.getParameterCount() != 1 || !RecipeType.class.isAssignableFrom(method.getParameterTypes()[0])) {
+                continue;
+            }
+            Class<?> returnType = method.getReturnType();
+            if (!Iterable.class.isAssignableFrom(returnType) && !java.util.Map.class.isAssignableFrom(returnType)) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(manager, craftingType);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Keep scanning.
+            }
+        }
+
+        return getRecipeEntries(manager);
+    }
+
+    private List<RecipeEntry<?>> getRecipeEntries(RecipeManager manager) {
+        List<RecipeEntry<?>> entries = new ArrayList<>();
+        if (manager == null) {
+            return entries;
+        }
+
+        List<String> preferredNames = List.of("values", "getRecipes", "getAllRecipes", "getAll");
+        for (String name : preferredNames) {
+            try {
+                java.lang.reflect.Method method = manager.getClass().getMethod(name);
+                method.setAccessible(true);
+                Object result = method.invoke(manager);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next candidate.
+            }
+        }
+
+        for (java.lang.reflect.Method method : manager.getClass().getMethods()) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            Class<?> returnType = method.getReturnType();
+            if (!Iterable.class.isAssignableFrom(returnType) && !java.util.Map.class.isAssignableFrom(returnType)) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(manager);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Keep scanning.
+            }
+        }
+
+        return entries;
+    }
+
+    private boolean collectRecipeEntries(Object result, List<RecipeEntry<?>> entries) {
+        if (result == null || entries == null) {
+            return false;
+        }
+        if (result instanceof RecipeEntry<?> entry) {
+            entries.add(entry);
+            return true;
+        }
+        if (result instanceof Iterable<?> iterable) {
+            boolean added = false;
+            for (Object item : iterable) {
+                if (item instanceof RecipeEntry<?> recipeEntry) {
+                    entries.add(recipeEntry);
+                    added = true;
+                } else if (item instanceof java.util.Map<?, ?> map) {
+                    if (collectRecipeEntries(map.values(), entries)) {
+                        added = true;
+                    }
+                } else if (item instanceof Iterable<?> nested) {
+                    if (collectRecipeEntries(nested, entries)) {
+                        added = true;
+                    }
+                }
+            }
+            return added;
+        }
+        if (result instanceof java.util.Map<?, ?> map) {
+            return collectRecipeEntries(map.values(), entries);
+        }
+        return false;
+    }
+
+    private List<RecipeManager> getRecipeManagers(net.minecraft.client.MinecraftClient client) {
+        List<RecipeManager> managers = new ArrayList<>();
+        if (client == null) {
+            return managers;
+        }
+        MinecraftServer server = client.getServer();
+        if (server != null) {
+            RecipeManager manager = server.getRecipeManager();
+            if (manager != null && !managers.contains(manager)) {
+                managers.add(manager);
+            }
+        }
+        if (client.getNetworkHandler() != null) {
+            try {
+                java.lang.reflect.Method method = client.getNetworkHandler().getClass().getMethod("getRecipeManager");
+                method.setAccessible(true);
+                Object result = method.invoke(client.getNetworkHandler());
+                if (result instanceof RecipeManager manager && !managers.contains(manager)) {
+                    managers.add(manager);
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Ignore network handlers without recipe managers.
+            }
+        }
+        if (client.world != null) {
+            try {
+                RecipeManager manager = client.world.getRecipeManager();
+                if (manager != null && !managers.contains(manager)) {
+                    managers.add(manager);
+                }
+            } catch (RuntimeException ignored) {
+                // Ignore client worlds without a recipe manager.
+            }
+        }
+        return managers;
+    }
+
+    private ItemStack getRecipeOutput(CraftingRecipe recipe, Object registryManager) {
+        if (recipe == null) {
+            return ItemStack.EMPTY;
+        }
+        RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
+        Object registryArg = registryManager;
+        List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
+        CraftingRecipeInput input = CraftingRecipeInput.create(3, 3, emptyGrid);
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            if (method.getParameterCount() == 1) {
+                try {
+                    Class<?> paramType = method.getParameterTypes()[0];
+                    Object arg = null;
+                    if (registryArg != null && paramType.isInstance(registryArg)) {
+                        arg = registryArg;
+                    } else if (lookup != null && paramType.isInstance(lookup)) {
+                        arg = lookup;
+                    }
+                    if (arg == null) {
+                        continue;
+                    }
+                    Object result = method.invoke(recipe, arg);
+                    if (result instanceof ItemStack stack) {
+                        return stack;
+                    }
+                } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
+                    // Keep scanning.
+                }
+            }
+        }
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            if (method.getParameterCount() != 2) {
+                continue;
+            }
+            Class<?>[] params = method.getParameterTypes();
+            if (!params[0].isInstance(input)) {
+                continue;
+            }
+            Object arg = null;
+            if (lookup != null && params[1].isInstance(lookup)) {
+                arg = lookup;
+            } else if (registryArg != null && params[1].isInstance(registryArg)) {
+                arg = registryArg;
+            }
+            if (arg == null) {
+                continue;
+            }
+            try {
+                Object result = method.invoke(recipe, input, arg);
+                if (result instanceof ItemStack stack) {
+                    return stack;
+                }
+            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
+                // Keep scanning.
+            }
+        }
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            if (method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            try {
+                Object result = method.invoke(recipe);
+                if (result instanceof ItemStack stack) {
+                    return stack;
+                }
+            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
+                // Keep scanning.
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private RegistryWrapper.WrapperLookup resolveWrapperLookup(Object registryManager) {
+        if (registryManager == null) {
+            return null;
+        }
+        if (registryManager instanceof RegistryWrapper.WrapperLookup wrapper) {
+            return wrapper;
+        }
+        for (String methodName : new String[]{"getWrapperLookup", "getRegistryLookup", "getLookup"}) {
+            try {
+                java.lang.reflect.Method method = registryManager.getClass().getMethod(methodName);
+                method.setAccessible(true);
+                Object result = method.invoke(registryManager);
+                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                    return wrapper;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next candidate.
+            }
+        }
+        for (java.lang.reflect.Method method : registryManager.getClass().getMethods()) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            if (!RegistryWrapper.WrapperLookup.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(registryManager);
+                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                    return wrapper;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Keep scanning.
+            }
+        }
         return null;
     }
 
@@ -4219,7 +4650,8 @@ public class Node {
                                                    int desiredCount,
                                                    String itemDisplayName,
                                                    List<GridIngredient> gridIngredients,
-                                                   int[] gridSlots) throws InterruptedException {
+                                                   int[] gridSlots,
+                                                   Object registryManager) throws InterruptedException {
         int totalProduced = 0;
         String failureMessage = null;
 
@@ -4241,7 +4673,7 @@ public class Node {
                 break;
             }
 
-            CraftingAttemptResult attemptResult = performCraftingAttempt(client, targetItem, itemDisplayName, gridIngredients, gridSlots, craftMode);
+            CraftingAttemptResult attemptResult = performCraftingAttempt(client, targetItem, itemDisplayName, gridIngredients, gridSlots, craftMode, registryManager);
             if (attemptResult.errorMessage != null) {
                 failureMessage = attemptResult.errorMessage;
                 if (attemptResult.produced > 0) {
@@ -4274,7 +4706,8 @@ public class Node {
                                                          String itemDisplayName,
                                                          List<GridIngredient> gridIngredients,
                                                          int[] gridSlots,
-                                                         NodeMode craftMode) throws InterruptedException {
+                                                         NodeMode craftMode,
+                                                         Object registryManager) throws InterruptedException {
         java.util.concurrent.atomic.AtomicReference<String> errorRef = new java.util.concurrent.atomic.AtomicReference<>();
         java.util.concurrent.atomic.AtomicInteger producedRef = new java.util.concurrent.atomic.AtomicInteger();
 
@@ -4303,7 +4736,10 @@ public class Node {
                 throw new InterruptedException();
             }
 
-            if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient.ingredient())) {
+            if (ingredient == null) {
+                continue;
+            }
+            if (!ingredient.allowEmpty() && RecipeCompatibilityBridge.isIngredientEmpty(ingredient.ingredient(), registryManager)) {
                 continue;
             }
 
@@ -4322,7 +4758,7 @@ public class Node {
                     return;
                 }
 
-                int sourceSlot = findIngredientSourceSlot(handler, ingredient.ingredient());
+                int sourceSlot = findIngredientSourceSlot(handler, ingredient.ingredient(), registryManager, ingredient.allowEmpty());
                 if (sourceSlot == -1) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": missing required ingredients.");
                     return;
@@ -4444,11 +4880,18 @@ public class Node {
         }
     }
 
-    private int findIngredientSourceSlot(ScreenHandler handler, Ingredient ingredient) {
-        if (handler == null || ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+    private int findIngredientSourceSlot(ScreenHandler handler,
+                                         Ingredient ingredient,
+                                         Object registryManager,
+                                         boolean allowEmpty) {
+        if (handler == null || ingredient == null) {
+            return -1;
+        }
+        if (!allowEmpty && RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
             return -1;
         }
 
+        List<ItemStack> candidates = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager);
         List<Slot> slots = handler.slots;
         for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
             Slot slot = slots.get(slotIdx);
@@ -4466,12 +4909,24 @@ public class Node {
                 continue;
             }
 
-            if (ingredient.test(stack)) {
+            if (ingredient.test(stack) || matchesCandidateStack(candidates, stack)) {
                 return slotIdx;
             }
         }
 
         return -1;
+    }
+
+    private boolean matchesCandidateStack(List<ItemStack> candidates, ItemStack stack) {
+        if (candidates == null || candidates.isEmpty()) {
+            return false;
+        }
+        for (ItemStack candidate : candidates) {
+            if (candidate != null && candidate.getItem() == stack.getItem()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int[] mapGridSlotsForHandler(ScreenHandler handler, NodeMode craftMode, int[] logicalSlots) {
@@ -4528,7 +4983,7 @@ public class Node {
         return -1;
     }
 
-    private List<GridIngredient> resolveGridIngredients(CraftingRecipe recipe, NodeMode craftMode) {
+    private List<GridIngredient> resolveGridIngredients(CraftingRecipe recipe, NodeMode craftMode, Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
         if (recipe == null) {
             return result;
@@ -4536,19 +4991,19 @@ public class Node {
 
         if (recipe instanceof ShapedRecipe shapedRecipe) {
             if (craftMode == NodeMode.CRAFT_PLAYER_GUI) {
-                return resolvePlayerGridIngredients(shapedRecipe);
+                return resolvePlayerGridIngredients(shapedRecipe, registryManager);
             }
-            return resolveCraftingTableGridIngredients(shapedRecipe);
+            return resolveCraftingTableGridIngredients(shapedRecipe, registryManager);
         }
 
         Object placement = RecipeCompatibilityBridge.getIngredientPlacement(recipe);
         if (placement == null) {
-            return result;
+            return resolveFallbackGridIngredients(recipe, craftMode, registryManager);
         }
 
         List<Ingredient> ingredients = RecipeCompatibilityBridge.getPlacementIngredients(placement);
         if (ingredients == null || ingredients.isEmpty()) {
-            return result;
+            return resolveFallbackGridIngredients(recipe, craftMode, registryManager);
         }
 
         IntList slots = RecipeCompatibilityBridge.toPlacementSlots(placement);
@@ -4558,10 +5013,13 @@ public class Node {
             int limit = Math.min(ingredients.size(), gridLimit);
             for (int i = 0; i < limit; i++) {
                 Ingredient ingredient = ingredients.get(i);
-                if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+                if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                     continue;
                 }
-                result.add(new GridIngredient(1 + i, ingredient));
+                result.add(new GridIngredient(1 + i, ingredient, false));
+            }
+            if (result.isEmpty()) {
+                logEmptyPlacementIngredients(ingredients, registryManager);
             }
             return result;
         }
@@ -4569,7 +5027,7 @@ public class Node {
         int limit = Math.min(ingredients.size(), slots.size());
         for (int i = 0; i < limit; i++) {
             Ingredient ingredient = ingredients.get(i);
-            if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+            if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                 continue;
             }
 
@@ -4592,16 +5050,208 @@ public class Node {
                 continue;
             }
 
-            result.add(new GridIngredient(resolvedSlot, ingredient));
-        }
+            result.add(new GridIngredient(resolvedSlot, ingredient, false));
+    }
 
+        if (result.isEmpty()) {
+            logEmptyPlacementIngredients(ingredients, registryManager);
+        }
         return result;
     }
 
-    private List<GridIngredient> resolvePlayerGridIngredients(ShapedRecipe recipe) {
+    private List<GridIngredient> resolveFallbackGridIngredients(CraftingRecipe recipe, NodeMode craftMode, Object registryManager) {
+        List<GridIngredient> result = new ArrayList<>();
+        if (recipe == null) {
+            return result;
+        }
+        List<?> ingredients = RecipeCompatibilityBridge.getRecipeIngredients(recipe);
+        if (ingredients == null || ingredients.isEmpty()) {
+            ingredients = readRecipeIngredients(recipe);
+        }
+        if (ingredients == null || ingredients.isEmpty()) {
+            logMissingRecipeIngredients(recipe);
+            return result;
+        }
+        int gridLimit = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 9 : 4;
+        int limit = Math.min(ingredients.size(), gridLimit);
+        boolean loggedUnknown = false;
+        boolean loggedSummary = false;
+        int loggedEmpty = 0;
+        for (int i = 0; i < limit; i++) {
+            Object entry = ingredients.get(i);
+            Ingredient ingredient = unwrapRecipeIngredient(entry);
+            if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                if (!loggedSummary) {
+                    System.out.println(
+                        "Pathmind craft debug: ingredient list type="
+                            + ingredients.getClass().getName()
+                            + " size=" + ingredients.size()
+                    );
+                    loggedSummary = true;
+                }
+                if (loggedEmpty < 3) {
+                    int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
+                    String entryType = entry != null ? entry.getClass().getName() : "null";
+                    String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
+                    System.out.println(
+                        "Pathmind craft debug: empty ingredient entryType="
+                            + entryType + " ingredientType=" + ingredientType + " matches=" + matches
+                    );
+                    loggedEmpty++;
+                }
+                if (!loggedUnknown && ingredient == null && entry != null) {
+                    System.out.println("Pathmind craft debug: unresolved ingredient entry type=" + entry.getClass().getName());
+                    loggedUnknown = true;
+                }
+                continue;
+            }
+            result.add(new GridIngredient(1 + i, ingredient, false));
+        }
+        return result;
+    }
+
+    private List<?> readRecipeIngredients(CraftingRecipe recipe) {
+        if (recipe == null) {
+            return Collections.emptyList();
+        }
+        List<?> bestList = null;
+        int bestScore = -1;
+        int bestSize = 0;
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            try {
+                Class<?> returnType = method.getReturnType();
+                Object result = method.invoke(recipe);
+                if (result instanceof Ingredient[] ingredientArray) {
+                    return java.util.Arrays.asList(ingredientArray);
+                }
+                if (result instanceof Object[] objectArray) {
+                    return java.util.Arrays.asList(objectArray);
+                }
+                if (!java.util.List.class.isAssignableFrom(returnType)) {
+                    continue;
+                }
+                if (result instanceof List<?> list) {
+                    int score = 0;
+                    for (Object entry : list) {
+                        Ingredient ingredient = unwrapRecipeIngredient(entry);
+                        if (!RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+                            score++;
+                        }
+                    }
+                    int size = list.size();
+                    if (score > bestScore || (score == bestScore && size > bestSize)) {
+                        bestScore = score;
+                        bestSize = size;
+                        bestList = list;
+                    }
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Ignore and continue scanning other methods.
+            }
+        }
+        if (bestList != null) {
+            return bestList;
+        }
+        return Collections.emptyList();
+    }
+
+    private void logMissingRecipeIngredients(CraftingRecipe recipe) {
+        if (recipe == null) {
+            return;
+        }
+        try {
+            StringBuilder builder = new StringBuilder();
+            builder.append("Pathmind craft debug: missing ingredients for recipeClass=")
+                .append(recipe.getClass().getName());
+            int logged = 0;
+            for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+                if (method.getParameterCount() != 0) {
+                    continue;
+                }
+                Class<?> returnType = method.getReturnType();
+                if (!java.util.List.class.isAssignableFrom(returnType)
+                    && !returnType.isArray()) {
+                    continue;
+                }
+                Object result = null;
+                try {
+                    result = method.invoke(recipe);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    continue;
+                }
+                if (result == null) {
+                    continue;
+                }
+                if (logged < 6) {
+                    builder.append(" method=")
+                        .append(method.getName())
+                        .append(" type=")
+                        .append(result.getClass().getName())
+                        .append(" size=")
+                        .append(result instanceof java.util.List<?> list ? list.size() : java.lang.reflect.Array.getLength(result));
+                    logged++;
+                }
+            }
+            System.out.println(builder.toString());
+        } catch (RuntimeException ignored) {
+            // Avoid breaking crafting flow on debug failure.
+        }
+    }
+
+    private void logEmptyPlacementIngredients(List<Ingredient> ingredients, Object registryManager) {
+        if (ingredients == null || ingredients.isEmpty()) {
+            return;
+        }
+        System.out.println(
+            "Pathmind craft debug: placement ingredients all empty size=" + ingredients.size()
+                + " listType=" + ingredients.getClass().getName()
+        );
+        int logged = 0;
+        for (Ingredient ingredient : ingredients) {
+            if (logged >= 3) {
+                break;
+            }
+            int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
+            String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
+            System.out.println("Pathmind craft debug: placement ingredient type=" + ingredientType + " matches=" + matches);
+            logged++;
+        }
+    }
+
+    private void logIngredientListIfEmpty(String source, List<?> ingredients, Object registryManager) {
+        if (ingredients == null || ingredients.isEmpty()) {
+            System.out.println("Pathmind craft debug: " + source + " ingredient list empty");
+            return;
+        }
+        System.out.println(
+            "Pathmind craft debug: " + source + " ingredient list type=" + ingredients.getClass().getName()
+                + " size=" + ingredients.size()
+        );
+        int logged = 0;
+        for (Object entry : ingredients) {
+            if (logged >= 3) {
+                break;
+            }
+            Ingredient ingredient = unwrapRecipeIngredient(entry);
+            int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
+            String entryType = entry != null ? entry.getClass().getName() : "null";
+            String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
+            System.out.println(
+                "Pathmind craft debug: " + source + " entryType=" + entryType
+                    + " ingredientType=" + ingredientType + " matches=" + matches
+            );
+            logged++;
+        }
+    }
+
+    private List<GridIngredient> resolvePlayerGridIngredients(ShapedRecipe recipe, Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
         List<?> ingredients = recipe.getIngredients();
         if (ingredients == null || ingredients.isEmpty()) {
+            logIngredientListIfEmpty("playerGrid", ingredients, registryManager);
             return result;
         }
 
@@ -4617,22 +5267,25 @@ public class Node {
                 }
 
                 Ingredient ingredient = unwrapRecipeIngredient(ingredients.get(index));
-                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+                int slotIndex = 1 + x + (y * 2);
+                if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                     continue;
                 }
-
-                int slotIndex = 1 + x + (y * 2);
-                result.add(new GridIngredient(slotIndex, ingredient));
+                result.add(new GridIngredient(slotIndex, ingredient, false));
             }
         }
 
+        if (result.isEmpty()) {
+            logIngredientListIfEmpty("playerGrid", ingredients, registryManager);
+        }
         return result;
     }
 
-    private List<GridIngredient> resolveCraftingTableGridIngredients(ShapedRecipe recipe) {
+    private List<GridIngredient> resolveCraftingTableGridIngredients(ShapedRecipe recipe, Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
         List<?> ingredients = recipe.getIngredients();
         if (ingredients == null || ingredients.isEmpty()) {
+            logIngredientListIfEmpty("craftingTableGrid", ingredients, registryManager);
             return result;
         }
 
@@ -4648,15 +5301,17 @@ public class Node {
                 }
 
                 Ingredient ingredient = unwrapRecipeIngredient(ingredients.get(index));
-                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+                int slotIndex = 1 + x + (y * 3);
+                if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                     continue;
                 }
-
-                int slotIndex = 1 + x + (y * 3);
-                result.add(new GridIngredient(slotIndex, ingredient));
+                result.add(new GridIngredient(slotIndex, ingredient, false));
             }
         }
 
+        if (result.isEmpty()) {
+            logIngredientListIfEmpty("craftingTableGrid", ingredients, registryManager);
+        }
         return result;
     }
 
@@ -4670,7 +5325,35 @@ public class Node {
                 return ingredient;
             }
         }
+        if (entry != null) {
+            Ingredient ingredient = resolveIngredientFromEntry(entry, "ingredient");
+            if (ingredient != null) {
+                return ingredient;
+            }
+            ingredient = resolveIngredientFromEntry(entry, "value");
+            if (ingredient != null) {
+                return ingredient;
+            }
+            ingredient = resolveIngredientFromEntry(entry, "getIngredient");
+            if (ingredient != null) {
+                return ingredient;
+            }
+        }
         return null;
+    }
+
+    private Ingredient resolveIngredientFromEntry(Object entry, String methodName) {
+        try {
+            java.lang.reflect.Method method = entry.getClass().getMethod(methodName);
+            if (!Ingredient.class.isAssignableFrom(method.getReturnType())) {
+                return null;
+            }
+            method.setAccessible(true);
+            Object value = method.invoke(entry);
+            return value instanceof Ingredient ingredient ? ingredient : null;
+        } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
+            return null;
+        }
     }
 
     private int[] getCraftingGridSlots(NodeMode craftMode) {
@@ -4693,10 +5376,12 @@ public class Node {
     private static class GridIngredient {
         private final int slotIndex;
         private final Ingredient ingredient;
+        private final boolean allowEmpty;
 
-        GridIngredient(int slotIndex, Ingredient ingredient) {
+        GridIngredient(int slotIndex, Ingredient ingredient, boolean allowEmpty) {
             this.slotIndex = slotIndex;
             this.ingredient = ingredient;
+            this.allowEmpty = allowEmpty;
         }
 
         int slotIndex() {
@@ -4705,6 +5390,10 @@ public class Node {
 
         Ingredient ingredient() {
             return ingredient;
+        }
+
+        boolean allowEmpty() {
+            return allowEmpty;
         }
     }
 
@@ -4779,6 +5468,18 @@ public class Node {
             return;
         }
 
+        if (blockParameterNode != null && blockParameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+            String resolvedBlockId = resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
+            if (resolvedBlockId == null || resolvedBlockId.isEmpty()) {
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return;
+            }
+            block = resolvedBlockId;
+            setParameterValueAndPropagate("Block", block);
+        }
+
         String originalBlockId = block;
         block = normalizeResourceId(block, "minecraft");
         if (!Objects.equals(originalBlockId, block)) {
@@ -4789,6 +5490,16 @@ public class Node {
             sendNodeErrorMessage(client, "Cannot place block: no block selected.");
             future.complete(null);
             return;
+        }
+
+        if (blockParameterNode != null && isBlockPlacementParameter(blockParameterNode)) {
+            try {
+                ensureBlockInHand(client, block, Hand.MAIN_HAND);
+            } catch (PlacementFailure e) {
+                sendNodeErrorMessage(client, e.getMessage());
+                future.complete(null);
+                return;
+            }
         }
 
         System.out.println("Placing block '" + block + "' at " + x + ", " + y + ", " + z);
@@ -4923,8 +5634,52 @@ public class Node {
         }
     }
 
+    private boolean isBlockPlacementParameter(Node parameterNode) {
+        if (parameterNode == null) {
+            return false;
+        }
+        NodeType parameterType = parameterNode.getType();
+        return parameterType == NodeType.PARAM_BLOCK
+            || parameterType == NodeType.PARAM_BLOCK_LIST
+            || parameterType == NodeType.PARAM_PLACE_TARGET;
+    }
+
     private boolean blockParameterProvidesPlacementCoordinates(Node parameterNode) {
         return parameterNode != null && parameterNode.getType() == NodeType.PARAM_PLACE_TARGET;
+    }
+
+    private String resolveBlockIdFromInventorySlotParameter(net.minecraft.client.MinecraftClient client,
+                                                           Node parameterNode) {
+        if (client == null || client.player == null || parameterNode == null) {
+            return null;
+        }
+        SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
+        if (selectionType == SlotSelectionType.GUI_CONTAINER) {
+            sendNodeErrorMessage(client, type.getDisplayName() + " can only use player inventory slots.");
+            return null;
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        int slotValue = clampInventorySlot(inventory, parseNodeInt(parameterNode, "Slot", 0));
+        ItemStack stack = inventory.getStack(slotValue);
+        if (stack.isEmpty()) {
+            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " is empty.");
+            return null;
+        }
+        if (!(stack.getItem() instanceof BlockItem)) {
+            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " does not contain a block.");
+            return null;
+        }
+        if (runtimeParameterData == null) {
+            runtimeParameterData = new RuntimeParameterData();
+        }
+        runtimeParameterData.slotIndex = slotValue;
+        runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+        if (!ensureStackSelectedInMainHand(client, inventory, slotValue, stack)) {
+            sendNodeErrorMessage(client, "Failed to prepare selected block for " + type.getDisplayName() + ".");
+            return null;
+        }
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        return id != null ? id.toString() : null;
     }
 
     private String resolveBlockIdFromParameterNode(Node parameterNode) {
@@ -5748,16 +6503,21 @@ public class Node {
 
     private SlotSelectionType resolveInventorySlotSelectionType(int parameterSlotIndex) {
         Node parameterNode = getAttachedParameter(parameterSlotIndex);
-        if (parameterNode != null && parameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
-            String modeValue = getParameterString(parameterNode, "Mode");
-            Boolean isPlayer = InventorySlotModeHelper.extractPlayerSelectionFlag(modeValue);
-            if (isPlayer != null) {
-                return isPlayer ? SlotSelectionType.PLAYER_INVENTORY : SlotSelectionType.GUI_CONTAINER;
-            }
-            String modeId = InventorySlotModeHelper.extractModeId(modeValue);
-            if (modeId != null && !modeId.isEmpty() && !"player_inventory".equals(modeId)) {
-                return SlotSelectionType.GUI_CONTAINER;
-            }
+        return resolveInventorySlotSelectionType(parameterNode);
+    }
+
+    private SlotSelectionType resolveInventorySlotSelectionType(Node parameterNode) {
+        if (parameterNode == null || parameterNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+            return SlotSelectionType.PLAYER_INVENTORY;
+        }
+        String modeValue = getParameterString(parameterNode, "Mode");
+        Boolean isPlayer = InventorySlotModeHelper.extractPlayerSelectionFlag(modeValue);
+        if (isPlayer != null) {
+            return isPlayer ? SlotSelectionType.PLAYER_INVENTORY : SlotSelectionType.GUI_CONTAINER;
+        }
+        String modeId = InventorySlotModeHelper.extractModeId(modeValue);
+        if (modeId != null && !modeId.isEmpty() && !"player_inventory".equals(modeId)) {
+            return SlotSelectionType.GUI_CONTAINER;
         }
         return SlotSelectionType.PLAYER_INVENTORY;
     }
@@ -5858,6 +6618,102 @@ public class Node {
         return true;
     }
 
+    private boolean resolveUseParameterSelection(Node parameterNode, CompletableFuture<Void> future) {
+        if (parameterNode == null) {
+            return false;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            if (future != null && !future.isDone()) {
+                future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            }
+            return false;
+        }
+        if (runtimeParameterData == null) {
+            runtimeParameterData = new RuntimeParameterData();
+        }
+
+        PlayerInventory inventory = client.player.getInventory();
+        NodeType parameterType = parameterNode.getType();
+        switch (parameterType) {
+            case PARAM_ITEM: {
+                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+                if (itemIds.isEmpty()) {
+                    sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
+                    return false;
+                }
+                ItemSearchResult result = findUseItemSlot(inventory, itemIds);
+                if (result == null) {
+                    String reference = String.join(", ", itemIds);
+                    sendParameterSearchFailure("No " + reference + " found in inventory for " + type.getDisplayName() + ".", future);
+                    return false;
+                }
+                runtimeParameterData.slotIndex = result.slotIndex();
+                runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                runtimeParameterData.targetItem = result.item();
+                runtimeParameterData.targetItemId = result.itemId();
+                return true;
+            }
+            case PARAM_INVENTORY_SLOT: {
+                SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
+                if (selectionType == SlotSelectionType.GUI_CONTAINER) {
+                    sendNodeErrorMessage(client, "Use node can only use player inventory slots.");
+                    if (future != null && !future.isDone()) {
+                        future.complete(null);
+                    }
+                    return false;
+                }
+                int slotValue = clampInventorySlot(inventory, parseNodeInt(parameterNode, "Slot", 0));
+                runtimeParameterData.slotIndex = slotValue;
+                runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    private record ItemSearchResult(int slotIndex, Item item, String itemId) {
+    }
+
+    private ItemSearchResult findUseItemSlot(PlayerInventory inventory, List<String> itemIds) {
+        if (inventory == null || itemIds == null || itemIds.isEmpty()) {
+            return null;
+        }
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item candidateItem = Registries.ITEM.get(identifier);
+            int slot = findAccessibleSlotWithItem(inventory, candidateItem);
+            if (slot >= 0) {
+                return new ItemSearchResult(slot, candidateItem, candidateId);
+            }
+        }
+        return null;
+    }
+
+    private int findAccessibleSlotWithItem(PlayerInventory inventory, Item item) {
+        if (inventory == null || item == null) {
+            return -1;
+        }
+        for (int slot = 0; slot < PlayerInventory.MAIN_SIZE && slot < inventory.size(); slot++) {
+            ItemStack stack = inventory.getStack(slot);
+            if (!stack.isEmpty() && stack.isOf(item)) {
+                return slot;
+            }
+        }
+        int offhandIndex = getOffhandInventoryIndex(inventory);
+        if (offhandIndex >= 0 && offhandIndex < inventory.size()) {
+            ItemStack offhandStack = inventory.getStack(offhandIndex);
+            if (!offhandStack.isEmpty() && offhandStack.isOf(item)) {
+                return offhandIndex;
+            }
+        }
+        return -1;
+    }
+
     private int findFirstSlotWithItem(PlayerInventory inventory, Item item) {
         if (inventory == null || item == null) {
             return -1;
@@ -5896,6 +6752,13 @@ public class Node {
         if (!useUntilEmpty && configuredCount == 0) {
             future.complete(null);
             return;
+        }
+
+        RuntimeParameterData parameterData = runtimeParameterData;
+        if (parameterData != null && parameterData.slotIndex != null) {
+            if (!prepareSelectedItemForUse(client, parameterData, hand, future)) {
+                return;
+            }
         }
 
         final int maxIterations = configuredCount == 0 ? Integer.MAX_VALUE : configuredCount;
@@ -5995,6 +6858,119 @@ public class Node {
         }, "Pathmind-Use").start();
     }
 
+    private boolean prepareSelectedItemForUse(net.minecraft.client.MinecraftClient client,
+                                              RuntimeParameterData parameterData,
+                                              Hand hand,
+                                              CompletableFuture<Void> future) {
+        if (client == null || client.player == null || parameterData == null || parameterData.slotIndex == null) {
+            return true;
+        }
+        if (parameterData.slotSelectionType == SlotSelectionType.GUI_CONTAINER) {
+            sendNodeErrorMessage(client, "Use node cannot use items from GUI/container slots.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return false;
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        int clampedSlot = clampInventorySlot(inventory, parameterData.slotIndex);
+        boolean armorSlot = clampedSlot >= PlayerInventory.MAIN_SIZE
+            && clampedSlot < PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
+        if (armorSlot) {
+            sendNodeErrorMessage(client, "Use node cannot activate armor slots.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return false;
+        }
+
+        ItemStack stack = inventory.getStack(clampedSlot);
+        if (stack.isEmpty()) {
+            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " is empty.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return false;
+        }
+
+        boolean prepared;
+        if (hand == Hand.OFF_HAND) {
+            prepared = ensureStackEquippedInOffhand(client, inventory, clampedSlot, stack);
+        } else {
+            prepared = ensureStackSelectedInMainHand(client, inventory, clampedSlot, stack);
+        }
+
+        if (!prepared) {
+            sendNodeErrorMessage(client, "Failed to prepare selected item for " + type.getDisplayName() + ".");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+        }
+        return prepared;
+    }
+
+    private boolean ensureStackSelectedInMainHand(net.minecraft.client.MinecraftClient client,
+                                                  PlayerInventory inventory,
+                                                  int slotIndex,
+                                                  ItemStack stack) {
+        if (client == null || client.player == null || inventory == null || stack == null) {
+            return false;
+        }
+        int hotbarSize = PlayerInventory.getHotbarSize();
+        int targetSlot = slotIndex;
+        if (slotIndex >= hotbarSize) {
+            targetSlot = moveInventoryStackToHotbar(client, inventory, slotIndex, stack.getItem());
+            if (targetSlot == -1) {
+                return false;
+            }
+        }
+        try {
+            PlayerInventoryBridge.setSelectedSlot(inventory, targetSlot);
+        } catch (IllegalStateException ignored) {
+            // Fall back to the packet-only update when inventory accessors are unavailable.
+        }
+        if (client.player.networkHandler != null) {
+            client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(targetSlot));
+        }
+        return true;
+    }
+
+    private boolean ensureStackEquippedInOffhand(net.minecraft.client.MinecraftClient client,
+                                                 PlayerInventory inventory,
+                                                 int slotIndex,
+                                                 ItemStack stack) {
+        if (client == null || client.player == null || inventory == null || stack == null) {
+            return false;
+        }
+        int offhandIndex = getOffhandInventoryIndex(inventory);
+        if (offhandIndex < 0) {
+            return false;
+        }
+        if (slotIndex == offhandIndex) {
+            return true;
+        }
+        if (slotIndex >= PlayerInventory.MAIN_SIZE) {
+            return false;
+        }
+        ClientPlayerInteractionManager interactionManager = client.interactionManager;
+        ScreenHandler handler = client.player.playerScreenHandler;
+        if (interactionManager == null || handler == null) {
+            return false;
+        }
+        int sourceHandlerSlot = mapPlayerInventorySlot(handler, slotIndex);
+        int offhandHandlerSlot = mapPlayerInventorySlot(handler, offhandIndex);
+        if (sourceHandlerSlot < 0 || offhandHandlerSlot < 0) {
+            return false;
+        }
+
+        interactionManager.clickSlot(handler.syncId, sourceHandlerSlot, 0, SlotActionType.PICKUP, client.player);
+        interactionManager.clickSlot(handler.syncId, offhandHandlerSlot, 0, SlotActionType.PICKUP, client.player);
+        interactionManager.clickSlot(handler.syncId, sourceHandlerSlot, 0, SlotActionType.PICKUP, client.player);
+
+        ItemStack offhandStack = client.player.getOffHandStack();
+        return !offhandStack.isEmpty() && offhandStack.isOf(stack.getItem());
+    }
+
     private void executePlaceHandCommand(CompletableFuture<Void> future) {
         Node blockParameterNode = getAttachedParameter(0);
         Node coordinateParameterNode = getAttachedParameter(1);
@@ -6028,6 +7004,15 @@ public class Node {
             return;
         }
 
+        String inventorySlotBlockId = null;
+        if (blockParameterNode != null && blockParameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+            inventorySlotBlockId = resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
+            if (inventorySlotBlockId == null || inventorySlotBlockId.isEmpty()) {
+                future.complete(null);
+                return;
+            }
+        }
+
         Hand hand = resolveHand(getParameter("Hand"), Hand.MAIN_HAND);
         boolean sneakWhilePlacing = getBooleanParameter("SneakWhilePlacing", false);
         boolean restoreSneak = getBooleanParameter("RestoreSneakState", true);
@@ -6041,6 +7026,9 @@ public class Node {
         }
 
         String parameterBlockId = resolveBlockIdFromParameterNode(blockParameterNode);
+        if ((parameterBlockId == null || parameterBlockId.isEmpty()) && inventorySlotBlockId != null) {
+            parameterBlockId = inventorySlotBlockId;
+        }
         if ((parameterBlockId == null || parameterBlockId.isEmpty()) && parameterData != null) {
             if (parameterData.targetBlockId != null && !parameterData.targetBlockId.isEmpty()) {
                 parameterBlockId = parameterData.targetBlockId;
@@ -6237,11 +7225,13 @@ public class Node {
         }
 
         if (hand == Hand.MAIN_HAND) {
-            if (PlayerInventoryBridge.getSelectedSlot(inventory) != slot) {
+            try {
                 PlayerInventoryBridge.setSelectedSlot(inventory, slot);
-                if (client.player.networkHandler != null) {
-                    client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
-                }
+            } catch (IllegalStateException ignored) {
+                // Fall back to the packet-only update when inventory accessors are unavailable.
+            }
+            if (client.player.networkHandler != null) {
+                client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
             }
             return;
         }
@@ -6325,7 +7315,11 @@ public class Node {
 
         int targetHotbarSlot = findEmptyHotbarSlot(inventory);
         if (targetHotbarSlot == -1) {
-            targetHotbarSlot = PlayerInventoryBridge.getSelectedSlot(inventory);
+            try {
+                targetHotbarSlot = PlayerInventoryBridge.getSelectedSlot(inventory);
+            } catch (IllegalStateException ignored) {
+                targetHotbarSlot = 0;
+            }
         }
 
         int handlerSlot = mapPlayerInventorySlot(handler, inventorySlot);
@@ -7121,6 +8115,17 @@ public class Node {
 
     private int clampInventorySlot(PlayerInventory inventory, int slot) {
         return MathHelper.clamp(slot, 0, inventory.size() - 1);
+    }
+
+    private int getOffhandInventoryIndex(PlayerInventory inventory) {
+        if (inventory == null || inventory.size() <= 0) {
+            return -1;
+        }
+        int index = PLAYER_OFFHAND_INVENTORY_INDEX;
+        if (index >= inventory.size()) {
+            return inventory.size() - 1;
+        }
+        return index;
     }
 
     private EquipmentSlot parseEquipmentSlot(NodeParameter parameter, EquipmentSlot defaultSlot) {

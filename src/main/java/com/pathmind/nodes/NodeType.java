@@ -147,7 +147,7 @@ public enum NodeType {
     }
 
     public boolean isDraggableFromSidebar() {
-        if (this == STOP) {
+        if (this == STOP || this == PLACE_HAND) {
             return false;
         }
         return true;
@@ -205,7 +205,7 @@ public enum NodeType {
             case FARM:
             case PLACE:
             case CRAFT:
-                return NodeCategory.WORLD;
+                return NodeCategory.INTERACTION;
             case ATTACK:
             case SWING:
             case USE:

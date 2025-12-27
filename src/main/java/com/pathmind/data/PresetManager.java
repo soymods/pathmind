@@ -212,6 +212,50 @@ public final class PresetManager {
     }
 
     /**
+     * Rename an existing preset file.
+     *
+     * @param currentName the preset to rename
+     * @param desiredName the requested new name
+     * @return an {@link Optional} containing the sanitized new name when successful
+     */
+    public static Optional<String> renamePreset(String currentName, String desiredName) {
+        String sanitizedCurrent = sanitizePresetName(currentName);
+        String sanitizedDesired = sanitizePresetName(desiredName);
+        if (sanitizedCurrent.isEmpty()
+                || sanitizedDesired.isEmpty()
+                || sanitizedCurrent.equalsIgnoreCase(DEFAULT_PRESET_NAME)
+                || sanitizedDesired.equalsIgnoreCase(DEFAULT_PRESET_NAME)) {
+            return Optional.empty();
+        }
+
+        initialize();
+        Path currentPath = getPresetsDirectory().resolve(sanitizedCurrent + ".json");
+        if (!Files.exists(currentPath)) {
+            return Optional.empty();
+        }
+
+        boolean needsMove = !sanitizedCurrent.equals(sanitizedDesired);
+        Path desiredPath = getPresetsDirectory().resolve(sanitizedDesired + ".json");
+        if (needsMove && Files.exists(desiredPath)) {
+            return Optional.empty();
+        }
+
+        try {
+            if (needsMove) {
+                Files.move(currentPath, desiredPath);
+            }
+
+            if (getActivePreset().equalsIgnoreCase(sanitizedCurrent)) {
+                setActivePreset(sanitizedDesired);
+            }
+            return Optional.of(sanitizedDesired);
+        } catch (IOException e) {
+            System.err.println("Failed to rename preset: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
      * Expose the display name of the default preset.
      */
     public static String getDefaultPresetName() {

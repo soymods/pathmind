@@ -14,6 +14,7 @@ import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.data.PresetManager;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -57,6 +58,8 @@ public class ExecutionManager {
     private long activeNodePauseStartTime;
     private long activeNodeEndTime;
     private boolean singleplayerPaused;
+    private String lastStartNodeId;
+    private String lastStartPreset;
 
     private static final long NODE_EXECUTION_DELAY_MS = 150L;
 
@@ -124,6 +127,8 @@ public class ExecutionManager {
         this.activeNodePauseStartTime = 0;
         this.activeNodeEndTime = 0;
         this.singleplayerPaused = false;
+        this.lastStartNodeId = null;
+        this.lastStartPreset = null;
     }
     
     public static ExecutionManager getInstance() {
@@ -177,6 +182,10 @@ public class ExecutionManager {
     }
 
     public void replayLastGraph() {
+        if (playLastStartNodeGraphFromWorkspace()) {
+            return;
+        }
+
         if (lastExecutedGraph == null) {
             System.out.println("ExecutionManager: No previously executed node graph to replay.");
             return;
@@ -188,6 +197,10 @@ public class ExecutionManager {
     }
 
     public void playAllGraphs() {
+        if (playLastStartNodeGraphFromWorkspace()) {
+            return;
+        }
+
         if (lastGlobalGraph != null && executeGraphSnapshot(lastGlobalGraph, true)) {
             return;
         }
@@ -201,6 +214,10 @@ public class ExecutionManager {
     }
 
     public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections) {
+        return executeBranch(startNode, nodes, connections, PresetManager.getActivePreset());
+    }
+
+    public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections, String presetName) {
         if (startNode == null || startNode.getType() != NodeType.START) {
             System.out.println("ExecutionManager: Cannot execute branch - invalid START node.");
             return false;
@@ -254,6 +271,7 @@ public class ExecutionManager {
         activeChains.put(startNode, controller);
         CompletableFuture<Void> chainFuture = runChain(startNode, controller);
         chainFuture.whenComplete((ignored, throwable) -> handleChainCompletion(controller, throwable));
+        updateLastStartContext(startNode, presetName);
         return true;
     }
     
@@ -699,8 +717,18 @@ public class ExecutionManager {
     }
 
     private boolean executeGraphSnapshot(NodeGraphData graphData, boolean markGlobalSnapshot) {
-        if (graphData == null) {
+        LoadedGraph loadedGraph = buildGraphFromData(graphData);
+        if (loadedGraph == null || loadedGraph.nodes.isEmpty()) {
             return false;
+        }
+
+        executeGraphInternal(loadedGraph.nodes, loadedGraph.connections, markGlobalSnapshot);
+        return true;
+    }
+
+    private LoadedGraph buildGraphFromData(NodeGraphData graphData) {
+        if (graphData == null || graphData.getNodes() == null) {
+            return null;
         }
 
         Map<String, Node> nodeMap = new HashMap<>();
@@ -726,6 +754,9 @@ public class ExecutionManager {
                 for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
                     ParameterType paramType = ParameterType.valueOf(paramData.getType());
                     NodeParameter param = new NodeParameter(paramData.getName(), paramType, paramData.getValue());
+                    if (paramData.getUserEdited() != null) {
+                        param.setUserEdited(paramData.getUserEdited());
+                    }
                     node.getParameters().add(param);
                 }
             }
@@ -813,23 +844,65 @@ public class ExecutionManager {
         }
 
         List<NodeConnection> connections = new ArrayList<>();
-        for (NodeGraphData.ConnectionData connData : graphData.getConnections()) {
-            Node outputNode = nodeMap.get(connData.getOutputNodeId());
-            Node inputNode = nodeMap.get(connData.getInputNodeId());
-            if (outputNode != null && inputNode != null) {
-                if (outputNode.isSensorNode() || inputNode.isSensorNode()) {
-                    continue;
+        if (graphData.getConnections() != null) {
+            for (NodeGraphData.ConnectionData connData : graphData.getConnections()) {
+                Node outputNode = nodeMap.get(connData.getOutputNodeId());
+                Node inputNode = nodeMap.get(connData.getInputNodeId());
+                if (outputNode != null && inputNode != null) {
+                    if (outputNode.isSensorNode() || inputNode.isSensorNode()) {
+                        continue;
+                    }
+                    connections.add(new NodeConnection(outputNode, inputNode, connData.getOutputSocket(), connData.getInputSocket()));
                 }
-                connections.add(new NodeConnection(outputNode, inputNode, connData.getOutputSocket(), connData.getInputSocket()));
             }
         }
 
-        if (nodes.isEmpty()) {
+        return new LoadedGraph(nodes, connections, nodeMap);
+    }
+
+    private boolean playLastStartNodeGraphFromWorkspace() {
+        if (lastStartNodeId == null || lastStartPreset == null) {
             return false;
         }
 
-        executeGraphInternal(nodes, connections, markGlobalSnapshot);
-        return true;
+        NodeGraphData graphData = NodeGraphPersistence.loadNodeGraphForPreset(lastStartPreset);
+        if (graphData == null) {
+            System.out.println("ExecutionManager: Failed to load node graph for preset " + lastStartPreset);
+            return false;
+        }
+
+        LoadedGraph loadedGraph = buildGraphFromData(graphData);
+        if (loadedGraph == null || loadedGraph.nodes.isEmpty()) {
+            return false;
+        }
+
+        Node startNode = loadedGraph.nodeLookup.get(lastStartNodeId);
+        if (startNode == null || startNode.getType() != NodeType.START) {
+            System.out.println("ExecutionManager: Last START node not found in current workspace.");
+            return false;
+        }
+
+        return executeBranch(startNode, loadedGraph.nodes, loadedGraph.connections, lastStartPreset);
+    }
+
+    private void updateLastStartContext(Node startNode, String presetName) {
+        if (startNode == null) {
+            return;
+        }
+        this.lastStartNodeId = startNode.getId();
+        this.lastStartPreset = presetName != null ? presetName : PresetManager.getActivePreset();
+    }
+
+    private static final class LoadedGraph {
+        final List<Node> nodes;
+        final List<NodeConnection> connections;
+        final Map<String, Node> nodeLookup;
+
+        LoadedGraph(List<Node> nodes, List<NodeConnection> connections, Map<String, Node> nodeLookup) {
+            this.nodes = nodes;
+            this.connections = connections;
+            this.nodeLookup = nodeLookup;
+        }
     }
 
     public boolean shouldAnimateConnection(NodeConnection connection) {
@@ -912,6 +985,15 @@ public class ExecutionManager {
                 stack.push(attachedAction);
             }
 
+            Map<Integer, Node> attachedParameters = current.getAttachedParameters();
+            if (attachedParameters != null && !attachedParameters.isEmpty()) {
+                for (Node parameter : attachedParameters.values()) {
+                    if (parameter != null) {
+                        stack.push(parameter);
+                    }
+                }
+            }
+
             for (NodeConnection connection : connections) {
                 if (connection.getOutputNode() == current) {
                     stack.push(connection.getInputNode());
@@ -939,6 +1021,7 @@ public class ExecutionManager {
                 parameterData.setName(parameter.getName());
                 parameterData.setValue(parameter.getStringValue());
                 parameterData.setType(parameter.getType().name());
+                parameterData.setUserEdited(parameter.isUserEdited());
                 parameterDataList.add(parameterData);
             }
             nodeData.setParameters(parameterDataList);
@@ -946,7 +1029,24 @@ public class ExecutionManager {
             nodeData.setParentControlId(node.getParentControlId());
             nodeData.setAttachedActionId(node.getAttachedActionId());
             nodeData.setParentActionControlId(node.getParentActionControlId());
-            nodeData.setAttachedParameterId(node.getAttachedParameterId());
+            List<NodeGraphData.ParameterAttachmentData> attachmentData = new ArrayList<>();
+            Map<Integer, Node> attachedParameters = node.getAttachedParameters();
+            if (attachedParameters != null && !attachedParameters.isEmpty()) {
+                List<Integer> slotIndices = new ArrayList<>(attachedParameters.keySet());
+                Collections.sort(slotIndices);
+                for (Integer slotIndex : slotIndices) {
+                    Node parameterNode = attachedParameters.get(slotIndex);
+                    if (parameterNode != null) {
+                        attachmentData.add(new NodeGraphData.ParameterAttachmentData(slotIndex, parameterNode.getId()));
+                    }
+                }
+            }
+            nodeData.setParameterAttachments(attachmentData);
+            if (!attachmentData.isEmpty()) {
+                nodeData.setAttachedParameterId(attachmentData.get(0).getParameterNodeId());
+            } else {
+                nodeData.setAttachedParameterId(node.getAttachedParameterId());
+            }
             nodeData.setParentParameterHostId(node.getParentParameterHostId());
 
             snapshot.getNodes().add(nodeData);

@@ -66,10 +66,54 @@ public class ExecutionManager {
     private static class ChainController {
         final Node startNode;
         volatile boolean cancelRequested;
+        final Map<String, RuntimeVariable> runtimeVariables;
 
         ChainController(Node startNode) {
             this.startNode = startNode;
             this.cancelRequested = false;
+            this.runtimeVariables = new ConcurrentHashMap<>();
+        }
+    }
+
+    public static final class RuntimeVariable {
+        private final NodeType type;
+        private final Map<String, String> values;
+
+        public RuntimeVariable(NodeType type, Map<String, String> values) {
+            this.type = type;
+            this.values = values == null ? Collections.emptyMap() : new HashMap<>(values);
+        }
+
+        public NodeType getType() {
+            return type;
+        }
+
+        public Map<String, String> getValues() {
+            return Collections.unmodifiableMap(values);
+        }
+    }
+
+    public static final class RuntimeVariableEntry {
+        private final String startNodeId;
+        private final String name;
+        private final RuntimeVariable variable;
+
+        public RuntimeVariableEntry(String startNodeId, String name, RuntimeVariable variable) {
+            this.startNodeId = startNodeId;
+            this.name = name;
+            this.variable = variable;
+        }
+
+        public String getStartNodeId() {
+            return startNodeId;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public RuntimeVariable getVariable() {
+            return variable;
         }
     }
 
@@ -136,6 +180,49 @@ public class ExecutionManager {
             instance = new ExecutionManager();
         }
         return instance;
+    }
+
+    public boolean setRuntimeVariable(Node startNode, String name, RuntimeVariable value) {
+        if (startNode == null || name == null || name.trim().isEmpty() || value == null) {
+            return false;
+        }
+        ChainController controller = activeChains.get(startNode);
+        if (controller == null) {
+            return false;
+        }
+        controller.runtimeVariables.put(name.trim(), value);
+        return true;
+    }
+
+    public RuntimeVariable getRuntimeVariable(Node startNode, String name) {
+        if (startNode == null || name == null || name.trim().isEmpty()) {
+            return null;
+        }
+        ChainController controller = activeChains.get(startNode);
+        if (controller == null) {
+            return null;
+        }
+        return controller.runtimeVariables.get(name.trim());
+    }
+
+    public List<RuntimeVariableEntry> getRuntimeVariableEntries() {
+        if (activeChains.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<RuntimeVariableEntry> entries = new ArrayList<>();
+        for (ChainController controller : activeChains.values()) {
+            if (controller == null || controller.runtimeVariables.isEmpty()) {
+                continue;
+            }
+            String startId = controller.startNode != null ? controller.startNode.getId() : "";
+            for (Map.Entry<String, RuntimeVariable> entry : controller.runtimeVariables.entrySet()) {
+                if (entry.getKey() == null || entry.getValue() == null) {
+                    continue;
+                }
+                entries.add(new RuntimeVariableEntry(startId, entry.getKey(), entry.getValue()));
+            }
+        }
+        return entries;
     }
 
     public void executeGraph(List<Node> nodes, List<NodeConnection> connections) {

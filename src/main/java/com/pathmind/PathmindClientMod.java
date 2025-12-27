@@ -6,6 +6,7 @@ import com.pathmind.screen.MissingBaritoneApiScreen;
 import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
+import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.BaritoneDependencyChecker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -25,6 +26,7 @@ import org.slf4j.LoggerFactory;
 public class PathmindClientMod implements ClientModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/Client");
     private ActiveNodeOverlay activeNodeOverlay;
+    private VariablesOverlay variablesOverlay;
     private volatile boolean worldShutdownHandled;
     private boolean baritoneAvailable;
     private boolean missingWarningShown;
@@ -37,6 +39,7 @@ public class PathmindClientMod implements ClientModInitializer {
         baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
         if (baritoneAvailable) {
             this.activeNodeOverlay = new ActiveNodeOverlay();
+            this.variablesOverlay = new VariablesOverlay();
         }
 
         // Register keybindings
@@ -70,11 +73,16 @@ public class PathmindClientMod implements ClientModInitializer {
         });
         
         // Register HUD render callback for the active node overlay
-        if (activeNodeOverlay != null) {
+        if (activeNodeOverlay != null || variablesOverlay != null) {
             HudRenderCallback.EVENT.register((drawContext, tickDelta) -> {
                 MinecraftClient client = MinecraftClient.getInstance();
                 if (client.player != null && client.textRenderer != null) {
-                    activeNodeOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
+                    if (activeNodeOverlay != null) {
+                        activeNodeOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
+                    }
+                    if (variablesOverlay != null) {
+                        variablesOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
+                    }
                 }
             });
         }

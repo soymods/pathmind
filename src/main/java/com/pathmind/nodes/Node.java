@@ -125,6 +125,7 @@ public class Node {
     private static final int PARAMETER_SLOT_MIN_CONTENT_WIDTH = 88;
     private static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
     private static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
+    private static final int OPERATOR_SLOT_GAP = 8;
     private static final int PLAYER_ARMOR_SLOT_COUNT = 4;
     private static final int PLAYER_OFFHAND_INVENTORY_INDEX = PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
     private static final int PARAMETER_SLOT_BOTTOM_PADDING = 6;
@@ -422,7 +423,7 @@ public class Node {
     }
 
     public boolean isParameterNode() {
-        return type.getCategory() == NodeCategory.PARAMETERS;
+        return type.getCategory() == NodeCategory.PARAMETERS || type == NodeType.VARIABLE;
     }
 
     public static boolean isSensorType(NodeType nodeType) {
@@ -447,6 +448,7 @@ public class Node {
             case SENSOR_IS_UNDERWATER:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case OPERATOR_EQUALS:
                 return true;
             default:
                 return false;
@@ -454,7 +456,7 @@ public class Node {
     }
 
     public static boolean isParameterType(NodeType nodeType) {
-        return nodeType != null && nodeType.getCategory() == NodeCategory.PARAMETERS;
+        return nodeType != null && (nodeType.getCategory() == NodeCategory.PARAMETERS || nodeType == NodeType.VARIABLE);
     }
 
     public boolean canAcceptSensor() {
@@ -502,7 +504,9 @@ public class Node {
     public boolean usesMinimalNodePresentation() {
         return isStopControlNode()
             || type == NodeType.SWING
-            || type == NodeType.JUMP;
+            || type == NodeType.JUMP
+            || type == NodeType.OPEN_INVENTORY
+            || type == NodeType.CLOSE_GUI;
     }
 
     public boolean canAcceptParameterAt(int slotIndex) {
@@ -526,6 +530,12 @@ public class Node {
         if (!canAcceptParameterAt(slotIndex)) {
             return false;
         }
+        if (type == NodeType.SET_VARIABLE) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
         if (type == NodeType.PLACE) {
             if (slotIndex == 0) {
                 return false;
@@ -535,6 +545,9 @@ public class Node {
                 return true;
             }
             Node blockParameter = getAttachedParameter(0);
+            if (blockParameter != null && blockParameter.getType() == NodeType.VARIABLE) {
+                return false;
+            }
             return blockParameter == null || !parameterProvidesCoordinates(blockParameter);
         }
         if (type == NodeType.PLACE_HAND) {
@@ -546,6 +559,23 @@ public class Node {
     private boolean isParameterCompatibleWithSlot(Node parameter, int slotIndex) {
         if (parameter == null) {
             return false;
+        }
+        if (parameter.getType() == NodeType.VARIABLE && type != NodeType.SET_VARIABLE && type != NodeType.OPERATOR_EQUALS) {
+            return true;
+        }
+        if (type == NodeType.SET_VARIABLE) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
         }
         if (type != NodeType.PLACE && type != NodeType.PLACE_HAND) {
             return true;
@@ -568,6 +598,23 @@ public class Node {
     private boolean isParameterSupported(Node parameter, int slotIndex) {
         if (parameter == null) {
             return false;
+        }
+        if (parameter.getType() == NodeType.VARIABLE && type != NodeType.SET_VARIABLE && type != NodeType.OPERATOR_EQUALS) {
+            return true;
+        }
+        if (type == NodeType.SET_VARIABLE) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
         }
         if (!isParameterCompatibleWithSlot(parameter, slotIndex)) {
             return false;
@@ -839,6 +886,12 @@ public class Node {
         if (!hasParameterSlot()) {
             return 0;
         }
+        if (type == NodeType.SET_VARIABLE) {
+            return 2;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return 2;
+        }
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
             return 2;
         }
@@ -852,8 +905,23 @@ public class Node {
         return x + PARAMETER_SLOT_MARGIN_HORIZONTAL;
     }
 
+    public int getParameterSlotLeft(int slotIndex) {
+        if (type == NodeType.OPERATOR_EQUALS) {
+            int slotWidth = getParameterSlotWidth(slotIndex);
+            int baseLeft = x + PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            if (slotIndex <= 0) {
+                return baseLeft;
+            }
+            return baseLeft + slotWidth + OPERATOR_SLOT_GAP;
+        }
+        return getParameterSlotLeft();
+    }
+
     public int getParameterSlotTop(int slotIndex) {
         int top = y + HEADER_HEIGHT + PARAMETER_SLOT_LABEL_HEIGHT;
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return top;
+        }
         for (int i = 0; i < slotIndex; i++) {
             top += getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING + PARAMETER_SLOT_LABEL_HEIGHT;
         }
@@ -866,6 +934,12 @@ public class Node {
     }
 
     public String getParameterSlotLabel(int slotIndex) {
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return "";
+        }
+        if (type == NodeType.SET_VARIABLE) {
+            return slotIndex == 0 ? "Variable" : "Parameter";
+        }
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
             return slotIndex == 0 ? "Source" : "Position";
         }
@@ -878,6 +952,17 @@ public class Node {
     public int getParameterSlotWidth() {
         int widthWithMargins = this.width - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
         return Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, widthWithMargins);
+    }
+
+    public int getParameterSlotWidth(int slotIndex) {
+        if (type == NodeType.OPERATOR_EQUALS) {
+            int widthWithMargins = this.width - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            int minCombinedWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH * 2 + OPERATOR_SLOT_GAP;
+            int effectiveWidth = Math.max(minCombinedWidth, widthWithMargins);
+            int available = effectiveWidth - OPERATOR_SLOT_GAP;
+            return Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, available / 2);
+        }
+        return getParameterSlotWidth();
     }
 
     public int getParameterSlotHeight(int slotIndex) {
@@ -895,6 +980,12 @@ public class Node {
         int slotCount = getParameterSlotCount();
         if (slotCount <= 0) {
             return y + HEADER_HEIGHT;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            int leftHeight = getParameterSlotHeight(0);
+            int rightHeight = getParameterSlotHeight(1);
+            int maxHeight = Math.max(leftHeight, rightHeight);
+            return getParameterSlotTop(0) + maxHeight;
         }
         int lastIndex = slotCount - 1;
         return getParameterSlotTop(lastIndex) + getParameterSlotHeight(lastIndex);
@@ -1003,9 +1094,9 @@ public class Node {
             return -1;
         }
         int slotCount = getParameterSlotCount();
-        int slotLeft = getParameterSlotLeft();
-        int slotWidth = getParameterSlotWidth();
         for (int i = 0; i < slotCount; i++) {
+            int slotLeft = getParameterSlotLeft(i);
+            int slotWidth = getParameterSlotWidth(i);
             int slotTop = getParameterSlotTop(i);
             int slotHeight = getParameterSlotHeight(i);
             if (pointX >= slotLeft && pointX <= slotLeft + slotWidth &&
@@ -1027,9 +1118,9 @@ public class Node {
         if (parameter == null) {
             return;
         }
-        int slotX = getParameterSlotLeft() + PARAMETER_SLOT_INNER_PADDING;
+        int slotX = getParameterSlotLeft(slotIndex) + PARAMETER_SLOT_INNER_PADDING;
         int slotY = getParameterSlotTop(slotIndex) + PARAMETER_SLOT_INNER_PADDING;
-        int availableWidth = getParameterSlotWidth() - 2 * PARAMETER_SLOT_INNER_PADDING;
+        int availableWidth = getParameterSlotWidth(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
         int availableHeight = getParameterSlotHeight(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
         if (parameter.width < availableWidth) {
             parameter.width = availableWidth;
@@ -1771,6 +1862,9 @@ public class Node {
             case EVENT_CALL:
                 parameters.add(new NodeParameter("Name", ParameterType.STRING, "function"));
                 break;
+            case VARIABLE:
+                parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
+                break;
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
@@ -2254,15 +2348,21 @@ public class Node {
                     }
                 }
             }
-            int requiredWidth = parameterContentWidth + 2 * (PARAMETER_SLOT_INNER_PADDING + PARAMETER_SLOT_MARGIN_HORIZONTAL);
-            computedWidth = Math.max(computedWidth, requiredWidth);
-            if (hasCoordinateInputFields()) {
-                int coordinateWidth = getCoordinateFieldTotalWidth() + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
-                computedWidth = Math.max(computedWidth, coordinateWidth);
-            }
-            if (hasAmountInputField()) {
-                int amountWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
-                computedWidth = Math.max(computedWidth, amountWidth);
+            if (type == NodeType.OPERATOR_EQUALS) {
+                int slotWidth = parameterContentWidth + 2 * PARAMETER_SLOT_INNER_PADDING;
+                int requiredWidth = (slotWidth * 2) + OPERATOR_SLOT_GAP + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                computedWidth = Math.max(computedWidth, requiredWidth);
+            } else {
+                int requiredWidth = parameterContentWidth + 2 * (PARAMETER_SLOT_INNER_PADDING + PARAMETER_SLOT_MARGIN_HORIZONTAL);
+                computedWidth = Math.max(computedWidth, requiredWidth);
+                if (hasCoordinateInputFields()) {
+                    int coordinateWidth = getCoordinateFieldTotalWidth() + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                    computedWidth = Math.max(computedWidth, coordinateWidth);
+                }
+                if (hasAmountInputField()) {
+                    int amountWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                    computedWidth = Math.max(computedWidth, amountWidth);
+                }
             }
         }
         if (hasSensorSlot()) {
@@ -2304,18 +2404,28 @@ public class Node {
                 contentHeight += BODY_PADDING_NO_PARAMS;
             }
         } else if (hasParameterSlot()) {
-            int slotCount = getParameterSlotCount();
-            for (int i = 0; i < slotCount; i++) {
-                contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
-            }
-            if (hasCoordinateInputFields()) {
-                contentHeight += getCoordinateFieldDisplayHeight();
-            }
-            if (hasAmountInputField()) {
-                contentHeight += getAmountFieldDisplayHeight();
-            }
-            if (hasSlots) {
-                contentHeight += SLOT_AREA_PADDING_TOP;
+            if (type == NodeType.OPERATOR_EQUALS) {
+                int leftHeight = getParameterSlotHeight(0);
+                int rightHeight = getParameterSlotHeight(1);
+                int maxHeight = Math.max(leftHeight, rightHeight);
+                contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + maxHeight + PARAMETER_SLOT_BOTTOM_PADDING;
+                if (hasSlots) {
+                    contentHeight += SLOT_AREA_PADDING_TOP;
+                }
+            } else {
+                int slotCount = getParameterSlotCount();
+                for (int i = 0; i < slotCount; i++) {
+                    contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
+                }
+                if (hasCoordinateInputFields()) {
+                    contentHeight += getCoordinateFieldDisplayHeight();
+                }
+                if (hasAmountInputField()) {
+                    contentHeight += getAmountFieldDisplayHeight();
+                }
+                if (hasSlots) {
+                    contentHeight += SLOT_AREA_PADDING_TOP;
+                }
             }
         } else if (hasSlots) {
             contentHeight += SLOT_AREA_PADDING_TOP;
@@ -2344,7 +2454,7 @@ public class Node {
         int minHeight = usesMinimalNodePresentation() ? 32 : MIN_HEIGHT;
         computedHeight = Math.max(minHeight, contentHeight);
 
-        if (type == NodeType.EVENT_FUNCTION) {
+        if (type == NodeType.EVENT_FUNCTION || type == NodeType.VARIABLE) {
             this.height = Math.max(EVENT_FUNCTION_MIN_HEIGHT, contentHeight);
         } else {
             this.height = computedHeight;
@@ -2478,6 +2588,12 @@ public class Node {
         }
 
         boolean handled = false;
+        if (parameterNode.getType() == NodeType.VARIABLE) {
+            parameterNode = resolveVariableValueNode(parameterNode, slotIndex, future);
+            if (parameterNode == null) {
+                return ParameterHandlingResult.COMPLETE;
+            }
+        }
 
         Map<String, String> exported = parameterNode.exportParameterValues();
         Map<String, String> adjustedValues = adjustParameterValuesForSlot(exported, slotIndex);
@@ -2542,6 +2658,58 @@ public class Node {
         }
 
         return ParameterHandlingResult.CONTINUE;
+    }
+
+    private Node resolveVariableValueNode(Node variableNode, int slotIndex, CompletableFuture<Void> future) {
+        if (variableNode == null) {
+            return null;
+        }
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            sendVariableError("Variable name cannot be empty.", future);
+            return null;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        ExecutionManager.RuntimeVariable runtimeVariable = manager.getRuntimeVariable(startNode, variableName.trim());
+        if (runtimeVariable == null) {
+            sendVariableError("Variable \"" + variableName.trim() + "\" is not set.", future);
+            return null;
+        }
+
+        NodeType valueType = runtimeVariable.getType();
+        if (valueType == null) {
+            sendVariableError("Variable \"" + variableName.trim() + "\" has no value.", future);
+            return null;
+        }
+
+        Node snapshot = new Node(valueType, 0, 0);
+        snapshot.setSocketsHidden(true);
+        Map<String, String> values = runtimeVariable.getValues();
+        if (values != null && !values.isEmpty()) {
+            snapshot.applyParameterValuesFromMap(values);
+        }
+
+        if (!isParameterSupported(snapshot, slotIndex)) {
+            sendVariableError("Variable \"" + variableName.trim() + "\" cannot be used with " + type.getDisplayName() + ".", future);
+            return null;
+        }
+
+        return snapshot;
+    }
+
+    private void sendVariableError(String message, CompletableFuture<Void> future) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client != null) {
+            sendNodeErrorMessage(client, message);
+        }
+        if (future != null && !future.isDone()) {
+            future.complete(null);
+        }
     }
 
     private Optional<Vec3d> resolvePositionTarget(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
@@ -3177,6 +3345,9 @@ public class Node {
                 System.out.println("Call Function node - dispatching handlers");
                 future.complete(null);
                 break;
+            case SET_VARIABLE:
+                executeSetVariableCommand(future);
+                break;
 
             // Generalized nodes
             case GOTO:
@@ -3332,6 +3503,44 @@ public class Node {
                 future.complete(null);
                 break;
         }
+    }
+
+    private void executeSetVariableCommand(CompletableFuture<Void> future) {
+        Node variableNode = getAttachedParameter(0);
+        Node valueNode = getAttachedParameter(1);
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (variableNode == null || valueNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Set Variable requires a variable and a parameter.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Variable name cannot be empty.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "No active node tree available for variable assignment.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        Map<String, String> values = valueNode.exportParameterValues();
+        ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueNode.getType(), values);
+        manager.setRuntimeVariable(startNode, variableName.trim(), value);
+        future.complete(null);
     }
     
     // Command execution methods that wait for Baritone completion
@@ -8358,6 +8567,9 @@ public class Node {
 
         boolean result;
         switch (type) {
+            case OPERATOR_EQUALS:
+                result = evaluateOperatorEquals();
+                break;
             case SENSOR_TOUCHING_BLOCK: {
                 String blockId = getStringParameter("Block", "stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
@@ -8560,6 +8772,36 @@ public class Node {
         result = adjustBooleanToggleResult(result);
         this.lastSensorResult = result;
         return result;
+    }
+
+    private boolean evaluateOperatorEquals() {
+        Node variableNode = getAttachedParameter(0);
+        Node valueNode = getAttachedParameter(1);
+        if (variableNode == null || valueNode == null) {
+            return false;
+        }
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            return false;
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        ExecutionManager.RuntimeVariable variable = manager.getRuntimeVariable(startNode, variableName.trim());
+        if (variable == null) {
+            return false;
+        }
+        if (variable.getType() != valueNode.getType()) {
+            return false;
+        }
+        Map<String, String> currentValues = valueNode.exportParameterValues();
+        Map<String, String> storedValues = variable.getValues();
+        if (currentValues == null || storedValues == null) {
+            return false;
+        }
+        return storedValues.equals(currentValues);
     }
 
     private boolean adjustBooleanToggleResult(boolean rawResult) {

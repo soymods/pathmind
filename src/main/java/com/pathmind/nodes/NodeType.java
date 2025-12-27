@@ -9,6 +9,13 @@ public enum NodeType {
     START("Start", 0xFF4CAF50, "Begins the automation sequence"),
     EVENT_FUNCTION("Function", 0xFFE91E63, "Runs a named function body when triggered"),
     EVENT_CALL("Call Function", 0xFFE91E63, "Triggers the execution of a named function"),
+
+    // Variable nodes
+    VARIABLE("Variable", 0xFFFF9800, "Represents a named runtime variable"),
+    SET_VARIABLE("Set Variable", 0xFFFF9800, "Assigns a parameter value to a variable at runtime"),
+
+    // Operator nodes
+    OPERATOR_EQUALS("Equals", 0xFF00C853, "Checks if a variable equals a parameter value"),
     
     // Navigation Commands
     GOTO("Goto", 0xFF00BCD4, "Moves to specified coordinates"),
@@ -112,10 +119,12 @@ public enum NodeType {
     PARAM_CLOSEST("Closest", 0xFF8BC34A, "Represents the nearest open block location");
 
     private final String displayName;
+    private final int baseColor;
     private final String description;
 
     NodeType(String displayName, int color, String description) {
         this.displayName = displayName;
+        this.baseColor = color;
         this.description = description;
     }
 
@@ -126,10 +135,10 @@ public enum NodeType {
     public int getColor() {
         // Special nodes keep their original colors
         if (this == START) {
-            return 0xFF4CAF50; // Green
+            return baseColor; // Green
         }
         if (this == STOP_CHAIN || this == STOP_ALL) {
-            return 0xFFE53935; // Bright red for stop controls
+            return baseColor; // Bright red for stop controls
         }
         return getCategory().getColor();
     }
@@ -162,6 +171,11 @@ public enum NodeType {
             case EVENT_FUNCTION:
             case EVENT_CALL:
                 return NodeCategory.EVENTS;
+            case VARIABLE:
+            case SET_VARIABLE:
+                return NodeCategory.VARIABLES;
+            case OPERATOR_EQUALS:
+                return NodeCategory.OPERATORS;
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
             case CONTROL_FOREVER:
@@ -316,6 +330,7 @@ public enum NodeType {
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
+            case VARIABLE:
                 return true;
             default:
                 return false;

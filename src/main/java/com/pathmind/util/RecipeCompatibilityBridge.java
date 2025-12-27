@@ -107,7 +107,24 @@ public final class RecipeCompatibilityBridge {
             } catch (IllegalAccessException | InvocationTargetException ignored) {
             }
         }
-        return ingredient.isEmpty();
+        if (INGREDIENT_MATCHING_ITEMS_METHOD != null) {
+            try {
+                Object result = INGREDIENT_MATCHING_ITEMS_METHOD.invoke(ingredient);
+                Boolean empty = isMatchingItemsEmpty(result);
+                if (empty != null) {
+                    return empty;
+                }
+            } catch (IllegalAccessException | InvocationTargetException ignored) {
+            }
+        }
+        try {
+            Object emptyIngredient = Ingredient.class.getField("EMPTY").get(null);
+            if (emptyIngredient == ingredient) {
+                return true;
+            }
+        } catch (NoSuchFieldException | IllegalAccessException ignored) {
+        }
+        return false;
     }
 
     public static IntList toPlacementSlots(Object placement) {
@@ -201,6 +218,27 @@ public final class RecipeCompatibilityBridge {
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
             return null;
         }
+    }
+
+    private static Boolean isMatchingItemsEmpty(Object result) {
+        if (result == null) {
+            return true;
+        }
+        if (result instanceof java.util.stream.Stream<?> stream) {
+            try (java.util.stream.Stream<?> closable = stream) {
+                return closable.findAny().isEmpty();
+            }
+        }
+        if (result instanceof java.util.Collection<?> collection) {
+            return collection.isEmpty();
+        }
+        if (result instanceof Iterable<?> iterable) {
+            return !iterable.iterator().hasNext();
+        }
+        if (result instanceof Object[] array) {
+            return array.length == 0;
+        }
+        return null;
     }
 
     public static List<ItemStack> getIngredientStacks(Ingredient ingredient, Object registryManager) {

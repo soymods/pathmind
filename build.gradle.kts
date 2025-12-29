@@ -1,9 +1,54 @@
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.GradleBuild
+import org.gradle.api.tasks.TaskProvider
+
 plugins {
-    id("fabric-loom") version "1.10.3"
+    id("fabric-loom") version "1.10.5"
     id("maven-publish")
 }
 
-version = project.property("mod_version") as String
+data class MinecraftVersionSpec(
+    val yarnMappings: String,
+    val fabricApiVersion: String
+)
+
+val supportedMinecraftVersions = linkedMapOf(
+    "1.21" to MinecraftVersionSpec("1.21+build.9", "0.102.0+1.21"),
+    "1.21.1" to MinecraftVersionSpec("1.21.1+build.3", "0.116.7+1.21.1"),
+    "1.21.2" to MinecraftVersionSpec("1.21.2+build.1", "0.106.1+1.21.2"),
+    "1.21.3" to MinecraftVersionSpec("1.21.3+build.2", "0.114.1+1.21.3"),
+    "1.21.4" to MinecraftVersionSpec("1.21.4+build.8", "0.119.4+1.21.4"),
+    "1.21.5" to MinecraftVersionSpec("1.21.5+build.1", "0.128.2+1.21.5"),
+    "1.21.6" to MinecraftVersionSpec("1.21.6+build.1", "0.128.2+1.21.6"),
+    "1.21.7" to MinecraftVersionSpec("1.21.7+build.8", "0.129.0+1.21.7"),
+    "1.21.8" to MinecraftVersionSpec("1.21.8+build.1", "0.133.4+1.21.8")
+)
+
+fun String.toTaskSuffix(): String = replace(".", "_")
+
+val requestedMinecraftVersion = providers.gradleProperty("mc_version")
+    .orElse(providers.gradleProperty("minecraft_version"))
+    .get()
+
+val requestedSpec = supportedMinecraftVersions[requestedMinecraftVersion]
+
+val yarnMappings = providers.gradleProperty("yarn_mappings").orElse(
+    requestedSpec?.let { provider { it.yarnMappings } }
+        ?: throw GradleException(
+            "No Yarn mappings configured for Minecraft $requestedMinecraftVersion. " +
+                "Either add it to supportedMinecraftVersions or pass -Pyarn_mappings=<mapping>"
+        )
+).get()
+
+val fabricApiVersion = providers.gradleProperty("fabric_api_version").orElse(
+    requestedSpec?.let { provider { it.fabricApiVersion } }
+        ?: throw GradleException(
+            "No Fabric API version configured for Minecraft $requestedMinecraftVersion. " +
+                "Either add it to supportedMinecraftVersions or pass -Pfabric_api_version=<version>"
+        )
+).get()
+
+version = "${project.property("mod_version") as String}+mc$requestedMinecraftVersion"
 group = project.property("maven_group") as String
 
 base {
@@ -40,12 +85,12 @@ val baritoneApiJar: File by extra {
 
 dependencies {
     // To change the versions see the gradle.properties file
-    minecraft("com.mojang:minecraft:${project.property("minecraft_version")}")
-    mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
+    minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
+    mappings("net.fabricmc:yarn:$yarnMappings:v2")
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
 
     // Fabric API. This is technically optional, but you probably want it anyway.
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_api_version")}")
+    modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
 
     // Baritone API dependency (compile-time only, users must provide the mod at runtime)
     val baritoneApi = files(baritoneApiJar)
@@ -59,9 +104,9 @@ dependencies {
 tasks.processResources {
     val properties = mapOf(
         "version" to version,
-        "minecraft_version" to project.property("minecraft_version"),
+        "minecraft_version" to requestedMinecraftVersion,
         "loader_version" to project.property("loader_version"),
-        "fabric_api_version" to project.property("fabric_api_version")
+        "fabric_api_version" to fabricApiVersion
     )
     inputs.properties(properties)
 
@@ -94,6 +139,48 @@ tasks.jar {
     from("LICENSE") {
         rename { "${it}_${base.archivesName.get()}" }
     }
+}
+
+val cleanTask = tasks.named("clean")
+val multiVersionBuildTasks = mutableListOf<TaskProvider<Task>>()
+supportedMinecraftVersions.keys.forEach { version ->
+    val taskName = "buildMc${version.toTaskSuffix()}"
+    val provider = tasks.register(taskName) {
+        group = "build"
+        description = "Build Pathmind for Minecraft $version"
+        val versionOutputDir = layout.buildDirectory.dir("multiVersion/$version")
+        outputs.dir(versionOutputDir)
+        doLast {
+            project.delete(versionOutputDir)
+            exec {
+                workingDir = projectDir
+                if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+                    commandLine("cmd", "/c", "gradlew.bat", "build", "-Pmc_version=$version")
+                } else {
+                    commandLine("./gradlew", "build", "-Pmc_version=$version")
+                }
+            }
+            copy {
+                from(layout.buildDirectory.dir("libs")) {
+                    include("*mc$version.jar")
+                    include("*mc$version-sources.jar")
+                }
+                into(versionOutputDir)
+            }
+        }
+    }
+    provider.configure {
+        mustRunAfter(cleanTask)
+    }
+    multiVersionBuildTasks += provider
+}
+
+tasks.register("buildAllTargets") {
+    group = "build"
+    description = "Build Pathmind for every configured Minecraft target"
+    val cleanTask = tasks.named("clean")
+    dependsOn(cleanTask)
+    multiVersionBuildTasks.forEach { dependsOn(it) }
 }
 
 // configure the maven publication

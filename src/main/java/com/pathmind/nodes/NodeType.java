@@ -9,6 +9,13 @@ public enum NodeType {
     START("Start", 0xFF4CAF50, "Begins the automation sequence"),
     EVENT_FUNCTION("Function", 0xFFE91E63, "Runs a named function body when triggered"),
     EVENT_CALL("Call Function", 0xFFE91E63, "Triggers the execution of a named function"),
+
+    // Variable nodes
+    VARIABLE("Variable", 0xFFFF9800, "Represents a named runtime variable"),
+    SET_VARIABLE("Set Variable", 0xFFFF9800, "Assigns a parameter value to a variable at runtime"),
+
+    // Operator nodes
+    OPERATOR_EQUALS("Equals", 0xFF00C853, "Checks if a variable equals a parameter value"),
     
     // Navigation Commands
     GOTO("Goto", 0xFF00BCD4, "Moves to specified coordinates"),
@@ -81,8 +88,10 @@ public enum NodeType {
     SENSOR_IS_SWIMMING("Is Swimming", 0xFF64B5F6, "Detect if the player is swimming"),
     SENSOR_IS_IN_LAVA("In Lava", 0xFF64B5F6, "Detect if the player is touching lava"),
     SENSOR_IS_UNDERWATER("Underwater", 0xFF64B5F6, "Detect if the player is fully submerged"),
+    SENSOR_IS_ON_GROUND("Is On Ground", 0xFF64B5F6, "Detect if the player is touching the ground"),
     SENSOR_IS_FALLING("Is Falling", 0xFF64B5F6, "Detect if the player is currently falling"),
     SENSOR_IS_RENDERED("Is Rendered", 0xFF64B5F6, "Detect if a specified block or item is currently visible to the player"),
+    SENSOR_KEY_PRESSED("Key Pressed", 0xFF64B5F6, "Detect if a specific keyboard key is currently held"),
 
     // Utility Commands
     SCREEN_CONTROL("Screen Control", 0xFF9E9E9E, "Open or close in-game screens"),
@@ -106,16 +115,19 @@ public enum NodeType {
     PARAM_AMOUNT("Amount", 0xFF8BC34A, "Represents a generic numeric amount"),
     PARAM_BOOLEAN("Toggle", 0xFF8BC34A, "Represents a boolean toggle value"),
     PARAM_HAND("Hand", 0xFF8BC34A, "Represents a preferred hand selection"),
+    PARAM_KEY("Key", 0xFF8BC34A, "Represents a keyboard key binding"),
     PARAM_RANGE("Range", 0xFF8BC34A, "Represents a generic radius or range"),
     PARAM_ROTATION("Rotation", 0xFF8BC34A, "Represents yaw and pitch angles"),
     PARAM_PLACE_TARGET("Place", 0xFF8BC34A, "Represents a block placement with coordinates"),
     PARAM_CLOSEST("Closest", 0xFF8BC34A, "Represents the nearest open block location");
 
     private final String displayName;
+    private final int baseColor;
     private final String description;
 
     NodeType(String displayName, int color, String description) {
         this.displayName = displayName;
+        this.baseColor = color;
         this.description = description;
     }
 
@@ -126,10 +138,10 @@ public enum NodeType {
     public int getColor() {
         // Special nodes keep their original colors
         if (this == START) {
-            return 0xFF4CAF50; // Green
+            return baseColor; // Green
         }
         if (this == STOP_CHAIN || this == STOP_ALL) {
-            return 0xFFE53935; // Bright red for stop controls
+            return baseColor; // Bright red for stop controls
         }
         return getCategory().getColor();
     }
@@ -147,7 +159,7 @@ public enum NodeType {
     }
 
     public boolean isDraggableFromSidebar() {
-        if (this == STOP) {
+        if (this == STOP || this == PLACE_HAND) {
             return false;
         }
         return true;
@@ -162,6 +174,11 @@ public enum NodeType {
             case EVENT_FUNCTION:
             case EVENT_CALL:
                 return NodeCategory.EVENTS;
+            case VARIABLE:
+            case SET_VARIABLE:
+                return NodeCategory.VARIABLES;
+            case OPERATOR_EQUALS:
+                return NodeCategory.OPERATORS;
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
             case CONTROL_FOREVER:
@@ -183,8 +200,10 @@ public enum NodeType {
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
+            case SENSOR_IS_ON_GROUND:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case SENSOR_KEY_PRESSED:
                 return NodeCategory.SENSORS;
             case GOTO:
             case GOAL:
@@ -205,7 +224,7 @@ public enum NodeType {
             case FARM:
             case PLACE:
             case CRAFT:
-                return NodeCategory.WORLD;
+                return NodeCategory.INTERACTION;
             case ATTACK:
             case SWING:
             case USE:
@@ -242,6 +261,7 @@ public enum NodeType {
             case PARAM_AMOUNT:
             case PARAM_BOOLEAN:
             case PARAM_HAND:
+            case PARAM_KEY:
             case PARAM_RANGE:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
@@ -312,10 +332,12 @@ public enum NodeType {
             case PARAM_AMOUNT:
             case PARAM_BOOLEAN:
             case PARAM_HAND:
+            case PARAM_KEY:
             case PARAM_RANGE:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
+            case VARIABLE:
                 return true;
             default:
                 return false;

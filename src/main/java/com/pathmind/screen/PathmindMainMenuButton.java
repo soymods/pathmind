@@ -1,7 +1,6 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindMod;
-import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -40,21 +39,13 @@ public class PathmindMainMenuButton extends ButtonWidget {
             rgb = 0xFFFFFF;
         }
 
-        int color = MathHelper.ceil(this.alpha * 255.0F) << 24 | rgb;
+        int alphaComponent = MathHelper.ceil(this.alpha * 255.0F);
+        if (alphaComponent <= 0) {
+            return; // let the icon fade in with the button instead of flashing
+        }
+        int color = (alphaComponent << 24) | rgb;
 
-        context.drawTexture(
-            RenderPipelines.GUI_TEXTURED,
-            ICON_TEXTURE,
-            iconX,
-            iconY,
-            0.0F,
-            0.0F,
-            iconSize,
-            iconSize,
-            iconSize,
-            iconSize,
-            color
-        );
+        GuiTextureRenderer.drawIcon(context, ICON_TEXTURE, iconX, iconY, iconSize, color);
     }
 
     @Override

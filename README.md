@@ -1,6 +1,6 @@
 # Pathmind
 
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.x-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
+[![Minecraft](https://img.shields.io/badge/Minecraft-Multi--Version-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
 [![Fabric](https://img.shields.io/badge/Fabric-0.17.2-CC6E3E?style=for-the-badge&logo=modrinth)](https://fabricmc.net)
 [![Java](https://img.shields.io/badge/Java-21+-FF6B6B?style=for-the-badge&logo=openjdk)](https://openjdk.java.net)
 [![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey?style=for-the-badge)](LICENSE)
@@ -11,20 +11,20 @@ A Minecraft Fabric mod that introduces a visual node editor system for creating 
 ## Quick Start
 
 ### Prerequisites
-- **Minecraft**: any 1.21.x release
+- **Minecraft**: Any supported version (match the `+mc<version>` suffix on the jar you download)
 - **Fabric Loader**: 0.17.2 or higher
-- **Fabric API**: latest release for your 1.21.x version
-- **Baritone API**: 1.21.x release (download separately)
+- **Fabric API**: release that matches your chosen Minecraft version
+- **Baritone API**: version that matches your Minecraft/Fabric combo (download separately)
 - **Java**: 21 or higher
 
 ### Installation
 
 1. **Install Fabric Loader**
-   - Download and install Fabric Loader for Minecraft 1.21.x
+   - Download and install Fabric Loader for your chosen Minecraft version
    - [Download from FabricMC](https://fabricmc.net/use/installer/)
 
 2. **Install Fabric API**
-   - Download the latest Fabric API for your 1.21.x version
+   - Download the Fabric API build that matches your chosen Minecraft version
    - [Download from Modrinth](https://modrinth.com/mod/fabric-api)
 
 3. **Install Baritone API**
@@ -33,12 +33,18 @@ A Minecraft Fabric mod that introduces a visual node editor system for creating 
    - [Download from GitHub](https://github.com/cabaletta/baritone/releases/latest)
 
 4. **Install Pathmind**
-   - Download the latest Pathmind mod jar
+   - Download the Pathmind jar whose filename ends with your Minecraft version (every release ships with `+mc<version>` in the filename)
    - Place it in your `mods` folder
 
 5. **Launch and Enjoy!**
    - Start Minecraft with Fabric Loader
    - Use your configured keybind to open the visual editor
+
+## Compatibility
+
+- Release jars are suffixed with `+mc<version>` so you can keep multiple Minecraft targets side-by-side (e.g., `pathmind-1.0.5+mc1.21.8.jar`).
+- The default Gradle build targets the version listed in `gradle.properties`, but passing `-Pmc_version=<version>` (or using the auto-generated `buildMc<version>` tasks) compiles the identical codebase against any entry in `supportedMinecraftVersions`.
+- Use the `buildAllTargets` task to batch-build jars for every configured version.
 
 ## Development
 
@@ -70,31 +76,25 @@ A Minecraft Fabric mod that introduces a visual node editor system for creating 
    ./gradlew runClient
    ```
 
-### Project Structure
+### Building for Specific Minecraft Versions
 
-```
-src/main/java/com/pathmind/
-├── nodes/           # Node system implementation
-│   ├── Node.java    # Core node class
-│   ├── NodeType.java # Node type definitions
-│   └── NodeConnection.java # Connection handling
-├── ui/              # User interface components
-│   └── NodeGraph.java # Main node graph rendering
-├── screen/          # Screen implementations
-│   └── PathmindVisualEditorScreen.java # Main editor screen
-├── PathmindMod.java # Main mod class
-└── PathmindKeybinds.java # Keybind configuration
-```
+- `./gradlew build` creates a jar for the default target (set in `gradle.properties`), but the source code is the same across all supported versions.
+- To build for another version, override the property:  
+  `./gradlew build -Pmc_version=<minecraftVersion>`
+- Convenience tasks are available:
+  - `./gradlew buildMc1_21_8` (build only for `1.21.8`, as an example)
+  - `./gradlew buildAllTargets` (build every configured version sequentially)
+- Each jar is versioned as `pathmind-<modVersion>+mc<gameVersion>.jar` so you can publish multiple targets side by side.
 
 ## Version Information
 
 | Component | Version |
 |-----------|---------|
-| **Mod Version** | 1.0.0 |
-| **Minecraft Version** | 1.21.x (built & tested on 1.21.8) |
-| **Yarn Mappings** | 1.21.8+build.1 (with :v2 for compilation) |
+| **Mod Version** | 1.0.5 |
+| **Minecraft Version** | Matches the `+mc<version>` suffix on each jar |
+| **Yarn Mappings** | Automatically selected per target version |
 | **Fabric Loader** | 0.17.2 |
-| **Fabric API** | Latest 1.21.x-compatible release |
+| **Fabric API** | Automatically selected per target version |
 | **Baritone API** | 1.15.0 (external dependency) |
 
 ### Development Guidelines
@@ -128,7 +128,7 @@ Found a bug or have an idea? We'd love to hear from you!
 ## Acknowledgments
 
 - **FabricMC Team** for the modding framework
-- **Minecraft Community** for inspiration and feedback
+- **Baritone Team** for the pathfinding API
 - **Blender Foundation** & **Scratch Foundation** for inspiring the node-based interface design
 
 ## Support

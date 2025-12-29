@@ -26,12 +26,17 @@ public class Sidebar {
     private static final int TAB_COLUMNS = 2;
     private static final int TAB_COLUMN_MARGIN = 8;
     private static final int TAB_COLUMN_SPACING = 8;
+    private static final int SCROLLBAR_WIDTH = 6;
+    private static final int SCROLLBAR_MARGIN = 4;
+    private static final int SCROLLBAR_MIN_KNOB_HEIGHT = 20;
     
     // Node display dimensions
     private static final int NODE_HEIGHT = 18;
     private static final int PADDING = 4;
     private static final int CATEGORY_HEADER_HEIGHT = 20;
+    private static final int CATEGORY_HEADER_LINE_SPACING = 2;
     private static final int GROUP_HEADER_HEIGHT = 16;
+    private static final int GROUP_HEADER_LINE_SPACING = 2;
     
     // Colors
     private static final int DARK_GREY_ALT = 0xFF2A2A2A;
@@ -122,6 +127,10 @@ public class Sidebar {
             NodeType.PARAM_HAND
         ));
         groups.add(new NodeGroup(
+            "Input",
+            NodeType.PARAM_KEY
+        ));
+        groups.add(new NodeGroup(
             "Utility Data",
             NodeType.PARAM_DURATION,
             NodeType.PARAM_AMOUNT,
@@ -138,7 +147,12 @@ public class Sidebar {
             NodeType.SENSOR_IS_SWIMMING,
             NodeType.SENSOR_IS_IN_LAVA,
             NodeType.SENSOR_IS_UNDERWATER,
+            NodeType.SENSOR_IS_ON_GROUND,
             NodeType.SENSOR_IS_FALLING
+        ));
+        groups.add(new NodeGroup(
+            "Input",
+            NodeType.SENSOR_KEY_PRESSED
         ));
         groups.add(new NodeGroup(
             "Position & Blocks",
@@ -190,13 +204,22 @@ public class Sidebar {
     }
     
     private void calculateMaxScroll(int sidebarHeight) {
+        calculateMaxScroll(sidebarHeight, 0, null);
+    }
+
+    private void calculateMaxScroll(int sidebarHeight, int headerHeight, List<GroupHeaderInfo> groupHeaders) {
         int totalHeight = 0;
         
         // Add space for category header and nodes (content starts at top)
         if (selectedCategory != null) {
-            totalHeight += CATEGORY_HEADER_HEIGHT;
+            totalHeight += Math.max(CATEGORY_HEADER_HEIGHT, headerHeight);
             
-            if (hasGroupedContent(selectedCategory)) {
+            if (groupHeaders != null && !groupHeaders.isEmpty()) {
+                for (GroupHeaderInfo info : groupHeaders) {
+                    totalHeight += info.getHeight();
+                    totalHeight += info.getGroup().getNodes().size() * NODE_HEIGHT;
+                }
+            } else if (hasGroupedContent(selectedCategory)) {
                 for (NodeGroup group : getGroupsForCategory(selectedCategory)) {
                     if (group.isEmpty()) {
                         continue;
@@ -221,9 +244,8 @@ public class Sidebar {
     }
     
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, int sidebarStartY, int sidebarHeight) {
-        // Store current sidebar height and update max scroll
+        // Store current sidebar height so scroll can be recalculated
         this.currentSidebarHeight = sidebarHeight;
-        calculateMaxScroll(sidebarHeight);
         
         NodeCategory[] categories = NodeCategory.values();
         int totalVisibleTabs = 0;
@@ -247,6 +269,33 @@ public class Sidebar {
         }
 
         int totalWidth = getWidth();
+        int contentTextX = currentInnerSidebarWidth + 8;
+        int contentTextRight = totalWidth - SCROLLBAR_MARGIN - SCROLLBAR_WIDTH - 4;
+        int maxContentWidth = Math.max(1, contentTextRight - contentTextX);
+
+        List<String> headerLines = null;
+        int headerHeight = 0;
+        final int headerLineHeight = textRenderer.fontHeight + CATEGORY_HEADER_LINE_SPACING;
+        final int groupLineHeight = textRenderer.fontHeight + GROUP_HEADER_LINE_SPACING;
+        if (selectedCategory != null) {
+            headerLines = wrapText(selectedCategory.getDisplayName(), textRenderer, maxContentWidth);
+            headerHeight = Math.max(CATEGORY_HEADER_HEIGHT, headerLines.size() * headerLineHeight);
+        }
+
+        List<GroupHeaderInfo> groupHeaders = null;
+        if (selectedCategory != null && hasGroupedContent(selectedCategory)) {
+            groupHeaders = new ArrayList<>();
+            for (NodeGroup group : getGroupsForCategory(selectedCategory)) {
+                if (group.isEmpty()) {
+                    continue;
+                }
+                List<String> lines = wrapText(group.getTitle(), textRenderer, maxContentWidth);
+                int height = Math.max(GROUP_HEADER_HEIGHT, lines.size() * groupLineHeight);
+                groupHeaders.add(new GroupHeaderInfo(group, lines, height));
+            }
+        }
+
+        calculateMaxScroll(sidebarHeight, headerHeight, groupHeaders);
         
         // Outer sidebar background
         int outerColor = totalWidth > currentInnerSidebarWidth ? DARK_GREY_ALT : DARKER_GREY;
@@ -318,72 +367,86 @@ public class Sidebar {
         
         // Render category name and nodes for selected category
         if (selectedCategory != null) {
+            int contentTop = sidebarStartY + PADDING;
+            int contentBottom = sidebarStartY + sidebarHeight - PADDING;
             // Start content area at the very top of the sidebar, right after the title bar
-            int contentY = sidebarStartY + PADDING - scrollOffset;
+            int contentY = contentTop - scrollOffset;
             int sidebarBottom = sidebarStartY + sidebarHeight;
+            int nodeBackgroundLeft = currentInnerSidebarWidth + 1; // Keep divider line visible by offsetting fills
             
             // Category header
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(selectedCategory.getDisplayName()),
-                currentInnerSidebarWidth + 8,
-                contentY + 4,
-                selectedCategory.getColor()
-            );
-            
-            contentY += CATEGORY_HEADER_HEIGHT;
+            int headerTextX = contentTextX;
+            int headerTextY = contentY + 4;
+            if (headerLines != null && !headerLines.isEmpty()) {
+                for (String line : headerLines) {
+                    context.drawTextWithShadow(
+                        textRenderer,
+                        Text.literal(line),
+                        headerTextX,
+                        headerTextY,
+                        selectedCategory.getColor()
+                    );
+                    headerTextY += headerLineHeight;
+                }
+            }
+
+            contentY += headerHeight;
             
             hoveredNodeType = null;
 
             if (hasGroupedContent(selectedCategory)) {
                 outer:
-                for (NodeGroup group : getGroupsForCategory(selectedCategory)) {
-                    if (group.isEmpty()) {
-                        continue;
-                    }
+                if (groupHeaders != null) {
+                    for (GroupHeaderInfo groupInfo : groupHeaders) {
+                        NodeGroup group = groupInfo.getGroup();
 
-                    if (contentY >= sidebarBottom) {
-                        break;
-                    }
-
-                    context.drawTextWithShadow(
-                        textRenderer,
-                        Text.literal(group.getTitle()),
-                        currentInnerSidebarWidth + 8,
-                        contentY + 2,
-                        GREY_LINE
-                    );
-
-                    contentY += GROUP_HEADER_HEIGHT;
-
-                    for (NodeType nodeType : group.getNodes()) {
                         if (contentY >= sidebarBottom) {
-                            break outer;
+                            break;
                         }
 
-                        boolean nodeHovered = mouseX >= currentInnerSidebarWidth && mouseX <= totalWidth &&
-                                            mouseY >= contentY && mouseY < contentY + NODE_HEIGHT;
-
-                        if (nodeHovered) {
-                            hoveredNodeType = nodeType;
-                            context.fill(currentInnerSidebarWidth, contentY, totalWidth, contentY + NODE_HEIGHT, HOVER_COLOR);
+                        int groupTextY = contentY + 2;
+                        for (String line : groupInfo.getLines()) {
+                            context.drawTextWithShadow(
+                                textRenderer,
+                                Text.literal(line),
+                                contentTextX,
+                                groupTextY,
+                                GREY_LINE
+                            );
+                            groupTextY += groupLineHeight;
                         }
 
-                        int indicatorSize = 12;
-                        int indicatorX = currentInnerSidebarWidth + 8;
-                        int indicatorY = contentY + 3;
-                        context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
-                        context.drawBorder(indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
+                        contentY += groupInfo.getHeight();
 
-                        context.drawTextWithShadow(
-                            textRenderer,
-                            Text.literal(nodeType.getDisplayName()),
-                            indicatorX + indicatorSize + 4,
-                            contentY + 4,
-                            WHITE_MUTED
-                        );
+                        for (NodeType nodeType : group.getNodes()) {
+                            if (contentY >= sidebarBottom) {
+                                break outer;
+                            }
 
-                        contentY += NODE_HEIGHT;
+                            boolean nodeHovered = mouseX >= nodeBackgroundLeft && mouseX <= totalWidth &&
+                                                mouseY >= contentY && mouseY < contentY + NODE_HEIGHT;
+
+                            if (nodeHovered) {
+                                hoveredNodeType = nodeType;
+                                context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, HOVER_COLOR);
+                            }
+
+                            int indicatorSize = 12;
+                            int indicatorX = currentInnerSidebarWidth + 8;
+                            int indicatorY = contentY + 3;
+                            context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
+                            context.drawBorder(indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
+
+                            context.drawTextWithShadow(
+                                textRenderer,
+                                Text.literal(nodeType.getDisplayName()),
+                                indicatorX + indicatorSize + 4,
+                                contentY + 4,
+                                WHITE_MUTED
+                            );
+
+                            contentY += NODE_HEIGHT;
+                        }
                     }
                 }
             } else {
@@ -393,12 +456,12 @@ public class Sidebar {
                     for (NodeType nodeType : nodes) {
                         if (contentY >= sidebarBottom) break; // Don't render beyond sidebar
                         
-                        boolean nodeHovered = mouseX >= currentInnerSidebarWidth && mouseX <= totalWidth &&
+                        boolean nodeHovered = mouseX >= nodeBackgroundLeft && mouseX <= totalWidth &&
                                             mouseY >= contentY && mouseY < contentY + NODE_HEIGHT;
 
                         if (nodeHovered) {
                             hoveredNodeType = nodeType;
-                            context.fill(currentInnerSidebarWidth, contentY, totalWidth, contentY + NODE_HEIGHT, HOVER_COLOR);
+                            context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, HOVER_COLOR);
                         }
 
                         int indicatorSize = 12;
@@ -419,6 +482,8 @@ public class Sidebar {
                     }
                 }
             }
+
+            renderCategoryScrollbar(context, totalWidth, contentTop, contentBottom);
         }
         
         // Reset hover states if mouse is not in sidebar
@@ -515,6 +580,132 @@ public class Sidebar {
         int g = Math.min(255, (int) (((color >> 8) & 0xFF) * factor));
         int b = Math.min(255, (int) ((color & 0xFF) * factor));
         return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private List<String> wrapText(String text, TextRenderer textRenderer, int maxWidth) {
+        List<String> lines = new ArrayList<>();
+        if (text == null || text.isEmpty()) {
+            lines.add("");
+            return lines;
+        }
+
+        if (maxWidth <= 0) {
+            lines.add(text);
+            return lines;
+        }
+
+        String[] words = text.split(" ");
+        StringBuilder currentLine = new StringBuilder();
+        for (String word : words) {
+            if (word.isEmpty()) {
+                continue;
+            }
+
+            if (currentLine.length() > 0) {
+                String candidate = currentLine + " " + word;
+                if (textRenderer.getWidth(candidate) <= maxWidth) {
+                    currentLine.append(" ").append(word);
+                    continue;
+                }
+            }
+
+            if (textRenderer.getWidth(word) <= maxWidth) {
+                if (currentLine.length() > 0) {
+                    lines.add(currentLine.toString());
+                }
+                currentLine = new StringBuilder(word);
+            } else {
+                if (currentLine.length() > 0) {
+                    lines.add(currentLine.toString());
+                    currentLine = new StringBuilder();
+                }
+
+                String remaining = word;
+                while (!remaining.isEmpty()) {
+                    int breakIndex = findBreakIndex(remaining, textRenderer, maxWidth);
+                    String part = remaining.substring(0, breakIndex);
+                    lines.add(part);
+                    remaining = remaining.substring(breakIndex);
+                }
+            }
+        }
+
+        if (currentLine.length() > 0) {
+            lines.add(currentLine.toString());
+        }
+
+        if (lines.isEmpty()) {
+            lines.add(text);
+        }
+
+        return lines;
+    }
+
+    private int findBreakIndex(String text, TextRenderer textRenderer, int maxWidth) {
+        if (text.isEmpty() || maxWidth <= 0) {
+            return Math.max(1, text.length());
+        }
+
+        int breakIndex = 1;
+        while (breakIndex <= text.length() &&
+            textRenderer.getWidth(text.substring(0, breakIndex)) <= maxWidth) {
+            breakIndex++;
+        }
+
+        if (breakIndex > text.length()) {
+            return text.length();
+        }
+
+        return Math.max(1, breakIndex - 1);
+    }
+
+    private void renderCategoryScrollbar(DrawContext context, int totalWidth, int contentTop, int contentBottom) {
+        if (maxScroll <= 0 || contentBottom <= contentTop) {
+            return;
+        }
+
+        int trackRight = totalWidth - SCROLLBAR_MARGIN;
+        int trackLeft = trackRight - SCROLLBAR_WIDTH;
+        int trackTop = contentTop;
+        int trackBottom = contentBottom;
+        int trackHeight = Math.max(1, trackBottom - trackTop);
+
+        context.fill(trackLeft, trackTop, trackRight, trackBottom, 0xFF1A1A1A);
+        context.drawBorder(trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, 0xFF444444);
+
+        int visibleHeight = Math.max(1, contentBottom - contentTop);
+        int totalScrollableHeight = Math.max(visibleHeight, visibleHeight + maxScroll);
+        int knobHeight = Math.max(SCROLLBAR_MIN_KNOB_HEIGHT, (int) ((float) visibleHeight / totalScrollableHeight * trackHeight));
+        int maxKnobTravel = Math.max(0, trackHeight - knobHeight);
+        float scrollRatio = maxScroll > 0 ? (float) scrollOffset / maxScroll : 0;
+        int knobOffset = maxKnobTravel <= 0 ? 0 : (int) (scrollRatio * maxKnobTravel);
+        int knobTop = trackTop + knobOffset;
+
+        context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight, 0xFF777777);
+    }
+
+    private static final class GroupHeaderInfo {
+        private final NodeGroup group;
+        private final List<String> lines;
+        private final int height;
+
+        private GroupHeaderInfo(NodeGroup group, List<String> lines, int height) {
+            this.group = group;
+            this.lines = lines;
+            this.height = height;
+        }
+
+        public NodeGroup getGroup() {
+            return group;
+        }
+
+        public List<String> getLines() {
+            return lines;
+        }
+
+        public int getHeight() {
+            return height;
+        }
     }
 
     private static class NodeGroup {

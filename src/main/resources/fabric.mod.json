@@ -3,7 +3,7 @@
   "id": "pathmind",
   "version": "${version}",
   "name": "Pathmind",
-  "description": "A visual node-based editor for creating in-game automation workflows and intelligent tools.",
+  "description": "scratch for block game",
   "authors": [
     "ryduzz"
   ],
@@ -28,7 +28,7 @@
   ],
   "depends": {
     "fabricloader": ">=0.17.2",
-    "minecraft": "~1.21",
+    "minecraft": "${minecraft_version}",
     "java": ">=21",
     "fabric-api": "*"
   }

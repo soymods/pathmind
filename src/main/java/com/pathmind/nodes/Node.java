@@ -13,8 +13,10 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import baritone.api.BaritoneAPI;
+import baritone.api.Settings;
 import baritone.api.IBaritone;
 import baritone.api.behavior.IPathingBehavior;
 import baritone.api.process.ICustomGoalProcess;
@@ -23,10 +25,15 @@ import baritone.api.process.IGetToBlockProcess;
 import baritone.api.process.IFarmProcess;
 import baritone.api.process.IMineProcess;
 import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalNear;
 import baritone.api.utils.BlockOptionalMeta;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
+import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
+import com.pathmind.util.PlayerInventoryBridge;
+import com.pathmind.util.RecipeCompatibilityBridge;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
@@ -63,9 +70,13 @@ import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
-import net.minecraft.recipe.IngredientPlacement;
+import net.minecraft.recipe.RecipeManager;
 import net.minecraft.recipe.RecipeEntry;
+import net.minecraft.recipe.RecipeType;
 import net.minecraft.recipe.ShapedRecipe;
+import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.registry.RegistryWrapper;
+import java.util.Arrays;
 import net.minecraft.screen.CraftingScreenHandler;
 import net.minecraft.screen.PlayerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
@@ -73,13 +84,13 @@ import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.recipe.input.CraftingRecipeInput;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.recipe.ServerRecipeManager;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.lang.reflect.Field;
 import java.util.regex.Pattern;
+import org.lwjgl.glfw.GLFW;
+import java.lang.reflect.Field;
 
 /**
  * Represents a single node in the Pathmind visual editor.
@@ -118,10 +129,17 @@ public class Node {
     private static final int PARAMETER_SLOT_MIN_CONTENT_WIDTH = 88;
     private static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
     private static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
+    private static final int OPERATOR_SLOT_GAP = 8;
+    private static final int PLAYER_ARMOR_SLOT_COUNT = 4;
+    private static final int PLAYER_OFFHAND_INVENTORY_INDEX = PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
     private static final int PARAMETER_SLOT_BOTTOM_PADDING = 6;
     private static final int SLOT_AREA_PADDING_TOP = 0;
     private static final int SLOT_AREA_PADDING_BOTTOM = 6;
     private static final int SLOT_VERTICAL_SPACING = 6;
+    private static final int BOOLEAN_TOGGLE_MARGIN_HORIZONTAL = 6;
+    private static final int BOOLEAN_TOGGLE_TOP_MARGIN = 8;
+    private static final int BOOLEAN_TOGGLE_HEIGHT = 16;
+    private static final int BOOLEAN_TOGGLE_BOTTOM_MARGIN = 8;
     private static final int COORDINATE_FIELD_WIDTH = 44;
     private static final int COORDINATE_FIELD_HEIGHT = 16;
     private static final int COORDINATE_FIELD_SPACING = 6;
@@ -132,9 +150,18 @@ public class Node {
     private static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
     private static final int AMOUNT_FIELD_HEIGHT = 16;
     private static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
+    private static final int STOP_TARGET_FIELD_MARGIN_HORIZONTAL = 8;
+    private static final int STOP_TARGET_FIELD_TOP_MARGIN = 6;
+    private static final int STOP_TARGET_FIELD_LABEL_HEIGHT = 0;
+    private static final int STOP_TARGET_FIELD_HEIGHT = 16;
+    private static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
+    private static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
     private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
     private static final Pattern UNSAFE_RESOURCE_ID_PATTERN = Pattern.compile("[^a-z0-9_:/.-]");
+    private static final Object GOTO_BREAK_LOCK = new Object();
+    private static final AtomicInteger ACTIVE_GOTO_BLOCKING_REQUESTS = new AtomicInteger(0);
+    private static Boolean gotoBreakOriginalValue = null;
     private int width;
     private int height;
     private int nextOutputSocket = 0;
@@ -153,8 +180,10 @@ public class Node {
     private Node parentParameterHost;
     private int parentParameterSlotIndex;
     private boolean socketsHidden;
+    private boolean booleanToggleValue = true;
     private RuntimeParameterData runtimeParameterData;
     private transient Node owningStartNode;
+    private int startNodeNumber;
 
     public Node(NodeType type, int x, int y) {
         this.id = java.util.UUID.randomUUID().toString();
@@ -172,6 +201,7 @@ public class Node {
         this.parentParameterSlotIndex = -1;
         this.socketsHidden = false;
         this.owningStartNode = null;
+        this.startNodeNumber = 0;
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -192,6 +222,7 @@ public class Node {
         private Boolean booleanValue;
         private String handName;
         private Integer slotIndex;
+        private SlotSelectionType slotSelectionType;
         private String schematicName;
         private Double rangeValue;
         private Float resolvedYaw;
@@ -404,7 +435,7 @@ public class Node {
     }
 
     public boolean isParameterNode() {
-        return type.getCategory() == NodeCategory.PARAMETERS;
+        return type.getCategory() == NodeCategory.PARAMETERS || type == NodeType.VARIABLE;
     }
 
     public static boolean isSensorType(NodeType nodeType) {
@@ -427,8 +458,11 @@ public class Node {
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
+            case SENSOR_IS_ON_GROUND:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case SENSOR_KEY_PRESSED:
+            case OPERATOR_EQUALS:
                 return true;
             default:
                 return false;
@@ -436,7 +470,7 @@ public class Node {
     }
 
     public static boolean isParameterType(NodeType nodeType) {
-        return nodeType != null && nodeType.getCategory() == NodeCategory.PARAMETERS;
+        return nodeType != null && (nodeType.getCategory() == NodeCategory.PARAMETERS || nodeType == NodeType.VARIABLE);
     }
 
     public boolean canAcceptSensor() {
@@ -461,6 +495,9 @@ public class Node {
         if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL) {
             return false;
         }
+        if (hasBooleanToggle()) {
+            return false;
+        }
         return !isParameterNode()
             && type != NodeType.START
             && type != NodeType.EVENT_CALL
@@ -481,7 +518,9 @@ public class Node {
     public boolean usesMinimalNodePresentation() {
         return isStopControlNode()
             || type == NodeType.SWING
-            || type == NodeType.JUMP;
+            || type == NodeType.JUMP
+            || type == NodeType.OPEN_INVENTORY
+            || type == NodeType.CLOSE_GUI;
     }
 
     public boolean canAcceptParameterAt(int slotIndex) {
@@ -505,15 +544,24 @@ public class Node {
         if (!canAcceptParameterAt(slotIndex)) {
             return false;
         }
+        if (type == NodeType.SET_VARIABLE) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
         if (type == NodeType.PLACE) {
             if (slotIndex == 0) {
-                return true;
+                return false;
             }
             Node coordinateParameter = getAttachedParameter(slotIndex);
             if (coordinateParameter != null) {
                 return true;
             }
             Node blockParameter = getAttachedParameter(0);
+            if (blockParameter != null && blockParameter.getType() == NodeType.VARIABLE) {
+                return false;
+            }
             return blockParameter == null || !parameterProvidesCoordinates(blockParameter);
         }
         if (type == NodeType.PLACE_HAND) {
@@ -526,6 +574,23 @@ public class Node {
         if (parameter == null) {
             return false;
         }
+        if (parameter.getType() == NodeType.VARIABLE && type != NodeType.SET_VARIABLE && type != NodeType.OPERATOR_EQUALS) {
+            return true;
+        }
+        if (type == NodeType.SET_VARIABLE) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
         if (type != NodeType.PLACE && type != NodeType.PLACE_HAND) {
             return true;
         }
@@ -534,6 +599,7 @@ public class Node {
             switch (parameterType) {
                 case PARAM_BLOCK:
                 case PARAM_BLOCK_LIST:
+                case PARAM_INVENTORY_SLOT:
                 case PARAM_PLACE_TARGET:
                     return true;
                 default:
@@ -547,11 +613,39 @@ public class Node {
         if (parameter == null) {
             return false;
         }
+        if (parameter.getType() == NodeType.VARIABLE && type != NodeType.SET_VARIABLE && type != NodeType.OPERATOR_EQUALS) {
+            return true;
+        }
+        if (type == NodeType.SET_VARIABLE) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
         if (!isParameterCompatibleWithSlot(parameter, slotIndex)) {
             return false;
         }
         NodeType parameterType = parameter.getType();
+        if (type == NodeType.INTERACT && parameterType == NodeType.PARAM_ITEM) {
+            return false;
+        }
+        if (type == NodeType.USE) {
+            return parameterType == NodeType.PARAM_ITEM || parameterType == NodeType.PARAM_INVENTORY_SLOT;
+        }
         if (type == NodeType.MOVE_ITEM && slotIndex >= 0 && slotIndex <= 1 && parameterType == NodeType.PARAM_ITEM) {
+            return true;
+        }
+        if ((type == NodeType.PLACE || type == NodeType.PLACE_HAND)
+            && slotIndex == 0
+            && parameterType == NodeType.PARAM_INVENTORY_SLOT) {
             return true;
         }
         if (supportsDirectSensorParameter(parameterType)) {
@@ -643,6 +737,14 @@ public class Node {
         return owningStartNode;
     }
 
+    public int getStartNodeNumber() {
+        return startNodeNumber;
+    }
+
+    public void setStartNodeNumber(int startNodeNumber) {
+        this.startNodeNumber = startNodeNumber;
+    }
+
     public boolean hasAttachedActionNode() {
         return attachedActionNode != null;
     }
@@ -678,7 +780,7 @@ public class Node {
         if (isSensorNode() || isParameterNode()) {
             return 0;
         }
-        if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL) {
+        if (type == NodeType.STOP_ALL) {
             return 0;
         }
         if (type == NodeType.CONTROL_FOREVER) {
@@ -767,6 +869,8 @@ public class Node {
             }
         } else if (hasSensorSlot() || hasActionSlot()) {
             top += SLOT_AREA_PADDING_TOP;
+        } else if (hasBooleanToggle()) {
+            top += getBooleanToggleAreaHeight();
         } else {
             top += BODY_PADDING_NO_PARAMS;
         }
@@ -804,6 +908,12 @@ public class Node {
         if (!hasParameterSlot()) {
             return 0;
         }
+        if (type == NodeType.SET_VARIABLE) {
+            return 2;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return 2;
+        }
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
             return 2;
         }
@@ -817,8 +927,23 @@ public class Node {
         return x + PARAMETER_SLOT_MARGIN_HORIZONTAL;
     }
 
+    public int getParameterSlotLeft(int slotIndex) {
+        if (type == NodeType.OPERATOR_EQUALS) {
+            int slotWidth = getParameterSlotWidth(slotIndex);
+            int baseLeft = x + PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            if (slotIndex <= 0) {
+                return baseLeft;
+            }
+            return baseLeft + slotWidth + OPERATOR_SLOT_GAP;
+        }
+        return getParameterSlotLeft();
+    }
+
     public int getParameterSlotTop(int slotIndex) {
         int top = y + HEADER_HEIGHT + PARAMETER_SLOT_LABEL_HEIGHT;
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return top;
+        }
         for (int i = 0; i < slotIndex; i++) {
             top += getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING + PARAMETER_SLOT_LABEL_HEIGHT;
         }
@@ -831,8 +956,14 @@ public class Node {
     }
 
     public String getParameterSlotLabel(int slotIndex) {
+        if (type == NodeType.OPERATOR_EQUALS) {
+            return "";
+        }
+        if (type == NodeType.SET_VARIABLE) {
+            return slotIndex == 0 ? "Variable" : "Parameter";
+        }
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
-            return slotIndex == 0 ? "Block" : "Position";
+            return slotIndex == 0 ? "Source" : "Position";
         }
         if (type == NodeType.MOVE_ITEM) {
             return slotIndex == 0 ? "Source Slot" : "Target Slot";
@@ -843,6 +974,17 @@ public class Node {
     public int getParameterSlotWidth() {
         int widthWithMargins = this.width - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
         return Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, widthWithMargins);
+    }
+
+    public int getParameterSlotWidth(int slotIndex) {
+        if (type == NodeType.OPERATOR_EQUALS) {
+            int widthWithMargins = this.width - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            int minCombinedWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH * 2 + OPERATOR_SLOT_GAP;
+            int effectiveWidth = Math.max(minCombinedWidth, widthWithMargins);
+            int available = effectiveWidth - OPERATOR_SLOT_GAP;
+            return Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, available / 2);
+        }
+        return getParameterSlotWidth();
     }
 
     public int getParameterSlotHeight(int slotIndex) {
@@ -860,6 +1002,12 @@ public class Node {
         int slotCount = getParameterSlotCount();
         if (slotCount <= 0) {
             return y + HEADER_HEIGHT;
+        }
+        if (type == NodeType.OPERATOR_EQUALS) {
+            int leftHeight = getParameterSlotHeight(0);
+            int rightHeight = getParameterSlotHeight(1);
+            int maxHeight = Math.max(leftHeight, rightHeight);
+            return getParameterSlotTop(0) + maxHeight;
         }
         int lastIndex = slotCount - 1;
         return getParameterSlotTop(lastIndex) + getParameterSlotHeight(lastIndex);
@@ -924,6 +1072,10 @@ public class Node {
         return false;
     }
 
+    public boolean hasStopTargetInputField() {
+        return type == NodeType.STOP_CHAIN;
+    }
+
     public int getAmountFieldDisplayHeight() {
         if (!hasAmountInputField()) {
             return 0;
@@ -959,6 +1111,37 @@ public class Node {
         return getParameterSlotLeft();
     }
 
+    public int getStopTargetFieldDisplayHeight() {
+        if (!hasStopTargetInputField()) {
+            return 0;
+        }
+        return STOP_TARGET_FIELD_TOP_MARGIN + STOP_TARGET_FIELD_HEIGHT + STOP_TARGET_FIELD_BOTTOM_MARGIN;
+    }
+
+    public int getStopTargetFieldLabelTop() {
+        return getParameterSlotsBottom() + STOP_TARGET_FIELD_TOP_MARGIN;
+    }
+
+    public int getStopTargetFieldInputTop() {
+        return getStopTargetFieldLabelTop() + STOP_TARGET_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getStopTargetFieldLabelHeight() {
+        return STOP_TARGET_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getStopTargetFieldHeight() {
+        return STOP_TARGET_FIELD_HEIGHT;
+    }
+
+    public int getStopTargetFieldWidth() {
+        return STOP_TARGET_FIELD_MIN_WIDTH;
+    }
+
+    public int getStopTargetFieldLeft() {
+        return x + Math.max(STOP_TARGET_FIELD_MARGIN_HORIZONTAL, (width - getStopTargetFieldWidth()) / 2);
+    }
+
     public boolean isPointInsideParameterSlot(int pointX, int pointY) {
         return getParameterSlotIndexAt(pointX, pointY) >= 0;
     }
@@ -968,9 +1151,9 @@ public class Node {
             return -1;
         }
         int slotCount = getParameterSlotCount();
-        int slotLeft = getParameterSlotLeft();
-        int slotWidth = getParameterSlotWidth();
         for (int i = 0; i < slotCount; i++) {
+            int slotLeft = getParameterSlotLeft(i);
+            int slotWidth = getParameterSlotWidth(i);
             int slotTop = getParameterSlotTop(i);
             int slotHeight = getParameterSlotHeight(i);
             if (pointX >= slotLeft && pointX <= slotLeft + slotWidth &&
@@ -992,9 +1175,9 @@ public class Node {
         if (parameter == null) {
             return;
         }
-        int slotX = getParameterSlotLeft() + PARAMETER_SLOT_INNER_PADDING;
+        int slotX = getParameterSlotLeft(slotIndex) + PARAMETER_SLOT_INNER_PADDING;
         int slotY = getParameterSlotTop(slotIndex) + PARAMETER_SLOT_INNER_PADDING;
-        int availableWidth = getParameterSlotWidth() - 2 * PARAMETER_SLOT_INNER_PADDING;
+        int availableWidth = getParameterSlotWidth(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
         int availableHeight = getParameterSlotHeight(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
         if (parameter.width < availableWidth) {
             parameter.width = availableWidth;
@@ -1065,7 +1248,7 @@ public class Node {
         int availableHeight = getActionSlotHeight() - 2 * ACTION_SLOT_INNER_PADDING;
         int nodeX = slotX + Math.max(0, (availableWidth - attachedActionNode.getWidth()) / 2);
         int nodeY = slotY + Math.max(0, (availableHeight - attachedActionNode.getHeight()) / 2);
-        attachedActionNode.setPositionSilently(nodeX, nodeY);
+        attachedActionNode.setPosition(nodeX, nodeY);
     }
 
     public boolean attachSensor(Node sensor) {
@@ -1123,6 +1306,7 @@ public class Node {
             NodeType parameterType = parameter.getType();
             if (parameterType == NodeType.PARAM_BLOCK
                 || parameterType == NodeType.PARAM_BLOCK_LIST
+                || parameterType == NodeType.PARAM_INVENTORY_SLOT
                 || parameterType == NodeType.PARAM_PLACE_TARGET) {
                 // Block-type parameters should always occupy the first slot
                 slotIndex = 0;
@@ -1554,7 +1738,7 @@ public class Node {
                     
                 // COLLECT modes
                 case COLLECT_SINGLE:
-                    parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "minecraft:stone"));
+                    parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
                     parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                     break;
                 case COLLECT_MULTIPLE:
@@ -1618,7 +1802,7 @@ public class Node {
                 case STOP_FORCE:
                     // No parameters needed
                     break;
-                    
+
                 default:
                     // No parameters needed
                     break;
@@ -1641,6 +1825,9 @@ public class Node {
                 break;
             case MESSAGE:
                 parameters.add(new NodeParameter("Text", ParameterType.STRING, "Hello World"));
+                break;
+            case STOP_CHAIN:
+                parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 break;
             case HOTBAR:
                 parameters.add(new NodeParameter("Slot", ParameterType.INTEGER, "0"));
@@ -1735,6 +1922,9 @@ public class Node {
             case EVENT_CALL:
                 parameters.add(new NodeParameter("Name", ParameterType.STRING, "function"));
                 break;
+            case VARIABLE:
+                parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
+                break;
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
@@ -1747,6 +1937,8 @@ public class Node {
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
+            case SENSOR_IS_ON_GROUND:
+            case SENSOR_KEY_PRESSED:
                 break;
             case SENSOR_LIGHT_LEVEL_BELOW:
                 parameters.add(new NodeParameter("Threshold", ParameterType.INTEGER, "7"));
@@ -1761,7 +1953,7 @@ public class Node {
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
                 break;
             case SENSOR_IS_RENDERED:
-                parameters.add(new NodeParameter("Resource", ParameterType.STRING, "minecraft:stone"));
+                parameters.add(new NodeParameter("Resource", ParameterType.STRING, "stone"));
                 break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
@@ -1769,16 +1961,17 @@ public class Node {
                 parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
                 break;
             case PARAM_BLOCK:
-                parameters.add(new NodeParameter("Block", ParameterType.STRING, "minecraft:stone"));
+                parameters.add(new NodeParameter("Block", ParameterType.STRING, "stone"));
+                parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_BLOCK_LIST:
-                parameters.add(new NodeParameter("Blocks", ParameterType.STRING, "minecraft:stone,minecraft:dirt"));
+                parameters.add(new NodeParameter("Blocks", ParameterType.STRING, "stone,dirt"));
                 break;
             case PARAM_ITEM:
-                parameters.add(new NodeParameter("Item", ParameterType.STRING, "minecraft:stick"));
+                parameters.add(new NodeParameter("Item", ParameterType.STRING, "stick"));
                 break;
             case PARAM_ENTITY:
-                parameters.add(new NodeParameter("Entity", ParameterType.STRING, "minecraft:cow"));
+                parameters.add(new NodeParameter("Entity", ParameterType.STRING, "cow"));
                 parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "6"));
                 break;
             case PARAM_PLAYER:
@@ -1813,6 +2006,9 @@ public class Node {
             case PARAM_HAND:
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
                 break;
+            case PARAM_KEY:
+                parameters.add(new NodeParameter("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
+                break;
             case PARAM_RANGE:
                 parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "6"));
                 break;
@@ -1823,7 +2019,7 @@ public class Node {
                 parameters.add(new NodeParameter("PitchOffset", ParameterType.DOUBLE, "0.0"));
                 break;
             case PARAM_PLACE_TARGET:
-                parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "minecraft:stone"));
+                parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
@@ -1880,8 +2076,28 @@ public class Node {
         }
     }
 
+    private boolean shouldShowStateParameter() {
+        String blockValue = getParameterString(this, "Block");
+        if (blockValue == null || blockValue.isEmpty()) {
+            return false;
+        }
+        String stripped = BlockSelection.stripState(blockValue);
+        if (stripped == null || stripped.isEmpty()) {
+            return false;
+        }
+        String sanitized = sanitizeResourceId(stripped);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return false;
+        }
+        String normalized = normalizeResourceId(sanitized, "minecraft");
+        return !BlockSelection.getStateOptions(normalized).isEmpty();
+    }
+
     public String getParameterLabel(NodeParameter parameter) {
         if (parameter == null) {
+            return "";
+        }
+        if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
             return "";
         }
         String text = parameter.getName() + ": " + parameter.getDisplayValue();
@@ -1935,6 +2151,26 @@ public class Node {
                 break;
             }
             case PARAM_ITEM: {
+                String items = values.get("Items");
+                String item = values.get("Item");
+                if ((items == null || items.isEmpty()) && item != null && !item.isEmpty()) {
+                    values.put("Items", item);
+                    values.put(normalizeParameterKey("Items"), item);
+                }
+                if ((item == null || item.isEmpty()) && items != null && !items.isEmpty()) {
+                    for (String entry : items.split(",")) {
+                        String trimmed = entry == null ? null : entry.trim();
+                        if (trimmed == null || trimmed.isEmpty()) {
+                            continue;
+                        }
+                        item = trimmed;
+                        break;
+                    }
+                    if (item != null && !item.isEmpty()) {
+                        values.put("Item", item);
+                        values.put(normalizeParameterKey("Item"), item);
+                    }
+                }
                 String amount = values.get("Amount");
                 if (amount != null) {
                     values.put("Count", amount);
@@ -1987,9 +2223,24 @@ public class Node {
             }
             case PARAM_BLOCK: {
                 String block = values.get("Block");
-                if (block != null) {
+                String blocks = values.get("Blocks");
+                if ((blocks == null || blocks.isEmpty()) && block != null && !block.isEmpty()) {
                     values.put("Blocks", block);
                     values.put(normalizeParameterKey("Blocks"), block);
+                }
+                if ((block == null || block.isEmpty()) && blocks != null && !blocks.isEmpty()) {
+                    for (String entry : blocks.split(",")) {
+                        String trimmed = entry == null ? null : entry.trim();
+                        if (trimmed == null || trimmed.isEmpty()) {
+                            continue;
+                        }
+                        block = trimmed;
+                        break;
+                    }
+                    if (block != null && !block.isEmpty()) {
+                        values.put("Block", block);
+                        values.put(normalizeParameterKey("Block"), block);
+                    }
                 }
                 break;
             }
@@ -2074,6 +2325,53 @@ public class Node {
         return !parameters.isEmpty();
     }
 
+    public boolean hasBooleanToggle() {
+        switch (type) {
+            case SENSOR_IS_SWIMMING:
+            case SENSOR_IS_IN_LAVA:
+            case SENSOR_IS_UNDERWATER:
+            case SENSOR_IS_ON_GROUND:
+            case SENSOR_IS_FALLING:
+            case SENSOR_IS_DAYTIME:
+            case SENSOR_IS_RAINING:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public boolean getBooleanToggleValue() {
+        return booleanToggleValue;
+    }
+
+    public void setBooleanToggleValue(boolean value) {
+        this.booleanToggleValue = value;
+    }
+
+    public void toggleBooleanToggleValue() {
+        this.booleanToggleValue = !this.booleanToggleValue;
+    }
+
+    public int getBooleanToggleLeft() {
+        return x + BOOLEAN_TOGGLE_MARGIN_HORIZONTAL;
+    }
+
+    public int getBooleanToggleTop() {
+        return y + HEADER_HEIGHT + BOOLEAN_TOGGLE_TOP_MARGIN;
+    }
+
+    public int getBooleanToggleWidth() {
+        return Math.max(48, width - 2 * BOOLEAN_TOGGLE_MARGIN_HORIZONTAL);
+    }
+
+    public int getBooleanToggleHeight() {
+        return BOOLEAN_TOGGLE_HEIGHT;
+    }
+
+    public int getBooleanToggleAreaHeight() {
+        return BOOLEAN_TOGGLE_TOP_MARGIN + BOOLEAN_TOGGLE_HEIGHT + BOOLEAN_TOGGLE_BOTTOM_MARGIN;
+    }
+
     public boolean supportsModeSelection() {
         NodeMode[] modes = NodeMode.getModesForNodeType(type);
         return modes != null && modes.length > 0;
@@ -2116,15 +2414,21 @@ public class Node {
                     }
                 }
             }
-            int requiredWidth = parameterContentWidth + 2 * (PARAMETER_SLOT_INNER_PADDING + PARAMETER_SLOT_MARGIN_HORIZONTAL);
-            computedWidth = Math.max(computedWidth, requiredWidth);
-            if (hasCoordinateInputFields()) {
-                int coordinateWidth = getCoordinateFieldTotalWidth() + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
-                computedWidth = Math.max(computedWidth, coordinateWidth);
-            }
-            if (hasAmountInputField()) {
-                int amountWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
-                computedWidth = Math.max(computedWidth, amountWidth);
+            if (type == NodeType.OPERATOR_EQUALS) {
+                int slotWidth = parameterContentWidth + 2 * PARAMETER_SLOT_INNER_PADDING;
+                int requiredWidth = (slotWidth * 2) + OPERATOR_SLOT_GAP + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                computedWidth = Math.max(computedWidth, requiredWidth);
+            } else {
+                int requiredWidth = parameterContentWidth + 2 * (PARAMETER_SLOT_INNER_PADDING + PARAMETER_SLOT_MARGIN_HORIZONTAL);
+                computedWidth = Math.max(computedWidth, requiredWidth);
+                if (hasCoordinateInputFields()) {
+                    int coordinateWidth = getCoordinateFieldTotalWidth() + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                    computedWidth = Math.max(computedWidth, coordinateWidth);
+                }
+                if (hasAmountInputField()) {
+                    int amountWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                    computedWidth = Math.max(computedWidth, amountWidth);
+                }
             }
         }
         if (hasSensorSlot()) {
@@ -2141,6 +2445,10 @@ public class Node {
                 actionContentWidth = Math.max(actionContentWidth, attachedActionNode.getWidth());
             }
             int requiredWidth = actionContentWidth + 2 * (ACTION_SLOT_INNER_PADDING + ACTION_SLOT_MARGIN_HORIZONTAL);
+            computedWidth = Math.max(computedWidth, requiredWidth);
+        }
+        if (hasStopTargetInputField()) {
+            int requiredWidth = STOP_TARGET_FIELD_MIN_WIDTH + 2 * STOP_TARGET_FIELD_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, requiredWidth);
         }
         int minWidth = usesMinimalNodePresentation() ? 70 : MIN_WIDTH;
@@ -2166,21 +2474,35 @@ public class Node {
                 contentHeight += BODY_PADDING_NO_PARAMS;
             }
         } else if (hasParameterSlot()) {
-            int slotCount = getParameterSlotCount();
-            for (int i = 0; i < slotCount; i++) {
-                contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
-            }
-            if (hasCoordinateInputFields()) {
-                contentHeight += getCoordinateFieldDisplayHeight();
-            }
-            if (hasAmountInputField()) {
-                contentHeight += getAmountFieldDisplayHeight();
-            }
-            if (hasSlots) {
-                contentHeight += SLOT_AREA_PADDING_TOP;
+            if (type == NodeType.OPERATOR_EQUALS) {
+                int leftHeight = getParameterSlotHeight(0);
+                int rightHeight = getParameterSlotHeight(1);
+                int maxHeight = Math.max(leftHeight, rightHeight);
+                contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + maxHeight + PARAMETER_SLOT_BOTTOM_PADDING;
+                if (hasSlots) {
+                    contentHeight += SLOT_AREA_PADDING_TOP;
+                }
+            } else {
+                int slotCount = getParameterSlotCount();
+                for (int i = 0; i < slotCount; i++) {
+                    contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
+                }
+                if (hasCoordinateInputFields()) {
+                    contentHeight += getCoordinateFieldDisplayHeight();
+                }
+                if (hasAmountInputField()) {
+                    contentHeight += getAmountFieldDisplayHeight();
+                }
+                if (hasSlots) {
+                    contentHeight += SLOT_AREA_PADDING_TOP;
+                }
             }
         } else if (hasSlots) {
             contentHeight += SLOT_AREA_PADDING_TOP;
+        } else if (hasStopTargetInputField()) {
+            contentHeight += getStopTargetFieldDisplayHeight();
+        } else if (hasBooleanToggle()) {
+            contentHeight += getBooleanToggleAreaHeight();
         } else {
             contentHeight += BODY_PADDING_NO_PARAMS;
         }
@@ -2204,7 +2526,7 @@ public class Node {
         int minHeight = usesMinimalNodePresentation() ? 32 : MIN_HEIGHT;
         computedHeight = Math.max(minHeight, contentHeight);
 
-        if (type == NodeType.EVENT_FUNCTION) {
+        if (type == NodeType.EVENT_FUNCTION || type == NodeType.VARIABLE) {
             this.height = Math.max(EVENT_FUNCTION_MIN_HEIGHT, contentHeight);
         } else {
             this.height = computedHeight;
@@ -2268,6 +2590,10 @@ public class Node {
                     return future;
                 }
             }
+        }
+
+        if (!reportEmptyParametersForNode(this, future)) {
+            return future;
         }
 
         if (client != null) {
@@ -2338,6 +2664,16 @@ public class Node {
         }
 
         boolean handled = false;
+        if (parameterNode.getType() == NodeType.VARIABLE) {
+            parameterNode = resolveVariableValueNode(parameterNode, slotIndex, future);
+            if (parameterNode == null) {
+                return ParameterHandlingResult.COMPLETE;
+            }
+        }
+
+        if (!reportEmptyParametersForNode(parameterNode, future)) {
+            return ParameterHandlingResult.COMPLETE;
+        }
 
         Map<String, String> exported = parameterNode.exportParameterValues();
         Map<String, String> adjustedValues = adjustParameterValuesForSlot(exported, slotIndex);
@@ -2372,6 +2708,13 @@ public class Node {
                 return ParameterHandlingResult.COMPLETE;
             }
         }
+        if (!handled && type == NodeType.USE) {
+            if (resolveUseParameterSelection(parameterNode, future)) {
+                handled = true;
+            } else {
+                return ParameterHandlingResult.COMPLETE;
+            }
+        }
 
         // Special case: block parameters in slot 0 of PLACE/PLACE_HAND nodes are valid
         // even when usages is empty (they provide block type, not position)
@@ -2379,6 +2722,9 @@ public class Node {
             NodeType parameterType = parameterNode.getType();
             if ((parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_BLOCK_LIST)
                 && parameterNode.parentParameterSlotIndex == 0) {
+                handled = true;
+            }
+            if (parameterType == NodeType.PARAM_INVENTORY_SLOT && parameterNode.parentParameterSlotIndex == 0) {
                 handled = true;
             }
         }
@@ -2392,6 +2738,58 @@ public class Node {
         }
 
         return ParameterHandlingResult.CONTINUE;
+    }
+
+    private Node resolveVariableValueNode(Node variableNode, int slotIndex, CompletableFuture<Void> future) {
+        if (variableNode == null) {
+            return null;
+        }
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            sendVariableError("Variable name cannot be empty.", future);
+            return null;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        ExecutionManager.RuntimeVariable runtimeVariable = manager.getRuntimeVariable(startNode, variableName.trim());
+        if (runtimeVariable == null) {
+            sendVariableError("Variable \"" + variableName.trim() + "\" is not set.", future);
+            return null;
+        }
+
+        NodeType valueType = runtimeVariable.getType();
+        if (valueType == null) {
+            sendVariableError("Variable \"" + variableName.trim() + "\" has no value.", future);
+            return null;
+        }
+
+        Node snapshot = new Node(valueType, 0, 0);
+        snapshot.setSocketsHidden(true);
+        Map<String, String> values = runtimeVariable.getValues();
+        if (values != null && !values.isEmpty()) {
+            snapshot.applyParameterValuesFromMap(values);
+        }
+
+        if (!isParameterSupported(snapshot, slotIndex)) {
+            sendVariableError("Variable \"" + variableName.trim() + "\" cannot be used with " + type.getDisplayName() + ".", future);
+            return null;
+        }
+
+        return snapshot;
+    }
+
+    private void sendVariableError(String message, CompletableFuture<Void> future) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client != null) {
+            sendNodeErrorMessage(client, message);
+        }
+        if (future != null && !future.isDone()) {
+            future.complete(null);
+        }
     }
 
     private Optional<Vec3d> resolvePositionTarget(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
@@ -2431,7 +2829,7 @@ public class Node {
                 BlockPos pos = new BlockPos(x, y, z);
                 if (data != null) {
                     data.targetBlockPos = pos;
-                    data.targetBlockId = getParameterString(parameterNode, "Block");
+                    data.targetBlockId = getBlockParameterValue(parameterNode);
                 }
                 return Optional.of(Vec3d.ofCenter(pos));
             }
@@ -2439,29 +2837,39 @@ public class Node {
                 if (client == null || client.player == null) {
                     return Optional.empty();
                 }
-                String itemId = getParameterString(parameterNode, "Item");
-                if (itemId == null || itemId.isEmpty()) {
+                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+                if (itemIds.isEmpty()) {
                     sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
-                Identifier identifier = Identifier.tryParse(itemId);
-                if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-                    sendParameterSearchFailure("Unknown item \"" + itemId + "\" for " + type.getDisplayName() + ".", future);
-                    return Optional.empty();
-                }
-                Item item = Registries.ITEM.get(identifier);
                 double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
-                Optional<BlockPos> match = findNearestDroppedItem(client, item, range);
-                if (match.isEmpty()) {
-                    sendParameterSearchFailure("No dropped " + itemId + " found for " + type.getDisplayName() + ".", future);
+                boolean hasValidCandidate = false;
+                for (String candidateId : itemIds) {
+                    Identifier identifier = Identifier.tryParse(candidateId);
+                    if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                        continue;
+                    }
+                    hasValidCandidate = true;
+                    Item item = Registries.ITEM.get(identifier);
+                    Optional<BlockPos> match = findNearestDroppedItem(client, item, range);
+                    if (match.isEmpty()) {
+                        continue;
+                    }
+                    if (data != null) {
+                        data.targetBlockPos = match.get();
+                        data.targetItem = item;
+                        data.targetItemId = candidateId;
+                    }
+                    return Optional.of(Vec3d.ofCenter(match.get()));
+                }
+                if (!hasValidCandidate) {
+                    String reference = itemIds.get(0);
+                    sendParameterSearchFailure("Unknown item \"" + reference + "\" for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
-                if (data != null) {
-                    data.targetBlockPos = match.get();
-                    data.targetItem = item;
-                    data.targetItemId = itemId;
-                }
-                return Optional.of(Vec3d.ofCenter(match.get()));
+                String joined = String.join(", ", itemIds);
+                sendParameterSearchFailure("No dropped " + joined + " found for " + type.getDisplayName() + ".", future);
+                return Optional.empty();
             }
             case PARAM_ENTITY: {
                 if (client == null || client.player == null) {
@@ -2518,7 +2926,7 @@ public class Node {
                 if (client == null || client.player == null || client.world == null) {
                     return Optional.empty();
                 }
-                List<Block> blocks = resolveBlocksFromParameter(parameterNode);
+                List<BlockSelection> blocks = resolveBlocksFromParameter(parameterNode);
                 if (blocks.isEmpty()) {
                     sendParameterSearchFailure("No blocks defined on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
@@ -2532,10 +2940,10 @@ public class Node {
                 if (data != null) {
                     data.targetBlockPos = match.get();
                     data.targetBlockIds = new ArrayList<>();
-                    for (Block block : blocks) {
-                        Identifier id = Registries.BLOCK.getId(block);
+                    for (BlockSelection selection : blocks) {
+                        Identifier id = selection.getBlockId();
                         if (id != null) {
-                            data.targetBlockIds.add(id.toString());
+                            data.targetBlockIds.add(selection.asString());
                         }
                     }
                 }
@@ -2756,6 +3164,64 @@ public class Node {
         }
     }
 
+    private boolean reportEmptyParametersForNode(Node target, CompletableFuture<Void> future) {
+        if (target == null) {
+            return true;
+        }
+        List<String> emptyNames = new ArrayList<>();
+        collectEmptyUserEditedParameters(target, emptyNames);
+        if (emptyNames.isEmpty()) {
+            return true;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client != null) {
+            String joined = String.join(", ", emptyNames);
+            String subject = target.getType() != null ? target.getType().getDisplayName() + " node" : "node";
+            String message = emptyNames.size() == 1
+                ? joined + " cannot be empty on " + subject + "."
+                : "Parameters " + joined + " cannot be empty on " + subject + ".";
+            sendNodeErrorMessage(client, message);
+        }
+        if (future != null && !future.isDone()) {
+            future.complete(null);
+        }
+        return false;
+    }
+
+    private void collectEmptyUserEditedParameters(Node target, List<String> emptyNames) {
+        if (target == null || emptyNames == null) {
+            return;
+        }
+        for (NodeParameter parameter : target.getParameters()) {
+            if (parameter == null || !parameter.isUserEdited()) {
+                continue;
+            }
+            String value = parameter.getStringValue();
+            if (value != null && !value.trim().isEmpty()) {
+                continue;
+            }
+            String defaultValue = parameter.getDefaultValue();
+            if (defaultValue != null && !defaultValue.isEmpty()) {
+                emptyNames.add(parameter.getName());
+            }
+        }
+    }
+
+    private boolean reportEmptyParametersForAttachedParameters(CompletableFuture<Void> future) {
+        if (attachedParameters.isEmpty()) {
+            return true;
+        }
+        for (Node parameterNode : attachedParameters.values()) {
+            if (parameterNode == null || !parameterNode.isParameterNode()) {
+                continue;
+            }
+            if (!reportEmptyParametersForNode(parameterNode, future)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void setParameterIfPresent(String name, String value) {
         if (name == null || value == null) {
             return;
@@ -2806,28 +3272,61 @@ public class Node {
         }
     }
 
-    private List<Block> resolveBlocksFromParameter(Node parameterNode) {
-        List<Block> blocks = new ArrayList<>();
-        String primary = getParameterString(parameterNode, "Block");
+    private List<BlockSelection> resolveBlocksFromParameter(Node parameterNode) {
+        List<BlockSelection> selections = new ArrayList<>();
+        String primary = getBlockParameterValue(parameterNode);
         String listValue = getParameterString(parameterNode, "Blocks");
         if (listValue != null && !listValue.isEmpty()) {
             for (String entry : listValue.split(",")) {
-                addBlockById(blocks, entry.trim());
+                addBlockSelection(selections, entry.trim());
             }
         }
         if (primary != null && !primary.isEmpty()) {
-            addBlockById(blocks, primary.trim());
+            addBlockSelection(selections, primary.trim());
         }
-        return blocks;
+        return selections;
     }
 
-    private void addBlockById(List<Block> blocks, String idString) {
-        if (idString == null || idString.isEmpty()) {
+    private void addBlockSelection(List<BlockSelection> selections, String rawValue) {
+        if (rawValue == null || rawValue.isEmpty()) {
             return;
         }
-        Identifier identifier = Identifier.tryParse(idString);
-        if (identifier != null && Registries.BLOCK.containsId(identifier)) {
-            blocks.add(Registries.BLOCK.get(identifier));
+        BlockSelection.parse(rawValue).ifPresent(selection -> {
+            if (selection.getBlock() != null) {
+                boolean exists = selections.stream().anyMatch(existing -> existing.asString().equals(selection.asString()));
+                if (!exists) {
+                    selections.add(selection);
+                }
+            }
+        });
+    }
+
+    private List<String> resolveItemIdsFromParameter(Node parameterNode) {
+        List<String> itemIds = new ArrayList<>();
+        if (parameterNode == null) {
+            return itemIds;
+        }
+        String listValue = getParameterString(parameterNode, "Items");
+        if (listValue != null && !listValue.isEmpty()) {
+            for (String entry : listValue.split(",")) {
+                addItemIdentifier(itemIds, entry);
+            }
+        }
+        addItemIdentifier(itemIds, getParameterString(parameterNode, "Item"));
+        return itemIds;
+    }
+
+    private void addItemIdentifier(List<String> itemIds, String rawValue) {
+        if (rawValue == null || rawValue.isEmpty()) {
+            return;
+        }
+        String sanitized = sanitizeResourceId(rawValue);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return;
+        }
+        String normalized = normalizeResourceId(sanitized, "minecraft");
+        if (!itemIds.contains(normalized)) {
+            itemIds.add(normalized);
         }
     }
 
@@ -2871,14 +3370,23 @@ public class Node {
         }
         for (String entry : rawValue.split(",")) {
             String trimmed = entry.trim();
-            if (!trimmed.isEmpty() && !blockIds.contains(trimmed)) {
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            Identifier identifier = BlockSelection.extractBlockIdentifier(trimmed);
+            if (identifier != null) {
+                String normalized = identifier.toString();
+                if (!blockIds.contains(normalized)) {
+                    blockIds.add(normalized);
+                }
+            } else if (!blockIds.contains(trimmed)) {
                 blockIds.add(trimmed);
             }
         }
     }
 
-    private Optional<BlockPos> findNearestBlock(net.minecraft.client.MinecraftClient client, List<Block> blocks, double range) {
-        if (client == null || client.player == null || client.world == null || blocks == null || blocks.isEmpty()) {
+    private Optional<BlockPos> findNearestBlock(net.minecraft.client.MinecraftClient client, List<BlockSelection> selections, double range) {
+        if (client == null || client.player == null || client.world == null || selections == null || selections.isEmpty()) {
             return Optional.empty();
         }
         int radius = Math.max(1, Math.min((int) Math.ceil(range), 64));
@@ -2892,12 +3400,23 @@ public class Node {
                 for (int dz = -radius; dz <= radius; dz++) {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
                     BlockState state = client.world.getBlockState(mutable);
-                    if (blocks.contains(state.getBlock())) {
-                        double distance = mutable.getSquaredDistance(playerPos);
-                        if (distance < bestDistance) {
-                            bestDistance = distance;
-                            bestPos = mutable.toImmutable();
+                    if (state.isAir()) {
+                        continue;
+                    }
+                    boolean matches = false;
+                    for (BlockSelection selection : selections) {
+                        if (selection.matches(state)) {
+                            matches = true;
+                            break;
                         }
+                    }
+                    if (!matches) {
+                        continue;
+                    }
+                    double distance = mutable.getSquaredDistance(playerPos);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestPos = mutable.toImmutable();
                     }
                 }
             }
@@ -2963,6 +3482,9 @@ public class Node {
             case EVENT_CALL:
                 System.out.println("Call Function node - dispatching handlers");
                 future.complete(null);
+                break;
+            case SET_VARIABLE:
+                executeSetVariableCommand(future);
                 break;
 
             // Generalized nodes
@@ -3092,8 +3614,10 @@ public class Node {
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
+            case SENSOR_IS_ON_GROUND:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case SENSOR_KEY_PRESSED:
                 completeSensorEvaluation(future);
                 break;
             
@@ -3119,6 +3643,44 @@ public class Node {
                 future.complete(null);
                 break;
         }
+    }
+
+    private void executeSetVariableCommand(CompletableFuture<Void> future) {
+        Node variableNode = getAttachedParameter(0);
+        Node valueNode = getAttachedParameter(1);
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (variableNode == null || valueNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Set Variable requires a variable and a parameter.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Variable name cannot be empty.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "No active node tree available for variable assignment.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        Map<String, String> values = valueNode.exportParameterValues();
+        ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueNode.getType(), values);
+        manager.setRuntimeVariable(startNode, variableName.trim(), value);
+        future.complete(null);
     }
     
     // Command execution methods that wait for Baritone completion
@@ -3161,7 +3723,7 @@ public class Node {
                 }
 
                 System.out.println("Executing goto to: " + x + ", " + y + ", " + z);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 GoalBlock goal = new GoalBlock(x, y, z);
                 customGoalProcess.setGoalAndPath(goal);
                 break;
@@ -3180,7 +3742,7 @@ public class Node {
                 }
 
                 System.out.println("Executing goto to: " + x2 + ", " + z2);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 GoalBlock goal2 = new GoalBlock(x2, 0, z2); // Y will be determined by pathfinding
                 customGoalProcess.setGoalAndPath(goal2);
                 break;
@@ -3191,7 +3753,7 @@ public class Node {
                 if (yParam3 != null) y3 = yParam3.getIntValue();
                 
                 System.out.println("Executing goto to Y level: " + y3);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 // For Y-only movement, we need to get current X,Z and set goal there
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client != null && client.player != null) {
@@ -3220,13 +3782,54 @@ public class Node {
                     break;
                 }
 
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+                startGotoTaskWithBreakGuard(future);
                 getToBlockProcess.getToBlock(new BlockOptionalMeta(block));
                 break;
                 
             default:
                 future.completeExceptionally(new RuntimeException("Unknown GOTO mode: " + mode));
                 break;
+        }
+    }
+
+    private void startGotoTaskWithBreakGuard(CompletableFuture<Void> future) {
+        disableBaritoneBlockBreakingDuringGoto(future);
+        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+    }
+
+    private void disableBaritoneBlockBreakingDuringGoto(CompletableFuture<Void> future) {
+        if (future == null) {
+            return;
+        }
+        Settings settings = BaritoneAPI.getSettings();
+        if (settings == null) {
+            return;
+        }
+
+        synchronized (GOTO_BREAK_LOCK) {
+            if (ACTIVE_GOTO_BLOCKING_REQUESTS.getAndIncrement() == 0) {
+                gotoBreakOriginalValue = settings.allowBreak.value;
+                settings.allowBreak.value = false;
+            }
+        }
+
+        future.whenComplete((result, throwable) -> restoreBaritoneBlockBreakingAfterGoto());
+    }
+
+    private static void restoreBaritoneBlockBreakingAfterGoto() {
+        Settings settings = BaritoneAPI.getSettings();
+        if (settings == null) {
+            return;
+        }
+
+        synchronized (GOTO_BREAK_LOCK) {
+            int remaining = ACTIVE_GOTO_BLOCKING_REQUESTS.decrementAndGet();
+            if (remaining <= 0) {
+                ACTIVE_GOTO_BLOCKING_REQUESTS.set(0);
+                Boolean originalValue = gotoBreakOriginalValue;
+                gotoBreakOriginalValue = null;
+                settings.allowBreak.value = originalValue != null ? originalValue : Boolean.TRUE;
+            }
         }
     }
 
@@ -3258,23 +3861,34 @@ public class Node {
             return false;
         }
 
-        String itemId = getParameterString(parameterNode, "Item");
-        if (itemId == null || itemId.isEmpty()) {
+        List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+        if (itemIds.isEmpty()) {
             return false;
         }
 
-        Identifier identifier = Identifier.tryParse(itemId);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-            sendNodeErrorMessage(client, "Cannot navigate to item \"" + itemId + "\": unknown identifier.");
-            future.complete(null);
-            return true;
+        double searchRange = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+        Optional<BlockPos> matchedPosition = Optional.empty();
+        Item matchedItem = null;
+        String matchedItemId = null;
+
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item candidateItem = Registries.ITEM.get(identifier);
+            Optional<BlockPos> target = findNearestDroppedItem(client, candidateItem, searchRange);
+            if (target.isPresent()) {
+                matchedPosition = target;
+                matchedItem = candidateItem;
+                matchedItemId = candidateId;
+                break;
+            }
         }
 
-        Item item = Registries.ITEM.get(identifier);
-        double searchRange = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
-        Optional<BlockPos> target = findNearestDroppedItem(client, item, searchRange);
-        if (target.isEmpty()) {
-            sendNodeErrorMessage(client, "No dropped " + itemId + " found nearby for " + type.getDisplayName() + ".");
+        if (matchedPosition.isEmpty()) {
+            String reference = String.join(", ", itemIds);
+            sendNodeErrorMessage(client, "No dropped " + reference + " found nearby for " + type.getDisplayName() + ".");
             future.complete(null);
             return true;
         }
@@ -3285,8 +3899,14 @@ public class Node {
             return true;
         }
 
-        BlockPos pos = target.get();
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        BlockPos pos = matchedPosition.get();
+        if (runtimeParameterData != null) {
+            runtimeParameterData.targetBlockPos = pos;
+            runtimeParameterData.targetItem = matchedItem;
+            runtimeParameterData.targetItemId = matchedItemId;
+        }
+
+        startGotoTaskWithBreakGuard(future);
         customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
         return true;
     }
@@ -3325,7 +3945,7 @@ public class Node {
         }
 
         BlockPos pos = target.get().getBlockPos();
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        startGotoTaskWithBreakGuard(future);
         customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
         return true;
     }
@@ -3358,19 +3978,87 @@ public class Node {
         }
 
         BlockPos pos = match.get().getBlockPos();
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        startGotoTaskWithBreakGuard(future);
         customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
         return true;
     }
 
     private boolean gotoBlockFromParameter(Node parameterNode, IBaritone baritone, CompletableFuture<Void> future) {
-        String blockId = getParameterString(parameterNode, "Block");
+        String blockId = getBlockParameterValue(parameterNode);
         if (blockId == null || blockId.isEmpty()) {
             return false;
         }
 
-        IGetToBlockProcess getToBlockProcess = baritone != null ? baritone.getGetToBlockProcess() : null;
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        RuntimeParameterData parameterData = runtimeParameterData;
+        BlockPos targetPos = parameterData != null ? parameterData.targetBlockPos : null;
+        String sanitized = sanitizeResourceId(blockId);
+        String normalized = (sanitized != null && !sanitized.isEmpty())
+            ? normalizeResourceId(sanitized, "minecraft")
+            : null;
+        Block targetBlock = null;
+
+        if (client != null && client.world != null) {
+            if (normalized == null || normalized.isEmpty()) {
+                sendNodeErrorMessage(client, "Cannot navigate to block: no block selected.");
+                future.complete(null);
+                return true;
+            }
+
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+                sendNodeErrorMessage(client, "Cannot navigate to block \"" + blockId + "\": unknown identifier.");
+                future.complete(null);
+                return true;
+            }
+
+            targetBlock = Registries.BLOCK.get(identifier);
+            if (targetPos == null) {
+                List<BlockSelection> selections = new ArrayList<>();
+                BlockSelection.parse(blockId).ifPresent(selections::add);
+                Optional<BlockPos> nearest = findNearestBlock(client, selections, PARAMETER_SEARCH_RADIUS);
+                if (nearest.isEmpty()) {
+                    sendNodeErrorMessage(client, "No " + normalized + " found nearby for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return true;
+                }
+                targetPos = nearest.get();
+            }
+
+            setParameterValueAndPropagate("Block", normalized);
+
+            if (client.player != null && targetPos != null && targetBlock != null
+                && client.world.getBlockState(targetPos).isOf(targetBlock)) {
+                BlockPos playerBlockPos = client.player.getBlockPos();
+                if (playerBlockPos.equals(targetPos)) {
+                    future.complete(null);
+                    return true;
+                }
+                double distanceSq = client.player.squaredDistanceTo(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
+                if (distanceSq <= 2.25D) { // already within ~1.5 blocks, treat as complete
+                    future.complete(null);
+                    return true;
+                }
+            }
+        }
+
+        if (targetPos != null) {
+            ICustomGoalProcess customGoalProcess = baritone != null ? baritone.getCustomGoalProcess() : null;
+            if (customGoalProcess == null) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Cannot navigate to block: goal process unavailable.");
+                }
+                future.complete(null);
+                return true;
+            }
+
+            startGotoTaskWithBreakGuard(future);
+            GoalNear goal = new GoalNear(targetPos, 1);
+            customGoalProcess.setGoalAndPath(goal);
+            return true;
+        }
+
+        IGetToBlockProcess getToBlockProcess = baritone != null ? baritone.getGetToBlockProcess() : null;
         if (getToBlockProcess == null) {
             if (client != null) {
                 sendNodeErrorMessage(client, "Cannot navigate to block: block search process unavailable.");
@@ -3379,8 +4067,9 @@ public class Node {
             return true;
         }
 
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
-        getToBlockProcess.getToBlock(new BlockOptionalMeta(blockId));
+        startGotoTaskWithBreakGuard(future);
+        String targetId = (normalized != null && !normalized.isEmpty()) ? normalized : blockId;
+        getToBlockProcess.getToBlock(new BlockOptionalMeta(targetId));
         return true;
     }
 
@@ -3418,7 +4107,7 @@ public class Node {
             future.complete(null);
             return true;
         }
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
+        startGotoTaskWithBreakGuard(future);
         getToBlockProcess.getToBlock(new BlockOptionalMeta(blockId));
         return true;
     }
@@ -3541,7 +4230,7 @@ public class Node {
         if (client == null || client.player == null || blockId == null) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
+        Identifier identifier = BlockSelection.extractBlockIdentifier(blockId);
         if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
             return false;
         }
@@ -3646,8 +4335,14 @@ public class Node {
             return;
         }
 
-        List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
-        ItemStack outputTemplate = recipeEntry.value().craft(CraftingRecipeInput.create(3, 3, emptyGrid), client.player.getWorld().getRegistryManager());
+        Object serverRegistryManager = client.getServer() != null
+            ? client.getServer().getRegistryManager()
+            : null;
+        Object clientRegistryManager = client.player.getWorld().getRegistryManager();
+        ItemStack outputTemplate = getRecipeOutput(recipeEntry.value(), serverRegistryManager);
+        if (outputTemplate.isEmpty() && clientRegistryManager != serverRegistryManager) {
+            outputTemplate = getRecipeOutput(recipeEntry.value(), clientRegistryManager);
+        }
         if (outputTemplate.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe produced no output.");
             future.complete(null);
@@ -3658,7 +4353,8 @@ public class Node {
         int perCraftOutput = Math.max(1, outputTemplate.getCount());
         int craftsRequested = Math.max(1, (int) Math.ceil(desiredCount / (double) perCraftOutput));
 
-        List<GridIngredient> gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode);
+        Object ingredientRegistryManager = client.player.getWorld().getRegistryManager();
+        List<GridIngredient> gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode, ingredientRegistryManager);
         if (gridIngredients.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe has no ingredients.");
             future.complete(null);
@@ -3670,7 +4366,7 @@ public class Node {
         CompletableFuture
             .supplyAsync(() -> {
                 try {
-                    return craftRecipeUsingScreen(client, effectiveCraftMode, recipeEntry, targetItem, craftsRequested, desiredCount, itemDisplayName, gridIngredients, craftingGridSlots);
+                    return craftRecipeUsingScreen(client, effectiveCraftMode, recipeEntry, targetItem, craftsRequested, desiredCount, itemDisplayName, gridIngredients, craftingGridSlots, ingredientRegistryManager);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new java.util.concurrent.CompletionException(e);
@@ -3821,55 +4517,429 @@ public class Node {
                                                            Item targetItem,
                                                            NodeMode craftMode,
                                                            java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable) {
-        MinecraftServer server = client.getServer();
-        if (server == null) {
+        List<RecipeManager> managers = getRecipeManagers(client);
+        if (managers.isEmpty()) {
             return null;
         }
 
-        ServerRecipeManager recipeManager = server.getRecipeManager();
-        List<ServerRecipeManager.ServerRecipe> serverRecipes = getServerRecipeList(recipeManager);
-        if (serverRecipes.isEmpty()) {
-            return null;
-        }
-
-        List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
-        for (ServerRecipeManager.ServerRecipe serverRecipe : serverRecipes) {
-            RecipeEntry<?> entry = serverRecipe.parent();
-            if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
+        int totalEntries = 0;
+        int craftingEntries = 0;
+        int emptyOutputs = 0;
+        int matchingOutputs = 0;
+        List<String> sampleOutputs = new ArrayList<>();
+        boolean debugLogged = false;
+        Object serverRegistryManager = client.getServer() != null ? client.getServer().getRegistryManager() : null;
+        Object clientRegistryManager = client.player.getWorld().getRegistryManager();
+        for (RecipeManager manager : managers) {
+            if (manager == null) {
                 continue;
             }
-
-            ItemStack result = craftingRecipe.craft(CraftingRecipeInput.create(3, 3, emptyGrid), client.player.getWorld().getRegistryManager());
-            if (!result.isOf(targetItem)) {
-                continue;
-            }
-
-            if (craftMode == NodeMode.CRAFT_PLAYER_GUI && !recipeFitsPlayerGrid(craftingRecipe)) {
-                if (requiresCraftingTable != null) {
-                    requiresCraftingTable.set(true);
+            for (RecipeEntry<?> entry : getCraftingRecipeEntries(manager)) {
+                totalEntries++;
+                if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
+                    continue;
                 }
-                continue;
-            }
+                craftingEntries++;
 
-            @SuppressWarnings("unchecked")
-            RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) entry;
-            return castEntry;
+                ItemStack result = getRecipeOutput(craftingRecipe, serverRegistryManager);
+                if (result.isEmpty() && clientRegistryManager != serverRegistryManager) {
+                    result = getRecipeOutput(craftingRecipe, clientRegistryManager);
+                }
+                if (result.isEmpty()) {
+                    emptyOutputs++;
+                    if (!debugLogged) {
+                        logRecipeOutputDebug(craftingRecipe, serverRegistryManager, clientRegistryManager);
+                        debugLogged = true;
+                    }
+                } else if (sampleOutputs.size() < 5) {
+                    Identifier itemId = Registries.ITEM.getId(result.getItem());
+                    if (itemId != null) {
+                        sampleOutputs.add(itemId.toString());
+                    }
+                }
+                if (!result.isOf(targetItem)) {
+                    continue;
+                }
+                matchingOutputs++;
+
+                if (craftMode == NodeMode.CRAFT_PLAYER_GUI && !recipeFitsPlayerGrid(craftingRecipe)) {
+                    if (requiresCraftingTable != null) {
+                        requiresCraftingTable.set(true);
+                    }
+                    continue;
+                }
+
+                @SuppressWarnings("unchecked")
+                RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) entry;
+                return castEntry;
+            }
         }
 
+        logCraftDebug(targetItem, craftMode, managers.size(), totalEntries, craftingEntries, emptyOutputs, matchingOutputs, sampleOutputs);
         return null;
     }
 
-    private List<ServerRecipeManager.ServerRecipe> getServerRecipeList(ServerRecipeManager manager) {
-        if (SERVER_RECIPES_FIELD == null) {
-            return Collections.emptyList();
+    private void logRecipeOutputDebug(CraftingRecipe recipe, Object serverRegistryManager, Object clientRegistryManager) {
+        String recipeClass = recipe != null ? recipe.getClass().getName() : "null";
+        String serverMgr = serverRegistryManager != null ? serverRegistryManager.getClass().getName() : "null";
+        String clientMgr = clientRegistryManager != null ? clientRegistryManager.getClass().getName() : "null";
+        boolean serverLookup = resolveWrapperLookup(serverRegistryManager) != null;
+        boolean clientLookup = resolveWrapperLookup(clientRegistryManager) != null;
+        List<String> outputMethods = new ArrayList<>();
+        List<String> craftMethods = new ArrayList<>();
+        List<String> allMethodsSample = new ArrayList<>();
+        if (recipe != null) {
+            int sampleLimit = 8;
+            for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+                if (ItemStack.class.isAssignableFrom(method.getReturnType()) && method.getParameterCount() == 1) {
+                    Class<?> paramType = method.getParameterTypes()[0];
+                    outputMethods.add(method.getName() + "(" + paramType.getName() + ")");
+                }
+                if ("craft".equals(method.getName()) && method.getParameterCount() == 2) {
+                    Class<?>[] params = method.getParameterTypes();
+                    craftMethods.add(method.getName() + "(" + params[0].getName() + "," + params[1].getName() + ")");
+                }
+                if (allMethodsSample.size() < sampleLimit) {
+                    allMethodsSample.add(method.getName() + Arrays.toString(method.getParameterTypes()) + " -> " + method.getReturnType().getName());
+                }
+            }
+        }
+        System.out.println(
+            "Pathmind craft output debug: recipeClass=" + recipeClass
+                + " serverRegistry=" + serverMgr
+                + " clientRegistry=" + clientMgr
+                + " serverLookup=" + serverLookup
+                + " clientLookup=" + clientLookup
+                + " outputMethods=" + outputMethods
+                + " craftMethods=" + craftMethods
+                + " methodsSample=" + allMethodsSample
+        );
+    }
+
+    private List<java.lang.reflect.Method> getAllMethods(Class<?> type) {
+        List<java.lang.reflect.Method> methods = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        collectMethodsRecursive(type, methods, seen);
+        return methods;
+    }
+
+    private void collectMethodsRecursive(Class<?> type, List<java.lang.reflect.Method> methods, java.util.Set<String> seen) {
+        if (type == null || type == Object.class) {
+            return;
         }
         try {
-            @SuppressWarnings("unchecked")
-            List<ServerRecipeManager.ServerRecipe> recipes = (List<ServerRecipeManager.ServerRecipe>) SERVER_RECIPES_FIELD.get(manager);
-            return recipes != null ? recipes : Collections.emptyList();
-        } catch (IllegalAccessException e) {
-            return Collections.emptyList();
+            for (java.lang.reflect.Method method : type.getDeclaredMethods()) {
+                String key = method.getName() + Arrays.toString(method.getParameterTypes()) + method.getReturnType().getName();
+                if (seen.add(key)) {
+                    method.setAccessible(true);
+                    methods.add(method);
+                }
+            }
+        } catch (SecurityException ignored) {
+            // Skip inaccessible class declarations.
         }
+        for (Class<?> iface : type.getInterfaces()) {
+            collectMethodsRecursive(iface, methods, seen);
+        }
+        collectMethodsRecursive(type.getSuperclass(), methods, seen);
+    }
+
+    private void logCraftDebug(Item targetItem,
+                               NodeMode craftMode,
+                               int managerCount,
+                               int totalEntries,
+                               int craftingEntries,
+                               int emptyOutputs,
+                               int matchingOutputs,
+                               List<String> sampleOutputs) {
+        String targetId = targetItem != null ? Registries.ITEM.getId(targetItem).toString() : "unknown";
+        System.out.println(
+            "Pathmind craft debug: target=" + targetId
+                + " mode=" + craftMode
+                + " managers=" + managerCount
+                + " entries=" + totalEntries
+                + " craftingEntries=" + craftingEntries
+                + " emptyOutputs=" + emptyOutputs
+                + " matchingOutputs=" + matchingOutputs
+                + " sampleOutputs=" + sampleOutputs
+        );
+    }
+
+    private List<RecipeEntry<?>> getCraftingRecipeEntries(RecipeManager manager) {
+        if (manager == null) {
+            return List.of();
+        }
+
+        List<RecipeEntry<?>> entries = new ArrayList<>();
+        RecipeType<?> craftingType = RecipeType.CRAFTING;
+        List<String> preferredNames = List.of("listAllOfType", "getAllOfType", "getAllRecipes", "getRecipes");
+        for (String name : preferredNames) {
+            try {
+                java.lang.reflect.Method method = manager.getClass().getMethod(name, RecipeType.class);
+                method.setAccessible(true);
+                Object result = method.invoke(manager, craftingType);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next candidate.
+            }
+        }
+
+        for (java.lang.reflect.Method method : manager.getClass().getMethods()) {
+            if (method.getParameterCount() != 1 || !RecipeType.class.isAssignableFrom(method.getParameterTypes()[0])) {
+                continue;
+            }
+            Class<?> returnType = method.getReturnType();
+            if (!Iterable.class.isAssignableFrom(returnType) && !java.util.Map.class.isAssignableFrom(returnType)) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(manager, craftingType);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Keep scanning.
+            }
+        }
+
+        return getRecipeEntries(manager);
+    }
+
+    private List<RecipeEntry<?>> getRecipeEntries(RecipeManager manager) {
+        List<RecipeEntry<?>> entries = new ArrayList<>();
+        if (manager == null) {
+            return entries;
+        }
+
+        List<String> preferredNames = List.of("values", "getRecipes", "getAllRecipes", "getAll");
+        for (String name : preferredNames) {
+            try {
+                java.lang.reflect.Method method = manager.getClass().getMethod(name);
+                method.setAccessible(true);
+                Object result = method.invoke(manager);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next candidate.
+            }
+        }
+
+        for (java.lang.reflect.Method method : manager.getClass().getMethods()) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            Class<?> returnType = method.getReturnType();
+            if (!Iterable.class.isAssignableFrom(returnType) && !java.util.Map.class.isAssignableFrom(returnType)) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(manager);
+                if (collectRecipeEntries(result, entries)) {
+                    return entries;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Keep scanning.
+            }
+        }
+
+        return entries;
+    }
+
+    private boolean collectRecipeEntries(Object result, List<RecipeEntry<?>> entries) {
+        if (result == null || entries == null) {
+            return false;
+        }
+        if (result instanceof RecipeEntry<?> entry) {
+            entries.add(entry);
+            return true;
+        }
+        if (result instanceof Iterable<?> iterable) {
+            boolean added = false;
+            for (Object item : iterable) {
+                if (item instanceof RecipeEntry<?> recipeEntry) {
+                    entries.add(recipeEntry);
+                    added = true;
+                } else if (item instanceof java.util.Map<?, ?> map) {
+                    if (collectRecipeEntries(map.values(), entries)) {
+                        added = true;
+                    }
+                } else if (item instanceof Iterable<?> nested) {
+                    if (collectRecipeEntries(nested, entries)) {
+                        added = true;
+                    }
+                }
+            }
+            return added;
+        }
+        if (result instanceof java.util.Map<?, ?> map) {
+            return collectRecipeEntries(map.values(), entries);
+        }
+        return false;
+    }
+
+    private List<RecipeManager> getRecipeManagers(net.minecraft.client.MinecraftClient client) {
+        List<RecipeManager> managers = new ArrayList<>();
+        if (client == null) {
+            return managers;
+        }
+        MinecraftServer server = client.getServer();
+        if (server != null) {
+            RecipeManager manager = server.getRecipeManager();
+            if (manager != null && !managers.contains(manager)) {
+                managers.add(manager);
+            }
+        }
+        if (client.getNetworkHandler() != null) {
+            try {
+                java.lang.reflect.Method method = client.getNetworkHandler().getClass().getMethod("getRecipeManager");
+                method.setAccessible(true);
+                Object result = method.invoke(client.getNetworkHandler());
+                if (result instanceof RecipeManager manager && !managers.contains(manager)) {
+                    managers.add(manager);
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Ignore network handlers without recipe managers.
+            }
+        }
+        if (client.world != null) {
+            try {
+                RecipeManager manager = client.world.getRecipeManager();
+                if (manager != null && !managers.contains(manager)) {
+                    managers.add(manager);
+                }
+            } catch (RuntimeException ignored) {
+                // Ignore client worlds without a recipe manager.
+            }
+        }
+        return managers;
+    }
+
+    private ItemStack getRecipeOutput(CraftingRecipe recipe, Object registryManager) {
+        if (recipe == null) {
+            return ItemStack.EMPTY;
+        }
+        RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
+        Object registryArg = registryManager;
+        List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
+        CraftingRecipeInput input = CraftingRecipeInput.create(3, 3, emptyGrid);
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            if (method.getParameterCount() == 1) {
+                try {
+                    Class<?> paramType = method.getParameterTypes()[0];
+                    Object arg = null;
+                    if (registryArg != null && paramType.isInstance(registryArg)) {
+                        arg = registryArg;
+                    } else if (lookup != null && paramType.isInstance(lookup)) {
+                        arg = lookup;
+                    }
+                    if (arg == null) {
+                        continue;
+                    }
+                    Object result = method.invoke(recipe, arg);
+                    if (result instanceof ItemStack stack) {
+                        return stack;
+                    }
+                } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
+                    // Keep scanning.
+                }
+            }
+        }
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            if (method.getParameterCount() != 2) {
+                continue;
+            }
+            Class<?>[] params = method.getParameterTypes();
+            if (!params[0].isInstance(input)) {
+                continue;
+            }
+            Object arg = null;
+            if (lookup != null && params[1].isInstance(lookup)) {
+                arg = lookup;
+            } else if (registryArg != null && params[1].isInstance(registryArg)) {
+                arg = registryArg;
+            }
+            if (arg == null) {
+                continue;
+            }
+            try {
+                Object result = method.invoke(recipe, input, arg);
+                if (result instanceof ItemStack stack) {
+                    return stack;
+                }
+            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
+                // Keep scanning.
+            }
+        }
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            if (method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            try {
+                Object result = method.invoke(recipe);
+                if (result instanceof ItemStack stack) {
+                    return stack;
+                }
+            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
+                // Keep scanning.
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private RegistryWrapper.WrapperLookup resolveWrapperLookup(Object registryManager) {
+        if (registryManager == null) {
+            return null;
+        }
+        if (registryManager instanceof RegistryWrapper.WrapperLookup wrapper) {
+            return wrapper;
+        }
+        for (String methodName : new String[]{"getWrapperLookup", "getRegistryLookup", "getLookup"}) {
+            try {
+                java.lang.reflect.Method method = registryManager.getClass().getMethod(methodName);
+                method.setAccessible(true);
+                Object result = method.invoke(registryManager);
+                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                    return wrapper;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next candidate.
+            }
+        }
+        for (java.lang.reflect.Method method : registryManager.getClass().getMethods()) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            if (!RegistryWrapper.WrapperLookup.class.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(registryManager);
+                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                    return wrapper;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Keep scanning.
+            }
+        }
+        return null;
     }
 
     private boolean recipeFitsPlayerGrid(CraftingRecipe recipe) {
@@ -3881,18 +4951,33 @@ public class Node {
             return shapedRecipe.getWidth() <= 2 && shapedRecipe.getHeight() <= 2;
         }
 
-        IngredientPlacement placement = recipe.getIngredientPlacement();
+        Object placement = RecipeCompatibilityBridge.getIngredientPlacement(recipe);
         if (placement == null) {
-            return false;
+            List<?> ingredients = RecipeCompatibilityBridge.getRecipeIngredients(recipe);
+            if (ingredients == null || ingredients.isEmpty()) {
+                ingredients = readRecipeIngredients(recipe);
+            }
+            if (ingredients == null || ingredients.isEmpty()) {
+                return false;
+            }
+            int nonEmpty = 0;
+            for (Object entry : ingredients) {
+                Ingredient ingredient = unwrapRecipeIngredient(entry);
+                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+                    continue;
+                }
+                nonEmpty++;
+            }
+            return nonEmpty <= 4;
         }
 
-        if (placement.hasNoPlacement()) {
-            return placement.getIngredients().size() <= 4;
+        if (RecipeCompatibilityBridge.hasNoPlacement(placement)) {
+            return RecipeCompatibilityBridge.getPlacementIngredients(placement).size() <= 4;
         }
 
-        IntList slots = placement.getPlacementSlots();
+        IntList slots = RecipeCompatibilityBridge.toPlacementSlots(placement);
         if (slots == null || slots.isEmpty()) {
-            return placement.getIngredients().size() <= 4;
+            return RecipeCompatibilityBridge.getPlacementIngredients(placement).size() <= 4;
         }
 
         int minX = 3;
@@ -3921,18 +5006,6 @@ public class Node {
         return width <= 2 && height <= 2;
     }
 
-    private static Field initServerRecipesField() {
-        try {
-            Field field = ServerRecipeManager.class.getDeclaredField("field_54641");
-            field.setAccessible(true);
-            return field;
-        } catch (NoSuchFieldException e) {
-            return null;
-        }
-    }
-
-    private static final Field SERVER_RECIPES_FIELD = initServerRecipesField();
-
     private CraftingSummary craftRecipeUsingScreen(net.minecraft.client.MinecraftClient client,
                                                    NodeMode craftMode,
                                                    RecipeEntry<CraftingRecipe> recipeEntry,
@@ -3941,7 +5014,8 @@ public class Node {
                                                    int desiredCount,
                                                    String itemDisplayName,
                                                    List<GridIngredient> gridIngredients,
-                                                   int[] gridSlots) throws InterruptedException {
+                                                   int[] gridSlots,
+                                                   Object registryManager) throws InterruptedException {
         int totalProduced = 0;
         String failureMessage = null;
 
@@ -3963,7 +5037,7 @@ public class Node {
                 break;
             }
 
-            CraftingAttemptResult attemptResult = performCraftingAttempt(client, targetItem, itemDisplayName, gridIngredients, gridSlots, craftMode);
+            CraftingAttemptResult attemptResult = performCraftingAttempt(client, targetItem, itemDisplayName, gridIngredients, gridSlots, craftMode, registryManager);
             if (attemptResult.errorMessage != null) {
                 failureMessage = attemptResult.errorMessage;
                 if (attemptResult.produced > 0) {
@@ -3996,7 +5070,8 @@ public class Node {
                                                          String itemDisplayName,
                                                          List<GridIngredient> gridIngredients,
                                                          int[] gridSlots,
-                                                         NodeMode craftMode) throws InterruptedException {
+                                                         NodeMode craftMode,
+                                                         Object registryManager) throws InterruptedException {
         java.util.concurrent.atomic.AtomicReference<String> errorRef = new java.util.concurrent.atomic.AtomicReference<>();
         java.util.concurrent.atomic.AtomicInteger producedRef = new java.util.concurrent.atomic.AtomicInteger();
 
@@ -4025,7 +5100,10 @@ public class Node {
                 throw new InterruptedException();
             }
 
-            if (ingredient == null || ingredient.ingredient().isEmpty()) {
+            if (ingredient == null) {
+                continue;
+            }
+            if (!ingredient.allowEmpty() && RecipeCompatibilityBridge.isIngredientEmpty(ingredient.ingredient(), registryManager)) {
                 continue;
             }
 
@@ -4044,7 +5122,7 @@ public class Node {
                     return;
                 }
 
-                int sourceSlot = findIngredientSourceSlot(handler, ingredient.ingredient());
+                int sourceSlot = findIngredientSourceSlot(handler, ingredient.ingredient(), registryManager, ingredient.allowEmpty());
                 if (sourceSlot == -1) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": missing required ingredients.");
                     return;
@@ -4166,11 +5244,18 @@ public class Node {
         }
     }
 
-    private int findIngredientSourceSlot(ScreenHandler handler, Ingredient ingredient) {
-        if (handler == null || ingredient == null || ingredient.isEmpty()) {
+    private int findIngredientSourceSlot(ScreenHandler handler,
+                                         Ingredient ingredient,
+                                         Object registryManager,
+                                         boolean allowEmpty) {
+        if (handler == null || ingredient == null) {
+            return -1;
+        }
+        if (!allowEmpty && RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
             return -1;
         }
 
+        List<ItemStack> candidates = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager);
         List<Slot> slots = handler.slots;
         for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
             Slot slot = slots.get(slotIdx);
@@ -4188,12 +5273,24 @@ public class Node {
                 continue;
             }
 
-            if (ingredient.test(stack)) {
+            if (ingredient.test(stack) || matchesCandidateStack(candidates, stack)) {
                 return slotIdx;
             }
         }
 
         return -1;
+    }
+
+    private boolean matchesCandidateStack(List<ItemStack> candidates, ItemStack stack) {
+        if (candidates == null || candidates.isEmpty()) {
+            return false;
+        }
+        for (ItemStack candidate : candidates) {
+            if (candidate != null && candidate.getItem() == stack.getItem()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int[] mapGridSlotsForHandler(ScreenHandler handler, NodeMode craftMode, int[] logicalSlots) {
@@ -4250,7 +5347,7 @@ public class Node {
         return -1;
     }
 
-    private List<GridIngredient> resolveGridIngredients(CraftingRecipe recipe, NodeMode craftMode) {
+    private List<GridIngredient> resolveGridIngredients(CraftingRecipe recipe, NodeMode craftMode, Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
         if (recipe == null) {
             return result;
@@ -4258,32 +5355,35 @@ public class Node {
 
         if (recipe instanceof ShapedRecipe shapedRecipe) {
             if (craftMode == NodeMode.CRAFT_PLAYER_GUI) {
-                return resolvePlayerGridIngredients(shapedRecipe);
+                return resolvePlayerGridIngredients(shapedRecipe, registryManager);
             }
-            return resolveCraftingTableGridIngredients(shapedRecipe);
+            return resolveCraftingTableGridIngredients(shapedRecipe, registryManager);
         }
 
-        IngredientPlacement placement = recipe.getIngredientPlacement();
+        Object placement = RecipeCompatibilityBridge.getIngredientPlacement(recipe);
         if (placement == null) {
-            return result;
+            return resolveFallbackGridIngredients(recipe, craftMode, registryManager);
         }
 
-        List<Ingredient> ingredients = placement.getIngredients();
+        List<Ingredient> ingredients = RecipeCompatibilityBridge.getPlacementIngredients(placement);
         if (ingredients == null || ingredients.isEmpty()) {
-            return result;
+            return resolveFallbackGridIngredients(recipe, craftMode, registryManager);
         }
 
-        IntList slots = placement.getPlacementSlots();
+        IntList slots = RecipeCompatibilityBridge.toPlacementSlots(placement);
         int gridLimit = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 9 : 4;
 
-        if (placement.hasNoPlacement() || slots == null || slots.isEmpty()) {
+        if (RecipeCompatibilityBridge.hasNoPlacement(placement) || slots == null || slots.isEmpty()) {
             int limit = Math.min(ingredients.size(), gridLimit);
             for (int i = 0; i < limit; i++) {
                 Ingredient ingredient = ingredients.get(i);
-                if (ingredient == null || ingredient.isEmpty()) {
+                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                     continue;
                 }
-                result.add(new GridIngredient(1 + i, ingredient));
+                result.add(new GridIngredient(1 + i, ingredient, false));
+            }
+            if (result.isEmpty()) {
+                logEmptyPlacementIngredients(ingredients, registryManager);
             }
             return result;
         }
@@ -4291,7 +5391,7 @@ public class Node {
         int limit = Math.min(ingredients.size(), slots.size());
         for (int i = 0; i < limit; i++) {
             Ingredient ingredient = ingredients.get(i);
-            if (ingredient == null || ingredient.isEmpty()) {
+            if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                 continue;
             }
 
@@ -4314,16 +5414,256 @@ public class Node {
                 continue;
             }
 
-            result.add(new GridIngredient(resolvedSlot, ingredient));
-        }
+            result.add(new GridIngredient(resolvedSlot, ingredient, false));
+    }
 
+        if (result.isEmpty()) {
+            logEmptyPlacementIngredients(ingredients, registryManager);
+        }
         return result;
     }
 
-    private List<GridIngredient> resolvePlayerGridIngredients(ShapedRecipe recipe) {
+    private List<GridIngredient> resolveFallbackGridIngredients(CraftingRecipe recipe, NodeMode craftMode, Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
-        List<Optional<Ingredient>> ingredients = recipe.getIngredients();
+        if (recipe == null) {
+            return result;
+        }
+        List<?> ingredients = RecipeCompatibilityBridge.getRecipeIngredients(recipe);
         if (ingredients == null || ingredients.isEmpty()) {
+            ingredients = readRecipeIngredients(recipe);
+        }
+        if (ingredients == null || ingredients.isEmpty()) {
+            logMissingRecipeIngredients(recipe);
+            return result;
+        }
+        int gridLimit = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 9 : 4;
+        int limit = Math.min(ingredients.size(), gridLimit);
+        boolean loggedUnknown = false;
+        boolean loggedSummary = false;
+        int loggedEmpty = 0;
+        for (int i = 0; i < limit; i++) {
+            Object entry = ingredients.get(i);
+            Ingredient ingredient = unwrapRecipeIngredient(entry);
+            if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                if (!loggedSummary) {
+                    System.out.println(
+                        "Pathmind craft debug: ingredient list type="
+                            + ingredients.getClass().getName()
+                            + " size=" + ingredients.size()
+                    );
+                    loggedSummary = true;
+                }
+                if (loggedEmpty < 3) {
+                    int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
+                    String entryType = entry != null ? entry.getClass().getName() : "null";
+                    String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
+                    System.out.println(
+                        "Pathmind craft debug: empty ingredient entryType="
+                            + entryType + " ingredientType=" + ingredientType + " matches=" + matches
+                    );
+                    loggedEmpty++;
+                }
+                if (!loggedUnknown && ingredient == null && entry != null) {
+                    System.out.println("Pathmind craft debug: unresolved ingredient entry type=" + entry.getClass().getName());
+                    logUnresolvedIngredientEntry(entry);
+                    loggedUnknown = true;
+                }
+                continue;
+            }
+            result.add(new GridIngredient(1 + i, ingredient, false));
+        }
+        return result;
+    }
+
+    private List<?> readRecipeIngredients(CraftingRecipe recipe) {
+        if (recipe == null) {
+            return Collections.emptyList();
+        }
+        List<?> bestList = null;
+        int bestScore = -1;
+        int bestSize = 0;
+        for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            try {
+                Class<?> returnType = method.getReturnType();
+                Object result = method.invoke(recipe);
+                if (result instanceof Ingredient[] ingredientArray) {
+                    return java.util.Arrays.asList(ingredientArray);
+                }
+                if (result instanceof Object[] objectArray) {
+                    return java.util.Arrays.asList(objectArray);
+                }
+                if (!java.util.List.class.isAssignableFrom(returnType)) {
+                    continue;
+                }
+                if (result instanceof List<?> list) {
+                    int score = 0;
+                    for (Object entry : list) {
+                        Ingredient ingredient = unwrapRecipeIngredient(entry);
+                        if (!RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+                            score++;
+                        }
+                    }
+                    int size = list.size();
+                    if (score > bestScore || (score == bestScore && size > bestSize)) {
+                        bestScore = score;
+                        bestSize = size;
+                        bestList = list;
+                    }
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Ignore and continue scanning other methods.
+            }
+        }
+        if (bestList != null) {
+            return bestList;
+        }
+        return Collections.emptyList();
+    }
+
+    private void logMissingRecipeIngredients(CraftingRecipe recipe) {
+        if (recipe == null) {
+            return;
+        }
+        try {
+            StringBuilder builder = new StringBuilder();
+            builder.append("Pathmind craft debug: missing ingredients for recipeClass=")
+                .append(recipe.getClass().getName());
+            int logged = 0;
+            for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
+                if (method.getParameterCount() != 0) {
+                    continue;
+                }
+                Class<?> returnType = method.getReturnType();
+                if (!java.util.List.class.isAssignableFrom(returnType)
+                    && !returnType.isArray()) {
+                    continue;
+                }
+                Object result = null;
+                try {
+                    result = method.invoke(recipe);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    continue;
+                }
+                if (result == null) {
+                    continue;
+                }
+                if (logged < 6) {
+                    builder.append(" method=")
+                        .append(method.getName())
+                        .append(" type=")
+                        .append(result.getClass().getName())
+                        .append(" size=")
+                        .append(result instanceof java.util.List<?> list ? list.size() : java.lang.reflect.Array.getLength(result));
+                    logged++;
+                }
+            }
+            System.out.println(builder.toString());
+        } catch (RuntimeException ignored) {
+            // Avoid breaking crafting flow on debug failure.
+        }
+    }
+
+    private void logEmptyPlacementIngredients(List<Ingredient> ingredients, Object registryManager) {
+        if (ingredients == null || ingredients.isEmpty()) {
+            return;
+        }
+        System.out.println(
+            "Pathmind craft debug: placement ingredients all empty size=" + ingredients.size()
+                + " listType=" + ingredients.getClass().getName()
+        );
+        int logged = 0;
+        for (Ingredient ingredient : ingredients) {
+            if (logged >= 3) {
+                break;
+            }
+            int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
+            String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
+            System.out.println("Pathmind craft debug: placement ingredient type=" + ingredientType + " matches=" + matches);
+            logged++;
+        }
+    }
+
+    private void logIngredientListIfEmpty(String source, List<?> ingredients, Object registryManager) {
+        if (ingredients == null || ingredients.isEmpty()) {
+            System.out.println("Pathmind craft debug: " + source + " ingredient list empty");
+            return;
+        }
+        System.out.println(
+            "Pathmind craft debug: " + source + " ingredient list type=" + ingredients.getClass().getName()
+                + " size=" + ingredients.size()
+        );
+        int logged = 0;
+        for (Object entry : ingredients) {
+            if (logged >= 3) {
+                break;
+            }
+            Ingredient ingredient = unwrapRecipeIngredient(entry);
+            int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
+            String entryType = entry != null ? entry.getClass().getName() : "null";
+            String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
+            System.out.println(
+                "Pathmind craft debug: " + source + " entryType=" + entryType
+                    + " ingredientType=" + ingredientType + " matches=" + matches
+            );
+            if (ingredient == null && entry != null) {
+                logUnresolvedIngredientEntry(entry);
+            }
+            logged++;
+        }
+    }
+
+    private void logUnresolvedIngredientEntry(Object entry) {
+        if (entry == null) {
+            return;
+        }
+        try {
+            StringBuilder builder = new StringBuilder();
+            Class<?> entryClass = entry.getClass();
+            builder.append("Pathmind craft debug: unresolved entry details class=")
+                .append(entryClass.getName());
+            if (entryClass.isRecord()) {
+                builder.append(" recordComponents=");
+                java.lang.reflect.RecordComponent[] components = entryClass.getRecordComponents();
+                for (int i = 0; i < Math.min(components.length, 4); i++) {
+                    java.lang.reflect.RecordComponent component = components[i];
+                    builder.append(component.getName()).append(":").append(component.getType().getName()).append(" ");
+                }
+            }
+            int loggedMethods = 0;
+            for (java.lang.reflect.Method method : entryClass.getMethods()) {
+                if (method.getParameterCount() != 0) {
+                    continue;
+                }
+                if (loggedMethods >= 6) {
+                    break;
+                }
+                builder.append(" method=").append(method.getName())
+                    .append("->").append(method.getReturnType().getName());
+                loggedMethods++;
+            }
+            int loggedFields = 0;
+            for (java.lang.reflect.Field field : entryClass.getDeclaredFields()) {
+                if (loggedFields >= 4) {
+                    break;
+                }
+                builder.append(" field=").append(field.getName())
+                    .append(":").append(field.getType().getName());
+                loggedFields++;
+            }
+            System.out.println(builder.toString());
+        } catch (RuntimeException ignored) {
+            // Avoid breaking crafting flow on debug failure.
+        }
+    }
+
+    private List<GridIngredient> resolvePlayerGridIngredients(ShapedRecipe recipe, Object registryManager) {
+        List<GridIngredient> result = new ArrayList<>();
+        List<?> ingredients = recipe.getIngredients();
+        if (ingredients == null || ingredients.isEmpty()) {
+            logIngredientListIfEmpty("playerGrid", ingredients, registryManager);
             return result;
         }
 
@@ -4338,28 +5678,26 @@ public class Node {
                     continue;
                 }
 
-                Optional<Ingredient> optional = ingredients.get(index);
-                if (optional == null || optional.isEmpty()) {
-                    continue;
-                }
-
-                Ingredient ingredient = optional.get();
-                if (ingredient.isEmpty()) {
-                    continue;
-                }
-
+                Ingredient ingredient = unwrapRecipeIngredient(ingredients.get(index));
                 int slotIndex = 1 + x + (y * 2);
-                result.add(new GridIngredient(slotIndex, ingredient));
+                if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                    continue;
+                }
+                result.add(new GridIngredient(slotIndex, ingredient, false));
             }
         }
 
+        if (result.isEmpty()) {
+            logIngredientListIfEmpty("playerGrid", ingredients, registryManager);
+        }
         return result;
     }
 
-    private List<GridIngredient> resolveCraftingTableGridIngredients(ShapedRecipe recipe) {
+    private List<GridIngredient> resolveCraftingTableGridIngredients(ShapedRecipe recipe, Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
-        List<Optional<Ingredient>> ingredients = recipe.getIngredients();
+        List<?> ingredients = recipe.getIngredients();
         if (ingredients == null || ingredients.isEmpty()) {
+            logIngredientListIfEmpty("craftingTableGrid", ingredients, registryManager);
             return result;
         }
 
@@ -4374,22 +5712,95 @@ public class Node {
                     continue;
                 }
 
-                Optional<Ingredient> optional = ingredients.get(index);
-                if (optional == null || optional.isEmpty()) {
-                    continue;
-                }
-
-                Ingredient ingredient = optional.get();
-                if (ingredient.isEmpty()) {
-                    continue;
-                }
-
+                Ingredient ingredient = unwrapRecipeIngredient(ingredients.get(index));
                 int slotIndex = 1 + x + (y * 3);
-                result.add(new GridIngredient(slotIndex, ingredient));
+                if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                    continue;
+                }
+                result.add(new GridIngredient(slotIndex, ingredient, false));
             }
         }
 
+        if (result.isEmpty()) {
+            logIngredientListIfEmpty("craftingTableGrid", ingredients, registryManager);
+        }
         return result;
+    }
+
+    private Ingredient unwrapRecipeIngredient(Object entry) {
+        if (entry instanceof Ingredient ingredientValue) {
+            return ingredientValue;
+        }
+        if (entry instanceof RegistryEntry<?> registryEntry) {
+            Object value = registryEntry.value();
+            if (value instanceof Ingredient registryIngredient) {
+                return registryIngredient;
+            }
+        }
+        Ingredient candidate = RecipeCompatibilityBridge.tryCreateIngredientFromEntry(entry);
+        if (candidate != null) {
+            return candidate;
+        }
+        if (entry instanceof Optional<?> optional) {
+            Object value = optional.orElse(null);
+            if (value instanceof Ingredient optionalIngredient) {
+                return optionalIngredient;
+            }
+        }
+        if (entry != null) {
+            Ingredient resolved = resolveIngredientFromEntry(entry, "ingredient");
+            if (resolved != null) {
+                return resolved;
+            }
+            resolved = resolveIngredientFromEntry(entry, "value");
+            if (resolved != null) {
+                return resolved;
+            }
+            resolved = resolveIngredientFromEntry(entry, "getIngredient");
+            if (resolved != null) {
+                return resolved;
+            }
+        }
+        return null;
+    }
+
+    private Ingredient resolveIngredientFromEntry(Object entry, String methodName) {
+        try {
+            java.lang.reflect.Method method = entry.getClass().getMethod(methodName);
+            if (Ingredient.class.isAssignableFrom(method.getReturnType())) {
+                method.setAccessible(true);
+                Object value = method.invoke(entry);
+                return value instanceof Ingredient ingredient ? ingredient : null;
+            }
+        } catch (NoSuchMethodException ignored) {
+            // Try declared methods/fields next.
+        } catch (IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
+            return null;
+        }
+        try {
+            java.lang.reflect.Method method = entry.getClass().getDeclaredMethod(methodName);
+            if (!Ingredient.class.isAssignableFrom(method.getReturnType())) {
+                return null;
+            }
+            method.setAccessible(true);
+            Object value = method.invoke(entry);
+            return value instanceof Ingredient ingredient ? ingredient : null;
+        } catch (NoSuchMethodException ignored) {
+            // Try fields next.
+        } catch (IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
+            return null;
+        }
+        try {
+            java.lang.reflect.Field field = entry.getClass().getDeclaredField(methodName);
+            if (!Ingredient.class.isAssignableFrom(field.getType())) {
+                return null;
+            }
+            field.setAccessible(true);
+            Object value = field.get(entry);
+            return value instanceof Ingredient ingredient ? ingredient : null;
+        } catch (NoSuchFieldException | IllegalAccessException ignored) {
+            return null;
+        }
     }
 
     private int[] getCraftingGridSlots(NodeMode craftMode) {
@@ -4412,10 +5823,12 @@ public class Node {
     private static class GridIngredient {
         private final int slotIndex;
         private final Ingredient ingredient;
+        private final boolean allowEmpty;
 
-        GridIngredient(int slotIndex, Ingredient ingredient) {
+        GridIngredient(int slotIndex, Ingredient ingredient, boolean allowEmpty) {
             this.slotIndex = slotIndex;
             this.ingredient = ingredient;
+            this.allowEmpty = allowEmpty;
         }
 
         int slotIndex() {
@@ -4424,6 +5837,10 @@ public class Node {
 
         Ingredient ingredient() {
             return ingredient;
+        }
+
+        boolean allowEmpty() {
+            return allowEmpty;
         }
     }
 
@@ -4498,6 +5915,18 @@ public class Node {
             return;
         }
 
+        if (blockParameterNode != null && blockParameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+            String resolvedBlockId = resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
+            if (resolvedBlockId == null || resolvedBlockId.isEmpty()) {
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return;
+            }
+            block = resolvedBlockId;
+            setParameterValueAndPropagate("Block", block);
+        }
+
         String originalBlockId = block;
         block = normalizeResourceId(block, "minecraft");
         if (!Objects.equals(originalBlockId, block)) {
@@ -4508,6 +5937,16 @@ public class Node {
             sendNodeErrorMessage(client, "Cannot place block: no block selected.");
             future.complete(null);
             return;
+        }
+
+        if (blockParameterNode != null && isBlockPlacementParameter(blockParameterNode)) {
+            try {
+                ensureBlockInHand(client, block, Hand.MAIN_HAND);
+            } catch (PlacementFailure e) {
+                sendNodeErrorMessage(client, e.getMessage());
+                future.complete(null);
+                return;
+            }
         }
 
         System.out.println("Placing block '" + block + "' at " + x + ", " + y + ", " + z);
@@ -4625,6 +6064,8 @@ public class Node {
                 return parameterType == NodeType.PARAM_COORDINATE || parameterType == NodeType.PARAM_PLACE_TARGET;
             case SENSOR_ITEM_IN_INVENTORY:
                 return parameterType == NodeType.PARAM_ITEM;
+            case SENSOR_KEY_PRESSED:
+                return parameterType == NodeType.PARAM_KEY;
             case SENSOR_IS_RENDERED:
                 switch (parameterType) {
                     case PARAM_BLOCK:
@@ -4642,8 +6083,52 @@ public class Node {
         }
     }
 
+    private boolean isBlockPlacementParameter(Node parameterNode) {
+        if (parameterNode == null) {
+            return false;
+        }
+        NodeType parameterType = parameterNode.getType();
+        return parameterType == NodeType.PARAM_BLOCK
+            || parameterType == NodeType.PARAM_BLOCK_LIST
+            || parameterType == NodeType.PARAM_PLACE_TARGET;
+    }
+
     private boolean blockParameterProvidesPlacementCoordinates(Node parameterNode) {
         return parameterNode != null && parameterNode.getType() == NodeType.PARAM_PLACE_TARGET;
+    }
+
+    private String resolveBlockIdFromInventorySlotParameter(net.minecraft.client.MinecraftClient client,
+                                                           Node parameterNode) {
+        if (client == null || client.player == null || parameterNode == null) {
+            return null;
+        }
+        SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
+        if (selectionType == SlotSelectionType.GUI_CONTAINER) {
+            sendNodeErrorMessage(client, type.getDisplayName() + " can only use player inventory slots.");
+            return null;
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        int slotValue = clampInventorySlot(inventory, parseNodeInt(parameterNode, "Slot", 0));
+        ItemStack stack = inventory.getStack(slotValue);
+        if (stack.isEmpty()) {
+            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " is empty.");
+            return null;
+        }
+        if (!(stack.getItem() instanceof BlockItem)) {
+            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " does not contain a block.");
+            return null;
+        }
+        if (runtimeParameterData == null) {
+            runtimeParameterData = new RuntimeParameterData();
+        }
+        runtimeParameterData.slotIndex = slotValue;
+        runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+        if (!ensureStackSelectedInMainHand(client, inventory, slotValue, stack)) {
+            sendNodeErrorMessage(client, "Failed to prepare selected block for " + type.getDisplayName() + ".");
+            return null;
+        }
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        return id != null ? id.toString() : null;
     }
 
     private String resolveBlockIdFromParameterNode(Node parameterNode) {
@@ -4653,6 +6138,7 @@ public class Node {
         NodeType parameterType = parameterNode.getType();
         switch (parameterType) {
             case PARAM_BLOCK:
+                return getBlockParameterValue(parameterNode);
             case PARAM_PLACE_TARGET:
                 return getParameterString(parameterNode, "Block");
             case PARAM_BLOCK_LIST: {
@@ -5129,6 +6615,17 @@ public class Node {
     private void executeStopChainNode(CompletableFuture<Void> future) {
         Node owningStart = getOwningStartNode();
         ExecutionManager manager = ExecutionManager.getInstance();
+        int targetNumber = getIntParameter("StartNumber", 0);
+
+        if (targetNumber > 0) {
+            boolean stopped = manager.requestStopForStartNumber(targetNumber);
+            if (!stopped) {
+                System.out.println("Stop node could not find START node " + targetNumber + ". Stopping all node trees.");
+                manager.requestStopAll();
+            }
+            future.complete(null);
+            return;
+        }
 
         if (owningStart == null) {
             System.out.println("Stop node executed without owning START node. Stopping all node trees.");
@@ -5285,7 +6782,7 @@ public class Node {
             slot = MathHelper.clamp(getIntParameter("Slot", 0), 0, 8);
         }
 
-        client.player.getInventory().setSelectedSlot(slot);
+        PlayerInventoryBridge.setSelectedSlot(client.player.getInventory(), slot);
         client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
         future.complete(null);
     }
@@ -5466,16 +6963,21 @@ public class Node {
 
     private SlotSelectionType resolveInventorySlotSelectionType(int parameterSlotIndex) {
         Node parameterNode = getAttachedParameter(parameterSlotIndex);
-        if (parameterNode != null && parameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
-            String modeValue = getParameterString(parameterNode, "Mode");
-            Boolean isPlayer = InventorySlotModeHelper.extractPlayerSelectionFlag(modeValue);
-            if (isPlayer != null) {
-                return isPlayer ? SlotSelectionType.PLAYER_INVENTORY : SlotSelectionType.GUI_CONTAINER;
-            }
-            String modeId = InventorySlotModeHelper.extractModeId(modeValue);
-            if (modeId != null && !modeId.isEmpty() && !"player_inventory".equals(modeId)) {
-                return SlotSelectionType.GUI_CONTAINER;
-            }
+        return resolveInventorySlotSelectionType(parameterNode);
+    }
+
+    private SlotSelectionType resolveInventorySlotSelectionType(Node parameterNode) {
+        if (parameterNode == null || parameterNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+            return SlotSelectionType.PLAYER_INVENTORY;
+        }
+        String modeValue = getParameterString(parameterNode, "Mode");
+        Boolean isPlayer = InventorySlotModeHelper.extractPlayerSelectionFlag(modeValue);
+        if (isPlayer != null) {
+            return isPlayer ? SlotSelectionType.PLAYER_INVENTORY : SlotSelectionType.GUI_CONTAINER;
+        }
+        String modeId = InventorySlotModeHelper.extractModeId(modeValue);
+        if (modeId != null && !modeId.isEmpty() && !"player_inventory".equals(modeId)) {
+            return SlotSelectionType.GUI_CONTAINER;
         }
         return SlotSelectionType.PLAYER_INVENTORY;
     }
@@ -5539,41 +7041,137 @@ public class Node {
             return false;
         }
 
-        String requestedItem = getParameterString(parameterNode, "Item");
-        if (requestedItem == null || requestedItem.trim().isEmpty()) {
+        List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+        if (itemIds.isEmpty()) {
             sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
             return false;
         }
 
-        String sanitized = sanitizeResourceId(requestedItem);
-        if (sanitized == null || sanitized.isEmpty()) {
-            sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
-            return false;
+        int foundSlot = -1;
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item candidateItem = Registries.ITEM.get(identifier);
+            int slot = findFirstSlotWithItem(client.player.getInventory(), candidateItem);
+            if (slot >= 0) {
+                foundSlot = slot;
+                break;
+            }
         }
 
-        String normalized = normalizeResourceId(sanitized, "minecraft");
-        Identifier identifier = Identifier.tryParse(normalized);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-            sendParameterSearchFailure("Unknown item \"" + requestedItem + "\" for " + type.getDisplayName() + ".", future);
-            return false;
-        }
-
-        Item item = Registries.ITEM.get(identifier);
-        int slot = findFirstSlotWithItem(client.player.getInventory(), item);
-        if (slot < 0) {
-            sendParameterSearchFailure("No " + normalized + " found in inventory for " + type.getDisplayName() + ".", future);
+        if (foundSlot < 0) {
+            String reference = String.join(", ", itemIds);
+            sendParameterSearchFailure("No " + reference + " found in inventory for " + type.getDisplayName() + ".", future);
             return false;
         }
 
         String targetParameter = slotIndex == 0 ? "SourceSlot" : "TargetSlot";
-        setParameterValueAndPropagate(targetParameter, Integer.toString(slot));
+        setParameterValueAndPropagate(targetParameter, Integer.toString(foundSlot));
         if (slotIndex == 0) {
             if (runtimeParameterData == null) {
                 runtimeParameterData = new RuntimeParameterData();
             }
-            runtimeParameterData.slotIndex = slot;
+            runtimeParameterData.slotIndex = foundSlot;
         }
         return true;
+    }
+
+    private boolean resolveUseParameterSelection(Node parameterNode, CompletableFuture<Void> future) {
+        if (parameterNode == null) {
+            return false;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            if (future != null && !future.isDone()) {
+                future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            }
+            return false;
+        }
+        if (runtimeParameterData == null) {
+            runtimeParameterData = new RuntimeParameterData();
+        }
+
+        PlayerInventory inventory = client.player.getInventory();
+        NodeType parameterType = parameterNode.getType();
+        switch (parameterType) {
+            case PARAM_ITEM: {
+                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+                if (itemIds.isEmpty()) {
+                    sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
+                    return false;
+                }
+                ItemSearchResult result = findUseItemSlot(inventory, itemIds);
+                if (result == null) {
+                    String reference = String.join(", ", itemIds);
+                    sendParameterSearchFailure("No " + reference + " found in inventory for " + type.getDisplayName() + ".", future);
+                    return false;
+                }
+                runtimeParameterData.slotIndex = result.slotIndex();
+                runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                runtimeParameterData.targetItem = result.item();
+                runtimeParameterData.targetItemId = result.itemId();
+                return true;
+            }
+            case PARAM_INVENTORY_SLOT: {
+                SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
+                if (selectionType == SlotSelectionType.GUI_CONTAINER) {
+                    sendNodeErrorMessage(client, "Use node can only use player inventory slots.");
+                    if (future != null && !future.isDone()) {
+                        future.complete(null);
+                    }
+                    return false;
+                }
+                int slotValue = clampInventorySlot(inventory, parseNodeInt(parameterNode, "Slot", 0));
+                runtimeParameterData.slotIndex = slotValue;
+                runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    private record ItemSearchResult(int slotIndex, Item item, String itemId) {
+    }
+
+    private ItemSearchResult findUseItemSlot(PlayerInventory inventory, List<String> itemIds) {
+        if (inventory == null || itemIds == null || itemIds.isEmpty()) {
+            return null;
+        }
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item candidateItem = Registries.ITEM.get(identifier);
+            int slot = findAccessibleSlotWithItem(inventory, candidateItem);
+            if (slot >= 0) {
+                return new ItemSearchResult(slot, candidateItem, candidateId);
+            }
+        }
+        return null;
+    }
+
+    private int findAccessibleSlotWithItem(PlayerInventory inventory, Item item) {
+        if (inventory == null || item == null) {
+            return -1;
+        }
+        for (int slot = 0; slot < PlayerInventory.MAIN_SIZE && slot < inventory.size(); slot++) {
+            ItemStack stack = inventory.getStack(slot);
+            if (!stack.isEmpty() && stack.isOf(item)) {
+                return slot;
+            }
+        }
+        int offhandIndex = getOffhandInventoryIndex(inventory);
+        if (offhandIndex >= 0 && offhandIndex < inventory.size()) {
+            ItemStack offhandStack = inventory.getStack(offhandIndex);
+            if (!offhandStack.isEmpty() && offhandStack.isOf(item)) {
+                return offhandIndex;
+            }
+        }
+        return -1;
     }
 
     private int findFirstSlotWithItem(PlayerInventory inventory, Item item) {
@@ -5614,6 +7212,13 @@ public class Node {
         if (!useUntilEmpty && configuredCount == 0) {
             future.complete(null);
             return;
+        }
+
+        RuntimeParameterData parameterData = runtimeParameterData;
+        if (parameterData != null && parameterData.slotIndex != null) {
+            if (!prepareSelectedItemForUse(client, parameterData, hand, future)) {
+                return;
+            }
         }
 
         final int maxIterations = configuredCount == 0 ? Integer.MAX_VALUE : configuredCount;
@@ -5713,6 +7318,119 @@ public class Node {
         }, "Pathmind-Use").start();
     }
 
+    private boolean prepareSelectedItemForUse(net.minecraft.client.MinecraftClient client,
+                                              RuntimeParameterData parameterData,
+                                              Hand hand,
+                                              CompletableFuture<Void> future) {
+        if (client == null || client.player == null || parameterData == null || parameterData.slotIndex == null) {
+            return true;
+        }
+        if (parameterData.slotSelectionType == SlotSelectionType.GUI_CONTAINER) {
+            sendNodeErrorMessage(client, "Use node cannot use items from GUI/container slots.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return false;
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        int clampedSlot = clampInventorySlot(inventory, parameterData.slotIndex);
+        boolean armorSlot = clampedSlot >= PlayerInventory.MAIN_SIZE
+            && clampedSlot < PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
+        if (armorSlot) {
+            sendNodeErrorMessage(client, "Use node cannot activate armor slots.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return false;
+        }
+
+        ItemStack stack = inventory.getStack(clampedSlot);
+        if (stack.isEmpty()) {
+            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " is empty.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return false;
+        }
+
+        boolean prepared;
+        if (hand == Hand.OFF_HAND) {
+            prepared = ensureStackEquippedInOffhand(client, inventory, clampedSlot, stack);
+        } else {
+            prepared = ensureStackSelectedInMainHand(client, inventory, clampedSlot, stack);
+        }
+
+        if (!prepared) {
+            sendNodeErrorMessage(client, "Failed to prepare selected item for " + type.getDisplayName() + ".");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+        }
+        return prepared;
+    }
+
+    private boolean ensureStackSelectedInMainHand(net.minecraft.client.MinecraftClient client,
+                                                  PlayerInventory inventory,
+                                                  int slotIndex,
+                                                  ItemStack stack) {
+        if (client == null || client.player == null || inventory == null || stack == null) {
+            return false;
+        }
+        int hotbarSize = PlayerInventory.getHotbarSize();
+        int targetSlot = slotIndex;
+        if (slotIndex >= hotbarSize) {
+            targetSlot = moveInventoryStackToHotbar(client, inventory, slotIndex, stack.getItem());
+            if (targetSlot == -1) {
+                return false;
+            }
+        }
+        try {
+            PlayerInventoryBridge.setSelectedSlot(inventory, targetSlot);
+        } catch (IllegalStateException ignored) {
+            // Fall back to the packet-only update when inventory accessors are unavailable.
+        }
+        if (client.player.networkHandler != null) {
+            client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(targetSlot));
+        }
+        return true;
+    }
+
+    private boolean ensureStackEquippedInOffhand(net.minecraft.client.MinecraftClient client,
+                                                 PlayerInventory inventory,
+                                                 int slotIndex,
+                                                 ItemStack stack) {
+        if (client == null || client.player == null || inventory == null || stack == null) {
+            return false;
+        }
+        int offhandIndex = getOffhandInventoryIndex(inventory);
+        if (offhandIndex < 0) {
+            return false;
+        }
+        if (slotIndex == offhandIndex) {
+            return true;
+        }
+        if (slotIndex >= PlayerInventory.MAIN_SIZE) {
+            return false;
+        }
+        ClientPlayerInteractionManager interactionManager = client.interactionManager;
+        ScreenHandler handler = client.player.playerScreenHandler;
+        if (interactionManager == null || handler == null) {
+            return false;
+        }
+        int sourceHandlerSlot = mapPlayerInventorySlot(handler, slotIndex);
+        int offhandHandlerSlot = mapPlayerInventorySlot(handler, offhandIndex);
+        if (sourceHandlerSlot < 0 || offhandHandlerSlot < 0) {
+            return false;
+        }
+
+        interactionManager.clickSlot(handler.syncId, sourceHandlerSlot, 0, SlotActionType.PICKUP, client.player);
+        interactionManager.clickSlot(handler.syncId, offhandHandlerSlot, 0, SlotActionType.PICKUP, client.player);
+        interactionManager.clickSlot(handler.syncId, sourceHandlerSlot, 0, SlotActionType.PICKUP, client.player);
+
+        ItemStack offhandStack = client.player.getOffHandStack();
+        return !offhandStack.isEmpty() && offhandStack.isOf(stack.getItem());
+    }
+
     private void executePlaceHandCommand(CompletableFuture<Void> future) {
         Node blockParameterNode = getAttachedParameter(0);
         Node coordinateParameterNode = getAttachedParameter(1);
@@ -5746,6 +7464,15 @@ public class Node {
             return;
         }
 
+        String inventorySlotBlockId = null;
+        if (blockParameterNode != null && blockParameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+            inventorySlotBlockId = resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
+            if (inventorySlotBlockId == null || inventorySlotBlockId.isEmpty()) {
+                future.complete(null);
+                return;
+            }
+        }
+
         Hand hand = resolveHand(getParameter("Hand"), Hand.MAIN_HAND);
         boolean sneakWhilePlacing = getBooleanParameter("SneakWhilePlacing", false);
         boolean restoreSneak = getBooleanParameter("RestoreSneakState", true);
@@ -5759,6 +7486,9 @@ public class Node {
         }
 
         String parameterBlockId = resolveBlockIdFromParameterNode(blockParameterNode);
+        if ((parameterBlockId == null || parameterBlockId.isEmpty()) && inventorySlotBlockId != null) {
+            parameterBlockId = inventorySlotBlockId;
+        }
         if ((parameterBlockId == null || parameterBlockId.isEmpty()) && parameterData != null) {
             if (parameterData.targetBlockId != null && !parameterData.targetBlockId.isEmpty()) {
                 parameterBlockId = parameterData.targetBlockId;
@@ -5925,7 +7655,7 @@ public class Node {
             return;
         }
 
-        Identifier identifier = Identifier.tryParse(blockId);
+        Identifier identifier = BlockSelection.extractBlockIdentifier(blockId);
         if (identifier == null || !Registries.ITEM.containsId(identifier)) {
             throw new PlacementFailure("Cannot place block \"" + blockId + "\": unknown block item.");
         }
@@ -5955,11 +7685,13 @@ public class Node {
         }
 
         if (hand == Hand.MAIN_HAND) {
-            if (inventory.getSelectedSlot() != slot) {
-                inventory.setSelectedSlot(slot);
-                if (client.player.networkHandler != null) {
-                    client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
-                }
+            try {
+                PlayerInventoryBridge.setSelectedSlot(inventory, slot);
+            } catch (IllegalStateException ignored) {
+                // Fall back to the packet-only update when inventory accessors are unavailable.
+            }
+            if (client.player.networkHandler != null) {
+                client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
             }
             return;
         }
@@ -5969,7 +7701,7 @@ public class Node {
             return;
         }
 
-        inventory.setSelectedSlot(slot);
+        PlayerInventoryBridge.setSelectedSlot(inventory, slot);
         if (client.player.networkHandler != null) {
             client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
         }
@@ -6043,7 +7775,11 @@ public class Node {
 
         int targetHotbarSlot = findEmptyHotbarSlot(inventory);
         if (targetHotbarSlot == -1) {
-            targetHotbarSlot = inventory.getSelectedSlot();
+            try {
+                targetHotbarSlot = PlayerInventoryBridge.getSelectedSlot(inventory);
+            } catch (IllegalStateException ignored) {
+                targetHotbarSlot = 0;
+            }
         }
 
         int handlerSlot = mapPlayerInventorySlot(handler, inventorySlot);
@@ -6206,6 +7942,10 @@ public class Node {
             return "";
         }
         String lower = trimmed.toLowerCase(Locale.ROOT).replace(' ', '_');
+        int bracketIndex = lower.indexOf('[');
+        if (bracketIndex >= 0) {
+            lower = lower.substring(0, bracketIndex);
+        }
         String sanitized = UNSAFE_RESOURCE_ID_PATTERN.matcher(lower).replaceAll("");
         int firstColon = sanitized.indexOf(':');
         if (firstColon != -1) {
@@ -6243,7 +7983,7 @@ public class Node {
             return null;
         }
 
-        Identifier identifier = Identifier.tryParse(blockId);
+        Identifier identifier = BlockSelection.extractBlockIdentifier(blockId);
         if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
             return null;
         }
@@ -6461,6 +8201,8 @@ public class Node {
             requestedBlockLabel = configuredBlockId;
         }
 
+        String configuredBlockSelection = configuredBlockId;
+
         Block targetBlock = null;
         if (configuredBlockId != null && !configuredBlockId.isEmpty()) {
             String sanitized = sanitizeResourceId(configuredBlockId);
@@ -6485,7 +8227,14 @@ public class Node {
         if (targetBlock != null || parameterTargetPos != null) {
             BlockPos targetPos = parameterTargetPos;
             if (targetPos == null && targetBlock != null) {
-                Optional<BlockPos> nearest = findNearestBlock(client, Collections.singletonList(targetBlock), PARAMETER_SEARCH_RADIUS);
+                String selectionSource = configuredBlockSelection != null && !configuredBlockSelection.isEmpty()
+                    ? configuredBlockSelection
+                    : configuredBlockId;
+                List<BlockSelection> selections = new ArrayList<>();
+                if (selectionSource != null && !selectionSource.isEmpty()) {
+                    BlockSelection.parse(selectionSource).ifPresent(selections::add);
+                }
+                Optional<BlockPos> nearest = findNearestBlock(client, selections, PARAMETER_SEARCH_RADIUS);
                 if (nearest.isPresent()) {
                     targetPos = nearest.get();
                 }
@@ -6526,13 +8275,6 @@ public class Node {
             }
 
             String blockDisplayName = targetBlock.getName().getString();
-
-            if (state.createScreenHandlerFactory(client.world, targetPos) == null) {
-                restoreSneakState.run();
-                sendNodeErrorMessage(client, blockDisplayName + " cannot be opened.");
-                future.complete(null);
-                return;
-            }
 
             Vec3d eyePos = client.player.getEyePos();
             Vec3d hitVec = Vec3d.ofCenter(targetPos);
@@ -6835,6 +8577,17 @@ public class Node {
         return MathHelper.clamp(slot, 0, inventory.size() - 1);
     }
 
+    private int getOffhandInventoryIndex(PlayerInventory inventory) {
+        if (inventory == null || inventory.size() <= 0) {
+            return -1;
+        }
+        int index = PLAYER_OFFHAND_INVENTORY_INDEX;
+        if (index >= inventory.size()) {
+            return inventory.size() - 1;
+        }
+        return index;
+    }
+
     private EquipmentSlot parseEquipmentSlot(NodeParameter parameter, EquipmentSlot defaultSlot) {
         if (parameter == null || parameter.getStringValue() == null) {
             return defaultSlot;
@@ -6893,6 +8646,26 @@ public class Node {
         return parameter.getStringValue();
     }
 
+    private String getBlockParameterValue(Node node) {
+        if (node == null) {
+            return null;
+        }
+        String blockId = getParameterString(node, "Block");
+        if (blockId == null || blockId.isEmpty()) {
+            return null;
+        }
+        String state = getParameterString(node, "State");
+        if (state == null || state.isEmpty()) {
+            return blockId;
+        }
+        Optional<String> combined = BlockSelection.combine(blockId, state);
+        if (combined.isPresent()) {
+            return combined.get();
+        }
+        notifyInvalidBlockStateSelection(blockId, state);
+        return null;
+    }
+
     private double getDoubleParameter(String name, double defaultValue) {
         NodeParameter param = getParameter(name);
         if (param == null) {
@@ -6932,6 +8705,13 @@ public class Node {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private void notifyInvalidBlockStateSelection(String blockId, String state) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        String blockLabel = (blockId == null || blockId.isEmpty()) ? "the selected block" : blockId;
+        String stateLabel = state == null || state.isEmpty() ? "(unspecified state)" : state;
+        sendNodeErrorMessage(client, "State \"" + stateLabel + "\" is not valid for " + blockLabel + " on " + type.getDisplayName() + ".");
     }
 
     private Optional<BlockPos> findNearestDroppedItem(net.minecraft.client.MinecraftClient client, Item item, double range) {
@@ -7036,22 +8816,37 @@ public class Node {
             return false;
         }
 
+        if (!reportEmptyParametersForNode(this, null)) {
+            return false;
+        }
+        if (!reportEmptyParametersForAttachedParameters(null)) {
+            return false;
+        }
+        if (!ensureRequiredSensorParameterAttached()) {
+            this.lastSensorResult = false;
+            return false;
+        }
+
         boolean result;
         switch (type) {
+            case OPERATOR_EQUALS:
+                result = evaluateOperatorEquals();
+                break;
             case SENSOR_TOUCHING_BLOCK: {
-                String blockId = getStringParameter("Block", "minecraft:stone");
+                String blockId = getStringParameter("Block", "stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getParameterString(parameterNode, "Block");
-                    if (nodeBlock != null && !nodeBlock.isEmpty()) {
-                        blockId = nodeBlock;
+                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                    if (!selections.isEmpty()) {
+                        result = isTouchingBlock(selections);
+                        break;
                     }
                 }
                 result = evaluateSensorCondition(SensorConditionType.TOUCHING_BLOCK, blockId, null, 0, 0, 0);
                 break;
             }
             case SENSOR_TOUCHING_ENTITY: {
-                String entityId = getStringParameter("Entity", "minecraft:zombie");
+                String entityId = getStringParameter("Entity", "zombie");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ENTITY);
                 if (parameterNode != null) {
                     String nodeEntity = getParameterString(parameterNode, "Entity");
@@ -7076,26 +8871,28 @@ public class Node {
                 break;
             }
             case SENSOR_BLOCK_AHEAD: {
-                String blockId = getStringParameter("Block", "minecraft:stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getParameterString(parameterNode, "Block");
-                    if (nodeBlock != null && !nodeBlock.isEmpty()) {
-                        blockId = nodeBlock;
+                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                    if (!selections.isEmpty()) {
+                        result = isBlockAhead(selections);
+                        break;
                     }
                 }
+                String blockId = getStringParameter("Block", "stone");
                 result = isBlockAhead(blockId);
                 break;
             }
             case SENSOR_BLOCK_BELOW: {
-                String blockId = getStringParameter("Block", "minecraft:stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
                 if (parameterNode != null) {
-                    String nodeBlock = getParameterString(parameterNode, "Block");
-                    if (nodeBlock != null && !nodeBlock.isEmpty()) {
-                        blockId = nodeBlock;
+                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                    if (!selections.isEmpty()) {
+                        result = isBlockBelow(selections);
+                        break;
                     }
                 }
+                String blockId = getStringParameter("Block", "stone");
                 result = isBlockBelow(blockId);
                 break;
             }
@@ -7130,7 +8927,7 @@ public class Node {
                 break;
             }
             case SENSOR_ENTITY_NEARBY: {
-                String entityId = getStringParameter("Entity", "minecraft:zombie");
+                String entityId = getStringParameter("Entity", "zombie");
                 double range = Math.max(1.0, getIntParameter("Range", 6));
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ENTITY);
                 if (parameterNode != null) {
@@ -7144,12 +8941,20 @@ public class Node {
                 break;
             }
             case SENSOR_ITEM_IN_INVENTORY: {
-                String itemId = getStringParameter("Item", "minecraft:stone");
+                String itemId = getStringParameter("Item", "stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ITEM);
                 if (parameterNode != null) {
-                    String nodeItem = getParameterString(parameterNode, "Item");
-                    if (nodeItem != null && !nodeItem.isEmpty()) {
-                        itemId = nodeItem;
+                    List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
+                    if (!nodeItems.isEmpty()) {
+                        boolean hasAny = false;
+                        for (String candidate : nodeItems) {
+                            if (hasItemInInventory(candidate)) {
+                                hasAny = true;
+                                break;
+                            }
+                        }
+                        result = hasAny;
+                        break;
                     }
                 }
                 result = hasItemInInventory(itemId);
@@ -7164,13 +8969,28 @@ public class Node {
             case SENSOR_IS_UNDERWATER:
                 result = isUnderwater();
                 break;
+            case SENSOR_IS_ON_GROUND:
+                result = isOnGround();
+                break;
             case SENSOR_IS_FALLING: {
                 double distance = Math.max(0.0, getDoubleParameter("Distance", 2.0));
                 result = isFalling(distance);
                 break;
             }
+            case SENSOR_KEY_PRESSED: {
+                String key = getStringParameter("Key", "space");
+                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_KEY);
+                if (parameterNode != null) {
+                    String parameterKey = getParameterString(parameterNode, "Key");
+                    if (parameterKey != null && !parameterKey.isEmpty()) {
+                        key = parameterKey;
+                    }
+                }
+                result = isKeyPressed(key);
+                break;
+            }
             case SENSOR_IS_RENDERED: {
-                String resourceId = getStringParameter("Resource", "minecraft:stone");
+                String resourceId = getStringParameter("Resource", "stone");
                 Node parameterNode = getAttachedParameterOfType(
                     NodeType.PARAM_BLOCK,
                     NodeType.PARAM_BLOCK_LIST,
@@ -7183,9 +9003,9 @@ public class Node {
                     NodeType parameterType = parameterNode.getType();
                     switch (parameterType) {
                         case PARAM_ITEM: {
-                            String nodeItem = getParameterString(parameterNode, "Item");
-                            if (nodeItem != null && !nodeItem.isEmpty()) {
-                                resourceId = nodeItem;
+                            List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
+                            if (!nodeItems.isEmpty()) {
+                                resourceId = String.join(",", nodeItems);
                             }
                             break;
                         }
@@ -7211,7 +9031,7 @@ public class Node {
                             break;
                         }
                         default: {
-                            String nodeBlock = getParameterString(parameterNode, "Block");
+                            String nodeBlock = getBlockParameterValue(parameterNode);
                             if (nodeBlock != null && !nodeBlock.isEmpty()) {
                                 resourceId = nodeBlock;
                             }
@@ -7226,9 +9046,70 @@ public class Node {
                 result = false;
                 break;
         }
-
+        result = adjustBooleanToggleResult(result);
         this.lastSensorResult = result;
         return result;
+    }
+
+    private boolean ensureRequiredSensorParameterAttached() {
+        if (!isSensorNode() || !attachedParameters.isEmpty() || !sensorRequiresParameterNode()) {
+            return true;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client != null) {
+            sendNodeErrorMessage(client, type.getDisplayName() + " requires a parameter node.");
+        }
+        return false;
+    }
+
+    private boolean sensorRequiresParameterNode() {
+        return switch (type) {
+            case SENSOR_TOUCHING_BLOCK,
+                 SENSOR_TOUCHING_ENTITY,
+                 SENSOR_AT_COORDINATES,
+                 SENSOR_BLOCK_AHEAD,
+                 SENSOR_BLOCK_BELOW,
+                 SENSOR_ENTITY_NEARBY,
+                 SENSOR_ITEM_IN_INVENTORY -> true;
+            default -> false;
+        };
+    }
+
+    private boolean evaluateOperatorEquals() {
+        Node variableNode = getAttachedParameter(0);
+        Node valueNode = getAttachedParameter(1);
+        if (variableNode == null || valueNode == null) {
+            return false;
+        }
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            return false;
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        ExecutionManager.RuntimeVariable variable = manager.getRuntimeVariable(startNode, variableName.trim());
+        if (variable == null) {
+            return false;
+        }
+        if (variable.getType() != valueNode.getType()) {
+            return false;
+        }
+        Map<String, String> currentValues = valueNode.exportParameterValues();
+        Map<String, String> storedValues = variable.getValues();
+        if (currentValues == null || storedValues == null) {
+            return false;
+        }
+        return storedValues.equals(currentValues);
+    }
+
+    private boolean adjustBooleanToggleResult(boolean rawResult) {
+        if (!hasBooleanToggle()) {
+            return rawResult;
+        }
+        return booleanToggleValue == rawResult;
     }
 
     private boolean evaluateConditionFromParameters() {
@@ -7240,8 +9121,8 @@ public class Node {
 
         // Legacy fallback when no sensor is attached
         String condition = getStringParameter("Condition", "Touching Block");
-        String blockId = getStringParameter("Block", "minecraft:stone");
-        String entityId = getStringParameter("Entity", "minecraft:zombie");
+        String blockId = getStringParameter("Block", "stone");
+        String entityId = getStringParameter("Entity", "zombie");
         int x = getIntParameter("X", 0);
         int y = getIntParameter("Y", 64);
         int z = getIntParameter("Z", 0);
@@ -7267,15 +9148,17 @@ public class Node {
     }
     
     private boolean isTouchingBlock(String blockId) {
+        return isTouchingBlock(parseBlockSelectionList(blockId));
+    }
+
+    private boolean isTouchingBlock(List<BlockSelection> selections) {
+        if (selections == null || selections.isEmpty()) {
+            return false;
+        }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
+        if (client == null || client.player == null) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
-            return false;
-        }
-        Block block = Registries.BLOCK.get(identifier);
         Box box = client.player.getBoundingBox().expand(0.05);
         int minX = MathHelper.floor(box.minX);
         int maxX = MathHelper.floor(box.maxX);
@@ -7288,7 +9171,8 @@ public class Node {
             for (int by = minY; by <= maxY; by++) {
                 for (int bz = minZ; bz <= maxZ; bz++) {
                     mutable.set(bx, by, bz);
-                    if (client.player.getWorld().getBlockState(mutable).isOf(block)) {
+                    BlockState state = client.player.getWorld().getBlockState(mutable);
+                    if (matchesAnyBlock(selections, state)) {
                         return true;
                     }
                 }
@@ -7325,32 +9209,65 @@ public class Node {
     }
 
     private boolean isBlockAhead(String blockId) {
+        return isBlockAhead(parseBlockSelectionList(blockId));
+    }
+
+    private boolean isBlockAhead(List<BlockSelection> selections) {
+        if (selections == null || selections.isEmpty()) {
+            return false;
+        }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
+        if (client == null || client.player == null) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
-            return false;
-        }
-        Block block = Registries.BLOCK.get(identifier);
         Direction facing = client.player.getHorizontalFacing();
         BlockPos targetPos = client.player.getBlockPos().offset(facing);
-        return client.player.getWorld().getBlockState(targetPos).isOf(block);
+        BlockState state = client.player.getWorld().getBlockState(targetPos);
+        return matchesAnyBlock(selections, state);
     }
 
     private boolean isBlockBelow(String blockId) {
+        return isBlockBelow(parseBlockSelectionList(blockId));
+    }
+
+    private boolean isBlockBelow(List<BlockSelection> selections) {
+        if (selections == null || selections.isEmpty()) {
+            return false;
+        }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || blockId == null || blockId.isEmpty()) {
+        if (client == null || client.player == null) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
-            return false;
-        }
-        Block block = Registries.BLOCK.get(identifier);
         BlockPos below = client.player.getBlockPos().down();
-        return client.player.getWorld().getBlockState(below).isOf(block);
+        BlockState state = client.player.getWorld().getBlockState(below);
+        return matchesAnyBlock(selections, state);
+    }
+
+    private List<BlockSelection> parseBlockSelectionList(String blockId) {
+        if (blockId == null || blockId.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<BlockSelection> selections = new ArrayList<>();
+        for (String entry : blockId.split("[,;]")) {
+            String trimmed = entry == null ? null : entry.trim();
+            if (trimmed == null || trimmed.isEmpty()) {
+                continue;
+            }
+            BlockSelection.parse(trimmed).ifPresent(selections::add);
+        }
+        return selections;
+    }
+
+    private boolean matchesAnyBlock(List<BlockSelection> selections, BlockState state) {
+        if (selections == null || selections.isEmpty() || state == null) {
+            return false;
+        }
+        for (BlockSelection selection : selections) {
+            if (selection != null && selection.matches(state)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isLightLevelBelow(int threshold) {
@@ -7377,6 +9294,63 @@ public class Node {
             return false;
         }
         return client.world.isRaining() || client.world.hasRain(client.player.getBlockPos());
+    }
+
+    private boolean isKeyPressed(String keyName) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) {
+            return false;
+        }
+        Integer keyCode = resolveKeyCode(keyName);
+        if (keyCode == null) {
+            return false;
+        }
+        return InputUtil.isKeyPressed(client.getWindow().getHandle(), keyCode);
+    }
+
+    private Integer resolveKeyCode(String keyName) {
+        if (keyName == null) {
+            return null;
+        }
+        String trimmed = keyName.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(trimmed);
+        } catch (NumberFormatException ignored) {
+        }
+        Integer glfwCode = resolveGlfwKeyCode(trimmed);
+        if (glfwCode != null) {
+            return glfwCode;
+        }
+        InputUtil.Key key = InputUtil.fromTranslationKey(trimmed);
+        int code = key.getCode();
+        if (code != GLFW.GLFW_KEY_UNKNOWN) {
+            return code;
+        }
+        String normalized = trimmed.toLowerCase(Locale.ROOT).replace(" ", "_");
+        InputUtil.Key normalizedKey = InputUtil.fromTranslationKey("key.keyboard." + normalized);
+        int normalizedCode = normalizedKey.getCode();
+        if (normalizedCode != GLFW.GLFW_KEY_UNKNOWN) {
+            return normalizedCode;
+        }
+        return null;
+    }
+
+    private Integer resolveGlfwKeyCode(String keyName) {
+        String normalized = keyName.trim().toUpperCase(Locale.ROOT).replace(" ", "_");
+        if (!normalized.startsWith("GLFW_KEY_")) {
+            normalized = "GLFW_KEY_" + normalized;
+        }
+        try {
+            Field field = GLFW.class.getField(normalized);
+            if (field.getType() == int.class) {
+                return field.getInt(null);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+        return null;
     }
 
     private boolean isHealthBelow(double amount) {
@@ -7452,6 +9426,10 @@ public class Node {
         if (client == null || client.player == null || client.world == null || resourceId == null || resourceId.isEmpty()) {
             return false;
         }
+        Optional<BlockSelection> selectionOptional = BlockSelection.parse(resourceId);
+        if (selectionOptional.isPresent()) {
+            return isBlockRendered(client, selectionOptional.get());
+        }
         String normalized = resourceId.contains(":")
             ? resourceId.toLowerCase(Locale.ROOT)
             : resourceId;
@@ -7474,6 +9452,21 @@ public class Node {
     }
 
     private boolean isBlockRendered(net.minecraft.client.MinecraftClient client, Block block) {
+        return isBlockRendered(client, block, null);
+    }
+
+    private boolean isBlockRendered(net.minecraft.client.MinecraftClient client, BlockSelection selection) {
+        if (selection == null) {
+            return false;
+        }
+        Block block = selection.getBlock();
+        if (block == null) {
+            return false;
+        }
+        return isBlockRendered(client, block, selection);
+    }
+
+    private boolean isBlockRendered(net.minecraft.client.MinecraftClient client, Block block, BlockSelection selection) {
         if (client == null || client.player == null || client.world == null || block == null) {
             return false;
         }
@@ -7481,7 +9474,9 @@ public class Node {
         HitResult hitResult = client.crosshairTarget;
         if (hitResult instanceof BlockHitResult blockHit) {
             BlockPos hitPos = blockHit.getBlockPos();
-            if (client.world.getBlockState(hitPos).isOf(block)) {
+            BlockState state = client.world.getBlockState(hitPos);
+            boolean matches = selection != null ? selection.matches(state) : state.isOf(block);
+            if (matches) {
                 return true;
             }
         }
@@ -7497,7 +9492,8 @@ public class Node {
                 for (int dz = -horizontalRadius; dz <= horizontalRadius; dz++) {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
                     BlockState state = client.world.getBlockState(mutable);
-                    if (state.isOf(block) && isBlockVisible(client, mutable)) {
+                    boolean matches = selection != null ? selection.matches(state) : state.isOf(block);
+                    if (matches && isBlockVisible(client, mutable)) {
                         return true;
                     }
                 }
@@ -7626,6 +9622,11 @@ public class Node {
     private boolean isUnderwater() {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         return client != null && client.player != null && client.player.isSubmergedInWater();
+    }
+
+    private boolean isOnGround() {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        return client != null && client.player != null && client.player.isOnGround();
     }
 
     private boolean isFalling(double distance) {

@@ -1,12 +1,23 @@
 # Gradle caches and build outputs
 .gradle/
 build/
+bin/
 run/
 
-# IDE files
+# IDE / editor files
 *.iml
 .idea/
 .vscode/
+out/
 
 # Local dependencies downloaded during builds
 libs/
+
+# OS files
+.DS_Store
+
+# Logs and crash reports
+logs/
+**/logs/
+**/crash-reports/
+*.log

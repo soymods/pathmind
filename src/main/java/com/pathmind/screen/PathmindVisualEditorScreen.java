@@ -8,6 +8,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.overlay.NodeParameterOverlay;
+import com.pathmind.util.VersionSupport;
 import com.pathmind.ui.sidebar.Sidebar;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -60,6 +61,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PRESET_DELETE_ICON_SIZE = 8;
     private static final int PRESET_DELETE_ICON_MARGIN = 6;
     private static final int PRESET_DELETE_ICON_HITBOX_PADDING = 2;
+    private static final int PRESET_RENAME_ICON_SIZE = 8;
+    private static final int PRESET_RENAME_ICON_HITBOX_PADDING = 2;
     private static final int PRESET_TEXT_ICON_GAP = 4;
     private static final int CREATE_PRESET_POPUP_WIDTH = 320;
     private static final int CREATE_PRESET_POPUP_HEIGHT = 170;
@@ -75,8 +78,9 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PRESET_DELETE_POPUP_WIDTH = 320;
     private static final int PRESET_DELETE_POPUP_HEIGHT = 160;
     private static final int TITLE_INTERACTION_PADDING = 4;
+    private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final String INFO_POPUP_AUTHOR = "ryduzz";
-    private static final String INFO_POPUP_TARGET_VERSION = "1.21.x";
+    private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
     private static final Text TITLE_TEXT = Text.literal("Pathmind Node Editor");
 
     private NodeGraph nodeGraph;
@@ -101,6 +105,11 @@ public class PathmindVisualEditorScreen extends Screen {
     private TextFieldWidget createPresetField;
     private String createPresetStatus = "";
     private int createPresetStatusColor = 0xFFCCCCCC;
+    private boolean renamePresetPopupVisible = false;
+    private TextFieldWidget renamePresetField;
+    private String renamePresetStatus = "";
+    private int renamePresetStatusColor = 0xFFCCCCCC;
+    private String pendingPresetRenameName = "";
     private boolean infoPopupVisible = false;
     private boolean presetDeletePopupVisible = false;
     private String pendingPresetDeletionName = "";
@@ -131,6 +140,18 @@ public class PathmindVisualEditorScreen extends Screen {
             createPresetField.setUneditableColor(0xFF888888);
             createPresetField.setChangedListener(value -> clearCreatePresetStatus());
             this.addSelectableChild(createPresetField);
+        }
+
+        if (renamePresetField == null) {
+            renamePresetField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.literal("New Preset Name"));
+            renamePresetField.setMaxLength(64);
+            renamePresetField.setDrawsBackground(false);
+            renamePresetField.setVisible(false);
+            renamePresetField.setEditable(false);
+            renamePresetField.setEditableColor(WHITE);
+            renamePresetField.setUneditableColor(0xFF888888);
+            renamePresetField.setChangedListener(value -> clearRenamePresetStatus());
+            this.addSelectableChild(renamePresetField);
         }
 
         updateImportExportPathFromPreset();
@@ -219,6 +240,10 @@ public class PathmindVisualEditorScreen extends Screen {
             renderCreatePresetPopup(context, mouseX, mouseY, delta);
         }
 
+        if (renamePresetPopupVisible) {
+            renderRenamePresetPopup(context, mouseX, mouseY, delta);
+        }
+
         if (presetDeletePopupVisible) {
             renderPresetDeletePopup(context, mouseX, mouseY);
         }
@@ -241,6 +266,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 || clearPopupVisible
                 || importExportPopupVisible
                 || createPresetPopupVisible
+                || renamePresetPopupVisible
                 || presetDeletePopupVisible
                 || infoPopupVisible;
     }
@@ -401,6 +427,16 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (renamePresetPopupVisible) {
+            if (renamePresetField != null && renamePresetField.mouseClicked(mouseX, mouseY, button)) {
+                return true;
+            }
+            if (handleRenamePresetPopupClick(mouseX, mouseY, button)) {
+                return true;
+            }
+            return true;
+        }
+
         if (presetDeletePopupVisible) {
             if (handlePresetDeletePopupClick(mouseX, mouseY, button)) {
                 return true;
@@ -546,6 +582,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     if (button == 0) { // Left click - start dragging connection from input
                         nodeGraph.stopCoordinateEditing(true);
                         nodeGraph.stopAmountEditing(true);
+                        nodeGraph.stopStopTargetEditing(true);
                         nodeGraph.startDraggingConnection(node, i, false, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -558,6 +595,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     if (button == 0) { // Left click - start dragging connection from output
                         nodeGraph.stopCoordinateEditing(true);
                         nodeGraph.stopAmountEditing(true);
+                        nodeGraph.stopStopTargetEditing(true);
                         nodeGraph.startDraggingConnection(node, i, true, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -571,10 +609,20 @@ public class PathmindVisualEditorScreen extends Screen {
         if (clickedNode != null) {
             // Node body clicked (not socket)
             if (button == 0) { // Left click - select node or start dragging
+                if (nodeGraph.handleBooleanToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
+
                 int coordinateAxis = nodeGraph.getCoordinateFieldAxisAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (coordinateAxis != -1) {
                     nodeGraph.selectNode(clickedNode);
                     nodeGraph.startCoordinateEditing(clickedNode, coordinateAxis);
+                    return true;
+                }
+
+                if (nodeGraph.isPointInsideStopTargetField(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.startStopTargetEditing(clickedNode);
                     return true;
                 }
 
@@ -586,6 +634,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
                 nodeGraph.stopAmountEditing(true);
                 nodeGraph.stopCoordinateEditing(true);
+                nodeGraph.stopStopTargetEditing(true);
 
                 // Check for double-click to open parameter editor
                 boolean shouldOpenOverlay = clickedNode.isParameterNode()
@@ -596,6 +645,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     // Open parameter overlay
                     nodeGraph.stopCoordinateEditing(true);
                     nodeGraph.stopAmountEditing(true);
+                    nodeGraph.stopStopTargetEditing(true);
                     parameterOverlay = new NodeParameterOverlay(
                         clickedNode,
                         this.width,
@@ -632,6 +682,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (button == 0) {
                 nodeGraph.stopCoordinateEditing(true);
                 nodeGraph.stopAmountEditing(true);
+                nodeGraph.stopStopTargetEditing(true);
                 nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
             }
             return true;
@@ -696,6 +747,13 @@ public class PathmindVisualEditorScreen extends Screen {
         if (createPresetPopupVisible) {
             if (createPresetField != null) {
                 createPresetField.mouseReleased(mouseX, mouseY, button);
+            }
+            return true;
+        }
+
+        if (renamePresetPopupVisible) {
+            if (renamePresetField != null) {
+                renamePresetField.mouseReleased(mouseX, mouseY, button);
             }
             return true;
         }
@@ -792,6 +850,24 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (renamePresetPopupVisible) {
+            if (renamePresetField != null && renamePresetField.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closeRenamePresetPopup();
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                attemptRenamePreset();
+                return true;
+            }
+
+            return true;
+        }
+
         if (presetDeletePopupVisible) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closePresetDeletePopup();
@@ -842,6 +918,10 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
+        if (nodeGraph.handleStopTargetKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
         if (nodeGraph.handleAmountKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -886,6 +966,13 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (renamePresetPopupVisible) {
+            if (renamePresetField != null && renamePresetField.charTyped(chr, modifiers)) {
+                return true;
+            }
+            return true;
+        }
+
         if (clearPopupVisible) {
             return true;
         }
@@ -899,6 +986,10 @@ public class PathmindVisualEditorScreen extends Screen {
             if (parameterOverlay.charTyped(chr, modifiers)) {
                 return true;
             }
+        }
+
+        if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.textRenderer)) {
+            return true;
         }
 
         if (nodeGraph.handleAmountCharTyped(chr, modifiers, this.textRenderer)) {
@@ -920,6 +1011,13 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (createPresetPopupVisible) {
             if (createPresetField != null && createPresetField.mouseScrolled(mouseX, mouseY, 0.0, verticalAmount)) {
+                return true;
+            }
+            return true;
+        }
+
+        if (renamePresetPopupVisible) {
+            if (renamePresetField != null && renamePresetField.mouseScrolled(mouseX, mouseY, 0.0, verticalAmount)) {
                 return true;
             }
             return true;
@@ -963,6 +1061,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         nodeGraph.stopCoordinateEditing(true);
         nodeGraph.stopAmountEditing(true);
+        nodeGraph.stopStopTargetEditing(true);
 
         if (nodeGraph.save()) {
             System.out.println("Node graph auto-saved successfully");
@@ -1099,8 +1198,8 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean exportHovered = isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered, Text.literal("Import"), false);
-        drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered, Text.literal("Export"), false);
+        drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered, Text.literal("Import"), PopupButtonStyle.PRIMARY);
+        drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered, Text.literal("Export"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Close"), false);
     }
 
@@ -1260,10 +1359,27 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered, Text label, boolean primary) {
-        int bgColor = primary ? (hovered ? 0xFF3B6A7D : 0xFF2F4F5C) : (hovered ? 0xFF505050 : 0xFF3A3A3A);
-        int borderColor = primary
-                ? ACCENT_COLOR
-                : (hovered ? 0xFF888888 : 0xFF666666);
+        PopupButtonStyle style = primary ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
+        drawPopupButton(context, x, y, width, height, hovered, label, style);
+    }
+
+    private void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered, Text label, PopupButtonStyle style) {
+        int bgColor;
+        int borderColor;
+        switch (style) {
+            case PRIMARY:
+                bgColor = hovered ? 0xFF3B6A7D : 0xFF2F4F5C;
+                borderColor = ACCENT_COLOR;
+                break;
+            case ACCENT:
+                bgColor = hovered ? 0xFF5EA3DC : 0xFF3B7FC1;
+                borderColor = ACCENT_COLOR;
+                break;
+            default:
+                bgColor = hovered ? 0xFF505050 : 0xFF3A3A3A;
+                borderColor = hovered ? 0xFF888888 : 0xFF666666;
+                break;
+        }
         context.fill(x, y, x + width, y + height, bgColor);
         context.drawBorder(x, y, width, height, borderColor);
         context.drawCenteredTextWithShadow(
@@ -1273,6 +1389,12 @@ public class PathmindVisualEditorScreen extends Screen {
             y + (height - this.textRenderer.fontHeight) / 2 + 1,
             WHITE
         );
+    }
+
+    private enum PopupButtonStyle {
+        DEFAULT,
+        PRIMARY,
+        ACCENT
     }
 
     private void openInfoPopup() {
@@ -1609,35 +1731,58 @@ public class PathmindVisualEditorScreen extends Screen {
             context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, optionColor);
             int textColor = preset.equals(activePresetName) ? ACCENT_COLOR : WHITE;
             int textX = dropdownX + PRESET_TEXT_LEFT_PADDING;
-            int textMaxWidth = PRESET_DROPDOWN_WIDTH
-                    - PRESET_TEXT_LEFT_PADDING
-                    - PRESET_DELETE_ICON_SIZE
-                    - PRESET_DELETE_ICON_MARGIN
-                    - PRESET_TEXT_ICON_GAP;
+            int iconSpace = PRESET_DELETE_ICON_SIZE
+                    + PRESET_DELETE_ICON_MARGIN
+                    + PRESET_TEXT_ICON_GAP
+                    + PRESET_RENAME_ICON_SIZE
+                    + PRESET_TEXT_ICON_GAP;
+            int textMaxWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING - iconSpace;
             String presetLabel = this.textRenderer.trimToWidth(preset, textMaxWidth);
             context.drawTextWithShadow(this.textRenderer, Text.literal(presetLabel), textX, optionY + 5, textColor);
 
-            boolean deleteDisabled = isPresetDeleteDisabled(preset);
-            int iconLeft = getPresetDeleteIconLeft(dropdownX);
-            int iconTop = getPresetDeleteIconTop(optionY);
-            boolean iconHovered = !deleteDisabled && isPointInPresetDeleteIcon(mouseX, mouseY, optionY, dropdownX);
-            if (iconHovered) {
-                context.fill(iconLeft - PRESET_DELETE_ICON_HITBOX_PADDING,
-                        iconTop - PRESET_DELETE_ICON_HITBOX_PADDING,
-                        iconLeft + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
-                        iconTop + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
+            boolean renameDisabled = isPresetRenameDisabled(preset);
+            int renameLeft = getPresetRenameIconLeft(dropdownX);
+            int renameTop = getPresetRenameIconTop(optionY);
+            boolean renameHovered = !renameDisabled && isPointInPresetRenameIcon(mouseX, mouseY, optionY, dropdownX);
+            if (renameHovered) {
+                context.fill(renameLeft - PRESET_RENAME_ICON_HITBOX_PADDING,
+                        renameTop - PRESET_RENAME_ICON_HITBOX_PADDING,
+                        renameLeft + PRESET_RENAME_ICON_SIZE + PRESET_RENAME_ICON_HITBOX_PADDING,
+                        renameTop + PRESET_RENAME_ICON_SIZE + PRESET_RENAME_ICON_HITBOX_PADDING,
                         0x33555555);
             }
 
-            int iconColor;
-            if (deleteDisabled) {
-                iconColor = 0xFF555555;
-            } else if (iconHovered) {
-                iconColor = ACCENT_COLOR;
+            int renameColor;
+            if (renameDisabled) {
+                renameColor = 0xFF555555;
+            } else if (renameHovered) {
+                renameColor = ACCENT_COLOR;
             } else {
-                iconColor = 0xFFCCCCCC;
+                renameColor = 0xFFCCCCCC;
             }
-            drawTrashIcon(context, iconLeft, iconTop, iconColor);
+            drawPencilIcon(context, renameLeft, renameTop, renameColor);
+
+            boolean deleteDisabled = isPresetDeleteDisabled(preset);
+            int deleteLeft = getPresetDeleteIconLeft(dropdownX);
+            int deleteTop = getPresetDeleteIconTop(optionY);
+            boolean deleteHovered = !deleteDisabled && isPointInPresetDeleteIcon(mouseX, mouseY, optionY, dropdownX);
+            if (deleteHovered) {
+                context.fill(deleteLeft - PRESET_DELETE_ICON_HITBOX_PADDING,
+                        deleteTop - PRESET_DELETE_ICON_HITBOX_PADDING,
+                        deleteLeft + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
+                        deleteTop + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
+                        0x33555555);
+            }
+
+            int deleteColor;
+            if (deleteDisabled) {
+                deleteColor = 0xFF555555;
+            } else if (deleteHovered) {
+                deleteColor = ACCENT_COLOR;
+            } else {
+                deleteColor = 0xFFCCCCCC;
+            }
+            drawTrashIcon(context, deleteLeft, deleteTop, deleteColor);
             optionY += PRESET_OPTION_HEIGHT;
         }
 
@@ -1714,6 +1859,14 @@ public class PathmindVisualEditorScreen extends Screen {
         return optionTop + (PRESET_OPTION_HEIGHT - PRESET_DELETE_ICON_SIZE) / 2;
     }
 
+    private int getPresetRenameIconLeft(int dropdownX) {
+        return getPresetDeleteIconLeft(dropdownX) - PRESET_TEXT_ICON_GAP - PRESET_RENAME_ICON_SIZE;
+    }
+
+    private int getPresetRenameIconTop(int optionTop) {
+        return optionTop + (PRESET_OPTION_HEIGHT - PRESET_RENAME_ICON_SIZE) / 2;
+    }
+
     private boolean isPointInPresetDeleteIcon(int mouseX, int mouseY, int optionTop, int dropdownX) {
         int iconLeft = getPresetDeleteIconLeft(dropdownX);
         int iconTop = getPresetDeleteIconTop(optionTop);
@@ -1721,11 +1874,22 @@ public class PathmindVisualEditorScreen extends Screen {
         return isPointInRect(mouseX, mouseY, iconLeft - PRESET_DELETE_ICON_HITBOX_PADDING, iconTop - PRESET_DELETE_ICON_HITBOX_PADDING, hitboxSize, hitboxSize);
     }
 
+    private boolean isPointInPresetRenameIcon(int mouseX, int mouseY, int optionTop, int dropdownX) {
+        int iconLeft = getPresetRenameIconLeft(dropdownX);
+        int iconTop = getPresetRenameIconTop(optionTop);
+        int hitboxSize = PRESET_RENAME_ICON_SIZE + PRESET_RENAME_ICON_HITBOX_PADDING * 2;
+        return isPointInRect(mouseX, mouseY, iconLeft - PRESET_RENAME_ICON_HITBOX_PADDING, iconTop - PRESET_RENAME_ICON_HITBOX_PADDING, hitboxSize, hitboxSize);
+    }
+
     private boolean isPresetDeleteDisabled(String presetName) {
         if (presetName == null) {
             return true;
         }
         return presetName.equalsIgnoreCase(PresetManager.getDefaultPresetName());
+    }
+
+    private boolean isPresetRenameDisabled(String presetName) {
+        return isPresetDeleteDisabled(presetName);
     }
 
     private boolean handlePresetDropdownSelection(double mouseX, double mouseY) {
@@ -1743,6 +1907,12 @@ public class PathmindVisualEditorScreen extends Screen {
             if (index >= 0 && index < availablePresets.size()) {
                 String selectedPreset = availablePresets.get(index);
                 int optionTop = optionStartY + index * PRESET_OPTION_HEIGHT;
+                if (isPointInPresetRenameIcon((int) mouseX, (int) mouseY, optionTop, dropdownX)) {
+                    if (!isPresetRenameDisabled(selectedPreset)) {
+                        openRenamePresetPopup(selectedPreset);
+                    }
+                    return true;
+                }
                 if (isPointInPresetDeleteIcon((int) mouseX, (int) mouseY, optionTop, dropdownX)) {
                     if (!isPresetDeleteDisabled(selectedPreset)) {
                         openPresetDeletePopup(selectedPreset);
@@ -1769,6 +1939,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownOpen = false;
         clearCreatePresetStatus();
         closeInfoPopup();
+        closeRenamePresetPopup();
         createPresetPopupVisible = true;
         if (createPresetField != null) {
             createPresetField.setText("");
@@ -1785,6 +1956,35 @@ public class PathmindVisualEditorScreen extends Screen {
             createPresetField.setFocused(false);
             createPresetField.setVisible(false);
             createPresetField.setEditable(false);
+        }
+    }
+
+    private void openRenamePresetPopup(String presetName) {
+        if (presetName == null || presetName.isEmpty()) {
+            return;
+        }
+        presetDropdownOpen = false;
+        clearRenamePresetStatus();
+        closeInfoPopup();
+        closeCreatePresetPopup();
+        pendingPresetRenameName = presetName;
+        renamePresetPopupVisible = true;
+        if (renamePresetField != null) {
+            renamePresetField.setText(presetName);
+            renamePresetField.setVisible(true);
+            renamePresetField.setEditable(true);
+            renamePresetField.setFocused(true);
+        }
+    }
+
+    private void closeRenamePresetPopup() {
+        renamePresetPopupVisible = false;
+        pendingPresetRenameName = "";
+        clearRenamePresetStatus();
+        if (renamePresetField != null) {
+            renamePresetField.setFocused(false);
+            renamePresetField.setVisible(false);
+            renamePresetField.setEditable(false);
         }
     }
 
@@ -1808,6 +2008,32 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (isPointInRect((int) mouseX, (int) mouseY, createX, buttonY, buttonWidth, buttonHeight)) {
             attemptCreatePreset();
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean handleRenamePresetPopupClick(double mouseX, double mouseY, int button) {
+        if (button != 0) {
+            return false;
+        }
+
+        int popupX = (this.width - CREATE_PRESET_POPUP_WIDTH) / 2;
+        int popupY = (this.height - CREATE_PRESET_POPUP_HEIGHT) / 2;
+        int buttonWidth = 90;
+        int buttonHeight = 20;
+        int buttonY = popupY + CREATE_PRESET_POPUP_HEIGHT - buttonHeight - 16;
+        int cancelX = popupX + 20;
+        int renameX = popupX + CREATE_PRESET_POPUP_WIDTH - buttonWidth - 20;
+
+        if (isPointInRect((int) mouseX, (int) mouseY, cancelX, buttonY, buttonWidth, buttonHeight)) {
+            closeRenamePresetPopup();
+            return true;
+        }
+
+        if (isPointInRect((int) mouseX, (int) mouseY, renameX, buttonY, buttonWidth, buttonHeight)) {
+            attemptRenamePreset();
             return true;
         }
 
@@ -1873,21 +2099,30 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         int fieldX = popupX + 20;
-        int fieldY = popupY + 74;
+        int fieldY = popupY + 70;
         int fieldWidth = popupWidth - 40;
-        int fieldHeight = 20;
+        int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, 0xFF1F1F1F);
         boolean focused = createPresetField != null && createPresetField.isFocused();
-        int borderColor = focused ? ACCENT_COLOR : (fieldHovered ? 0xFF888888 : 0xFF555555);
+        int borderColor;
+        if (focused) {
+            borderColor = ACCENT_COLOR;
+        } else if (fieldHovered) {
+            borderColor = 0xFF666666;
+        } else {
+            borderColor = 0xFF000000;
+        }
         context.drawBorder(fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
         if (createPresetField != null) {
             createPresetField.setVisible(true);
             createPresetField.setEditable(true);
-            createPresetField.setPosition(fieldX + 4, fieldY + 2);
+            int textFieldHeight = Math.max(10, fieldHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
+            createPresetField.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
             createPresetField.setWidth(fieldWidth - 8);
+            createPresetField.setHeight(textFieldHeight);
             createPresetField.render(context, mouseX, mouseY, delta);
         }
 
@@ -1907,6 +2142,90 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
         drawPopupButton(context, createX, buttonY, buttonWidth, buttonHeight, createHovered, Text.literal("Create"), true);
+    }
+
+    private void renderRenamePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, this.width, this.height, OVERLAY_BACKGROUND);
+
+        int popupWidth = CREATE_PRESET_POPUP_WIDTH;
+        int popupHeight = CREATE_PRESET_POPUP_HEIGHT;
+        int popupX = (this.width - popupWidth) / 2;
+        int popupY = (this.height - popupHeight) / 2;
+
+        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, DARK_GREY_ALT);
+        context.drawBorder(popupX, popupY, popupWidth, popupHeight, GREY_LINE);
+
+        context.drawCenteredTextWithShadow(
+                this.textRenderer,
+                Text.literal("Rename workspace preset"),
+                popupX + popupWidth / 2,
+                popupY + 14,
+                WHITE
+        );
+
+        String presetLabel = pendingPresetRenameName == null || pendingPresetRenameName.isEmpty()
+                ? "the selected preset"
+                : "Preset: " + pendingPresetRenameName;
+        String trimmedPreset = this.textRenderer.trimToWidth(presetLabel, popupWidth - 40);
+        context.drawTextWithShadow(
+                this.textRenderer,
+                Text.literal("Enter a new name."),
+                popupX + 20,
+                popupY + 44,
+                0xFFCCCCCC
+        );
+        context.drawTextWithShadow(
+                this.textRenderer,
+                Text.literal(trimmedPreset),
+                popupX + 20,
+                popupY + 58,
+                0xFFCCCCCC
+        );
+
+        int fieldX = popupX + 20;
+        int fieldY = popupY + 80;
+        int fieldWidth = popupWidth - 40;
+        int fieldHeight = 16;
+
+        boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, 0xFF1F1F1F);
+        boolean focused = renamePresetField != null && renamePresetField.isFocused();
+        int borderColor;
+        if (focused) {
+            borderColor = ACCENT_COLOR;
+        } else if (fieldHovered) {
+            borderColor = 0xFF666666;
+        } else {
+            borderColor = 0xFF000000;
+        }
+        context.drawBorder(fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+
+        if (renamePresetField != null) {
+            renamePresetField.setVisible(true);
+            renamePresetField.setEditable(true);
+            int textFieldHeight = Math.max(10, fieldHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
+            renamePresetField.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
+            renamePresetField.setWidth(fieldWidth - 8);
+            renamePresetField.setHeight(textFieldHeight);
+            renamePresetField.render(context, mouseX, mouseY, delta);
+        }
+
+        if (!renamePresetStatus.isEmpty()) {
+            String status = this.textRenderer.trimToWidth(renamePresetStatus, fieldWidth);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(status), fieldX, fieldY + fieldHeight + 8, renamePresetStatusColor);
+        }
+
+        int buttonWidth = 90;
+        int buttonHeight = 20;
+        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int cancelX = popupX + 20;
+        int renameX = popupX + popupWidth - buttonWidth - 20;
+
+        boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
+        boolean renameHovered = isPointInRect(mouseX, mouseY, renameX, buttonY, buttonWidth, buttonHeight);
+
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
+        drawPopupButton(context, renameX, buttonY, buttonWidth, buttonHeight, renameHovered, Text.literal("Rename"), true);
     }
 
     private void renderPresetDeletePopup(DrawContext context, int mouseX, int mouseY) {
@@ -1985,6 +2304,43 @@ public class PathmindVisualEditorScreen extends Screen {
         closeCreatePresetPopup();
     }
 
+    private void attemptRenamePreset() {
+        if (renamePresetField == null) {
+            return;
+        }
+
+        if (pendingPresetRenameName == null || pendingPresetRenameName.trim().isEmpty()) {
+            setRenamePresetStatus("Select a preset to rename.", ERROR_COLOR);
+            return;
+        }
+
+        String desiredName = renamePresetField.getText();
+        if (desiredName == null || desiredName.trim().isEmpty()) {
+            setRenamePresetStatus("Enter a preset name.", ERROR_COLOR);
+            return;
+        }
+
+        boolean renamingActive = pendingPresetRenameName.equalsIgnoreCase(activePresetName);
+        if (renamingActive) {
+            nodeGraph.save();
+        }
+
+        Optional<String> renamedPreset = PresetManager.renamePreset(pendingPresetRenameName, desiredName);
+        if (renamedPreset.isEmpty()) {
+            setRenamePresetStatus("Preset name already exists or is invalid.", ERROR_COLOR);
+            return;
+        }
+
+        closeRenamePresetPopup();
+        refreshAvailablePresets();
+        nodeGraph.setActivePreset(activePresetName);
+        presetDropdownOpen = false;
+
+        if (renamingActive) {
+            updateImportExportPathFromPreset();
+        }
+    }
+
     private void openPresetDeletePopup(String presetName) {
         if (presetName == null || presetName.isEmpty()) {
             return;
@@ -2029,6 +2385,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         presetDropdownOpen = false;
         closeCreatePresetPopup();
+        closeRenamePresetPopup();
 
         if (deletingActive) {
             PresetManager.setActivePreset(fallbackPreset);
@@ -2060,6 +2417,16 @@ public class PathmindVisualEditorScreen extends Screen {
     private void clearCreatePresetStatus() {
         createPresetStatus = "";
         createPresetStatusColor = 0xFFCCCCCC;
+    }
+
+    private void setRenamePresetStatus(String message, int color) {
+        renamePresetStatus = message != null ? message : "";
+        renamePresetStatusColor = color;
+    }
+
+    private void clearRenamePresetStatus() {
+        renamePresetStatus = "";
+        renamePresetStatusColor = 0xFFCCCCCC;
     }
 
     private void updateSelectionDeletionPreviewState() {
@@ -2098,6 +2465,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (createPresetPopupVisible) {
             closeCreatePresetPopup();
+        }
+        if (renamePresetPopupVisible) {
+            closeRenamePresetPopup();
         }
         clearPopupVisible = false;
         presetDropdownOpen = false;
@@ -2291,6 +2661,21 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void stopExecutingAllGraphs() {
         ExecutionManager.getInstance().requestStopAll();
+    }
+
+    private void drawPencilIcon(DrawContext context, int x, int y, int color) {
+        int size = PRESET_RENAME_ICON_SIZE;
+        for (int offset = 0; offset < size - 2; offset++) {
+            int startX = x + offset;
+            int startY = y + size - 3 - offset;
+            context.fill(startX, startY, startX + 1, startY + 2, color);
+        }
+
+        int tipColor = (color & 0x00FFFFFF) | 0x66000000;
+        context.fill(x + size - 3, y, x + size - 1, y + 2, tipColor);
+
+        int eraserColor = (color & 0x00FFFFFF) | 0x88000000;
+        context.fill(x, y + size - 1, x + 2, y + size, eraserColor);
     }
 
     private void drawTrashIcon(DrawContext context, int x, int y, int color) {

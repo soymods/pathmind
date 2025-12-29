@@ -7,18 +7,23 @@ package com.pathmind.nodes;
 public class NodeParameter {
     private final String name;
     private final ParameterType type;
+    private final String defaultValue;
     private String stringValue;
     private int intValue;
     private double doubleValue;
     private boolean boolValue;
+    private boolean userEdited;
 
     public NodeParameter(String name, ParameterType type, String defaultValue) {
         this.name = name;
         this.type = type;
-        this.stringValue = defaultValue;
+        String initialValue = defaultValue != null ? defaultValue : "";
+        this.defaultValue = initialValue;
+        this.stringValue = initialValue;
         this.intValue = 0;
         this.doubleValue = 0.0;
         this.boolValue = false;
+        this.userEdited = false;
         
         // Try to parse the default value based on type
         if (type == ParameterType.INTEGER) {
@@ -46,6 +51,10 @@ public class NodeParameter {
         return type;
     }
 
+    public String getDefaultValue() {
+        return defaultValue;
+    }
+
     public String getStringValue() {
         return stringValue;
     }
@@ -69,6 +78,19 @@ public class NodeParameter {
         } else if (type == ParameterType.BOOLEAN) {
             this.boolValue = Boolean.parseBoolean(value);
         }
+    }
+
+    public void setStringValueFromUser(String value) {
+        setStringValue(value);
+        this.userEdited = true;
+    }
+
+    public boolean isUserEdited() {
+        return userEdited;
+    }
+
+    public void setUserEdited(boolean userEdited) {
+        this.userEdited = userEdited;
     }
 
     public int getIntValue() {

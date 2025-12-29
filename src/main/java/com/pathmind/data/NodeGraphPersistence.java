@@ -6,6 +6,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.ParameterType;
 
 import java.io.Reader;
 import java.io.Writer;
@@ -121,9 +122,13 @@ public class NodeGraphPersistence {
 
             // Save parameter values before setting mode (which will reinitialize parameters)
             Map<String, String> savedParamValues = new HashMap<>();
+            Map<String, Boolean> savedParamEdited = new HashMap<>();
             if (nodeData.getParameters() != null) {
                 for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
                     savedParamValues.put(paramData.getName(), paramData.getValue());
+                    if (paramData.getUserEdited() != null) {
+                        savedParamEdited.put(paramData.getName(), paramData.getUserEdited());
+                    }
                 }
             }
 
@@ -139,7 +144,26 @@ public class NodeGraphPersistence {
                     if (savedValue != null) {
                         param.setStringValue(savedValue);
                     }
+                    Boolean edited = savedParamEdited.get(param.getName());
+                    if (edited != null) {
+                        param.setUserEdited(edited);
+                    }
                 }
+            }
+            if (node.hasBooleanToggle()) {
+                Boolean storedToggle = nodeData.getBooleanToggleValue();
+                if (storedToggle != null) {
+                    node.setBooleanToggleValue(storedToggle);
+                } else {
+                    node.setBooleanToggleValue(true);
+                }
+            }
+            if (node.getType() == NodeType.STOP_CHAIN && node.getParameter("StartNumber") == null) {
+                node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
+            }
+            Integer startNodeNumber = nodeData.getStartNodeNumber();
+            if (startNodeNumber != null) {
+                node.setStartNodeNumber(startNodeNumber);
             }
             node.recalculateDimensions();
 
@@ -221,6 +245,30 @@ public class NodeGraphPersistence {
                     && parameter.getParentParameterHost() == null) {
                     host.attachParameter(parameter);
                 }
+            }
+        }
+
+        java.util.Set<Integer> usedStartNumbers = new java.util.HashSet<>();
+        int maxStartNumber = 0;
+        for (Node node : nodes) {
+            if (node == null || node.getType() != NodeType.START) {
+                continue;
+            }
+            int number = node.getStartNodeNumber();
+            if (number > 0 && usedStartNumbers.add(number)) {
+                maxStartNumber = Math.max(maxStartNumber, number);
+            } else {
+                node.setStartNodeNumber(0);
+            }
+        }
+        int nextStartNumber = Math.max(1, maxStartNumber + 1);
+        for (Node node : nodes) {
+            if (node == null || node.getType() != NodeType.START) {
+                continue;
+            }
+            if (node.getStartNodeNumber() <= 0) {
+                node.setStartNodeNumber(nextStartNumber);
+                nextStartNumber++;
             }
         }
 
@@ -322,6 +370,7 @@ public class NodeGraphPersistence {
                 paramData.setName(param.getName());
                 paramData.setValue(param.getStringValue());
                 paramData.setType(param.getType().name());
+                paramData.setUserEdited(param.isUserEdited());
                 paramDataList.add(paramData);
             }
             nodeData.setParameters(paramDataList);
@@ -349,6 +398,12 @@ public class NodeGraphPersistence {
             }
             nodeData.setParameterAttachments(attachmentData);
             nodeData.setParentParameterHostId(node.getParentParameterHostId());
+            if (node.hasBooleanToggle()) {
+                nodeData.setBooleanToggleValue(node.getBooleanToggleValue());
+            } else {
+                nodeData.setBooleanToggleValue(null);
+            }
+            nodeData.setStartNodeNumber(node.getStartNodeNumber());
 
             data.getNodes().add(nodeData);
         }

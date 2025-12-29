@@ -10,9 +10,12 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.util.MatrixStackBridge;
 import org.lwjgl.glfw.GLFW;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.MathHelper;
 
@@ -41,6 +44,7 @@ public class NodeGraph {
     private static final int DUPLICATE_OFFSET_X = 32;
     private static final int DUPLICATE_OFFSET_Y = 24;
     private static final int SELECTION_BOX_MIN_DRAG = 3;
+    private static final int CONNECTION_CLICK_THRESHOLD = 4;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
@@ -66,6 +70,8 @@ public class NodeGraph {
     private int connectionSourceSocket;
     private boolean isOutputSocket; // true if dragging from output, false if from input
     private int connectionDragX, connectionDragY;
+    private int connectionDragStartX, connectionDragStartY;
+    private boolean connectionDragMoved = false;
     private Node hoveredNode = null;
     private int hoveredSocket = -1;
     private boolean hoveredSocketIsInput = false;
@@ -111,7 +117,25 @@ public class NodeGraph {
     private String amountEditOriginalValue = "";
     private long amountCaretLastToggleTime = 0L;
     private boolean amountCaretVisible = true;
+    private int coordinateCaretPosition = 0;
+    private int coordinateSelectionStart = -1;
+    private int coordinateSelectionEnd = -1;
+    private int coordinateSelectionAnchor = -1;
+    private int amountCaretPosition = 0;
+    private int amountSelectionStart = -1;
+    private int amountSelectionEnd = -1;
+    private int amountSelectionAnchor = -1;
+    private Node stopTargetEditingNode = null;
+    private String stopTargetEditBuffer = "";
+    private String stopTargetEditOriginalValue = "";
+    private long stopTargetCaretLastToggleTime = 0L;
+    private boolean stopTargetCaretVisible = true;
+    private int stopTargetCaretPosition = 0;
+    private int stopTargetSelectionStart = -1;
+    private int stopTargetSelectionEnd = -1;
+    private int stopTargetSelectionAnchor = -1;
     private boolean workspaceDirty = false;
+    private int nextStartNodeNumber = 1;
     private ZoomLevel zoomLevel = ZoomLevel.FOCUSED;
     private ClipboardSnapshot clipboardNodeSnapshot = null;
     private final Deque<NodeGraphData> undoStack = new ArrayDeque<>();
@@ -274,6 +298,7 @@ public class NodeGraph {
         // Clear any existing nodes
         nodes.clear();
         connections.clear();
+        nextStartNodeNumber = 1;
         
         // Calculate workspace area
         int workspaceStartX = sidebarWidth;
@@ -287,6 +312,7 @@ public class NodeGraph {
         
         // Position nodes with proper spacing, centered in workspace
         Node startNode = new Node(NodeType.START, centerX - 100, centerY - 50);
+        assignNewStartNodeNumber(startNode);
         nodes.add(startNode);
         
         Node middleNode = new Node(NodeType.GOTO, centerX, centerY - 50);
@@ -296,8 +322,47 @@ public class NodeGraph {
         connections.add(new NodeConnection(startNode, middleNode, 0, 0));
     }
 
+    private void assignNewStartNodeNumber(Node node) {
+        if (node == null || node.getType() != NodeType.START) {
+            return;
+        }
+        node.setStartNodeNumber(nextStartNodeNumber);
+        nextStartNodeNumber++;
+    }
+
+    private void normalizeStartNodeNumbers() {
+        java.util.Set<Integer> used = new java.util.HashSet<>();
+        int max = 0;
+        List<Node> startNodes = new ArrayList<>();
+        for (Node node : nodes) {
+            if (node != null && node.getType() == NodeType.START) {
+                startNodes.add(node);
+            }
+        }
+        for (Node node : startNodes) {
+            int number = node.getStartNodeNumber();
+            if (number > 0 && used.add(number)) {
+                max = Math.max(max, number);
+            } else {
+                node.setStartNodeNumber(0);
+            }
+        }
+        int next = Math.max(1, max + 1);
+        for (Node node : startNodes) {
+            if (node.getStartNodeNumber() <= 0) {
+                node.setStartNodeNumber(next);
+                used.add(next);
+                next++;
+            }
+        }
+        nextStartNodeNumber = next;
+    }
+
 
     public void addNode(Node node) {
+        if (node != null && node.getType() == NodeType.START && node.getStartNodeNumber() <= 0) {
+            assignNewStartNodeNumber(node);
+        }
         nodes.add(node);
     }
 
@@ -307,7 +372,7 @@ public class NodeGraph {
         }
         pushUndoState();
         removeNodeInternal(node, true, true);
-        workspaceDirty = true;
+        markWorkspaceDirty();
     }
 
     private void removeNodeInternal(Node node, boolean autoReconnect, boolean repositionDetachments) {
@@ -321,6 +386,9 @@ public class NodeGraph {
 
         if (amountEditingNode == node) {
             stopAmountEditing(false);
+        }
+        if (stopTargetEditingNode == node) {
+            stopStopTargetEditing(false);
         }
 
         if (node.hasAttachedSensor()) {
@@ -396,15 +464,20 @@ public class NodeGraph {
                 }
             }
 
-            for (NodeConnection inputConn : inputConnections) {
-                Node inputSource = inputConn.getOutputNode();
-                int inputSocket = inputConn.getOutputSocket();
+            // Avoid reconnecting nodes that previously fanned out to multiple outputs,
+            // otherwise the upstream node ends up with duplicate outgoing lines.
+            boolean hasMultipleOutputs = outputConnections.size() > 1;
+            if (!hasMultipleOutputs) {
+                for (NodeConnection inputConn : inputConnections) {
+                    Node inputSource = inputConn.getOutputNode();
+                    int inputSocket = inputConn.getOutputSocket();
 
-                for (NodeConnection outputConn : outputConnections) {
-                    Node outputTarget = outputConn.getInputNode();
-                    int outputSocket = outputConn.getInputSocket();
+                    for (NodeConnection outputConn : outputConnections) {
+                        Node outputTarget = outputConn.getInputNode();
+                        int outputSocket = outputConn.getInputSocket();
 
-                    connections.add(new NodeConnection(inputSource, outputTarget, inputSocket, outputSocket));
+                        connections.add(new NodeConnection(inputSource, outputTarget, inputSocket, outputSocket));
+                    }
                 }
             }
         }
@@ -747,7 +820,7 @@ public class NodeGraph {
             removeNodeCascade(node, false);
         }
         clearSelection();
-        workspaceDirty = true;
+        markWorkspaceDirty();
         return true;
     }
 
@@ -799,6 +872,9 @@ public class NodeGraph {
                 continue;
             }
             Node newNode = new Node(nodeData.getType(), nodeData.getX() + offsetX, nodeData.getY() + offsetY);
+            if (nodeData.getType() == NodeType.START) {
+                assignNewStartNodeNumber(newNode);
+            }
             if (nodeData.getMode() != null) {
                 newNode.setMode(nodeData.getMode());
             }
@@ -817,7 +893,13 @@ public class NodeGraph {
                     }
                     String value = paramData.getValue() == null ? "" : paramData.getValue();
                     NodeParameter parameter = new NodeParameter(paramData.getName(), parameterType, value);
+                    if (paramData.getUserEdited() != null) {
+                        parameter.setUserEdited(paramData.getUserEdited());
+                    }
                     newNode.getParameters().add(parameter);
+                }
+                if (newNode.getType() == NodeType.STOP_CHAIN && newNode.getParameter("StartNumber") == null) {
+                    newNode.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 }
                 newNode.recalculateDimensions();
             }
@@ -892,7 +974,7 @@ public class NodeGraph {
             bringNodeToFront(primaryClone);
         }
 
-        workspaceDirty = true;
+        markWorkspaceDirty();
         return primaryClone;
     }
 
@@ -912,6 +994,7 @@ public class NodeGraph {
             nodeData.setMode(node.getMode());
             nodeData.setX(node.getX());
             nodeData.setY(node.getY());
+            nodeData.setStartNodeNumber(node.getStartNodeNumber());
 
             List<NodeGraphData.ParameterData> paramDataList = new ArrayList<>();
             for (NodeParameter param : node.getParameters()) {
@@ -919,6 +1002,7 @@ public class NodeGraph {
                 paramData.setName(param.getName());
                 paramData.setValue(param.getStringValue());
                 paramData.setType(param.getType().name());
+                paramData.setUserEdited(param.isUserEdited());
                 paramDataList.add(paramData);
             }
             nodeData.setParameters(paramDataList);
@@ -1012,7 +1096,7 @@ public class NodeGraph {
         suppressUndoCapture = true;
         applyLoadedData(data);
         suppressUndoCapture = false;
-        workspaceDirty = true;
+        markWorkspaceDirty();
     }
 
     public boolean undo() {
@@ -1044,6 +1128,7 @@ public class NodeGraph {
     public void startDragging(Node node, int mouseX, int mouseY) {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
+        stopStopTargetEditing(true);
         resetDropTargets();
 
         if (node == null) {
@@ -1090,12 +1175,19 @@ public class NodeGraph {
     public void startDraggingConnection(Node node, int socketIndex, boolean isOutput, int mouseX, int mouseY) {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
+        stopStopTargetEditing(true);
         isDraggingConnection = true;
         connectionSourceNode = node;
         connectionSourceSocket = socketIndex;
         isOutputSocket = isOutput;
         connectionDragX = screenToWorldX(mouseX);
         connectionDragY = screenToWorldY(mouseY);
+        connectionDragStartX = connectionDragX;
+        connectionDragStartY = connectionDragY;
+        connectionDragMoved = false;
+        hoveredNode = null;
+        hoveredSocket = -1;
+        hoveredSocketIsInput = false;
         
         // Find and disconnect existing connection from this socket
         disconnectedConnection = null;
@@ -1217,6 +1309,13 @@ public class NodeGraph {
         if (isDraggingConnection) {
             connectionDragX = worldMouseX;
             connectionDragY = worldMouseY;
+            if (!connectionDragMoved) {
+                int deltaX = Math.abs(connectionDragX - connectionDragStartX);
+                int deltaY = Math.abs(connectionDragY - connectionDragStartY);
+                if (deltaX >= CONNECTION_CLICK_THRESHOLD || deltaY >= CONNECTION_CLICK_THRESHOLD) {
+                    connectionDragMoved = true;
+                }
+            }
 
             // Check for socket snapping
             hoveredNode = null;
@@ -1306,6 +1405,9 @@ public class NodeGraph {
         }
 
         Node newNode = new Node(nodeType, 0, 0);
+        if (nodeType == NodeType.START) {
+            assignNewStartNodeNumber(newNode);
+        }
 
         if (Node.isSensorType(nodeType)) {
             for (Node node : nodes) {
@@ -1315,7 +1417,7 @@ public class NodeGraph {
                 if (node.isPointInsideSensorSlot(worldMouseX, worldMouseY)) {
                     nodes.add(newNode);
                     node.attachSensor(newNode);
-                    workspaceDirty = true;
+                    markWorkspaceDirty();
                     return newNode;
                 }
             }
@@ -1328,7 +1430,7 @@ public class NodeGraph {
                 if (slotIndex >= 0 && node.canAcceptParameterNode(newNode, slotIndex)) {
                     nodes.add(newNode);
                     node.attachParameter(newNode, slotIndex);
-                    workspaceDirty = true;
+                    markWorkspaceDirty();
                     return newNode;
                 }
             }
@@ -1343,7 +1445,7 @@ public class NodeGraph {
                 if (node.isPointInsideActionSlot(worldMouseX, worldMouseY)) {
                     nodes.add(newNode);
                     node.attachActionNode(newNode);
-                    workspaceDirty = true;
+                    markWorkspaceDirty();
                     return newNode;
                 }
             }
@@ -1353,7 +1455,7 @@ public class NodeGraph {
         int nodeY = worldMouseY - newNode.getHeight() / 2;
         newNode.setPosition(nodeX, nodeY);
         nodes.add(newNode);
-        workspaceDirty = true;
+        markWorkspaceDirty();
         return newNode;
     }
     
@@ -1457,7 +1559,7 @@ public class NodeGraph {
 
         if (dragOperationChanged) {
             pushUndoSnapshot(pendingDragUndoSnapshot);
-            workspaceDirty = true;
+            markWorkspaceDirty();
         }
         pendingDragUndoSnapshot = null;
         dragOperationChanged = false;
@@ -1499,10 +1601,12 @@ public class NodeGraph {
     }
     
     public void stopDraggingConnection() {
+        boolean connectionChanged = false;
         if (isDraggingConnection && connectionSourceNode != null) {
             // Try to create connection if hovering over valid socket
             if (hoveredNode != null && hoveredSocket != -1) {
                 if (isOutputSocket && hoveredSocketIsInput) {
+                    captureUndoStateForConnectionChange(disconnectedConnection);
                     // Remove any existing incoming connection to the target socket
                     connections.removeIf(conn ->
                         conn.getInputNode() == hoveredNode && conn.getInputSocket() == hoveredSocket
@@ -1516,8 +1620,10 @@ public class NodeGraph {
                     // Connect output to input
                     NodeConnection newConnection = new NodeConnection(connectionSourceNode, hoveredNode, connectionSourceSocket, hoveredSocket);
                     connections.add(newConnection);
+                    connectionChanged = true;
                     System.out.println("Created new connection from " + connectionSourceNode.getType() + " to " + hoveredNode.getType());
                 } else if (!isOutputSocket && !hoveredSocketIsInput) {
+                    captureUndoStateForConnectionChange(disconnectedConnection);
                     // Remove any existing outgoing connection from the target socket
                     connections.removeIf(conn -> 
                         conn.getOutputNode() == hoveredNode && conn.getOutputSocket() == hoveredSocket
@@ -1526,21 +1632,28 @@ public class NodeGraph {
                     // Connect input to output (reverse connection)
                     NodeConnection newConnection = new NodeConnection(hoveredNode, connectionSourceNode, hoveredSocket, connectionSourceSocket);
                     connections.add(newConnection);
+                    connectionChanged = true;
                     System.out.println("Created new connection from " + hoveredNode.getType() + " to " + connectionSourceNode.getType());
                 } else {
                     // Invalid connection - restore original
-                    if (disconnectedConnection != null) {
-                        connections.add(disconnectedConnection);
-                        System.out.println("Restored original connection (invalid target)");
-                    }
+                    restoreDisconnectedConnection();
+                    System.out.println("Restored original connection (invalid target)");
                 }
             } else {
-                // No valid target - restore original connection
-                if (disconnectedConnection != null) {
-                    connections.add(disconnectedConnection);
+                // No valid target - decide whether to keep the removal
+                if (disconnectedConnection != null && isOutputSocket && !connectionDragMoved) {
+                    captureUndoStateForConnectionChange(disconnectedConnection);
+                    connectionChanged = true;
+                    System.out.println("Disconnected connection from " + connectionSourceNode.getType() + " socket " + connectionSourceSocket);
+                } else {
+                    restoreDisconnectedConnection();
                     System.out.println("Restored original connection (no target)");
                 }
             }
+        }
+
+        if (connectionChanged) {
+            markWorkspaceDirty();
         }
         
         isDraggingConnection = false;
@@ -1549,6 +1662,28 @@ public class NodeGraph {
         hoveredNode = null;
         hoveredSocket = -1;
         disconnectedConnection = null;
+        connectionDragMoved = false;
+    }
+
+    private void restoreDisconnectedConnection() {
+        if (disconnectedConnection != null) {
+            connections.add(disconnectedConnection);
+        }
+    }
+
+    private void captureUndoStateForConnectionChange(NodeConnection previousConnection) {
+        if (suppressUndoCapture) {
+            return;
+        }
+        boolean temporarilyAdded = false;
+        if (previousConnection != null && !connections.contains(previousConnection)) {
+            connections.add(previousConnection);
+            temporarilyAdded = true;
+        }
+        pushUndoState();
+        if (temporarilyAdded) {
+            connections.remove(previousConnection);
+        }
     }
     
     public boolean isInSidebar(int mouseX, int sidebarWidth) {
@@ -1649,7 +1784,7 @@ public class NodeGraph {
             boolean shouldReconnect = toRemove == node;
             removeNodeInternal(toRemove, shouldReconnect, false);
         }
-        workspaceDirty = true;
+        markWorkspaceDirty();
     }
 
     private void collectNodesForCascade(Node node, List<Node> order, Set<Node> visited) {
@@ -1739,8 +1874,12 @@ public class NodeGraph {
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta, boolean onlyDragged) {
         var matrices = context.getMatrices();
-        matrices.pushMatrix();
-        matrices.scale(getZoomScale(), getZoomScale());
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.scale(matrices, getZoomScale(), getZoomScale());
+        if (onlyDragged) {
+            // Lift dragged nodes above other GUI layers on matrix-stack renderers.
+            MatrixStackBridge.translateZ(matrices, 250.0f);
+        }
 
         if (!onlyDragged) {
             updateCascadeDeletionPreview();
@@ -1759,7 +1898,7 @@ public class NodeGraph {
             renderHierarchy(root, context, textRenderer, mouseX, mouseY, delta, onlyDragged, false, renderedNodes);
         }
 
-        matrices.popMatrix();
+        MatrixStackBridge.pop(matrices);
     }
 
     public void renderSelectionBox(DrawContext context) {
@@ -1914,6 +2053,10 @@ public class NodeGraph {
             borderColor = isOverSidebar ? 0xFF2D4A2D : 0xFF2E7D32; // Darker green for START
         } else if (node.getType() == NodeType.EVENT_FUNCTION) {
             borderColor = isOverSidebar ? 0xFF5C2C44 : 0xFFAD1457; // Darker pink for event functions
+        } else if (node.getType() == NodeType.VARIABLE) {
+            borderColor = isOverSidebar ? 0xFF6E4A1E : 0xFFEF6C00; // Darker orange for variables
+        } else if (node.getType() == NodeType.OPERATOR_EQUALS) {
+            borderColor = isOverSidebar ? 0xFF2A5A42 : 0xFF009E47; // Darker green for operators
         } else if (isStopControl) {
             borderColor = isOverSidebar ? 0xFF7A2E2E : 0xFFB71C1C;
         } else if (simpleStyle) {
@@ -1932,10 +2075,20 @@ public class NodeGraph {
             String label = node.getType().getDisplayName().toUpperCase(java.util.Locale.ROOT);
             int textWidth = textRenderer.getWidth(label);
             int titleColor = isOverSidebar ? 0xFFBBBBBB : 0xFFFFFFFF;
-            int textX = x + Math.max(4, (width - textWidth) / 2);
-            int textY = y + (height - textRenderer.fontHeight) / 2;
+            int textX;
+            int textY;
+            if (node.hasStopTargetInputField()) {
+                textX = x + 4;
+                textY = y + 4;
+            } else {
+                textX = x + Math.max(4, (width - textWidth) / 2);
+                textY = y + (height - textRenderer.fontHeight) / 2;
+            }
             drawNodeText(context, textRenderer, label, textX, textY, titleColor);
-        } else if (node.getType() != NodeType.START && node.getType() != NodeType.EVENT_FUNCTION) {
+        } else if (node.getType() != NodeType.START
+            && node.getType() != NodeType.EVENT_FUNCTION
+            && node.getType() != NodeType.VARIABLE
+            && node.getType() != NodeType.OPERATOR_EQUALS) {
             int headerColor = node.getType().getColor() & 0x80FFFFFF;
             if (isOverSidebar) {
                 headerColor = 0x80555555; // Grey header when over sidebar
@@ -2006,6 +2159,8 @@ public class NodeGraph {
                     context.drawHorizontalLine(startX, startX + lineWidth, lineY, playColor);
                 }
             }
+
+            renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
             
         } else if (node.getType() == NodeType.EVENT_FUNCTION) {
             int baseColor = isOverSidebar ? 0xFF5C2C44 : 0xFFE91E63;
@@ -2044,6 +2199,82 @@ public class NodeGraph {
                 boxLeft + 4,
                 textY,
                 textColor
+            );
+        } else if (node.getType() == NodeType.VARIABLE) {
+            int baseColor = isOverSidebar ? 0xFF5C3B1E : 0xFFFF9800;
+            context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
+
+            int titleColor = isOverSidebar ? 0xFFF2C59E : 0xFFFFF5E6;
+            drawNodeText(
+                context,
+                textRenderer,
+                Text.literal("Variable"),
+                x + 6,
+                y + 4,
+                titleColor
+            );
+
+            int boxLeft = x + 6;
+            int boxRight = x + width - 6;
+            int boxHeight = 16;
+            int boxTop = y + height / 2 - boxHeight / 2 + 4;
+            int boxBottom = boxTop + boxHeight;
+            int inputBackground = isOverSidebar ? 0xFF2E2E2E : 0xFF1F1F1F;
+            context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
+            int inputBorder = isOverSidebar ? 0xFF6A4E2A : 0xFF000000;
+            context.drawBorder(boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+
+            NodeParameter nameParam = node.getParameter("Variable");
+            String value = nameParam != null ? nameParam.getDisplayValue() : "";
+            String display = value.isEmpty() ? "enter variable" : value;
+            display = trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
+            int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
+            int textColor = isOverSidebar ? 0xFFE6C7A1 : 0xFFFFF1E1;
+            drawNodeText(
+                context,
+                textRenderer,
+                Text.literal(display),
+                boxLeft + 4,
+                textY,
+                textColor
+            );
+        } else if (node.getType() == NodeType.OPERATOR_EQUALS) {
+            int baseColor = isOverSidebar ? 0xFF1C3D2C : 0xFF00C853;
+            context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
+
+            int titleColor = isOverSidebar ? 0xFFC9E9D8 : 0xFFE9FFF5;
+            drawNodeText(
+                context,
+                textRenderer,
+                Text.literal("Equals"),
+                x + 6,
+                y + 4,
+                titleColor
+            );
+
+            renderParameterSlot(context, textRenderer, node, isOverSidebar, 0);
+            renderParameterSlot(context, textRenderer, node, isOverSidebar, 1);
+
+            int leftSlotX = node.getParameterSlotLeft(0) - cameraX;
+            int rightSlotX = node.getParameterSlotLeft(1) - cameraX;
+            int leftSlotWidth = node.getParameterSlotWidth(0);
+            int leftSlotHeight = node.getParameterSlotHeight(0);
+            int rightSlotHeight = node.getParameterSlotHeight(1);
+            int slotTop = node.getParameterSlotTop(0) - cameraY;
+            int maxSlotHeight = Math.max(leftSlotHeight, rightSlotHeight);
+            int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
+            String equalsText = "=";
+            int equalsWidth = textRenderer.getWidth(equalsText);
+            int equalsX = gapCenterX - equalsWidth / 2;
+            int equalsY = slotTop + (maxSlotHeight - textRenderer.fontHeight) / 2;
+            int equalsColor = isOverSidebar ? 0xFFA3CDB8 : 0xFFEFFFFA;
+            drawNodeText(
+                context,
+                textRenderer,
+                Text.literal(equalsText),
+                equalsX,
+                equalsY,
+                equalsColor
             );
         } else if (node.getType() == NodeType.EVENT_CALL) {
             int baseColor = isOverSidebar ? 0xFF423345 : 0xFFD81B60;
@@ -2109,6 +2340,9 @@ public class NodeGraph {
 
                     for (NodeParameter param : parameters) {
                         String displayText = node.getParameterLabel(param);
+                        if (displayText == null || displayText.isEmpty()) {
+                            continue;
+                        }
                         displayText = trimTextToWidth(displayText, textRenderer, width - 10);
 
                         int paramTextColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0; // Grey text when over sidebar
@@ -2124,6 +2358,9 @@ public class NodeGraph {
                     }
                 }
             } else {
+                if (node.hasStopTargetInputField()) {
+                    renderStopTargetInputField(context, textRenderer, node, isOverSidebar);
+                }
                 if (node.hasParameterSlot()) {
                     int slotCount = node.getParameterSlotCount();
                     for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
@@ -2138,6 +2375,9 @@ public class NodeGraph {
                 }
             }
 
+            if (node.hasBooleanToggle()) {
+                renderBooleanToggleButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            }
             if (node.hasSensorSlot()) {
                 renderSensorSlot(context, textRenderer, node, isOverSidebar);
             }
@@ -2145,6 +2385,50 @@ public class NodeGraph {
                 renderActionSlot(context, textRenderer, node, isOverSidebar);
             }
         }
+    }
+
+    private void renderStartNodeNumber(DrawContext context, TextRenderer textRenderer, Node node, int x, int y, boolean isOverSidebar) {
+        int number = node.getStartNodeNumber();
+        if (number <= 0) {
+            return;
+        }
+
+        String label = String.valueOf(number);
+        int textColor = isOverSidebar ? 0xFFCCCCCC : 0xFFFFFFFF;
+        drawNodeText(context, textRenderer, label, x + 4, y + 4, textColor);
+    }
+
+    private void renderBooleanToggleButton(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        int buttonLeft = node.getBooleanToggleLeft() - cameraX;
+        int buttonTop = node.getBooleanToggleTop() - cameraY;
+        int buttonWidth = node.getBooleanToggleWidth();
+        int buttonHeight = node.getBooleanToggleHeight();
+
+        boolean hovered = isPointInsideBooleanToggle(node, mouseX, mouseY);
+        int borderColor;
+        int fillColor;
+        int textColor;
+        if (isOverSidebar) {
+            borderColor = 0xFF666666;
+            fillColor = 0xFF2A2A2A;
+            textColor = 0xFF888888;
+        } else {
+            borderColor = node.getBooleanToggleValue() ? 0xFF5FB470 : 0xFFE07A7A;
+            fillColor = node.getBooleanToggleValue() ? 0xFF1F3C28 : 0xFF4C1F1F;
+            if (hovered) {
+                fillColor = adjustColorBrightness(fillColor, 1.15f);
+            }
+            textColor = 0xFFFFFFFF;
+        }
+
+        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, fillColor);
+        context.drawBorder(buttonLeft, buttonTop, buttonWidth, buttonHeight, borderColor);
+
+        String label = node.getBooleanToggleValue() ? "TRUE" : "FALSE";
+        int textWidth = textRenderer.getWidth(label);
+        int textX = buttonLeft + Math.max(2, (buttonWidth - textWidth) / 2);
+        int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal(label), textX, textY, textColor);
     }
 
     private void renderSensorSlot(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -2209,6 +2493,27 @@ public class NodeGraph {
         }
     }
 
+    private boolean isPointInsideBooleanToggle(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasBooleanToggle()) {
+            return false;
+        }
+        int buttonLeft = node.getBooleanToggleLeft() - cameraX;
+        int buttonTop = node.getBooleanToggleTop() - cameraY;
+        int buttonWidth = node.getBooleanToggleWidth();
+        int buttonHeight = node.getBooleanToggleHeight();
+        return mouseX >= buttonLeft && mouseX <= buttonLeft + buttonWidth &&
+               mouseY >= buttonTop && mouseY <= buttonTop + buttonHeight;
+    }
+
+    public boolean handleBooleanToggleClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideBooleanToggle(node, mouseX, mouseY)) {
+            return false;
+        }
+        node.toggleBooleanToggleValue();
+        notifyNodeParametersChanged(node);
+        return true;
+    }
+
     private int adjustColorBrightness(int color, float factor) {
         int a = (color >>> 24) & 0xFF;
         int r = (color >> 16) & 0xFF;
@@ -2221,9 +2526,9 @@ public class NodeGraph {
     }
 
     private void renderParameterSlot(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int slotIndex) {
-        int slotX = node.getParameterSlotLeft() - cameraX;
+        int slotX = node.getParameterSlotLeft(slotIndex) - cameraX;
         int slotY = node.getParameterSlotTop(slotIndex) - cameraY;
-        int slotWidth = node.getParameterSlotWidth();
+        int slotWidth = node.getParameterSlotWidth(slotIndex);
         int slotHeight = node.getParameterSlotHeight(slotIndex);
 
         Node parameterNode = node.getAttachedParameter(slotIndex);
@@ -2309,15 +2614,25 @@ public class NodeGraph {
             }
 
             String display = editingAxis
-                ? textRenderer.trimToWidth(value, fieldWidth - 6)
+                ? value
                 : trimTextToWidth(value, textRenderer, fieldWidth - 6);
 
             int textX = fieldX + 3;
             int textY = inputTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+            if (editingAxis && hasCoordinateSelection()) {
+                int start = coordinateSelectionStart;
+                int end = coordinateSelectionEnd;
+                if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
+                    int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
+                    int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
+                    context.fill(selectionStartX, inputTop + 2, selectionEndX, inputBottom - 2, 0x805577D6);
+                }
+            }
             drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
 
             if (editingAxis && coordinateCaretVisible) {
-                int caretX = textX + textRenderer.getWidth(display);
+                int caretIndex = MathHelper.clamp(coordinateCaretPosition, 0, display.length());
+                int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, fieldX + fieldWidth - 2);
                 context.fill(caretX, inputTop + 2, caretX + 1, inputBottom - 2, 0xFFE6F7FF);
             }
@@ -2365,17 +2680,95 @@ public class NodeGraph {
         }
 
         String display = editing
-            ? textRenderer.trimToWidth(value, fieldWidth - 6)
+            ? value
             : trimTextToWidth(value, textRenderer, fieldWidth - 6);
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        if (editing && hasAmountSelection()) {
+            int start = amountSelectionStart;
+            int end = amountSelectionEnd;
+            if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
+                int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
+                int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
+                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, 0x805577D6);
+            }
+        }
         drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
 
         if (editing && amountCaretVisible) {
-            int caretX = textX + textRenderer.getWidth(display);
+            int caretIndex = MathHelper.clamp(amountCaretPosition, 0, display.length());
+            int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, 0xFFE6F7FF);
+        }
+    }
+
+    private void renderStopTargetInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int baseLabelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
+        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
+        int activeFieldBorder = 0xFFEF9A9A;
+        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int activeTextColor = 0xFFFFEBEE;
+
+        boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
+        if (editing) {
+            updateStopTargetCaretBlink();
+        }
+
+        int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
+        int fieldHeight = node.getStopTargetFieldHeight();
+        int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
+        int fieldWidth = node.getStopTargetFieldWidth();
+
+        int fieldBottom = fieldTop + fieldHeight;
+        int backgroundColor = editing ? activeFieldBackground : fieldBackground;
+        int borderColor = editing ? activeFieldBorder : fieldBorder;
+        int valueColor = editing ? activeTextColor : textColor;
+
+        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
+        context.drawBorder(fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+
+        String value;
+        if (editing) {
+            value = stopTargetEditBuffer;
+        } else {
+            NodeParameter targetParam = node.getParameter("StartNumber");
+            value = targetParam != null ? targetParam.getDisplayValue() : "";
+        }
+
+        String display;
+        if (!editing && (value == null || value.isEmpty())) {
+            display = "start #";
+            valueColor = isOverSidebar ? 0xFF7F6A6A : 0xFFB28C8C;
+        } else {
+            display = value == null ? "" : value;
+        }
+
+        display = editing
+            ? display
+            : trimTextToWidth(display, textRenderer, fieldWidth - 6);
+
+        int textX = fieldLeft + 3;
+        int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        if (editing && hasStopTargetSelection()) {
+            int start = stopTargetSelectionStart;
+            int end = stopTargetSelectionEnd;
+            if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
+                int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
+                int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
+                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, 0x80B94A4A);
+            }
+        }
+        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+
+        if (editing && stopTargetCaretVisible) {
+            int caretIndex = MathHelper.clamp(stopTargetCaretPosition, 0, display.length());
+            int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
+            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
+            context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, 0xFFFFCDD2);
         }
     }
 
@@ -2430,6 +2823,7 @@ public class NodeGraph {
         }
 
         stopAmountEditing(true);
+        stopStopTargetEditing(true);
 
         if (isEditingCoordinateField()) {
             if (coordinateEditingNode == node && coordinateEditingAxis == axisIndex) {
@@ -2448,6 +2842,10 @@ public class NodeGraph {
         coordinateEditBuffer = parameter != null ? parameter.getDisplayValue() : "";
         coordinateEditOriginalValue = coordinateEditBuffer;
         resetCoordinateCaretBlink();
+        coordinateCaretPosition = coordinateEditBuffer.length();
+        coordinateSelectionAnchor = -1;
+        coordinateSelectionStart = -1;
+        coordinateSelectionEnd = -1;
     }
 
     public void stopCoordinateEditing(boolean commit) {
@@ -2471,6 +2869,10 @@ public class NodeGraph {
         coordinateEditBuffer = "";
         coordinateEditOriginalValue = "";
         coordinateCaretVisible = true;
+        coordinateCaretPosition = 0;
+        coordinateSelectionAnchor = -1;
+        coordinateSelectionStart = -1;
+        coordinateSelectionEnd = -1;
     }
 
     private boolean applyCoordinateEdit() {
@@ -2510,12 +2912,41 @@ public class NodeGraph {
             return false;
         }
 
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = Screen.hasControlDown();
+
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
-                if (!coordinateEditBuffer.isEmpty()) {
-                    coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateEditBuffer.length() - 1);
-                    resetCoordinateCaretBlink();
+                if (deleteCoordinateSelection()) {
+                    return true;
                 }
+                if (coordinateCaretPosition > 0 && !coordinateEditBuffer.isEmpty()) {
+                    coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateCaretPosition - 1)
+                        + coordinateEditBuffer.substring(coordinateCaretPosition);
+                    setCoordinateCaretPosition(coordinateCaretPosition - 1);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (deleteCoordinateSelection()) {
+                    return true;
+                }
+                if (coordinateCaretPosition < coordinateEditBuffer.length()) {
+                    coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateCaretPosition)
+                        + coordinateEditBuffer.substring(coordinateCaretPosition + 1);
+                    setCoordinateCaretPosition(coordinateCaretPosition);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveCoordinateCaretTo(coordinateCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveCoordinateCaretTo(coordinateCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveCoordinateCaretTo(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveCoordinateCaretTo(coordinateEditBuffer.length(), shiftHeld);
                 return true;
             case GLFW.GLFW_KEY_ENTER:
             case GLFW.GLFW_KEY_KP_ENTER:
@@ -2530,9 +2961,37 @@ public class NodeGraph {
                 int nextAxis = (coordinateEditingAxis + direction + COORDINATE_AXES.length) % COORDINATE_AXES.length;
                 startCoordinateEditing(node, nextAxis);
                 return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllCoordinateText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copyCoordinateSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutCoordinateSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    TextRenderer textRenderer = getClientTextRenderer();
+                    if (textRenderer != null) {
+                        insertCoordinateText(getClipboardText(), textRenderer);
+                    }
+                    return true;
+                }
+                break;
             default:
                 return false;
         }
+        return false;
     }
 
     public boolean handleCoordinateCharTyped(char chr, int modifiers, TextRenderer textRenderer) {
@@ -2540,20 +2999,8 @@ public class NodeGraph {
             return false;
         }
 
-        if (chr >= '0' && chr <= '9') {
-            int availableWidth = coordinateEditingNode.getCoordinateFieldWidth() - 6;
-            String candidate = coordinateEditBuffer + chr;
-            if (textRenderer.getWidth(candidate) <= availableWidth) {
-                coordinateEditBuffer = candidate;
-                resetCoordinateCaretBlink();
-            }
-            return true;
-        }
-
-        if (chr == '-' && coordinateEditBuffer.isEmpty()) {
-            coordinateEditBuffer = "-";
-            resetCoordinateCaretBlink();
-            return true;
+        if ((chr >= '0' && chr <= '9') || chr == '-') {
+            return insertCoordinateText(String.valueOf(chr), textRenderer);
         }
 
         return false;
@@ -2593,12 +3040,17 @@ public class NodeGraph {
         }
 
         stopCoordinateEditing(true);
+        stopStopTargetEditing(true);
 
         amountEditingNode = node;
         NodeParameter amountParam = node.getParameter("Amount");
         amountEditBuffer = amountParam != null ? amountParam.getDisplayValue() : "";
         amountEditOriginalValue = amountEditBuffer;
         resetAmountCaretBlink();
+        amountCaretPosition = amountEditBuffer.length();
+        amountSelectionAnchor = -1;
+        amountSelectionStart = -1;
+        amountSelectionEnd = -1;
     }
 
     public void stopAmountEditing(boolean commit) {
@@ -2621,6 +3073,10 @@ public class NodeGraph {
         amountEditBuffer = "";
         amountEditOriginalValue = "";
         amountCaretVisible = true;
+        amountCaretPosition = 0;
+        amountSelectionAnchor = -1;
+        amountSelectionStart = -1;
+        amountSelectionEnd = -1;
     }
 
     private boolean applyAmountEdit() {
@@ -2655,12 +3111,41 @@ public class NodeGraph {
             return false;
         }
 
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = Screen.hasControlDown();
+
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
-                if (!amountEditBuffer.isEmpty()) {
-                    amountEditBuffer = amountEditBuffer.substring(0, amountEditBuffer.length() - 1);
-                    resetAmountCaretBlink();
+                if (deleteAmountSelection()) {
+                    return true;
                 }
+                if (amountCaretPosition > 0 && !amountEditBuffer.isEmpty()) {
+                    amountEditBuffer = amountEditBuffer.substring(0, amountCaretPosition - 1)
+                        + amountEditBuffer.substring(amountCaretPosition);
+                    setAmountCaretPosition(amountCaretPosition - 1);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (deleteAmountSelection()) {
+                    return true;
+                }
+                if (amountCaretPosition < amountEditBuffer.length()) {
+                    amountEditBuffer = amountEditBuffer.substring(0, amountCaretPosition)
+                        + amountEditBuffer.substring(amountCaretPosition + 1);
+                    setAmountCaretPosition(amountCaretPosition);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveAmountCaretTo(amountCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveAmountCaretTo(amountCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveAmountCaretTo(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveAmountCaretTo(amountEditBuffer.length(), shiftHeld);
                 return true;
             case GLFW.GLFW_KEY_ENTER:
             case GLFW.GLFW_KEY_KP_ENTER:
@@ -2669,9 +3154,37 @@ public class NodeGraph {
             case GLFW.GLFW_KEY_ESCAPE:
                 stopAmountEditing(true);
                 return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllAmountText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copyAmountSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutAmountSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    TextRenderer textRenderer = getClientTextRenderer();
+                    if (textRenderer != null) {
+                        insertAmountText(getClipboardText(), textRenderer);
+                    }
+                    return true;
+                }
+                break;
             default:
                 return false;
         }
+        return false;
     }
 
     public boolean handleAmountCharTyped(char chr, int modifiers, TextRenderer textRenderer) {
@@ -2680,16 +3193,665 @@ public class NodeGraph {
         }
 
         if (chr >= '0' && chr <= '9') {
-            int availableWidth = amountEditingNode.getAmountFieldWidth() - 6;
-            String candidate = amountEditBuffer + chr;
-            if (textRenderer.getWidth(candidate) <= availableWidth) {
-                amountEditBuffer = candidate;
-                resetAmountCaretBlink();
-            }
-            return true;
+            return insertAmountText(String.valueOf(chr), textRenderer);
         }
 
         return false;
+    }
+
+    public boolean isEditingStopTargetField() {
+        return stopTargetEditingNode != null;
+    }
+
+    private void updateStopTargetCaretBlink() {
+        long now = System.currentTimeMillis();
+        if (now - stopTargetCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
+            stopTargetCaretVisible = !stopTargetCaretVisible;
+            stopTargetCaretLastToggleTime = now;
+        }
+    }
+
+    private void resetStopTargetCaretBlink() {
+        stopTargetCaretVisible = true;
+        stopTargetCaretLastToggleTime = System.currentTimeMillis();
+    }
+
+    public void startStopTargetEditing(Node node) {
+        if (node == null || !node.hasStopTargetInputField()) {
+            stopStopTargetEditing(false);
+            return;
+        }
+
+        if (isEditingStopTargetField()) {
+            if (stopTargetEditingNode == node) {
+                return;
+            }
+            boolean changed = applyStopTargetEdit();
+            if (changed) {
+                notifyNodeParametersChanged(stopTargetEditingNode);
+            }
+        }
+
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+
+        stopTargetEditingNode = node;
+        NodeParameter targetParam = node.getParameter("StartNumber");
+        stopTargetEditBuffer = targetParam != null ? targetParam.getDisplayValue() : "";
+        stopTargetEditOriginalValue = stopTargetEditBuffer;
+        resetStopTargetCaretBlink();
+        stopTargetCaretPosition = stopTargetEditBuffer.length();
+        stopTargetSelectionAnchor = -1;
+        stopTargetSelectionStart = -1;
+        stopTargetSelectionEnd = -1;
+    }
+
+    public void stopStopTargetEditing(boolean commit) {
+        if (!isEditingStopTargetField()) {
+            return;
+        }
+
+        boolean changed = false;
+        if (commit) {
+            changed = applyStopTargetEdit();
+        } else {
+            revertStopTargetEdit();
+        }
+
+        if (commit && changed) {
+            notifyNodeParametersChanged(stopTargetEditingNode);
+        }
+
+        stopTargetEditingNode = null;
+        stopTargetEditBuffer = "";
+        stopTargetEditOriginalValue = "";
+        stopTargetCaretVisible = true;
+        stopTargetCaretPosition = 0;
+        stopTargetSelectionAnchor = -1;
+        stopTargetSelectionStart = -1;
+        stopTargetSelectionEnd = -1;
+    }
+
+    private boolean applyStopTargetEdit() {
+        if (!isEditingStopTargetField()) {
+            return false;
+        }
+
+        String value = stopTargetEditBuffer == null ? "" : stopTargetEditBuffer;
+        NodeParameter targetParam = stopTargetEditingNode.getParameter("StartNumber");
+        String previous = targetParam != null ? targetParam.getStringValue() : "";
+        stopTargetEditingNode.setParameterValueAndPropagate("StartNumber", value);
+        stopTargetEditingNode.recalculateDimensions();
+        return !Objects.equals(previous, value);
+    }
+
+    private void revertStopTargetEdit() {
+        if (!isEditingStopTargetField()) {
+            return;
+        }
+        stopTargetEditingNode.setParameterValueAndPropagate("StartNumber", stopTargetEditOriginalValue);
+        stopTargetEditingNode.recalculateDimensions();
+    }
+
+    public boolean handleStopTargetKeyPressed(int keyCode, int modifiers) {
+        if (!isEditingStopTargetField()) {
+            return false;
+        }
+
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = Screen.hasControlDown();
+
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (deleteStopTargetSelection()) {
+                    return true;
+                }
+                if (stopTargetCaretPosition > 0 && !stopTargetEditBuffer.isEmpty()) {
+                    stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetCaretPosition - 1)
+                        + stopTargetEditBuffer.substring(stopTargetCaretPosition);
+                    setStopTargetCaretPosition(stopTargetCaretPosition - 1);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (deleteStopTargetSelection()) {
+                    return true;
+                }
+                if (stopTargetCaretPosition < stopTargetEditBuffer.length()) {
+                    stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetCaretPosition)
+                        + stopTargetEditBuffer.substring(stopTargetCaretPosition + 1);
+                    setStopTargetCaretPosition(stopTargetCaretPosition);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveStopTargetCaretTo(stopTargetCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveStopTargetCaretTo(stopTargetCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveStopTargetCaretTo(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveStopTargetCaretTo(stopTargetEditBuffer.length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+                stopStopTargetEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_ESCAPE:
+                stopStopTargetEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllStopTargetText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copyStopTargetSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutStopTargetSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    TextRenderer textRenderer = getClientTextRenderer();
+                    if (textRenderer != null) {
+                        insertStopTargetText(getClipboardText(), textRenderer);
+                    }
+                    return true;
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    public boolean handleStopTargetCharTyped(char chr, int modifiers, TextRenderer textRenderer) {
+        if (!isEditingStopTargetField()) {
+            return false;
+        }
+
+        if (chr >= '0' && chr <= '9') {
+            return insertStopTargetText(String.valueOf(chr), textRenderer);
+        }
+
+        return false;
+    }
+
+    private boolean hasCoordinateSelection() {
+        return coordinateSelectionStart >= 0
+            && coordinateSelectionEnd >= 0
+            && coordinateSelectionStart != coordinateSelectionEnd;
+    }
+
+    private boolean hasAmountSelection() {
+        return amountSelectionStart >= 0
+            && amountSelectionEnd >= 0
+            && amountSelectionStart != amountSelectionEnd;
+    }
+
+    private boolean hasStopTargetSelection() {
+        return stopTargetSelectionStart >= 0
+            && stopTargetSelectionEnd >= 0
+            && stopTargetSelectionStart != stopTargetSelectionEnd;
+    }
+
+    private void resetCoordinateSelectionRange() {
+        coordinateSelectionStart = -1;
+        coordinateSelectionEnd = -1;
+    }
+
+    private void resetAmountSelectionRange() {
+        amountSelectionStart = -1;
+        amountSelectionEnd = -1;
+    }
+
+    private void resetStopTargetSelectionRange() {
+        stopTargetSelectionStart = -1;
+        stopTargetSelectionEnd = -1;
+    }
+
+    private void setCoordinateCaretPosition(int position) {
+        coordinateCaretPosition = MathHelper.clamp(position, 0, coordinateEditBuffer.length());
+        coordinateSelectionAnchor = -1;
+        resetCoordinateSelectionRange();
+        resetCoordinateCaretBlink();
+    }
+
+    private void moveCoordinateCaretTo(int position, boolean extendSelection) {
+        position = MathHelper.clamp(position, 0, coordinateEditBuffer.length());
+        if (extendSelection) {
+            if (coordinateSelectionAnchor == -1) {
+                coordinateSelectionAnchor = coordinateCaretPosition;
+            }
+            int start = Math.min(coordinateSelectionAnchor, position);
+            int end = Math.max(coordinateSelectionAnchor, position);
+            if (start == end) {
+                resetCoordinateSelectionRange();
+            } else {
+                coordinateSelectionStart = start;
+                coordinateSelectionEnd = end;
+            }
+        } else {
+            coordinateSelectionAnchor = -1;
+            resetCoordinateSelectionRange();
+        }
+        coordinateCaretPosition = position;
+        resetCoordinateCaretBlink();
+    }
+
+    private boolean deleteCoordinateSelection() {
+        if (!hasCoordinateSelection()) {
+            return false;
+        }
+        coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateSelectionStart)
+            + coordinateEditBuffer.substring(coordinateSelectionEnd);
+        setCoordinateCaretPosition(coordinateSelectionStart);
+        return true;
+    }
+
+    private void selectAllCoordinateText() {
+        if (!isEditingCoordinateField()) {
+            return;
+        }
+        coordinateSelectionAnchor = 0;
+        if (coordinateEditBuffer.isEmpty()) {
+            resetCoordinateSelectionRange();
+        } else {
+            coordinateSelectionStart = 0;
+            coordinateSelectionEnd = coordinateEditBuffer.length();
+        }
+        coordinateCaretPosition = coordinateEditBuffer.length();
+        resetCoordinateCaretBlink();
+    }
+
+    private void copyCoordinateSelection() {
+        if (!hasCoordinateSelection()) {
+            return;
+        }
+        setClipboardText(coordinateEditBuffer.substring(coordinateSelectionStart, coordinateSelectionEnd));
+    }
+
+    private void cutCoordinateSelection() {
+        if (!hasCoordinateSelection()) {
+            return;
+        }
+        copyCoordinateSelection();
+        deleteCoordinateSelection();
+    }
+
+    private boolean insertCoordinateText(String text, TextRenderer textRenderer) {
+        if (!isEditingCoordinateField() || textRenderer == null || text == null || text.isEmpty()) {
+            return false;
+        }
+        StringBuilder filtered = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (Character.isDigit(c) || c == '-') {
+                filtered.append(c);
+            }
+        }
+        if (filtered.length() == 0) {
+            return false;
+        }
+
+        String originalBuffer = coordinateEditBuffer;
+        int originalCaret = coordinateCaretPosition;
+        int originalSelectionStart = coordinateSelectionStart;
+        int originalSelectionEnd = coordinateSelectionEnd;
+        int originalSelectionAnchor = coordinateSelectionAnchor;
+
+        String working = coordinateEditBuffer;
+        int caret = coordinateCaretPosition;
+
+        if (hasCoordinateSelection()) {
+            int start = coordinateSelectionStart;
+            int end = coordinateSelectionEnd;
+            working = working.substring(0, start) + working.substring(end);
+            caret = start;
+        }
+
+        boolean inserted = false;
+        int widthLimit = coordinateEditingNode != null
+            ? coordinateEditingNode.getCoordinateFieldWidth() - 6
+            : Integer.MAX_VALUE;
+
+        for (int i = 0; i < filtered.length(); i++) {
+            char c = filtered.charAt(i);
+            String candidate = working.substring(0, caret) + c + working.substring(caret);
+            if (!isValidCoordinateValue(candidate)) {
+                continue;
+            }
+            if (textRenderer.getWidth(candidate) > widthLimit) {
+                break;
+            }
+            working = candidate;
+            caret++;
+            inserted = true;
+        }
+
+        if (inserted) {
+            coordinateEditBuffer = working;
+            setCoordinateCaretPosition(caret);
+            return true;
+        }
+
+        coordinateEditBuffer = originalBuffer;
+        coordinateCaretPosition = originalCaret;
+        coordinateSelectionStart = originalSelectionStart;
+        coordinateSelectionEnd = originalSelectionEnd;
+        coordinateSelectionAnchor = originalSelectionAnchor;
+        return false;
+    }
+
+    private boolean isValidCoordinateValue(String value) {
+        if (value.isEmpty()) {
+            return true;
+        }
+        if ("-".equals(value)) {
+            return true;
+        }
+        int startIndex = 0;
+        if (value.charAt(0) == '-') {
+            startIndex = 1;
+            if (startIndex >= value.length()) {
+                return false;
+            }
+        }
+        for (int i = startIndex; i < value.length(); i++) {
+            if (!Character.isDigit(value.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void setAmountCaretPosition(int position) {
+        amountCaretPosition = MathHelper.clamp(position, 0, amountEditBuffer.length());
+        amountSelectionAnchor = -1;
+        resetAmountSelectionRange();
+        resetAmountCaretBlink();
+    }
+
+    private void moveAmountCaretTo(int position, boolean extendSelection) {
+        position = MathHelper.clamp(position, 0, amountEditBuffer.length());
+        if (extendSelection) {
+            if (amountSelectionAnchor == -1) {
+                amountSelectionAnchor = amountCaretPosition;
+            }
+            int start = Math.min(amountSelectionAnchor, position);
+            int end = Math.max(amountSelectionAnchor, position);
+            if (start == end) {
+                resetAmountSelectionRange();
+            } else {
+                amountSelectionStart = start;
+                amountSelectionEnd = end;
+            }
+        } else {
+            amountSelectionAnchor = -1;
+            resetAmountSelectionRange();
+        }
+        amountCaretPosition = position;
+        resetAmountCaretBlink();
+    }
+
+    private void setStopTargetCaretPosition(int position) {
+        stopTargetCaretPosition = MathHelper.clamp(position, 0, stopTargetEditBuffer.length());
+        stopTargetSelectionAnchor = -1;
+        resetStopTargetSelectionRange();
+        resetStopTargetCaretBlink();
+    }
+
+    private void moveStopTargetCaretTo(int position, boolean extendSelection) {
+        position = MathHelper.clamp(position, 0, stopTargetEditBuffer.length());
+        if (extendSelection) {
+            if (stopTargetSelectionAnchor == -1) {
+                stopTargetSelectionAnchor = stopTargetCaretPosition;
+            }
+            int start = Math.min(stopTargetSelectionAnchor, position);
+            int end = Math.max(stopTargetSelectionAnchor, position);
+            if (start == end) {
+                resetStopTargetSelectionRange();
+            } else {
+                stopTargetSelectionStart = start;
+                stopTargetSelectionEnd = end;
+            }
+        } else {
+            stopTargetSelectionAnchor = -1;
+            resetStopTargetSelectionRange();
+        }
+        stopTargetCaretPosition = position;
+        resetStopTargetCaretBlink();
+    }
+
+    private boolean deleteAmountSelection() {
+        if (!hasAmountSelection()) {
+            return false;
+        }
+        amountEditBuffer = amountEditBuffer.substring(0, amountSelectionStart)
+            + amountEditBuffer.substring(amountSelectionEnd);
+        setAmountCaretPosition(amountSelectionStart);
+        return true;
+    }
+
+    private boolean deleteStopTargetSelection() {
+        if (!hasStopTargetSelection()) {
+            return false;
+        }
+        stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetSelectionStart)
+            + stopTargetEditBuffer.substring(stopTargetSelectionEnd);
+        setStopTargetCaretPosition(stopTargetSelectionStart);
+        return true;
+    }
+
+    private void selectAllAmountText() {
+        if (!isEditingAmountField()) {
+            return;
+        }
+        amountSelectionAnchor = 0;
+        if (amountEditBuffer.isEmpty()) {
+            resetAmountSelectionRange();
+        } else {
+            amountSelectionStart = 0;
+            amountSelectionEnd = amountEditBuffer.length();
+        }
+        amountCaretPosition = amountEditBuffer.length();
+        resetAmountCaretBlink();
+    }
+
+    private void selectAllStopTargetText() {
+        if (!isEditingStopTargetField()) {
+            return;
+        }
+        stopTargetSelectionAnchor = 0;
+        if (stopTargetEditBuffer.isEmpty()) {
+            resetStopTargetSelectionRange();
+        } else {
+            stopTargetSelectionStart = 0;
+            stopTargetSelectionEnd = stopTargetEditBuffer.length();
+        }
+        stopTargetCaretPosition = stopTargetEditBuffer.length();
+        resetStopTargetCaretBlink();
+    }
+
+    private void copyAmountSelection() {
+        if (!hasAmountSelection()) {
+            return;
+        }
+        setClipboardText(amountEditBuffer.substring(amountSelectionStart, amountSelectionEnd));
+    }
+
+    private void copyStopTargetSelection() {
+        if (!hasStopTargetSelection()) {
+            return;
+        }
+        setClipboardText(stopTargetEditBuffer.substring(stopTargetSelectionStart, stopTargetSelectionEnd));
+    }
+
+    private void cutAmountSelection() {
+        if (!hasAmountSelection()) {
+            return;
+        }
+        copyAmountSelection();
+        deleteAmountSelection();
+    }
+
+    private void cutStopTargetSelection() {
+        if (!hasStopTargetSelection()) {
+            return;
+        }
+        copyStopTargetSelection();
+        deleteStopTargetSelection();
+    }
+
+    private boolean insertAmountText(String text, TextRenderer textRenderer) {
+        if (!isEditingAmountField() || textRenderer == null || text == null || text.isEmpty()) {
+            return false;
+        }
+        StringBuilder filtered = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= '0' && c <= '9') {
+                filtered.append(c);
+            }
+        }
+        if (filtered.length() == 0) {
+            return false;
+        }
+
+        String originalBuffer = amountEditBuffer;
+        int originalCaret = amountCaretPosition;
+        int originalSelectionStart = amountSelectionStart;
+        int originalSelectionEnd = amountSelectionEnd;
+        int originalSelectionAnchor = amountSelectionAnchor;
+
+        String working = amountEditBuffer;
+        int caret = amountCaretPosition;
+
+        if (hasAmountSelection()) {
+            int start = amountSelectionStart;
+            int end = amountSelectionEnd;
+            working = working.substring(0, start) + working.substring(end);
+            caret = start;
+        }
+
+        boolean inserted = false;
+        int widthLimit = amountEditingNode != null
+            ? amountEditingNode.getAmountFieldWidth() - 6
+            : Integer.MAX_VALUE;
+
+        for (int i = 0; i < filtered.length(); i++) {
+            char c = filtered.charAt(i);
+            String candidate = working.substring(0, caret) + c + working.substring(caret);
+            if (textRenderer.getWidth(candidate) > widthLimit) {
+                break;
+            }
+            working = candidate;
+            caret++;
+            inserted = true;
+        }
+
+        if (inserted) {
+            amountEditBuffer = working;
+            setAmountCaretPosition(caret);
+            return true;
+        }
+
+        amountEditBuffer = originalBuffer;
+        amountCaretPosition = originalCaret;
+        amountSelectionStart = originalSelectionStart;
+        amountSelectionEnd = originalSelectionEnd;
+        amountSelectionAnchor = originalSelectionAnchor;
+        return false;
+    }
+
+    private boolean insertStopTargetText(String text, TextRenderer textRenderer) {
+        if (!isEditingStopTargetField() || textRenderer == null || text == null || text.isEmpty()) {
+            return false;
+        }
+        StringBuilder filtered = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= '0' && c <= '9') {
+                filtered.append(c);
+            }
+        }
+        if (filtered.length() == 0) {
+            return false;
+        }
+
+        String originalBuffer = stopTargetEditBuffer;
+        int originalCaret = stopTargetCaretPosition;
+        int originalSelectionStart = stopTargetSelectionStart;
+        int originalSelectionEnd = stopTargetSelectionEnd;
+        int originalSelectionAnchor = stopTargetSelectionAnchor;
+
+        String working = stopTargetEditBuffer;
+        int caret = stopTargetCaretPosition;
+
+        if (hasStopTargetSelection()) {
+            int start = stopTargetSelectionStart;
+            int end = stopTargetSelectionEnd;
+            working = working.substring(0, start) + working.substring(end);
+            caret = start;
+        }
+
+        boolean inserted = false;
+        int widthLimit = stopTargetEditingNode != null
+            ? stopTargetEditingNode.getStopTargetFieldWidth() - 6
+            : Integer.MAX_VALUE;
+
+        for (int i = 0; i < filtered.length(); i++) {
+            char c = filtered.charAt(i);
+            String candidate = working.substring(0, caret) + c + working.substring(caret);
+            if (textRenderer.getWidth(candidate) > widthLimit) {
+                break;
+            }
+            working = candidate;
+            caret++;
+            inserted = true;
+        }
+
+        if (inserted) {
+            stopTargetEditBuffer = working;
+            setStopTargetCaretPosition(caret);
+            return true;
+        }
+
+        stopTargetEditBuffer = originalBuffer;
+        stopTargetCaretPosition = originalCaret;
+        stopTargetSelectionStart = originalSelectionStart;
+        stopTargetSelectionEnd = originalSelectionEnd;
+        stopTargetSelectionAnchor = originalSelectionAnchor;
+        return false;
+    }
+
+    private TextRenderer getClientTextRenderer() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client != null ? client.textRenderer : null;
+    }
+
+    private String getClipboardText() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null && client.keyboard != null) {
+            return client.keyboard.getClipboard();
+        }
+        return "";
+    }
+
+    private void setClipboardText(String text) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null && client.keyboard != null) {
+            client.keyboard.setClipboard(text == null ? "" : text);
+        }
     }
 
     public boolean isPointInsideAmountField(Node node, int screenX, int screenY) {
@@ -2708,11 +3870,27 @@ public class NodeGraph {
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
     }
 
+    public boolean isPointInsideStopTargetField(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasStopTargetInputField()) {
+            return false;
+        }
+
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = node.getStopTargetFieldLeft();
+        int fieldTop = node.getStopTargetFieldInputTop();
+        int fieldWidth = node.getStopTargetFieldWidth();
+        int fieldHeight = node.getStopTargetFieldHeight();
+
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
     private void drawNodeText(DrawContext context, TextRenderer renderer, Text text, int x, int y, int color) {
         if (!shouldRenderNodeText()) {
             return;
         }
-        context.drawTextWithShadow(renderer, text, x, y, color);
+        context.drawText(renderer, text, x, y, color, false);
     }
 
     private void drawNodeText(DrawContext context, TextRenderer renderer, String text, int x, int y, int color) {
@@ -3008,7 +4186,7 @@ public class NodeGraph {
             return manager.requestStopForStart(startNode);
         }
 
-        boolean started = manager.executeBranch(startNode, nodes, connections);
+        boolean started = manager.executeBranch(startNode, nodes, connections, activePreset);
         if (started) {
             lastStartButtonTriggeredExecution = true;
         }
@@ -3096,7 +4274,7 @@ public class NodeGraph {
         if (data != null) {
             boolean applied = applyLoadedData(data);
             if (applied) {
-                workspaceDirty = true;
+                markWorkspaceDirty();
             }
             return applied;
         }
@@ -3113,6 +4291,7 @@ public class NodeGraph {
 
     public void markWorkspaceDirty() {
         workspaceDirty = true;
+        save();
     }
 
     public void markWorkspaceClean() {
@@ -3128,7 +4307,6 @@ public class NodeGraph {
             return;
         }
         markWorkspaceDirty();
-        save();
     }
 
     public void clearWorkspace() {
@@ -3166,6 +4344,7 @@ public class NodeGraph {
 
         nodes.clear();
         connections.clear();
+        nextStartNodeNumber = 1;
         clearSelection();
         draggingNode = null;
         hoveredNode = null;
@@ -3221,14 +4400,26 @@ public class NodeGraph {
                 for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
                     ParameterType paramType = ParameterType.valueOf(paramData.getType());
                     NodeParameter param = new NodeParameter(paramData.getName(), paramType, paramData.getValue());
+                    if (paramData.getUserEdited() != null) {
+                        param.setUserEdited(paramData.getUserEdited());
+                    }
                     node.getParameters().add(param);
                 }
+            }
+            if (node.getType() == NodeType.STOP_CHAIN && node.getParameter("StartNumber") == null) {
+                node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
+            }
+            Integer startNodeNumber = nodeData.getStartNodeNumber();
+            if (startNodeNumber != null) {
+                node.setStartNodeNumber(startNodeNumber);
             }
             node.recalculateDimensions();
 
             nodes.add(node);
             nodeMap.put(nodeData.getId(), node);
         }
+
+        normalizeStartNodeNumbers();
 
         // Restore sensor attachments
         for (NodeGraphData.NodeData nodeData : data.getNodes()) {

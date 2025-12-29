@@ -4,14 +4,21 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.control.InventorySlotSelector;
+import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.MathHelper;
+import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -35,10 +42,97 @@ public class NodeParameterOverlay {
     private static final int POPUP_VERTICAL_MARGIN = 40;
     private static final int SCROLL_STEP = 18;
     private static final int SCROLLBAR_WIDTH = 6;
+    private static final int KEY_SELECTOR_KEY_HEIGHT = 18;
+    private static final int KEY_SELECTOR_ROW_GAP = 6;
+    private static final int KEY_SELECTOR_KEY_GAP = 4;
+    private static final int KEY_SELECTOR_PADDING = 6;
+
+    private static final KeySpec[][] KEY_SELECTOR_LAYOUT = new KeySpec[][]{
+        new KeySpec[]{
+            key("Esc", "GLFW_KEY_ESCAPE", 1),
+            key("1", "GLFW_KEY_1", 1),
+            key("2", "GLFW_KEY_2", 1),
+            key("3", "GLFW_KEY_3", 1),
+            key("4", "GLFW_KEY_4", 1),
+            key("5", "GLFW_KEY_5", 1),
+            key("6", "GLFW_KEY_6", 1),
+            key("7", "GLFW_KEY_7", 1),
+            key("8", "GLFW_KEY_8", 1),
+            key("9", "GLFW_KEY_9", 1),
+            key("0", "GLFW_KEY_0", 1),
+            key("-", "GLFW_KEY_MINUS", 1),
+            key("=", "GLFW_KEY_EQUAL", 1),
+            key("Back", "GLFW_KEY_BACKSPACE", 2)
+        },
+        new KeySpec[]{
+            key("Tab", "GLFW_KEY_TAB", 2),
+            key("Q", "GLFW_KEY_Q", 1),
+            key("W", "GLFW_KEY_W", 1),
+            key("E", "GLFW_KEY_E", 1),
+            key("R", "GLFW_KEY_R", 1),
+            key("T", "GLFW_KEY_T", 1),
+            key("Y", "GLFW_KEY_Y", 1),
+            key("U", "GLFW_KEY_U", 1),
+            key("I", "GLFW_KEY_I", 1),
+            key("O", "GLFW_KEY_O", 1),
+            key("P", "GLFW_KEY_P", 1),
+            key("[", "GLFW_KEY_LEFT_BRACKET", 1),
+            key("]", "GLFW_KEY_RIGHT_BRACKET", 1),
+            key("\\", "GLFW_KEY_BACKSLASH", 1)
+        },
+        new KeySpec[]{
+            key("Caps", "GLFW_KEY_CAPS_LOCK", 2),
+            key("A", "GLFW_KEY_A", 1),
+            key("S", "GLFW_KEY_S", 1),
+            key("D", "GLFW_KEY_D", 1),
+            key("F", "GLFW_KEY_F", 1),
+            key("G", "GLFW_KEY_G", 1),
+            key("H", "GLFW_KEY_H", 1),
+            key("J", "GLFW_KEY_J", 1),
+            key("K", "GLFW_KEY_K", 1),
+            key("L", "GLFW_KEY_L", 1),
+            key(";", "GLFW_KEY_SEMICOLON", 1),
+            key("'", "GLFW_KEY_APOSTROPHE", 1),
+            key("Enter", "GLFW_KEY_ENTER", 2)
+        },
+        new KeySpec[]{
+            key("Shift", "GLFW_KEY_LEFT_SHIFT", 2),
+            key("Z", "GLFW_KEY_Z", 1),
+            key("X", "GLFW_KEY_X", 1),
+            key("C", "GLFW_KEY_C", 1),
+            key("V", "GLFW_KEY_V", 1),
+            key("B", "GLFW_KEY_B", 1),
+            key("N", "GLFW_KEY_N", 1),
+            key("M", "GLFW_KEY_M", 1),
+            key(",", "GLFW_KEY_COMMA", 1),
+            key(".", "GLFW_KEY_PERIOD", 1),
+            key("/", "GLFW_KEY_SLASH", 1),
+            key("Shift", "GLFW_KEY_RIGHT_SHIFT", 2)
+        },
+        new KeySpec[]{
+            key("Ctrl", "GLFW_KEY_LEFT_CONTROL", 2),
+            key("Alt", "GLFW_KEY_LEFT_ALT", 2),
+            key("Space", "GLFW_KEY_SPACE", 6),
+            key("Alt", "GLFW_KEY_RIGHT_ALT", 2),
+            key("Ctrl", "GLFW_KEY_RIGHT_CONTROL", 2)
+        }
+    };
+
+    private static final class KeySpec {
+        private final String label;
+        private final String value;
+        private final int units;
+
+        private KeySpec(String label, String value, int units) {
+            this.label = label;
+            this.value = value;
+            this.units = units;
+        }
+    }
 
     private final Node node;
     private final List<String> parameterValues;
-    private final List<Boolean> fieldFocused;
+    private final List<Boolean> placeholderActive = new ArrayList<>();
     private int popupWidth = MIN_POPUP_WIDTH;
     private final int screenWidth;
     private final int screenHeight;
@@ -79,7 +173,24 @@ public class NodeParameterOverlay {
     private final InventorySlotSelector inventorySlotSelector;
     private Boolean inventorySlotSelectionIsPlayer = null;
     private boolean suppressInventorySelectorCallbacks = false;
+    private boolean blockStateEditorActive;
+    private int blockParameterIndex;
+    private int blockStateParamIndex;
+    private final List<BlockSelection.StateOption> blockStateOptions = new ArrayList<>();
+    private String cachedBlockIdForStateOptions = "";
+    private boolean blockStateDropdownOpen = false;
+    private int blockStateDropdownHoverIndex = -1;
+    private int blockStateFieldX;
+    private int blockStateFieldY;
+    private int blockStateFieldWidth;
+    private int blockStateFieldHeight;
     private int textLineHeight = 9;
+    private final List<Integer> caretPositions = new ArrayList<>();
+    private final List<Integer> selectionStarts = new ArrayList<>();
+    private final List<Integer> selectionEnds = new ArrayList<>();
+    private final List<Integer> selectionAnchors = new ArrayList<>();
+    private long caretBlinkLastToggle = 0L;
+    private boolean caretVisible = true;
 
     public NodeParameterOverlay(Node node, int screenWidth, int screenHeight, int topBarHeight, Runnable onClose,
                                 Consumer<Node> onSave,
@@ -88,7 +199,6 @@ public class NodeParameterOverlay {
         this.onClose = onClose;
         this.onSave = onSave;
         this.parameterValues = new ArrayList<>();
-        this.fieldFocused = new ArrayList<>();
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.topBarHeight = topBarHeight;
@@ -136,7 +246,7 @@ public class NodeParameterOverlay {
                     }
                     inventorySlotSelectionIsPlayer = isPlayerSection;
                     if (inventorySlotParamIndex >= 0 && inventorySlotParamIndex < parameterValues.size()) {
-                        parameterValues.set(inventorySlotParamIndex, String.valueOf(slotId));
+                        setParameterValue(inventorySlotParamIndex, String.valueOf(slotId));
                     }
                     persistInventorySlotModeValue();
                 }
@@ -148,7 +258,7 @@ public class NodeParameterOverlay {
                     }
                     inventorySlotSelectionIsPlayer = null;
                     if (inventoryModeParamIndex >= 0 && inventoryModeParamIndex < parameterValues.size()) {
-                        parameterValues.set(inventoryModeParamIndex, InventorySlotModeHelper.buildStoredModeValue(modeId, null));
+                        setParameterValue(inventoryModeParamIndex, InventorySlotModeHelper.buildStoredModeValue(modeId, null));
                     }
                 }
 
@@ -161,6 +271,27 @@ public class NodeParameterOverlay {
         } else {
             this.inventorySlotSelector = null;
         }
+
+        int tempBlockIndex = -1;
+        int tempBlockStateIndex = -1;
+        if (node.getType() == NodeType.PARAM_BLOCK) {
+            List<NodeParameter> params = node.getParameters();
+            for (int i = 0; i < params.size(); i++) {
+                NodeParameter param = params.get(i);
+                if (param == null) {
+                    continue;
+                }
+                String name = param.getName();
+                if ("Block".equalsIgnoreCase(name)) {
+                    tempBlockIndex = i;
+                } else if ("State".equalsIgnoreCase(name)) {
+                    tempBlockStateIndex = i;
+                }
+            }
+        }
+        this.blockParameterIndex = tempBlockIndex;
+        this.blockStateParamIndex = tempBlockStateIndex;
+        this.blockStateEditorActive = tempBlockStateIndex >= 0;
         
         updatePopupDimensions();
     }
@@ -196,6 +327,7 @@ public class NodeParameterOverlay {
             }
             persistInventorySlotModeValue();
         }
+
         updatePopupDimensions();
         recreateButtons();
         scrollOffset = Math.min(scrollOffset, maxScroll);
@@ -204,6 +336,7 @@ public class NodeParameterOverlay {
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
         if (!visible) return;
+        updateBlockStateOptions(false);
 
         // Render semi-transparent background overlay
         context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), 0x80000000);
@@ -275,7 +408,7 @@ public class NodeParameterOverlay {
 
         this.textLineHeight = textRenderer.fontHeight;
         for (int i = 0; i < node.getParameters().size(); i++) {
-            if (inventorySlotEditorActive && i == inventoryModeParamIndex) {
+            if (!shouldDisplayParameter(i)) {
                 continue;
             }
             NodeParameter param = node.getParameters().get(i);
@@ -293,6 +426,18 @@ public class NodeParameterOverlay {
             int fieldHeight = FIELD_HEIGHT;
             if (inventorySlotEditorActive && i == inventorySlotParamIndex && inventorySlotSelector != null) {
                 int selectorHeight = inventorySlotSelector.render(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY);
+                sectionY = fieldY + selectorHeight + SECTION_SPACING;
+                continue;
+            }
+
+            boolean isBlockStateField = blockStateEditorActive && i == blockStateParamIndex && !blockStateOptions.isEmpty();
+            if (isBlockStateField) {
+                renderBlockStateField(context, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight, mouseX, mouseY);
+                sectionY = fieldY + fieldHeight + SECTION_SPACING;
+                continue;
+            }
+            if (usesKeySelectorForIndex(i)) {
+                int selectorHeight = renderKeySelector(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, i);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }
@@ -350,24 +495,64 @@ public class NodeParameterOverlay {
                     fieldY + 6,
                     functionDropdownEnabled ? 0xFFE0E0E0 : 0xFF555555
                 );
-            } else if (text != null && !text.isEmpty()) {
-                int availableWidth = fieldWidth - 8;
-                String displayText = trimDisplayString(textRenderer, text, availableWidth);
+            } else {
+                String baseValue = text != null ? text : "";
+                boolean showingPlaceholder = isPlaceholderActive(i);
+                String displayText;
+                int textColor;
+                if (showingPlaceholder) {
+                    String placeholder = getPlaceholderText(i);
+                    displayText = trimDisplayString(textRenderer, placeholder, fieldWidth - 8);
+                    textColor = 0xFF888888;
+                } else if (isFocused) {
+                    displayText = baseValue;
+                    textColor = 0xFFFFFFFF;
+                } else {
+                    displayText = trimDisplayString(textRenderer, baseValue, fieldWidth - 8);
+                    textColor = 0xFFFFFFFF;
+                }
+                int textX = fieldX + 4;
+                int textY = fieldY + 6;
 
-                context.drawTextWithShadow(
-                    textRenderer,
-                    Text.literal(displayText),
-                    fieldX + 4,
-                    fieldY + 6,
-                    0xFFFFFFFF
-                );
-            }
+                if (!showingPlaceholder && isFocused && hasSelectionForField(i)) {
+                    String value = baseValue;
+                    int start = Math.max(0, selectionStarts.get(i));
+                    int end = Math.max(0, selectionEnds.get(i));
+                    int clampedStart = Math.min(start, value.length());
+                    int clampedEnd = Math.min(end, value.length());
+                    if (clampedEnd < clampedStart) {
+                        int tmp = clampedStart;
+                        clampedStart = clampedEnd;
+                        clampedEnd = tmp;
+                    }
+                    int selectionStartX = textX + textRenderer.getWidth(value.substring(0, clampedStart));
+                    int selectionEndX = textX + textRenderer.getWidth(value.substring(0, clampedEnd));
+                    selectionStartX = MathHelper.clamp(selectionStartX, fieldX + 2, fieldX + fieldWidth - 2);
+                    selectionEndX = MathHelper.clamp(selectionEndX, fieldX + 2, fieldX + fieldWidth - 2);
+                    if (selectionEndX != selectionStartX) {
+                        context.fill(selectionStartX, fieldY + 4, selectionEndX, fieldY + fieldHeight - 4, 0x80426AD5);
+                    }
+                }
 
-            if (!isDropdownField && isFocused && (System.currentTimeMillis() / 500) % 2 == 0) {
-                String value = text != null ? text : "";
-                int cursorX = fieldX + 4 + textRenderer.getWidth(value);
-                cursorX = Math.min(cursorX, fieldX + fieldWidth - 2);
-                context.fill(cursorX, fieldY + 4, cursorX + 1, fieldY + 16, 0xFFFFFFFF);
+                if (!displayText.isEmpty()) {
+                    context.drawTextWithShadow(
+                        textRenderer,
+                        Text.literal(displayText),
+                        textX,
+                        textY,
+                        textColor
+                    );
+                }
+
+                if (isFocused) {
+                    updateCaretBlinkState();
+                    if (caretVisible) {
+                        int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
+                        int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
+                        caretX = Math.min(caretX, fieldX + fieldWidth - 2);
+                        context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4, 0xFFFFFFFF);
+                    }
+                }
             }
 
             sectionY = fieldY + fieldHeight + SECTION_SPACING;
@@ -423,6 +608,9 @@ public class NodeParameterOverlay {
 
         if (functionDropdownOpen) {
             renderFunctionDropdown(context, textRenderer, mouseX, mouseY);
+        }
+        if (blockStateDropdownOpen) {
+            renderBlockStateDropdown(context, textRenderer, mouseX, mouseY);
         }
 
         renderScrollbar(context, contentTop, contentBottom);
@@ -481,13 +669,94 @@ public class NodeParameterOverlay {
         if (inventoryModeParamIndex < 0 || inventoryModeParamIndex >= parameterValues.size()) {
             return;
         }
-        parameterValues.set(
+        setParameterValue(
             inventoryModeParamIndex,
             InventorySlotModeHelper.buildStoredModeValue(
                 inventorySlotSelector.getModeId(),
                 inventorySlotSelectionIsPlayer
             )
         );
+    }
+
+    private void setParameterValue(int index, String value) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return;
+        }
+        ensureCaretEntry(index);
+        String normalized = value != null ? value : "";
+        parameterValues.set(index, normalized);
+        caretPositions.set(index, normalized.length());
+        placeholderActive.set(index, false);
+        handleParameterValueChanged(index);
+    }
+
+    private void handleParameterValueChanged(int index) {
+        if (blockStateEditorActive && index == blockParameterIndex) {
+            updateBlockStateOptions(true);
+        }
+    }
+
+    private boolean shouldDisplayParameter(int index) {
+        if (inventorySlotEditorActive && index == inventoryModeParamIndex) {
+            return false;
+        }
+        if (blockStateEditorActive && index == blockStateParamIndex && blockStateOptions.isEmpty()) {
+            return false;
+        }
+        return true;
+    }
+
+    private void updateBlockStateOptions(boolean forceRefresh) {
+        boolean previouslyHadOptions = !blockStateOptions.isEmpty();
+        if (!blockStateEditorActive || blockParameterIndex < 0 || blockParameterIndex >= parameterValues.size()) {
+            blockStateOptions.clear();
+            cachedBlockIdForStateOptions = "";
+            blockStateDropdownOpen = false;
+            return;
+        }
+
+        String rawBlock = parameterValues.get(blockParameterIndex);
+        String normalized = rawBlock != null ? rawBlock.trim() : "";
+        if (!normalized.isEmpty()) {
+            String stripped = BlockSelection.stripState(normalized);
+            normalized = stripped != null ? stripped : normalized;
+        }
+        if (!forceRefresh && Objects.equals(normalized, cachedBlockIdForStateOptions)) {
+            return;
+        }
+
+        cachedBlockIdForStateOptions = normalized;
+        blockStateDropdownOpen = false;
+        blockStateDropdownHoverIndex = -1;
+        blockStateOptions.clear();
+        if (!normalized.isEmpty()) {
+            List<BlockSelection.StateOption> resolvedOptions = BlockSelection.getStateOptions(normalized);
+            if (!resolvedOptions.isEmpty()) {
+                blockStateOptions.add(new BlockSelection.StateOption("", "Any State"));
+                blockStateOptions.addAll(resolvedOptions);
+            }
+        }
+        ensureValidBlockStateSelection();
+        boolean currentlyHasOptions = !blockStateOptions.isEmpty();
+        if (previouslyHadOptions != currentlyHasOptions) {
+            updatePopupDimensions();
+            recreateButtons();
+        }
+    }
+
+    private void ensureValidBlockStateSelection() {
+        if (!blockStateEditorActive || blockStateParamIndex < 0 || blockStateParamIndex >= parameterValues.size()) {
+            return;
+        }
+        String currentValue = parameterValues.get(blockStateParamIndex);
+        boolean valid = blockStateOptions.stream().anyMatch(option -> option.value().equalsIgnoreCase(currentValue));
+        if (!valid) {
+            if (blockStateOptions.isEmpty()) {
+                setParameterValue(blockStateParamIndex, "");
+            } else {
+                setParameterValue(blockStateParamIndex, blockStateOptions.get(0).value());
+            }
+        }
     }
 
     private void renderFunctionDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
@@ -553,6 +822,116 @@ public class NodeParameterOverlay {
         }
     }
 
+    private void renderBlockStateField(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth, int fieldHeight, int mouseX, int mouseY) {
+        blockStateFieldX = fieldX;
+        blockStateFieldY = fieldY;
+        blockStateFieldWidth = fieldWidth;
+        blockStateFieldHeight = fieldHeight;
+
+        boolean hasOptions = !blockStateOptions.isEmpty();
+        boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
+                          mouseY >= fieldY && mouseY <= fieldY + fieldHeight;
+        boolean dropdownActive = blockStateDropdownOpen;
+        int bgColor;
+        int borderColor;
+        if (dropdownActive) {
+            bgColor = adjustColorBrightness(0xFF1A1A1A, 1.2f);
+            borderColor = 0xFF87CEEB;
+        } else if (hovered) {
+            bgColor = adjustColorBrightness(0xFF1A1A1A, 1.1f);
+            borderColor = 0xFF87CEEB;
+        } else {
+            bgColor = 0xFF1A1A1A;
+            borderColor = 0xFF666666;
+        }
+
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
+        context.drawBorder(fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+
+        String display = getBlockStateDisplayText(hasOptions);
+        int textColor = hasOptions ? 0xFFFFFFFF : 0xFF777777;
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(display),
+            fieldX + 4,
+            fieldY + 6,
+            textColor
+        );
+
+        int arrowColor = hasOptions ? 0xFFE0E0E0 : 0xFF555555;
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal("▼"),
+            fieldX + fieldWidth - 14,
+            fieldY + 6,
+            arrowColor
+        );
+    }
+
+    private String getBlockStateDisplayText(boolean hasOptions) {
+        String currentValue = "";
+        if (blockStateParamIndex >= 0 && blockStateParamIndex < parameterValues.size()) {
+            currentValue = parameterValues.get(blockStateParamIndex);
+        }
+        for (BlockSelection.StateOption option : blockStateOptions) {
+            if (option.value().equalsIgnoreCase(currentValue)) {
+                return option.displayText();
+            }
+        }
+        if (!hasOptions) {
+            return "no states available";
+        }
+        return "select block state";
+    }
+
+    private void renderBlockStateDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!blockStateDropdownOpen || !blockStateEditorActive || blockStateParamIndex < 0 || blockStateOptions.isEmpty()) {
+            return;
+        }
+
+        int dropdownX = blockStateFieldX;
+        int dropdownY = blockStateFieldY + blockStateFieldHeight;
+        int dropdownWidth = blockStateFieldWidth;
+        int optionCount = blockStateOptions.size();
+        int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
+
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
+        context.drawBorder(dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+
+        blockStateDropdownHoverIndex = -1;
+        if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+            mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
+            int hoverIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+            if (hoverIndex >= 0 && hoverIndex < optionCount) {
+                blockStateDropdownHoverIndex = hoverIndex;
+            }
+        }
+
+        String currentValue = "";
+        if (blockStateParamIndex >= 0 && blockStateParamIndex < parameterValues.size()) {
+            currentValue = parameterValues.get(blockStateParamIndex);
+        }
+
+        for (int i = 0; i < optionCount; i++) {
+            int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
+            BlockSelection.StateOption option = blockStateOptions.get(i);
+            boolean isSelected = option.value().equalsIgnoreCase(currentValue);
+            boolean isHovered = i == blockStateDropdownHoverIndex;
+            int optionColor = isSelected ? adjustColorBrightness(0xFF1A1A1A, 0.9f) : 0xFF1A1A1A;
+            if (isHovered) {
+                optionColor = adjustColorBrightness(optionColor, 1.2f);
+            }
+            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT, optionColor);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(option.displayText()),
+                dropdownX + 4,
+                optionTop + 6,
+                0xFFFFFFFF
+            );
+        }
+    }
+
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!visible) return false;
 
@@ -564,6 +943,8 @@ public class NodeParameterOverlay {
                 functionDropdownHoverIndex = -1;
                 modeDropdownOpen = false;
                 modeDropdownHoverIndex = -1;
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
                 return true;
             }
         }
@@ -605,12 +986,31 @@ public class NodeParameterOverlay {
                 mouseY >= Math.max(modeButtonY, contentTop) && mouseY <= Math.min(modeButtonY + modeButtonHeight, contentBottom)) {
                 functionDropdownOpen = false;
                 functionDropdownHoverIndex = -1;
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
                 modeDropdownOpen = !modeDropdownOpen;
                 modeDropdownHoverIndex = -1;
                 return true;
             }
 
             labelY = modeButtonY + modeButtonHeight + SECTION_SPACING;
+        }
+
+        if (blockStateDropdownOpen && blockStateEditorActive && blockStateParamIndex >= 0 && !blockStateOptions.isEmpty()) {
+            int dropdownX = blockStateFieldX;
+            int dropdownY = blockStateFieldY + blockStateFieldHeight;
+            int dropdownWidth = blockStateFieldWidth;
+            int dropdownHeight = blockStateOptions.size() * DROPDOWN_OPTION_HEIGHT;
+            if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
+                int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+                if (optionIndex >= 0 && optionIndex < blockStateOptions.size()) {
+                    setParameterValue(blockStateParamIndex, blockStateOptions.get(optionIndex).value());
+                }
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
+                return true;
+            }
         }
 
         // Check button clicks after handling dropdown interactions so dropdown selections aren't swallowed by buttons beneath
@@ -624,7 +1024,11 @@ public class NodeParameterOverlay {
         }
 
         // Check field clicks
+        boolean shiftClick = Screen.hasShiftDown();
         for (int i = 0; i < node.getParameters().size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
             int fieldX = popupX + 20;
             int fieldY = labelY + LABEL_TO_FIELD_OFFSET; // Match the rendering position
             int fieldWidth = popupWidth - 40;
@@ -637,14 +1041,39 @@ public class NodeParameterOverlay {
                 functionDropdownFieldHeight = fieldHeight;
             }
 
+            if (usesKeySelectorForIndex(i)) {
+                int selectorHeight = getKeySelectorHeight();
+                if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
+                    mouseY >= Math.max(fieldY, contentTop) && mouseY <= Math.min(fieldY + selectorHeight, contentBottom)) {
+                    if (handleKeySelectorClick(mouseX, mouseY, fieldX, fieldY, fieldWidth, i)) {
+                        return true;
+                    }
+                    return true;
+                }
+                labelY = fieldY + selectorHeight + SECTION_SPACING;
+                continue;
+            }
+
             if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
                 mouseY >= Math.max(fieldY, contentTop) && mouseY <= Math.min(fieldY + fieldHeight, contentBottom)) {
+                if (blockStateEditorActive && i == blockStateParamIndex) {
+                    if (!blockStateOptions.isEmpty()) {
+                        blockStateDropdownOpen = !blockStateDropdownOpen;
+                        blockStateDropdownHoverIndex = -1;
+                        functionDropdownOpen = false;
+                        functionDropdownHoverIndex = -1;
+                        modeDropdownOpen = false;
+                        modeDropdownHoverIndex = -1;
+                    }
+                    return true;
+                }
                 if (isDropdownField) {
                     if (functionDropdownEnabled) {
                         toggleFunctionDropdown();
                     }
                 } else {
-                    focusedFieldIndex = i;
+                    focusField(i);
+                    setCaretFromClick(i, mouseX, fieldX, fieldWidth, shiftClick);
                 }
                 return true;
             }
@@ -686,6 +1115,21 @@ public class NodeParameterOverlay {
             if (!insideField && !insideDropdown) {
                 functionDropdownOpen = false;
                 functionDropdownHoverIndex = -1;
+            }
+        }
+
+        if (blockStateDropdownOpen) {
+            int dropdownX = blockStateFieldX;
+            int dropdownY = blockStateFieldY + blockStateFieldHeight;
+            int dropdownWidth = blockStateFieldWidth;
+            int dropdownHeight = blockStateOptions.size() * DROPDOWN_OPTION_HEIGHT;
+            boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
+                                  mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
+            boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                                     mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+            if (!insideField && !insideDropdown) {
+                blockStateDropdownOpen = false;
+                blockStateDropdownHoverIndex = -1;
             }
         }
         
@@ -732,49 +1176,42 @@ public class NodeParameterOverlay {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (!visible) return false;
 
-        // Handle text input for focused field
-        if (focusedFieldIndex >= 0 && focusedFieldIndex < parameterValues.size()) {
-            String currentText = parameterValues.get(focusedFieldIndex);
-            
-            // Handle backspace
-            if (keyCode == 259 && currentText.length() > 0) { // Backspace key
-                parameterValues.set(focusedFieldIndex, currentText.substring(0, currentText.length() - 1));
-                return true;
-            }
-            
-            // Handle tab to move to next field
-            if (keyCode == 258) { // Tab key
-                focusNextEditableField();
+        boolean handledFieldInput = false;
+        if (focusedFieldIndex >= 0
+            && focusedFieldIndex < parameterValues.size()
+            && !usesFunctionDropdownForIndex(focusedFieldIndex)) {
+            handledFieldInput = handleFocusedFieldKeyPressed(keyCode, modifiers);
+            if (handledFieldInput) {
                 return true;
             }
         }
+
+        if (keyCode == GLFW.GLFW_KEY_TAB) {
+            focusAdjacentEditableField((modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
+            return true;
+        }
         
-        // Close on Escape
-        if (keyCode == 256) { // Escape key
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             close();
             return true;
         }
         
-        // Save on Enter
-        if (keyCode == 257) { // Enter key
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
             saveParameters();
             return true;
         }
         
-        return false;
+        return handledFieldInput;
     }
 
     public boolean charTyped(char chr, int modifiers) {
         if (!visible) return false;
         
-        if (focusedFieldIndex >= 0 && focusedFieldIndex < parameterValues.size()) {
-            String currentText = parameterValues.get(focusedFieldIndex);
-            
-            // Only allow printable characters and limit length to fit in the field
-            int maxChars = (popupWidth - 44) / 6; // Calculate based on field width
-            if (chr >= 32 && chr <= 126 && currentText.length() < maxChars) {
-                parameterValues.set(focusedFieldIndex, currentText + chr);
-                return true;
+        if (focusedFieldIndex >= 0
+            && focusedFieldIndex < parameterValues.size()
+            && !usesFunctionDropdownForIndex(focusedFieldIndex)) {
+            if (chr >= 32 && chr != 127) {
+                return insertTextForField(focusedFieldIndex, String.valueOf(chr));
             }
         }
         
@@ -789,10 +1226,32 @@ public class NodeParameterOverlay {
         
         // Update node parameters with field values
         List<NodeParameter> parameters = node.getParameters();
+        List<String> emptyParameterNames = new ArrayList<>();
+        for (int i = 0; i < parameters.size() && i < parameterValues.size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
+            NodeParameter param = parameters.get(i);
+            if (param == null || param.getType() != ParameterType.STRING) {
+                continue;
+            }
+            String value = parameterValues.get(i);
+            boolean empty = value == null || value.trim().isEmpty();
+            if (empty && !isPlaceholderActive(i)) {
+                emptyParameterNames.add(param.getName());
+            }
+        }
+        if (!emptyParameterNames.isEmpty()) {
+            warnEmptyParameters(emptyParameterNames);
+        }
         for (int i = 0; i < parameters.size() && i < parameterValues.size(); i++) {
             NodeParameter param = parameters.get(i);
             String value = parameterValues.get(i);
-            param.setStringValue(value);
+            if (isPlaceholderActive(i)) {
+                param.setStringValue(value);
+            } else {
+                param.setStringValueFromUser(value);
+            }
         }
 
         if (node.isParameterNode() && node.getParentParameterHost() != null) {
@@ -813,12 +1272,27 @@ public class NodeParameterOverlay {
         close();
     }
 
+    private void warnEmptyParameters(List<String> parameterNames) {
+        if (parameterNames == null || parameterNames.isEmpty()) {
+            return;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return;
+        }
+        String joined = String.join(", ", parameterNames);
+        client.player.sendMessage(Text.literal("Pathmind: " + joined + " cannot be empty."), false);
+    }
+
     public void close() {
         visible = false;
         modeDropdownOpen = false;
         modeDropdownHoverIndex = -1;
         functionDropdownOpen = false;
         functionDropdownHoverIndex = -1;
+        blockStateDropdownOpen = false;
+        blockStateDropdownHoverIndex = -1;
+        focusedFieldIndex = -1;
         if (inventorySlotSelector != null) {
             inventorySlotSelector.closeDropdown();
         }
@@ -834,6 +1308,8 @@ public class NodeParameterOverlay {
         modeDropdownHoverIndex = -1;
         functionDropdownOpen = false;
         functionDropdownHoverIndex = -1;
+        blockStateDropdownOpen = false;
+        blockStateDropdownHoverIndex = -1;
         scrollOffset = 0;
         updateButtonPositions();
     }
@@ -844,11 +1320,69 @@ public class NodeParameterOverlay {
     
     private void resetParameterFields() {
         parameterValues.clear();
-        fieldFocused.clear();
-        
+        caretPositions.clear();
+        selectionStarts.clear();
+        selectionEnds.clear();
+        selectionAnchors.clear();
+        placeholderActive.clear();
+       
         for (NodeParameter param : node.getParameters()) {
-            parameterValues.add(param.getStringValue());
-            fieldFocused.add(false);
+            String value = param.getStringValue();
+            boolean usesPlaceholder = shouldUsePlaceholder(param, value);
+            parameterValues.add(value);
+            int caretPos = usesPlaceholder ? 0 : (value != null ? value.length() : 0);
+            caretPositions.add(caretPos);
+            selectionStarts.add(-1);
+            selectionEnds.add(-1);
+            selectionAnchors.add(-1);
+            placeholderActive.add(usesPlaceholder);
+        }
+        focusedFieldIndex = -1;
+        resetCaretBlink();
+        refreshBlockStateIndices();
+        updateBlockStateOptions(true);
+    }
+
+    private boolean shouldUsePlaceholder(NodeParameter parameter, String value) {
+        if (parameter == null || parameter.getType() != ParameterType.STRING) {
+            return false;
+        }
+        if (parameter.isUserEdited()) {
+            return false;
+        }
+        String placeholder = parameter.getDefaultValue();
+        if (placeholder == null || placeholder.isEmpty()) {
+            return false;
+        }
+        return Objects.equals(placeholder, value);
+    }
+
+    private void refreshBlockStateIndices() {
+        int tempBlockIndex = -1;
+        int tempBlockStateIndex = -1;
+        if (node.getType() == NodeType.PARAM_BLOCK) {
+            List<NodeParameter> params = node.getParameters();
+            for (int i = 0; i < params.size(); i++) {
+                NodeParameter param = params.get(i);
+                if (param == null) {
+                    continue;
+                }
+                String name = param.getName();
+                if ("Block".equalsIgnoreCase(name)) {
+                    tempBlockIndex = i;
+                } else if ("State".equalsIgnoreCase(name)) {
+                    tempBlockStateIndex = i;
+                }
+            }
+        }
+        blockParameterIndex = tempBlockIndex;
+        blockStateParamIndex = tempBlockStateIndex;
+        blockStateEditorActive = tempBlockStateIndex >= 0;
+        if (!blockStateEditorActive) {
+            blockStateDropdownOpen = false;
+            blockStateDropdownHoverIndex = -1;
+            blockStateOptions.clear();
+            cachedBlockIdForStateOptions = "";
         }
     }
     
@@ -861,7 +1395,11 @@ public class NodeParameterOverlay {
             longestLineLength = Math.max(longestLineLength, modeText.length());
         }
 
-        for (NodeParameter param : node.getParameters()) {
+        for (int i = 0; i < node.getParameters().size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
+            NodeParameter param = node.getParameters().get(i);
             String label = param.getName() + " (" + param.getType().getDisplayName() + "):";
             longestLineLength = Math.max(longestLineLength, label.length());
             String value = param.getStringValue();
@@ -870,7 +1408,11 @@ public class NodeParameterOverlay {
             }
         }
 
-        for (String value : parameterValues) {
+        for (int i = 0; i < parameterValues.size(); i++) {
+            if (!shouldDisplayParameter(i)) {
+                continue;
+            }
+            String value = parameterValues.get(i);
             if (value != null) {
                 longestLineLength = Math.max(longestLineLength, value.length());
             }
@@ -889,17 +1431,27 @@ public class NodeParameterOverlay {
         }
 
         int paramCount = node.getParameters().size();
+        int visibleProcessed = 0;
+        int visibleTotal = 0;
         for (int i = 0; i < paramCount; i++) {
-            if (inventorySlotEditorActive && i == inventoryModeParamIndex) {
+            if (shouldDisplayParameter(i)) {
+                visibleTotal++;
+            }
+        }
+        for (int i = 0; i < paramCount; i++) {
+            if (!shouldDisplayParameter(i)) {
                 continue;
             }
             if (inventorySlotEditorActive && i == inventorySlotParamIndex && inventorySlotSelector != null) {
                 int estimatedHeight = inventorySlotSelector.getEstimatedHeight(textLineHeight);
                 contentHeight += LABEL_TO_FIELD_OFFSET + estimatedHeight;
+            } else if (usesKeySelectorForIndex(i)) {
+                contentHeight += LABEL_TO_FIELD_OFFSET + getKeySelectorHeight();
             } else {
                 contentHeight += LABEL_TO_FIELD_OFFSET + FIELD_HEIGHT;
             }
-            if (i < paramCount - 1) {
+            visibleProcessed++;
+            if (visibleProcessed < visibleTotal) {
                 contentHeight += SECTION_SPACING;
             }
         }
@@ -981,16 +1533,24 @@ public class NodeParameterOverlay {
     }
 
     private void focusNextEditableField() {
-        int total = node.getParameters().size();
+        focusAdjacentEditableField(false);
+    }
+
+    private void focusAdjacentEditableField(boolean backwards) {
+        List<NodeParameter> params = node.getParameters();
+        int total = params.size();
         if (total == 0) {
             focusedFieldIndex = -1;
             return;
         }
-        int nextIndex = focusedFieldIndex;
+        int startIndex = focusedFieldIndex;
+        if (startIndex < 0 || startIndex >= total) {
+            startIndex = backwards ? total : -1;
+        }
         for (int attempts = 0; attempts < total; attempts++) {
-            nextIndex = (nextIndex + 1 + total) % total;
-            if (!usesFunctionDropdownForIndex(nextIndex)) {
-                focusedFieldIndex = nextIndex;
+            startIndex = (startIndex + (backwards ? -1 : 1) + total) % total;
+            if (!usesFunctionDropdownForIndex(startIndex) && !usesKeySelectorForIndex(startIndex)) {
+                focusField(startIndex);
                 return;
             }
         }
@@ -999,6 +1559,105 @@ public class NodeParameterOverlay {
 
     private boolean usesFunctionDropdownForIndex(int index) {
         return functionDropdownParamIndex >= 0 && index == functionDropdownParamIndex;
+    }
+
+    private boolean usesKeySelectorForIndex(int index) {
+        if (node.getType() != NodeType.PARAM_KEY) {
+            return false;
+        }
+        if (index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        return param != null && "Key".equalsIgnoreCase(param.getName());
+    }
+
+    private int renderKeySelector(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth,
+                                  int mouseX, int mouseY, int paramIndex) {
+        int totalHeight = getKeySelectorHeight();
+        int backgroundColor = 0xFF1A1A1A;
+        int borderColor = 0xFF666666;
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + totalHeight, backgroundColor);
+        context.drawBorder(fieldX, fieldY, fieldWidth, totalHeight, borderColor);
+
+        String currentValue = paramIndex >= 0 && paramIndex < parameterValues.size()
+            ? parameterValues.get(paramIndex)
+            : "";
+        int rowTop = fieldY + KEY_SELECTOR_PADDING;
+        int usableWidth = fieldWidth - 2 * KEY_SELECTOR_PADDING;
+        int keyHeight = KEY_SELECTOR_KEY_HEIGHT;
+
+        for (KeySpec[] row : KEY_SELECTOR_LAYOUT) {
+            int totalUnits = 0;
+            for (KeySpec key : row) {
+                totalUnits += key.units;
+            }
+            int gapCount = Math.max(0, row.length - 1);
+            int availableWidth = Math.max(0, usableWidth - gapCount * KEY_SELECTOR_KEY_GAP);
+            float unitWidth = totalUnits > 0 ? (float) availableWidth / (float) totalUnits : 0f;
+            int keyX = fieldX + KEY_SELECTOR_PADDING;
+            for (KeySpec key : row) {
+                int keyWidth = Math.max(8, Math.round(unitWidth * key.units));
+                boolean hovered = mouseX >= keyX && mouseX <= keyX + keyWidth &&
+                    mouseY >= rowTop && mouseY <= rowTop + keyHeight;
+                boolean selected = currentValue != null && currentValue.equalsIgnoreCase(key.value);
+
+                int keyBase = selected ? 0xFF2F5E8A : 0xFF2A2A2A;
+                if (hovered) {
+                    keyBase = adjustColorBrightness(keyBase, 1.2f);
+                }
+                int keyBorder = selected ? 0xFF87CEEB : 0xFF555555;
+                context.fill(keyX, rowTop, keyX + keyWidth, rowTop + keyHeight, keyBase);
+                context.drawBorder(keyX, rowTop, keyWidth, keyHeight, keyBorder);
+
+                String label = key.label;
+                int textWidth = textRenderer.getWidth(label);
+                int textX = keyX + Math.max(2, (keyWidth - textWidth) / 2);
+                int textY = rowTop + (keyHeight - textRenderer.fontHeight) / 2 + 1;
+                context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, 0xFFFFFFFF);
+
+                keyX += keyWidth + KEY_SELECTOR_KEY_GAP;
+            }
+            rowTop += keyHeight + KEY_SELECTOR_ROW_GAP;
+        }
+
+        return totalHeight;
+    }
+
+    private boolean handleKeySelectorClick(double mouseX, double mouseY, int fieldX, int fieldY, int fieldWidth, int paramIndex) {
+        int rowTop = fieldY + KEY_SELECTOR_PADDING;
+        int usableWidth = fieldWidth - 2 * KEY_SELECTOR_PADDING;
+        int keyHeight = KEY_SELECTOR_KEY_HEIGHT;
+        for (KeySpec[] row : KEY_SELECTOR_LAYOUT) {
+            int totalUnits = 0;
+            for (KeySpec key : row) {
+                totalUnits += key.units;
+            }
+            int gapCount = Math.max(0, row.length - 1);
+            int availableWidth = Math.max(0, usableWidth - gapCount * KEY_SELECTOR_KEY_GAP);
+            float unitWidth = totalUnits > 0 ? (float) availableWidth / (float) totalUnits : 0f;
+            int keyX = fieldX + KEY_SELECTOR_PADDING;
+            for (KeySpec key : row) {
+                int keyWidth = Math.max(8, Math.round(unitWidth * key.units));
+                if (mouseX >= keyX && mouseX <= keyX + keyWidth &&
+                    mouseY >= rowTop && mouseY <= rowTop + keyHeight) {
+                    setParameterValue(paramIndex, key.value);
+                    return true;
+                }
+                keyX += keyWidth + KEY_SELECTOR_KEY_GAP;
+            }
+            rowTop += keyHeight + KEY_SELECTOR_ROW_GAP;
+        }
+        return false;
+    }
+
+    private int getKeySelectorHeight() {
+        int rows = KEY_SELECTOR_LAYOUT.length;
+        return KEY_SELECTOR_PADDING * 2 + rows * KEY_SELECTOR_KEY_HEIGHT + (rows - 1) * KEY_SELECTOR_ROW_GAP;
+    }
+
+    private static KeySpec key(String label, String value, int units) {
+        return new KeySpec(label, value, units);
     }
 
     private void toggleFunctionDropdown() {
@@ -1018,6 +1677,383 @@ public class NodeParameterOverlay {
         focusedFieldIndex = -1;
     }
 
+    private void focusField(int index) {
+        if (index < 0 || index >= parameterValues.size() || usesFunctionDropdownForIndex(index)) {
+            focusedFieldIndex = -1;
+            return;
+        }
+        focusedFieldIndex = index;
+        ensureCaretEntry(index);
+        String value = getFieldValue(index);
+        caretPositions.set(index, MathHelper.clamp(caretPositions.get(index), 0, value.length()));
+        clearSelectionForField(index);
+        resetCaretBlink();
+    }
+
+    private void setCaretFromClick(int index, double mouseX, int fieldX, int fieldWidth, boolean extendSelection) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return;
+        }
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null) {
+            return;
+        }
+        int relativeX = (int)Math.round(mouseX) - (fieldX + 4);
+        int clampedX = MathHelper.clamp(relativeX, 0, fieldWidth - 8);
+        String value = getFieldValue(index);
+        int caretIndex = getCaretIndexForPixel(value, clampedX, textRenderer);
+        moveCaretForField(index, caretIndex, extendSelection);
+    }
+
+    private int getCaretIndexForPixel(String value, int targetX, TextRenderer textRenderer) {
+        if (value == null || value.isEmpty()) {
+            return 0;
+        }
+        int width = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            int charWidth = textRenderer.getWidth(String.valueOf(c));
+            if (width + charWidth / 2 >= targetX) {
+                return i;
+            }
+            width += charWidth;
+        }
+        return value.length();
+    }
+
+    private void moveCaretForField(int index, int position, boolean extendSelection) {
+        ensureCaretEntry(index);
+        String value = getFieldValue(index);
+        int clamped = MathHelper.clamp(position, 0, value.length());
+        if (extendSelection) {
+            if (selectionAnchors.get(index) == -1) {
+                selectionAnchors.set(index, caretPositions.get(index));
+            }
+            int anchor = selectionAnchors.get(index);
+            int start = Math.min(anchor, clamped);
+            int end = Math.max(anchor, clamped);
+            if (start == end) {
+                clearSelectionForField(index);
+            } else {
+                selectionStarts.set(index, start);
+                selectionEnds.set(index, end);
+            }
+        } else {
+            selectionAnchors.set(index, -1);
+            clearSelectionForField(index);
+        }
+        caretPositions.set(index, clamped);
+        resetCaretBlink();
+    }
+
+    private void ensureCaretEntry(int index) {
+        while (caretPositions.size() <= index) {
+            caretPositions.add(0);
+            selectionStarts.add(-1);
+            selectionEnds.add(-1);
+            selectionAnchors.add(-1);
+            placeholderActive.add(false);
+        }
+    }
+
+    private boolean isPlaceholderActive(int index) {
+        return index >= 0 && index < placeholderActive.size() && placeholderActive.get(index);
+    }
+
+    private String getPlaceholderText(int index) {
+        if (index < 0 || index >= node.getParameters().size()) {
+            return "";
+        }
+        NodeParameter param = node.getParameters().get(index);
+        return param != null ? param.getDefaultValue() : "";
+    }
+
+    private boolean clearPlaceholderIfActive(int index) {
+        if (!isPlaceholderActive(index)) {
+            return false;
+        }
+        ensureCaretEntry(index);
+        placeholderActive.set(index, false);
+        parameterValues.set(index, "");
+        selectionStarts.set(index, -1);
+        selectionEnds.set(index, -1);
+        selectionAnchors.set(index, -1);
+        caretPositions.set(index, 0);
+        resetCaretBlink();
+        return true;
+    }
+
+    private boolean hasSelectionForField(int index) {
+        if (index < 0 || index >= selectionStarts.size()) {
+            return false;
+        }
+        int start = selectionStarts.get(index);
+        int end = selectionEnds.get(index);
+        return start >= 0 && end >= 0 && start != end;
+    }
+
+    private void clearSelectionForField(int index) {
+        if (index < 0 || index >= selectionStarts.size()) {
+            return;
+        }
+        selectionStarts.set(index, -1);
+        selectionEnds.set(index, -1);
+        selectionAnchors.set(index, -1);
+    }
+
+    private boolean deleteSelectionForField(int index) {
+        if (clearPlaceholderIfActive(index)) {
+            return false;
+        }
+        if (!hasSelectionForField(index)) {
+            return false;
+        }
+        String value = getFieldValue(index);
+        int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
+        int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
+        if (start < 0 || end < 0 || start >= value.length() + 1) {
+            clearSelectionForField(index);
+            return false;
+        }
+        start = MathHelper.clamp(start, 0, value.length());
+        end = MathHelper.clamp(end, 0, value.length());
+        String updated = value.substring(0, start) + value.substring(end);
+        setParameterValue(index, updated);
+        caretPositions.set(index, start);
+        clearSelectionForField(index);
+        resetCaretBlink();
+        return true;
+    }
+
+    private void deleteCharBeforeCaret(int index) {
+        if (clearPlaceholderIfActive(index)) {
+            return;
+        }
+        String value = getFieldValue(index);
+        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        if (caret == 0) {
+            return;
+        }
+        String updated = value.substring(0, caret - 1) + value.substring(caret);
+        setParameterValue(index, updated);
+        caretPositions.set(index, caret - 1);
+        resetCaretBlink();
+    }
+
+    private void deleteCharAfterCaret(int index) {
+        if (clearPlaceholderIfActive(index)) {
+            return;
+        }
+        String value = getFieldValue(index);
+        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        if (caret >= value.length()) {
+            return;
+        }
+        String updated = value.substring(0, caret) + value.substring(caret + 1);
+        setParameterValue(index, updated);
+        caretPositions.set(index, caret);
+        resetCaretBlink();
+    }
+
+    private void selectAllForField(int index) {
+        String value = getFieldValue(index);
+        if (value.isEmpty()) {
+            clearSelectionForField(index);
+            caretPositions.set(index, 0);
+            return;
+        }
+        selectionStarts.set(index, 0);
+        selectionEnds.set(index, value.length());
+        selectionAnchors.set(index, 0);
+        caretPositions.set(index, value.length());
+        resetCaretBlink();
+    }
+
+    private void copySelectionForField(int index) {
+        if (!hasSelectionForField(index)) {
+            return;
+        }
+        String value = getFieldValue(index);
+        int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
+        int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
+        start = MathHelper.clamp(start, 0, value.length());
+        end = MathHelper.clamp(end, 0, value.length());
+        if (start >= end) {
+            return;
+        }
+        setClipboardText(value.substring(start, end));
+    }
+
+    private void cutSelectionForField(int index) {
+        if (!hasSelectionForField(index)) {
+            return;
+        }
+        copySelectionForField(index);
+        deleteSelectionForField(index);
+    }
+
+    private boolean insertTextForField(int index, String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null) {
+            return false;
+        }
+        ensureCaretEntry(index);
+        clearPlaceholderIfActive(index);
+        String value = getFieldValue(index);
+        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        if (hasSelectionForField(index)) {
+            int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
+            int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
+            start = MathHelper.clamp(start, 0, value.length());
+            end = MathHelper.clamp(end, 0, value.length());
+            value = value.substring(0, start) + value.substring(end);
+            caret = start;
+            caretPositions.set(index, caret);
+            clearSelectionForField(index);
+        }
+        boolean inserted = false;
+        int availableWidth = getMaxFieldTextWidth();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c < 32 || c == 127) {
+                continue;
+            }
+            String candidate = value.substring(0, caret) + c + value.substring(caret);
+            if (textRenderer.getWidth(candidate) > availableWidth) {
+                break;
+            }
+            value = candidate;
+            caret++;
+            inserted = true;
+        }
+        if (inserted) {
+            setParameterValue(index, value);
+            caretPositions.set(index, caret);
+            resetCaretBlink();
+        }
+        return inserted;
+    }
+
+    private String getFieldValue(int index) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return "";
+        }
+        if (isPlaceholderActive(index)) {
+            return "";
+        }
+        String value = parameterValues.get(index);
+        return value == null ? "" : value;
+    }
+
+    private void resetCaretBlink() {
+        caretVisible = true;
+        caretBlinkLastToggle = System.currentTimeMillis();
+    }
+
+    private void updateCaretBlinkState() {
+        long now = System.currentTimeMillis();
+        if (now - caretBlinkLastToggle >= 500L) {
+            caretVisible = !caretVisible;
+            caretBlinkLastToggle = now;
+        }
+    }
+
+    private TextRenderer getClientTextRenderer() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client != null ? client.textRenderer : null;
+    }
+
+    private String getClipboardText() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null && client.keyboard != null) {
+            return client.keyboard.getClipboard();
+        }
+        return "";
+    }
+
+    private void setClipboardText(String text) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null && client.keyboard != null) {
+            client.keyboard.setClipboard(text == null ? "" : text);
+        }
+    }
+
+    private int getMaxFieldTextWidth() {
+        return Math.max(10, popupWidth - 48);
+    }
+
+    private boolean handleFocusedFieldKeyPressed(int keyCode, int modifiers) {
+        if (focusedFieldIndex < 0 || focusedFieldIndex >= parameterValues.size()) {
+            return false;
+        }
+        int index = focusedFieldIndex;
+        ensureCaretEntry(index);
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = Screen.hasControlDown();
+
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (clearPlaceholderIfActive(index)) {
+                    return true;
+                }
+                if (!deleteSelectionForField(index)) {
+                    deleteCharBeforeCaret(index);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (clearPlaceholderIfActive(index)) {
+                    return true;
+                }
+                if (!deleteSelectionForField(index)) {
+                    deleteCharAfterCaret(index);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveCaretForField(index, caretPositions.get(index) - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveCaretForField(index, caretPositions.get(index) + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveCaretForField(index, 0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveCaretForField(index, getFieldValue(index).length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllForField(index);
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copySelectionForField(index);
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutSelectionForField(index);
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    String clipboardText = getClipboardText();
+                    if (clipboardText != null) {
+                        insertTextForField(index, clipboardText);
+                    }
+                    return true;
+                }
+                break;
+        }
+        return false;
+    }
+
     private boolean handleFunctionDropdownClick(double mouseX, double mouseY) {
         if (!functionDropdownOpen || functionDropdownParamIndex < 0 || !functionDropdownEnabled) {
             return false;
@@ -1032,9 +2068,9 @@ public class NodeParameterOverlay {
             mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
             if (!functionNameOptions.isEmpty()) {
                 int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-                if (optionIndex >= 0 && optionIndex < functionNameOptions.size()) {
-                    parameterValues.set(functionDropdownParamIndex, functionNameOptions.get(optionIndex));
-                }
+                    if (optionIndex >= 0 && optionIndex < functionNameOptions.size()) {
+                        setParameterValue(functionDropdownParamIndex, functionNameOptions.get(optionIndex));
+                    }
             }
             functionDropdownOpen = false;
             functionDropdownHoverIndex = -1;

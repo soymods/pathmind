@@ -55,6 +55,8 @@ public class NodeGraphData {
         private String attachedParameterId;
         private String parentParameterHostId;
         private List<ParameterAttachmentData> parameterAttachments;
+        private Boolean booleanToggleValue;
+        private Integer startNodeNumber;
 
         public NodeData() {
             this.parameters = new ArrayList<>();
@@ -116,6 +118,22 @@ public class NodeGraphData {
 
         public List<ParameterAttachmentData> getParameterAttachments() { return parameterAttachments; }
         public void setParameterAttachments(List<ParameterAttachmentData> parameterAttachments) { this.parameterAttachments = parameterAttachments; }
+
+        public Boolean getBooleanToggleValue() {
+            return booleanToggleValue;
+        }
+
+        public void setBooleanToggleValue(Boolean booleanToggleValue) {
+            this.booleanToggleValue = booleanToggleValue;
+        }
+
+        public Integer getStartNodeNumber() {
+            return startNodeNumber;
+        }
+
+        public void setStartNodeNumber(Integer startNodeNumber) {
+            this.startNodeNumber = startNodeNumber;
+        }
     }
     
     /**
@@ -157,6 +175,7 @@ public class NodeGraphData {
         private String name;
         private String value;
         private String type;
+        private Boolean userEdited;
         
         public ParameterData() {}
         
@@ -175,6 +194,9 @@ public class NodeGraphData {
         
         public String getType() { return type; }
         public void setType(String type) { this.type = type; }
+
+        public Boolean getUserEdited() { return userEdited; }
+        public void setUserEdited(Boolean userEdited) { this.userEdited = userEdited; }
     }
 
     public static class ParameterAttachmentData {

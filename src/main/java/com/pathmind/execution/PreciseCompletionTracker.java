@@ -231,6 +231,16 @@ public class PreciseCompletionTracker {
             // Task has started
             processStates.put(taskId, ProcessState.ACTIVE);
             System.out.println("PreciseCompletionTracker: " + taskId + " is now active");
+        } else if (currentState == ProcessState.STARTING
+                && !isActive
+                && !getToBlockActive
+                && !hasPath
+                && !isPathing
+                && hasTaskExceededStartTimeout(taskId)) {
+            failTaskGracefully(taskId,
+                    "Goto task never became active",
+                    "Baritone could not start the goto task (path unavailable), skipping ahead.");
+            return true;
         } else if (currentState == ProcessState.ACTIVE && !isActive && !getToBlockActive && !hasPath && !isPathing) {
             // Task has completed - no longer active and no pathing happening
             System.out.println("PreciseCompletionTracker: " + taskId + " completed - no longer active");

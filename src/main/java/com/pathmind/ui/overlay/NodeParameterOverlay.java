@@ -8,12 +8,18 @@ import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.control.InventorySlotSelector;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
+import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
@@ -46,6 +52,9 @@ public class NodeParameterOverlay {
     private static final int KEY_SELECTOR_ROW_GAP = 6;
     private static final int KEY_SELECTOR_KEY_GAP = 4;
     private static final int KEY_SELECTOR_PADDING = 6;
+    private static final int SUGGESTION_MAX_OPTIONS = 8;
+    private static final int SUGGESTION_ICON_SIZE = 16;
+    private static final int SUGGESTION_ICON_TEXT_GAP = 6;
 
     private static final KeySpec[][] KEY_SELECTOR_LAYOUT = new KeySpec[][]{
         new KeySpec[]{
@@ -191,6 +200,15 @@ public class NodeParameterOverlay {
     private final List<Integer> selectionAnchors = new ArrayList<>();
     private long caretBlinkLastToggle = 0L;
     private boolean caretVisible = true;
+    private boolean blockItemDropdownOpen = false;
+    private int blockItemDropdownHoverIndex = -1;
+    private int blockItemDropdownFieldIndex = -1;
+    private int blockItemDropdownFieldX = 0;
+    private int blockItemDropdownFieldY = 0;
+    private int blockItemDropdownFieldWidth = 0;
+    private int blockItemDropdownFieldHeight = 0;
+    private final List<RegistryOption> blockItemDropdownOptions = new ArrayList<>();
+    private int blockItemDropdownSuppressedField = -1;
 
     public NodeParameterOverlay(Node node, int screenWidth, int screenHeight, int topBarHeight, Runnable onClose,
                                 Consumer<Node> onSave,
@@ -337,6 +355,10 @@ public class NodeParameterOverlay {
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
         if (!visible) return;
         updateBlockStateOptions(false);
+        blockItemDropdownOpen = false;
+        blockItemDropdownHoverIndex = -1;
+        blockItemDropdownFieldIndex = -1;
+        blockItemDropdownOptions.clear();
 
         // Render semi-transparent background overlay
         context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), 0x80000000);
@@ -452,6 +474,7 @@ public class NodeParameterOverlay {
 
             boolean dropdownActive = isDropdownField && functionDropdownOpen;
             boolean isFocused = !isDropdownField && i == focusedFieldIndex;
+            boolean isBlockItemField = isBlockOrItemParameter(i);
             int bgColor;
             int borderColor;
             if (dropdownActive) {
@@ -535,13 +558,17 @@ public class NodeParameterOverlay {
                 }
 
                 if (!displayText.isEmpty()) {
-                    context.drawTextWithShadow(
-                        textRenderer,
-                        Text.literal(displayText),
-                        textX,
-                        textY,
-                        textColor
-                    );
+                    if (isFocused && isBlockItemField && !showingPlaceholder) {
+                        renderBlockItemSuggestionText(context, textRenderer, baseValue, i, textX, textY, fieldWidth - 8);
+                    } else {
+                        context.drawTextWithShadow(
+                            textRenderer,
+                            Text.literal(displayText),
+                            textX,
+                            textY,
+                            textColor
+                        );
+                    }
                 }
 
                 if (isFocused) {
@@ -551,6 +578,21 @@ public class NodeParameterOverlay {
                         int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
                         caretX = Math.min(caretX, fieldX + fieldWidth - 2);
                         context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4, 0xFFFFFFFF);
+                    }
+                }
+            }
+
+            if (isFocused && isBlockItemField && !isBlockItemDropdownSuppressed(i)) {
+                if (fieldY + fieldHeight >= contentTop && fieldY <= contentBottom) {
+                    List<RegistryOption> options = getBlockItemSuggestions(i, SUGGESTION_MAX_OPTIONS);
+                    if (!options.isEmpty()) {
+                        blockItemDropdownOpen = true;
+                        blockItemDropdownFieldIndex = i;
+                        blockItemDropdownFieldX = fieldX;
+                        blockItemDropdownFieldY = fieldY;
+                        blockItemDropdownFieldWidth = fieldWidth;
+                        blockItemDropdownFieldHeight = fieldHeight;
+                        blockItemDropdownOptions.addAll(options);
                     }
                 }
             }
@@ -611,6 +653,9 @@ public class NodeParameterOverlay {
         }
         if (blockStateDropdownOpen) {
             renderBlockStateDropdown(context, textRenderer, mouseX, mouseY);
+        }
+        if (blockItemDropdownOpen) {
+            renderBlockItemDropdown(context, textRenderer, mouseX, mouseY);
         }
 
         renderScrollbar(context, contentTop, contentBottom);
@@ -1013,6 +1058,21 @@ public class NodeParameterOverlay {
             }
         }
 
+        if (blockItemDropdownOpen && blockItemDropdownFieldIndex >= 0 && !blockItemDropdownOptions.isEmpty()) {
+            int dropdownX = blockItemDropdownFieldX;
+            int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
+            int dropdownWidth = blockItemDropdownFieldWidth;
+            int dropdownHeight = blockItemDropdownOptions.size() * DROPDOWN_OPTION_HEIGHT;
+            if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
+                int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+                if (optionIndex >= 0 && optionIndex < blockItemDropdownOptions.size()) {
+                    applySuggestionForField(blockItemDropdownFieldIndex, blockItemDropdownOptions.get(optionIndex), true);
+                }
+                return true;
+            }
+        }
+
         // Check button clicks after handling dropdown interactions so dropdown selections aren't swallowed by buttons beneath
         if (saveButton != null && saveButton.isMouseOver(mouseX, mouseY)) {
             saveButton.onPress();
@@ -1187,7 +1247,11 @@ public class NodeParameterOverlay {
         }
 
         if (keyCode == GLFW.GLFW_KEY_TAB) {
-            focusAdjacentEditableField((modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
+            boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+            if (!shiftHeld && tryAcceptBlockItemSuggestion()) {
+                return true;
+            }
+            focusAdjacentEditableField(shiftHeld);
             return true;
         }
         
@@ -1822,6 +1886,7 @@ public class NodeParameterOverlay {
         caretPositions.set(index, start);
         clearSelectionForField(index);
         resetCaretBlink();
+        clearBlockItemDropdownSuppression(index);
         return true;
     }
 
@@ -1838,6 +1903,7 @@ public class NodeParameterOverlay {
         setParameterValue(index, updated);
         caretPositions.set(index, caret - 1);
         resetCaretBlink();
+        clearBlockItemDropdownSuppression(index);
     }
 
     private void deleteCharAfterCaret(int index) {
@@ -1853,6 +1919,7 @@ public class NodeParameterOverlay {
         setParameterValue(index, updated);
         caretPositions.set(index, caret);
         resetCaretBlink();
+        clearBlockItemDropdownSuppression(index);
     }
 
     private void selectAllForField(int index) {
@@ -1933,6 +2000,7 @@ public class NodeParameterOverlay {
             setParameterValue(index, value);
             caretPositions.set(index, caret);
             resetCaretBlink();
+            clearBlockItemDropdownSuppression(index);
         }
         return inserted;
     }
@@ -2160,5 +2228,313 @@ public class NodeParameterOverlay {
             bottom = Math.max(top + 1, baseBottom);
         }
         return bottom;
+    }
+
+    private void renderBlockItemDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!blockItemDropdownOpen || blockItemDropdownFieldIndex < 0 || blockItemDropdownOptions.isEmpty()) {
+            return;
+        }
+        int dropdownX = blockItemDropdownFieldX;
+        int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
+        int dropdownWidth = blockItemDropdownFieldWidth;
+        int dropdownHeight = blockItemDropdownOptions.size() * DROPDOWN_OPTION_HEIGHT;
+
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
+        context.drawBorder(dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+
+        blockItemDropdownHoverIndex = -1;
+        if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+            mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
+            int hoverIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+            if (hoverIndex >= 0 && hoverIndex < blockItemDropdownOptions.size()) {
+                blockItemDropdownHoverIndex = hoverIndex;
+            }
+        }
+
+        for (int i = 0; i < blockItemDropdownOptions.size(); i++) {
+            int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
+            boolean isHovered = i == blockItemDropdownHoverIndex;
+            int optionColor = 0xFF1A1A1A;
+            if (isHovered) {
+                optionColor = adjustColorBrightness(optionColor, 1.2f);
+            }
+            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT, optionColor);
+
+            RegistryOption option = blockItemDropdownOptions.get(i);
+            ItemStack stack = option.stack();
+            int iconX = dropdownX + 4;
+            int iconY = optionTop + (DROPDOWN_OPTION_HEIGHT - SUGGESTION_ICON_SIZE) / 2;
+            if (!stack.isEmpty()) {
+                context.drawItem(stack, iconX, iconY);
+            }
+
+            int textX = iconX + SUGGESTION_ICON_SIZE + SUGGESTION_ICON_TEXT_GAP;
+            int availableTextWidth = dropdownWidth - (textX - dropdownX) - 6;
+            String display = trimDisplayString(textRenderer, option.value(), availableTextWidth);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(display),
+                textX,
+                optionTop + 6,
+                0xFFFFFFFF
+            );
+        }
+    }
+
+    private void renderBlockItemSuggestionText(DrawContext context, TextRenderer textRenderer, String baseValue, int index,
+                                               int textX, int textY, int availableWidth) {
+        String value = baseValue == null ? "" : baseValue;
+        String suggestion = getBlockItemAutocomplete(index);
+        if (suggestion == null || suggestion.isEmpty()) {
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(value),
+                textX,
+                textY,
+                0xFFFFFFFF
+            );
+            return;
+        }
+
+        String lowerValue = value.toLowerCase();
+        String lowerSuggestion = suggestion.toLowerCase();
+        if (value.isEmpty() || !lowerSuggestion.startsWith(lowerValue)) {
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(value),
+                textX,
+                textY,
+                0xFFFFFFFF
+            );
+            return;
+        }
+
+        int valueWidth = textRenderer.getWidth(value);
+        if (valueWidth >= availableWidth) {
+            String trimmed = trimDisplayString(textRenderer, value, availableWidth);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(trimmed),
+                textX,
+                textY,
+                0xFFFFFFFF
+            );
+            return;
+        }
+
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(value),
+            textX,
+            textY,
+            0xFFFFFFFF
+        );
+
+        String remainder = suggestion.substring(value.length());
+        if (!remainder.isEmpty()) {
+            int remainingWidth = Math.max(0, availableWidth - valueWidth);
+            String trimmedRemainder = textRenderer.trimToWidth(remainder, remainingWidth);
+            if (!trimmedRemainder.isEmpty()) {
+                context.drawTextWithShadow(
+                    textRenderer,
+                    Text.literal(trimmedRemainder),
+                    textX + valueWidth,
+                    textY,
+                    0xFF777777
+                );
+            }
+        }
+    }
+
+    private boolean tryAcceptBlockItemSuggestion() {
+        if (focusedFieldIndex < 0 || !isBlockOrItemParameter(focusedFieldIndex)) {
+            return false;
+        }
+        String suggestion = getBlockItemAutocomplete(focusedFieldIndex);
+        if (suggestion == null || suggestion.isEmpty()) {
+            return false;
+        }
+        applySuggestionForField(focusedFieldIndex, suggestion, false);
+        return true;
+    }
+
+    private void applySuggestionForField(int index, RegistryOption option, boolean suppressDropdown) {
+        if (option == null) {
+            return;
+        }
+        applySuggestionForField(index, option.value(), suppressDropdown);
+    }
+
+    private void applySuggestionForField(int index, String value, boolean suppressDropdown) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return;
+        }
+        setParameterValue(index, value);
+        focusField(index);
+        if (suppressDropdown) {
+            blockItemDropdownSuppressedField = index;
+        }
+    }
+
+    private boolean isBlockOrItemParameter(int index) {
+        return isBlockParameter(index) || isItemParameter(index);
+    }
+
+    private boolean isBlockItemDropdownSuppressed(int index) {
+        return blockItemDropdownSuppressedField == index;
+    }
+
+    private void clearBlockItemDropdownSuppression(int index) {
+        if (isBlockOrItemParameter(index)) {
+            blockItemDropdownSuppressedField = -1;
+        }
+    }
+
+    private boolean isBlockParameter(int index) {
+        if (index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        if (param.getType() == ParameterType.BLOCK_TYPE) {
+            return true;
+        }
+        String name = param.getName();
+        return "Block".equalsIgnoreCase(name) || "Blocks".equalsIgnoreCase(name);
+    }
+
+    private boolean isItemParameter(int index) {
+        if (index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "Item".equalsIgnoreCase(param.getName());
+    }
+
+    private String getBlockItemAutocomplete(int index) {
+        String current = getFieldValue(index).trim();
+        if (current.isEmpty()) {
+            return "";
+        }
+        List<RegistryOption> options = getBlockItemSuggestions(index, SUGGESTION_MAX_OPTIONS);
+        String lowerCurrent = current.toLowerCase();
+        for (RegistryOption option : options) {
+            String value = option.value();
+            if (value.toLowerCase().startsWith(lowerCurrent)) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private List<RegistryOption> getBlockItemSuggestions(int index, int maxOptions) {
+        if (index < 0 || index >= parameterValues.size()) {
+            return List.of();
+        }
+        List<RegistryOption> source = isBlockParameter(index) ? getBlockOptions() : getItemOptions();
+        if (source.isEmpty()) {
+            return List.of();
+        }
+        String query = getFieldValue(index).trim().toLowerCase();
+        if (query.isEmpty()) {
+            int limit = Math.min(maxOptions, source.size());
+            return new ArrayList<>(source.subList(0, limit));
+        }
+
+        List<MatchOption> matches = new ArrayList<>();
+        for (RegistryOption option : source) {
+            int score = Math.max(scoreMatch(query, option.value().toLowerCase()), scoreMatch(query, option.fullId().toLowerCase()));
+            if (score >= 0) {
+                matches.add(new MatchOption(option, score));
+            }
+        }
+        matches.sort((a, b) -> {
+            int scoreCompare = Integer.compare(b.score(), a.score());
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+            return a.option().value().compareToIgnoreCase(b.option().value());
+        });
+
+        int limit = Math.min(maxOptions, matches.size());
+        List<RegistryOption> results = new ArrayList<>(limit);
+        for (int i = 0; i < limit; i++) {
+            results.add(matches.get(i).option());
+        }
+        return results;
+    }
+
+    private static int scoreMatch(String query, String candidate) {
+        if (query.isEmpty()) {
+            return 0;
+        }
+        if (candidate.equals(query)) {
+            return 10000;
+        }
+        if (candidate.startsWith(query)) {
+            return 9000 - Math.max(0, candidate.length() - query.length());
+        }
+        int index = candidate.indexOf(query);
+        if (index >= 0) {
+            return 7000 - index;
+        }
+        return -1;
+    }
+
+    private static boolean isMinecraftNamespace(Identifier id) {
+        return id != null && "minecraft".equals(id.getNamespace());
+    }
+
+    private static List<RegistryOption> getBlockOptions() {
+        return RegistryOptionCache.BLOCK_OPTIONS;
+    }
+
+    private static List<RegistryOption> getItemOptions() {
+        return RegistryOptionCache.ITEM_OPTIONS;
+    }
+
+    private record RegistryOption(String value, String fullId, ItemStack stack) {
+    }
+
+    private record MatchOption(RegistryOption option, int score) {
+    }
+
+    private static final class RegistryOptionCache {
+        private static final List<RegistryOption> BLOCK_OPTIONS = buildBlockOptions();
+        private static final List<RegistryOption> ITEM_OPTIONS = buildItemOptions();
+
+        private static List<RegistryOption> buildBlockOptions() {
+            List<RegistryOption> options = new ArrayList<>();
+            for (Identifier id : Registries.BLOCK.getIds()) {
+                String fullId = id.toString();
+                String value = isMinecraftNamespace(id) ? id.getPath() : fullId;
+                Block block = Registries.BLOCK.get(id);
+                Item item = block != null ? block.asItem() : Items.AIR;
+                ItemStack stack = item != null && item != Items.AIR ? new ItemStack(item) : ItemStack.EMPTY;
+                options.add(new RegistryOption(value, fullId, stack));
+            }
+            options.sort((a, b) -> a.value().compareToIgnoreCase(b.value()));
+            return options;
+        }
+
+        private static List<RegistryOption> buildItemOptions() {
+            List<RegistryOption> options = new ArrayList<>();
+            for (Identifier id : Registries.ITEM.getIds()) {
+                Item item = Registries.ITEM.get(id);
+                if (item == null || item == Items.AIR) {
+                    continue;
+                }
+                String fullId = id.toString();
+                String value = isMinecraftNamespace(id) ? id.getPath() : fullId;
+                options.add(new RegistryOption(value, fullId, new ItemStack(item)));
+            }
+            options.sort((a, b) -> a.value().compareToIgnoreCase(b.value()));
+            return options;
+        }
     }
 }

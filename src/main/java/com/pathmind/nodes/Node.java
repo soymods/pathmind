@@ -463,6 +463,7 @@ public class Node {
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
             case OPERATOR_EQUALS:
+            case OPERATOR_NOT:
                 return true;
             default:
                 return false;
@@ -547,7 +548,7 @@ public class Node {
         if (type == NodeType.SET_VARIABLE) {
             return slotIndex == 0 || slotIndex == 1;
         }
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             return slotIndex == 0 || slotIndex == 1;
         }
         if (type == NodeType.PLACE) {
@@ -574,7 +575,10 @@ public class Node {
         if (parameter == null) {
             return false;
         }
-        if (parameter.getType() == NodeType.VARIABLE && type != NodeType.SET_VARIABLE && type != NodeType.OPERATOR_EQUALS) {
+        if (parameter.getType() == NodeType.VARIABLE
+            && type != NodeType.SET_VARIABLE
+            && type != NodeType.OPERATOR_EQUALS
+            && type != NodeType.OPERATOR_NOT) {
             return true;
         }
         if (type == NodeType.SET_VARIABLE) {
@@ -584,7 +588,7 @@ public class Node {
             }
             return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
         }
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             NodeType parameterType = parameter.getType();
             if (slotIndex == 0) {
                 return parameterType == NodeType.VARIABLE;
@@ -613,7 +617,10 @@ public class Node {
         if (parameter == null) {
             return false;
         }
-        if (parameter.getType() == NodeType.VARIABLE && type != NodeType.SET_VARIABLE && type != NodeType.OPERATOR_EQUALS) {
+        if (parameter.getType() == NodeType.VARIABLE
+            && type != NodeType.SET_VARIABLE
+            && type != NodeType.OPERATOR_EQUALS
+            && type != NodeType.OPERATOR_NOT) {
             return true;
         }
         if (type == NodeType.SET_VARIABLE) {
@@ -623,7 +630,7 @@ public class Node {
             }
             return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
         }
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             NodeType parameterType = parameter.getType();
             if (slotIndex == 0) {
                 return parameterType == NodeType.VARIABLE;
@@ -911,7 +918,7 @@ public class Node {
         if (type == NodeType.SET_VARIABLE) {
             return 2;
         }
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             return 2;
         }
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
@@ -928,7 +935,7 @@ public class Node {
     }
 
     public int getParameterSlotLeft(int slotIndex) {
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             int slotWidth = getParameterSlotWidth(slotIndex);
             int baseLeft = x + PARAMETER_SLOT_MARGIN_HORIZONTAL;
             if (slotIndex <= 0) {
@@ -941,7 +948,7 @@ public class Node {
 
     public int getParameterSlotTop(int slotIndex) {
         int top = y + HEADER_HEIGHT + PARAMETER_SLOT_LABEL_HEIGHT;
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             return top;
         }
         for (int i = 0; i < slotIndex; i++) {
@@ -956,7 +963,7 @@ public class Node {
     }
 
     public String getParameterSlotLabel(int slotIndex) {
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             return "";
         }
         if (type == NodeType.SET_VARIABLE) {
@@ -977,7 +984,7 @@ public class Node {
     }
 
     public int getParameterSlotWidth(int slotIndex) {
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             int widthWithMargins = this.width - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
             int minCombinedWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH * 2 + OPERATOR_SLOT_GAP;
             int effectiveWidth = Math.max(minCombinedWidth, widthWithMargins);
@@ -1003,7 +1010,7 @@ public class Node {
         if (slotCount <= 0) {
             return y + HEADER_HEIGHT;
         }
-        if (type == NodeType.OPERATOR_EQUALS) {
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             int leftHeight = getParameterSlotHeight(0);
             int rightHeight = getParameterSlotHeight(1);
             int maxHeight = Math.max(leftHeight, rightHeight);
@@ -1591,8 +1598,6 @@ public class Node {
                 return EnumSet.of(ParameterUsage.POSITION);
             case LOOK:
                 return EnumSet.of(ParameterUsage.LOOK_ORIENTATION, ParameterUsage.POSITION);
-            case ATTACK:
-                return EnumSet.of(ParameterUsage.LOOK_ORIENTATION, ParameterUsage.POSITION);
             case PLACE:
                 if (slotIndex == 0 || slotIndex == 1) {
                     return EnumSet.of(ParameterUsage.POSITION);
@@ -1884,16 +1889,6 @@ public class Node {
                 parameters.add(new NodeParameter("SneakWhilePlacing", ParameterType.BOOLEAN, "false"));
                 parameters.add(new NodeParameter("SwingOnPlace", ParameterType.BOOLEAN, "true"));
                 parameters.add(new NodeParameter("RequireBlockHit", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
-                break;
-            case ATTACK:
-                parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
-                parameters.add(new NodeParameter("SwingOnly", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("AttackEntities", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("AttackBlocks", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("RepeatCount", ParameterType.INTEGER, "1"));
-                parameters.add(new NodeParameter("AttackIntervalSeconds", ParameterType.DOUBLE, "0.0"));
-                parameters.add(new NodeParameter("SneakWhileAttacking", ParameterType.BOOLEAN, "false"));
                 parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
                 break;
             case LOOK:
@@ -2414,7 +2409,7 @@ public class Node {
                     }
                 }
             }
-            if (type == NodeType.OPERATOR_EQUALS) {
+            if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
                 int slotWidth = parameterContentWidth + 2 * PARAMETER_SLOT_INNER_PADDING;
                 int requiredWidth = (slotWidth * 2) + OPERATOR_SLOT_GAP + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
                 computedWidth = Math.max(computedWidth, requiredWidth);
@@ -2474,7 +2469,7 @@ public class Node {
                 contentHeight += BODY_PADDING_NO_PARAMS;
             }
         } else if (hasParameterSlot()) {
-            if (type == NodeType.OPERATOR_EQUALS) {
+            if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
                 int leftHeight = getParameterSlotHeight(0);
                 int rightHeight = getParameterSlotHeight(1);
                 int maxHeight = Math.max(leftHeight, rightHeight);
@@ -3587,9 +3582,6 @@ public class Node {
             case INTERACT:
                 executeInteractCommand(future);
                 break;
-            case ATTACK:
-                executeAttackCommand(future);
-                break;
             case SWING:
                 executeSwingCommand(future);
                 break;
@@ -3700,6 +3692,7 @@ public class Node {
             return;
         }
 
+        resetBaritonePathing(baritone);
         ICustomGoalProcess customGoalProcess = baritone.getCustomGoalProcess();
 
         if (tryExecuteGotoUsingAttachedParameter(baritone, customGoalProcess, future)) {
@@ -4145,7 +4138,7 @@ public class Node {
                     return;
                 }
                 System.out.println("Executing mine by name for " + amount + "x " + targets);
-                resetBaritonePathingBeforeMine(baritone, mineProcess);
+                resetBaritonePathing(baritone, mineProcess);
                 PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
                 // Dispatch Baritone calls off the render thread so the client never blocks
                 CompletableFuture.runAsync(() -> {
@@ -4161,7 +4154,7 @@ public class Node {
             }
             case COLLECT_MULTIPLE: {
                 System.out.println("Executing mine by name for blocks: " + targets);
-                resetBaritonePathingBeforeMine(baritone, mineProcess);
+                resetBaritonePathing(baritone, mineProcess);
                 PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
                 // Dispatch Baritone calls off the render thread so the client never blocks
                 CompletableFuture.runAsync(() -> {
@@ -4181,7 +4174,7 @@ public class Node {
         }
     }
 
-    private void resetBaritonePathingBeforeMine(IBaritone baritone, IMineProcess mineProcess) {
+    private void resetBaritonePathing(IBaritone baritone, IMineProcess mineProcess) {
         if (baritone == null) {
             return;
         }
@@ -4223,6 +4216,13 @@ public class Node {
         } catch (Exception e) {
             System.err.println("Node: Failed to reset Baritone pathing before mining: " + e.getMessage());
         }
+    }
+
+    private void resetBaritonePathing(IBaritone baritone) {
+        if (baritone == null) {
+            return;
+        }
+        resetBaritonePathing(baritone, baritone.getMineProcess());
     }
 
     private boolean hasRequiredBlockAlready(String blockId, int required) {
@@ -5437,6 +5437,23 @@ public class Node {
             return result;
         }
         int gridLimit = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 9 : 4;
+
+        List<Ingredient> displayIngredients = RecipeCompatibilityBridge.extractDisplayIngredients(ingredients, registryManager);
+        if (!displayIngredients.isEmpty()) {
+            int limit = Math.min(displayIngredients.size(), gridLimit);
+            for (int i = 0; i < limit; i++) {
+                Ingredient ingredient = displayIngredients.get(i);
+                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                    continue;
+                }
+                result.add(new GridIngredient(1 + i, ingredient, false));
+            }
+            if (result.isEmpty()) {
+                logEmptyPlacementIngredients(displayIngredients, registryManager);
+            }
+            return result;
+        }
+
         int limit = Math.min(ingredients.size(), gridLimit);
         boolean loggedUnknown = false;
         boolean loggedSummary = false;
@@ -6244,6 +6261,7 @@ public class Node {
             return;
         }
         
+        resetBaritonePathing(baritone);
         IExploreProcess exploreProcess = baritone.getExploreProcess();
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_EXPLORE, future);
         
@@ -6544,6 +6562,7 @@ public class Node {
 
         IBaritone baritone = getBaritone();
         if (baritone != null) {
+            resetBaritonePathing(baritone);
             // Start precise tracking of this task
             PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_PATH, future);
 
@@ -8317,107 +8336,6 @@ public class Node {
         future.complete(null);
     }
     
-    private void executeAttackCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.LOOK_ORIENTATION, ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.interactionManager == null) {
-            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
-            return;
-        }
-
-        Hand hand = resolveHand(getParameter("Hand"), Hand.MAIN_HAND);
-        boolean swingOnly = getBooleanParameter("SwingOnly", false);
-        final boolean attackEntities = getBooleanParameter("AttackEntities", true);
-        final boolean attackBlocks = getBooleanParameter("AttackBlocks", true);
-        int repeatCount = Math.max(1, getIntParameter("RepeatCount", 1));
-        double intervalSeconds = Math.max(0.0, getDoubleParameter("AttackIntervalSeconds", 0.0));
-        boolean sneakWhileAttacking = getBooleanParameter("SneakWhileAttacking", false);
-        boolean restoreSneak = getBooleanParameter("RestoreSneakState", true);
-
-        RuntimeParameterData parameterData = runtimeParameterData;
-
-        orientPlayerTowardsRuntimeTarget(client, parameterData);
-
-        if (!attackEntities && !attackBlocks) {
-            swingOnly = true;
-        }
-
-        boolean previousSneak = client.player.isSneaking();
-        final boolean finalSwingOnly = swingOnly;
-        final boolean finalAttackEntities = attackEntities;
-        final boolean finalAttackBlocks = attackBlocks;
-
-        new Thread(() -> {
-            try {
-                if (sneakWhileAttacking) {
-                    runOnClientThread(client, () -> {
-                        client.player.setSneaking(true);
-                        if (client.options != null && client.options.sneakKey != null) {
-                            client.options.sneakKey.setPressed(true);
-                        }
-                    });
-                }
-
-                for (int i = 0; i < repeatCount; i++) {
-                    runOnClientThread(client, () -> {
-                        if (parameterData != null) {
-                            if (parameterData.targetEntity != null && !parameterData.targetEntity.isAlive()) {
-                                parameterData.targetEntity = null;
-                            }
-                            orientPlayerTowardsRuntimeTarget(client, parameterData);
-                        }
-
-                        boolean performedAttack = false;
-                        HitResult target = client.crosshairTarget;
-                        if (!finalSwingOnly && finalAttackEntities) {
-                            Entity directEntity = null;
-                            if (parameterData != null && parameterData.targetEntity != null && parameterData.targetEntity.isAlive()) {
-                                directEntity = parameterData.targetEntity;
-                            } else if (target instanceof EntityHitResult entityHit) {
-                                directEntity = entityHit.getEntity();
-                            }
-
-                            if (directEntity != null) {
-                                client.interactionManager.attackEntity(client.player, directEntity);
-                                performedAttack = true;
-                            }
-                        }
-
-                        if (!finalSwingOnly && !performedAttack && target instanceof BlockHitResult blockHit && finalAttackBlocks) {
-                            client.interactionManager.attackBlock(blockHit.getBlockPos(), blockHit.getSide());
-                            performedAttack = true;
-                        }
-
-                        client.player.swingHand(hand);
-                        if (client.player.networkHandler != null) {
-                            client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
-                        }
-                    });
-
-                    if (intervalSeconds > 0.0 && i < repeatCount - 1) {
-                        Thread.sleep((long) (intervalSeconds * 1000));
-                    }
-                }
-
-                if (sneakWhileAttacking && restoreSneak) {
-                    runOnClientThread(client, () -> {
-                        client.player.setSneaking(previousSneak);
-                        if (client.options != null && client.options.sneakKey != null) {
-                            client.options.sneakKey.setPressed(previousSneak);
-                        }
-                    });
-                }
-
-                future.complete(null);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                future.completeExceptionally(e);
-            }
-        }, "Pathmind-Attack").start();
-    }
-
     private void executeSwingCommand(CompletableFuture<Void> future) {
         if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
             return;
@@ -8832,6 +8750,9 @@ public class Node {
             case OPERATOR_EQUALS:
                 result = evaluateOperatorEquals();
                 break;
+            case OPERATOR_NOT:
+                result = evaluateOperatorNot();
+                break;
             case SENSOR_TOUCHING_BLOCK: {
                 String blockId = getStringParameter("Block", "stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
@@ -9103,6 +9024,36 @@ public class Node {
             return false;
         }
         return storedValues.equals(currentValues);
+    }
+
+    private boolean evaluateOperatorNot() {
+        Node variableNode = getAttachedParameter(0);
+        Node valueNode = getAttachedParameter(1);
+        if (variableNode == null || valueNode == null) {
+            return false;
+        }
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            return false;
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        ExecutionManager.RuntimeVariable variable = manager.getRuntimeVariable(startNode, variableName.trim());
+        if (variable == null) {
+            return false;
+        }
+        if (variable.getType() != valueNode.getType()) {
+            return false;
+        }
+        Map<String, String> currentValues = valueNode.exportParameterValues();
+        Map<String, String> storedValues = variable.getValues();
+        if (currentValues == null || storedValues == null) {
+            return false;
+        }
+        return !storedValues.equals(currentValues);
     }
 
     private boolean adjustBooleanToggleResult(boolean rawResult) {

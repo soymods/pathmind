@@ -7,8 +7,11 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.registry.entry.RegistryEntryList;
+import net.minecraft.registry.tag.TagKey;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -95,6 +98,20 @@ public final class RecipeCompatibilityBridge {
         } catch (IllegalAccessException | InvocationTargetException ignored) {
         }
         return Collections.emptyList();
+    }
+
+    public static List<Ingredient> extractDisplayIngredients(List<?> entries, Object registryManager) {
+        if (entries == null || entries.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Ingredient> ingredients = new ArrayList<>();
+        for (Object entry : entries) {
+            List<Ingredient> extracted = extractDisplayIngredients(entry, registryManager);
+            if (extracted != null && !extracted.isEmpty()) {
+                ingredients.addAll(extracted);
+            }
+        }
+        return ingredients;
     }
 
     public static boolean isIngredientEmpty(Ingredient ingredient) {
@@ -652,5 +669,158 @@ public final class RecipeCompatibilityBridge {
                 stacks.add(new ItemStack(item));
             }
         }
+    }
+
+    private static List<Ingredient> extractDisplayIngredients(Object entry, Object registryManager) {
+        if (entry == null) {
+            return Collections.emptyList();
+        }
+        if (isShapelessDisplay(entry)) {
+            List<?> slots = extractDisplayEntries(entry, "comp_3271", "ingredients");
+            if (slots == null || slots.isEmpty()) {
+                return Collections.emptyList();
+            }
+            List<Ingredient> ingredients = new ArrayList<>();
+            for (Object slot : slots) {
+                Ingredient ingredient = ingredientFromSlotDisplay(slot, registryManager);
+                if (ingredient != null && !isIngredientEmpty(ingredient, registryManager)) {
+                    ingredients.add(ingredient);
+                }
+            }
+            return ingredients;
+        }
+
+        Ingredient slotIngredient = ingredientFromSlotDisplay(entry, registryManager);
+        if (slotIngredient != null) {
+            return List.of(slotIngredient);
+        }
+        return Collections.emptyList();
+    }
+
+    private static boolean isShapelessDisplay(Object entry) {
+        String name = entry.getClass().getName();
+        if (name.contains("ShapelessCraftingRecipeDisplay") || name.endsWith("class_10301")) {
+            return true;
+        }
+        return hasAccessor(entry.getClass(), "comp_3271") || hasAccessor(entry.getClass(), "ingredients");
+    }
+
+    private static Ingredient ingredientFromSlotDisplay(Object slotDisplay, Object registryManager) {
+        if (slotDisplay == null) {
+            return null;
+        }
+
+        Ingredient direct = tryCreateIngredientFromEntry(slotDisplay);
+        if (direct != null && !isIngredientEmpty(direct, registryManager)) {
+            return direct;
+        }
+
+        Object itemEntry = accessValue(slotDisplay, "comp_3273", "item");
+        if (itemEntry instanceof RegistryEntry<?> registryEntry && registryEntry.value() instanceof Item item) {
+            return Ingredient.ofItems(item);
+        }
+
+        Ingredient tagIngredient = ingredientFromTag(accessValue(slotDisplay, "comp_3275", "tag"), registryManager);
+        if (tagIngredient != null) {
+            return tagIngredient;
+        }
+
+        return null;
+    }
+
+    private static Ingredient ingredientFromTag(Object tagCandidate, Object registryManager) {
+        if (!(tagCandidate instanceof TagKey<?> tagKey)) {
+            return null;
+        }
+        if (!tagKey.isOf(RegistryKeys.ITEM)) {
+            return null;
+        }
+
+        @SuppressWarnings("unchecked")
+        TagKey<Item> itemTag = (TagKey<Item>) tagKey;
+
+        RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
+        if (lookup != null) {
+            try {
+                RegistryWrapper.Impl<Item> itemWrapper = lookup.getOrThrow(RegistryKeys.ITEM);
+                Optional<? extends RegistryEntryList<Item>> optional = itemWrapper.getOptional(itemTag);
+                if (optional.isPresent()) {
+                    Ingredient ingredient = Ingredient.ofTag(optional.get());
+                    if (!isIngredientEmpty(ingredient, registryManager)) {
+                        return ingredient;
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // Give up if the wrapper cannot resolve the tag.
+            }
+        }
+
+        return null;
+    }
+
+    private static List<?> extractDisplayEntries(Object display, String... names) {
+        for (String name : names) {
+            try {
+                Method method = display.getClass().getMethod(name);
+                method.setAccessible(true);
+                Object result = method.invoke(display);
+                if (result instanceof List<?> list) {
+                    return list;
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try next accessor.
+            }
+            try {
+                java.lang.reflect.Field field = display.getClass().getDeclaredField(name);
+                field.setAccessible(true);
+                Object value = field.get(display);
+                if (value instanceof List<?> list) {
+                    return list;
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try the next candidate name.
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasAccessor(Class<?> type, String name) {
+        try {
+            type.getMethod(name);
+            return true;
+        } catch (NoSuchMethodException ignored) {
+        }
+        try {
+            type.getDeclaredField(name);
+            return true;
+        } catch (NoSuchFieldException ignored) {
+            return false;
+        }
+    }
+
+    private static Object accessValue(Object target, String... names) {
+        for (String name : names) {
+            try {
+                java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
+                field.setAccessible(true);
+                Object value = field.get(target);
+                if (value != null) {
+                    return value;
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try methods below.
+            }
+            try {
+                Method method = target.getClass().getMethod(name);
+                method.setAccessible(true);
+                Object value = method.invoke(target);
+                if (value != null) {
+                    return value;
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try next name.
+            }
+        }
+        return null;
     }
 }

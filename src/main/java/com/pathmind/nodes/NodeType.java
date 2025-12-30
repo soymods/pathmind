@@ -16,6 +16,7 @@ public enum NodeType {
 
     // Operator nodes
     OPERATOR_EQUALS("Equals", 0xFF00C853, "Checks if a variable equals a parameter value"),
+    OPERATOR_NOT("Not", 0xFF00C853, "Checks if a variable does not equal a parameter value"),
     
     // Navigation Commands
     GOTO("Goto", 0xFF00BCD4, "Moves to specified coordinates"),
@@ -52,7 +53,6 @@ public enum NodeType {
     STOP("Stop", 0xFFF44336, "Stops the current pathfinding task"),
     
     // Player combat commands
-    ATTACK("Attack", 0xFFE53935, "Attacks the targeted block or entity"),
     SWING("Swing", 0xFFFF7043, "Performs a hand swing without interaction"),
     
     // Player interaction commands
@@ -178,6 +178,7 @@ public enum NodeType {
             case SET_VARIABLE:
                 return NodeCategory.VARIABLES;
             case OPERATOR_EQUALS:
+            case OPERATOR_NOT:
                 return NodeCategory.OPERATORS;
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
@@ -213,7 +214,6 @@ public enum NodeType {
             case SURFACE:
             case EXPLORE:
             case FOLLOW:
-            case LOOK:
             case JUMP:
             case CROUCH:
             case SPRINT:
@@ -225,7 +225,7 @@ public enum NodeType {
             case PLACE:
             case CRAFT:
                 return NodeCategory.INTERACTION;
-            case ATTACK:
+            case LOOK:
             case SWING:
             case USE:
             case INTERACT:
@@ -296,7 +296,6 @@ public enum NodeType {
             case CROUCH:
             case SPRINT:
             case INTERACT:
-            case ATTACK:
             case PLACE_HAND:
             case DROP_SLOT:
             case MOVE_ITEM:

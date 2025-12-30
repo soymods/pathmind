@@ -2035,10 +2035,10 @@ public class NodeGraph {
         }
         if (simpleStyle) {
             if (isStopControl) {
-                bgColor = isOverSidebar ? 0xFF5A1C1C : 0xFFE53935;
+                bgColor = isOverSidebar ? toGrayscale(0xFFE53935, 0.7f) : 0xFFE53935;
             } else {
                 int baseColor = node.getType().getColor();
-                bgColor = isOverSidebar ? adjustColorBrightness(baseColor, 0.7f) : baseColor;
+                bgColor = isOverSidebar ? toGrayscale(baseColor, 0.7f) : baseColor;
             }
         }
         context.fill(x, y, x + width, y + height, bgColor);
@@ -2050,18 +2050,18 @@ public class NodeGraph {
         } else if (node.isSelected()) {
             borderColor = 0xFF87CEEB; // Light blue selection
         } else if (node.getType() == NodeType.START) {
-            borderColor = isOverSidebar ? 0xFF2D4A2D : 0xFF2E7D32; // Darker green for START
+            borderColor = isOverSidebar ? toGrayscale(0xFF2E7D32, 0.75f) : 0xFF2E7D32; // Darker green for START
         } else if (node.getType() == NodeType.EVENT_FUNCTION) {
-            borderColor = isOverSidebar ? 0xFF5C2C44 : 0xFFAD1457; // Darker pink for event functions
+            borderColor = isOverSidebar ? toGrayscale(0xFFAD1457, 0.75f) : 0xFFAD1457; // Darker pink for event functions
         } else if (node.getType() == NodeType.VARIABLE) {
-            borderColor = isOverSidebar ? 0xFF6E4A1E : 0xFFEF6C00; // Darker orange for variables
-        } else if (node.getType() == NodeType.OPERATOR_EQUALS) {
-            borderColor = isOverSidebar ? 0xFF2A5A42 : 0xFF009E47; // Darker green for operators
+            borderColor = isOverSidebar ? toGrayscale(0xFFEF6C00, 0.75f) : 0xFFEF6C00; // Darker orange for variables
+        } else if (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT) {
+            borderColor = isOverSidebar ? toGrayscale(0xFF009E47, 0.75f) : 0xFF009E47; // Darker green for operators
         } else if (isStopControl) {
-            borderColor = isOverSidebar ? 0xFF7A2E2E : 0xFFB71C1C;
+            borderColor = isOverSidebar ? toGrayscale(0xFFB71C1C, 0.75f) : 0xFFB71C1C;
         } else if (simpleStyle) {
             int baseColor = node.getType().getColor();
-            borderColor = isOverSidebar ? adjustColorBrightness(baseColor, 0.6f) : adjustColorBrightness(baseColor, 1.1f);
+            borderColor = isOverSidebar ? toGrayscale(baseColor, 0.6f) : adjustColorBrightness(baseColor, 1.1f);
         } else {
             borderColor = node.getType().getColor(); // Regular node type color
         }
@@ -2088,7 +2088,8 @@ public class NodeGraph {
         } else if (node.getType() != NodeType.START
             && node.getType() != NodeType.EVENT_FUNCTION
             && node.getType() != NodeType.VARIABLE
-            && node.getType() != NodeType.OPERATOR_EQUALS) {
+            && node.getType() != NodeType.OPERATOR_EQUALS
+            && node.getType() != NodeType.OPERATOR_NOT) {
             int headerColor = node.getType().getColor() & 0x80FFFFFF;
             if (isOverSidebar) {
                 headerColor = 0x80555555; // Grey header when over sidebar
@@ -2132,7 +2133,7 @@ public class NodeGraph {
         // Render node content based on type
         if (node.getType() == NodeType.START) {
             // START node - green square with play button
-            int greenColor = isOverSidebar ? 0xFF4A5D23 : 0xFF4CAF50; // Darker green when over sidebar
+            int greenColor = isOverSidebar ? toGrayscale(0xFF4CAF50, 0.7f) : 0xFF4CAF50; // Darker green when over sidebar
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, greenColor);
             
             // Draw play button (triangle pointing right) - with hover effect
@@ -2163,10 +2164,10 @@ public class NodeGraph {
             renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
             
         } else if (node.getType() == NodeType.EVENT_FUNCTION) {
-            int baseColor = isOverSidebar ? 0xFF5C2C44 : 0xFFE91E63;
+            int baseColor = isOverSidebar ? toGrayscale(0xFFE91E63, 0.7f) : 0xFFE91E63;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
-            int titleColor = isOverSidebar ? 0xFFE3BBCB : 0xFFFFF5F8;
+            int titleColor = isOverSidebar ? toGrayscale(0xFFFFF5F8, 0.9f) : 0xFFFFF5F8;
             drawNodeText(
                 context,
                 textRenderer,
@@ -2183,7 +2184,7 @@ public class NodeGraph {
             int boxBottom = boxTop + boxHeight;
             int inputBackground = isOverSidebar ? 0xFF2E2E2E : 0xFF1F1F1F;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
-            int inputBorder = isOverSidebar ? 0xFF6A3A50 : 0xFF000000;
+            int inputBorder = isOverSidebar ? toGrayscale(0xFF6A3A50, 0.8f) : 0xFF000000;
             context.drawBorder(boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Name");
@@ -2191,7 +2192,7 @@ public class NodeGraph {
             String display = value.isEmpty() ? "enter name" : value;
             display = trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
-            int textColor = isOverSidebar ? 0xFFBFA1AF : 0xFFFFEEF5;
+            int textColor = isOverSidebar ? toGrayscale(0xFFFFEEF5, 0.85f) : 0xFFFFEEF5;
             drawNodeText(
                 context,
                 textRenderer,
@@ -2201,10 +2202,10 @@ public class NodeGraph {
                 textColor
             );
         } else if (node.getType() == NodeType.VARIABLE) {
-            int baseColor = isOverSidebar ? 0xFF5C3B1E : 0xFFFF9800;
+            int baseColor = isOverSidebar ? toGrayscale(0xFFFF9800, 0.7f) : 0xFFFF9800;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
-            int titleColor = isOverSidebar ? 0xFFF2C59E : 0xFFFFF5E6;
+            int titleColor = isOverSidebar ? toGrayscale(0xFFFFF5E6, 0.9f) : 0xFFFFF5E6;
             drawNodeText(
                 context,
                 textRenderer,
@@ -2221,7 +2222,7 @@ public class NodeGraph {
             int boxBottom = boxTop + boxHeight;
             int inputBackground = isOverSidebar ? 0xFF2E2E2E : 0xFF1F1F1F;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
-            int inputBorder = isOverSidebar ? 0xFF6A4E2A : 0xFF000000;
+            int inputBorder = isOverSidebar ? toGrayscale(0xFF6A4E2A, 0.8f) : 0xFF000000;
             context.drawBorder(boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Variable");
@@ -2229,7 +2230,7 @@ public class NodeGraph {
             String display = value.isEmpty() ? "enter variable" : value;
             display = trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
-            int textColor = isOverSidebar ? 0xFFE6C7A1 : 0xFFFFF1E1;
+            int textColor = isOverSidebar ? toGrayscale(0xFFFFF1E1, 0.85f) : 0xFFFFF1E1;
             drawNodeText(
                 context,
                 textRenderer,
@@ -2238,15 +2239,15 @@ public class NodeGraph {
                 textY,
                 textColor
             );
-        } else if (node.getType() == NodeType.OPERATOR_EQUALS) {
-            int baseColor = isOverSidebar ? 0xFF1C3D2C : 0xFF00C853;
+        } else if (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT) {
+            int baseColor = isOverSidebar ? toGrayscale(0xFF00C853, 0.7f) : 0xFF00C853;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
-            int titleColor = isOverSidebar ? 0xFFC9E9D8 : 0xFFE9FFF5;
+            int titleColor = isOverSidebar ? toGrayscale(0xFFE9FFF5, 0.9f) : 0xFFE9FFF5;
             drawNodeText(
                 context,
                 textRenderer,
-                Text.literal("Equals"),
+                Text.literal(node.getType() == NodeType.OPERATOR_EQUALS ? "Equals" : "Not"),
                 x + 6,
                 y + 4,
                 titleColor
@@ -2263,24 +2264,24 @@ public class NodeGraph {
             int slotTop = node.getParameterSlotTop(0) - cameraY;
             int maxSlotHeight = Math.max(leftSlotHeight, rightSlotHeight);
             int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
-            String equalsText = "=";
-            int equalsWidth = textRenderer.getWidth(equalsText);
-            int equalsX = gapCenterX - equalsWidth / 2;
-            int equalsY = slotTop + (maxSlotHeight - textRenderer.fontHeight) / 2;
-            int equalsColor = isOverSidebar ? 0xFFA3CDB8 : 0xFFEFFFFA;
+            String operatorText = node.getType() == NodeType.OPERATOR_EQUALS ? "=" : "!=";
+            int operatorWidth = textRenderer.getWidth(operatorText);
+            int operatorX = gapCenterX - operatorWidth / 2;
+            int operatorY = slotTop + (maxSlotHeight - textRenderer.fontHeight) / 2;
+            int operatorColor = isOverSidebar ? toGrayscale(0xFFEFFFFA, 0.85f) : 0xFFEFFFFA;
             drawNodeText(
                 context,
                 textRenderer,
-                Text.literal(equalsText),
-                equalsX,
-                equalsY,
-                equalsColor
+                Text.literal(operatorText),
+                operatorX,
+                operatorY,
+                operatorColor
             );
         } else if (node.getType() == NodeType.EVENT_CALL) {
-            int baseColor = isOverSidebar ? 0xFF423345 : 0xFFD81B60;
+            int baseColor = isOverSidebar ? toGrayscale(0xFFD81B60, 0.7f) : 0xFFD81B60;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
-            int titleColor = isOverSidebar ? 0xFFE3BBCB : 0xFFFFF5F8;
+            int titleColor = isOverSidebar ? toGrayscale(0xFFFFF5F8, 0.9f) : 0xFFFFF5F8;
             drawNodeText(
                 context,
                 textRenderer,
@@ -2297,7 +2298,7 @@ public class NodeGraph {
             int boxBottom = boxTop + boxHeight;
             int inputBackground = isOverSidebar ? 0xFF2E2E2E : 0xFF1F1F1F;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
-            int inputBorder = isOverSidebar ? 0xFF51323E : 0xFF000000;
+            int inputBorder = isOverSidebar ? toGrayscale(0xFF51323E, 0.8f) : 0xFF000000;
             context.drawBorder(boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Name");
@@ -2305,7 +2306,7 @@ public class NodeGraph {
             String display = value.isEmpty() ? "enter name" : value;
             display = trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
-            int textColor = isOverSidebar ? 0xFFBFA1AF : 0xFFFFEEF5;
+            int textColor = isOverSidebar ? toGrayscale(0xFFFFEEF5, 0.85f) : 0xFFFFEEF5;
             drawNodeText(
                 context,
                 textRenderer,
@@ -2523,6 +2524,15 @@ public class NodeGraph {
         g = MathHelper.clamp((int) (g * factor), 0, 255);
         b = MathHelper.clamp((int) (b * factor), 0, 255);
         return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private int toGrayscale(int color, float brightnessFactor) {
+        int a = (color >>> 24) & 0xFF;
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        int gray = MathHelper.clamp((int) ((0.299f * r + 0.587f * g + 0.114f * b) * brightnessFactor), 0, 255);
+        return (a << 24) | (gray << 16) | (gray << 8) | gray;
     }
 
     private void renderParameterSlot(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int slotIndex) {

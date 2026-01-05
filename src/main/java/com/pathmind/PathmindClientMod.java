@@ -2,7 +2,6 @@ package com.pathmind;
 
 import com.pathmind.data.PresetManager;
 import com.pathmind.execution.ExecutionManager;
-import com.pathmind.screen.MissingBaritoneApiScreen;
 import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
@@ -29,7 +28,6 @@ public class PathmindClientMod implements ClientModInitializer {
     private VariablesOverlay variablesOverlay;
     private volatile boolean worldShutdownHandled;
     private boolean baritoneAvailable;
-    private boolean missingWarningShown;
 
     @Override
     public void onInitializeClient() {
@@ -37,10 +35,8 @@ public class PathmindClientMod implements ClientModInitializer {
 
         PresetManager.initialize();
         baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
-        if (baritoneAvailable) {
-            this.activeNodeOverlay = new ActiveNodeOverlay();
-            this.variablesOverlay = new VariablesOverlay();
-        }
+        this.activeNodeOverlay = new ActiveNodeOverlay();
+        this.variablesOverlay = new VariablesOverlay();
 
         // Register keybindings
         PathmindKeybinds.registerKeybinds();
@@ -53,10 +49,6 @@ public class PathmindClientMod implements ClientModInitializer {
 
         // Register client tick events for keybind handling
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (!baritoneAvailable && !missingWarningShown) {
-                showMissingDependencyScreen(client);
-                missingWarningShown = true;
-            }
             handleKeybinds(client);
         });
 
@@ -73,19 +65,17 @@ public class PathmindClientMod implements ClientModInitializer {
         });
         
         // Register HUD render callback for the active node overlay
-        if (activeNodeOverlay != null || variablesOverlay != null) {
-            HudRenderCallback.EVENT.register((drawContext, tickDelta) -> {
-                MinecraftClient client = MinecraftClient.getInstance();
-                if (client.player != null && client.textRenderer != null) {
-                    if (activeNodeOverlay != null) {
-                        activeNodeOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
-                    }
-                    if (variablesOverlay != null) {
-                        variablesOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
-                    }
+        HudRenderCallback.EVENT.register((drawContext, tickDelta) -> {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client.player != null && client.textRenderer != null) {
+                if (activeNodeOverlay != null) {
+                    activeNodeOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
                 }
-            });
-        }
+                if (variablesOverlay != null) {
+                    variablesOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
+                }
+            }
+        });
         
         LOGGER.info("Pathmind client mod initialized successfully");
     }
@@ -145,12 +135,4 @@ public class PathmindClientMod implements ClientModInitializer {
         }
     }
 
-    private void showMissingDependencyScreen(MinecraftClient client) {
-        if (client == null) {
-            return;
-        }
-        if (!(client.currentScreen instanceof MissingBaritoneApiScreen)) {
-            client.setScreen(new MissingBaritoneApiScreen(client.currentScreen));
-        }
-    }
 }

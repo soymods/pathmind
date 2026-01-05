@@ -85,7 +85,8 @@ jobs:
           fi
 
           # Collect all "main" jars (ignore common extra jars)
-          mapfile -t JARS < <(ls -1 build/libs/*.jar 2>/dev/null \
+          MC_VERSION="$(grep -E '^minecraft_version=' gradle.properties | head -n 1 | cut -d= -f2-)"
+          mapfile -t JARS < <(ls -1 "build/libs/"*mc"${MC_VERSION}".jar 2>/dev/null \
             | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' || true)
 
           if [ "${#JARS[@]}" -eq 0 ]; then

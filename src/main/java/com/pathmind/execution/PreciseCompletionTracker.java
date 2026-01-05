@@ -1,15 +1,5 @@
 package com.pathmind.execution;
 
-import baritone.api.BaritoneAPI;
-import baritone.api.IBaritone;
-import baritone.api.behavior.IPathingBehavior;
-import baritone.api.process.ICustomGoalProcess;
-import baritone.api.process.IGetToBlockProcess;
-import baritone.api.process.IMineProcess;
-import baritone.api.process.IExploreProcess;
-import baritone.api.process.IFarmProcess;
-import baritone.api.process.IBaritoneProcess;
-import baritone.api.pathing.goals.Goal;
 import java.util.concurrent.CompletableFuture;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,6 +8,7 @@ import java.util.TimerTask;
 import java.util.Optional;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
+import com.pathmind.util.BaritoneApiProxy;
 
 /**
  * Tracks Baritone processes precisely by monitoring their actual state changes.
@@ -40,6 +31,7 @@ public class PreciseCompletionTracker {
     public static final String TASK_COLLECT = "collect";
     public static final String TASK_EXPLORE = "explore";
     public static final String TASK_FARM = "farm";
+    public static final String TASK_BUILD = "build";
     
     // Maximum monitoring duration (in milliseconds) - safety fallback
     // Long-running nodes like Mine can legitimately take several minutes, so we allow a 60-minute window.
@@ -153,7 +145,7 @@ public class PreciseCompletionTracker {
      * Check if a specific task has completed
      */
     private boolean checkTaskCompletion(String taskId) {
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone == null) {
             completeTaskWithError(taskId, "Baritone not available");
             return true;
@@ -196,6 +188,10 @@ public class PreciseCompletionTracker {
             case TASK_FARM:
                 completed = checkFarmingCompletion(baritone, taskId);
                 break;
+
+            case TASK_BUILD:
+                completed = checkBuildCompletion(baritone, taskId);
+                break;
                 
             default:
                 System.err.println("Unknown task type: " + taskType + " (" + taskId + ")");
@@ -213,16 +209,16 @@ public class PreciseCompletionTracker {
     /**
      * Check if pathing tasks (goto/path) have completed
      */
-    private boolean checkPathingCompletion(IBaritone baritone, String taskId) {
-        IPathingBehavior pathingBehavior = baritone.getPathingBehavior();
-        ICustomGoalProcess customGoalProcess = baritone.getCustomGoalProcess();
-        IGetToBlockProcess getToBlockProcess = baritone.getGetToBlockProcess();
+    private boolean checkPathingCompletion(Object baritone, String taskId) {
+        Object pathingBehavior = BaritoneApiProxy.getPathingBehavior(baritone);
+        Object customGoalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
+        Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
 
         // Check if pathing has stopped and no goal is active
-        boolean hasPath = pathingBehavior.hasPath();
-        boolean isPathing = pathingBehavior.isPathing();
-        boolean isActive = customGoalProcess.isActive();
-        boolean getToBlockActive = getToBlockProcess != null && getToBlockProcess.isActive();
+        boolean hasPath = BaritoneApiProxy.hasPath(pathingBehavior);
+        boolean isPathing = BaritoneApiProxy.isPathing(pathingBehavior);
+        boolean isActive = BaritoneApiProxy.isProcessActive(customGoalProcess);
+        boolean getToBlockActive = getToBlockProcess != null && BaritoneApiProxy.isProcessActive(getToBlockProcess);
         
         // Get current state
         ProcessState currentState = processStates.get(taskId);
@@ -263,7 +259,7 @@ public class PreciseCompletionTracker {
     /**
      * Check if goal setting has completed
      */
-    private boolean checkGoalCompletion(IBaritone baritone, String taskId) {
+    private boolean checkGoalCompletion(Object baritone, String taskId) {
         // Goal setting is immediate, so complete right away
         completeTask(taskId);
         return true;
@@ -272,23 +268,23 @@ public class PreciseCompletionTracker {
     /**
      * Check if mining has completed
      */
-    private boolean checkCollectCompletion(IBaritone baritone, String taskId) {
-        IMineProcess mineProcess = baritone.getMineProcess();
+    private boolean checkCollectCompletion(Object baritone, String taskId) {
+        Object mineProcess = BaritoneApiProxy.getMineProcess(baritone);
         if (mineProcess == null) {
             completeTaskWithError(taskId, "Collect process unavailable");
             return true;
         }
 
         ProcessState currentState = processStates.get(taskId);
-        IPathingBehavior pathingBehavior = baritone.getPathingBehavior();
-        ICustomGoalProcess customGoalProcess = baritone.getCustomGoalProcess();
-        IGetToBlockProcess getToBlockProcess = baritone.getGetToBlockProcess();
+        Object pathingBehavior = BaritoneApiProxy.getPathingBehavior(baritone);
+        Object customGoalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
+        Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
 
-        boolean miningActive = mineProcess.isActive();
+        boolean miningActive = BaritoneApiProxy.isProcessActive(mineProcess);
         boolean pathingActive =
-                (pathingBehavior != null && (pathingBehavior.isPathing() || pathingBehavior.hasPath()))
-                || (customGoalProcess != null && customGoalProcess.isActive())
-                || (getToBlockProcess != null && getToBlockProcess.isActive());
+                (pathingBehavior != null && (BaritoneApiProxy.isPathing(pathingBehavior) || BaritoneApiProxy.hasPath(pathingBehavior)))
+                || (customGoalProcess != null && BaritoneApiProxy.isProcessActive(customGoalProcess))
+                || (getToBlockProcess != null && BaritoneApiProxy.isProcessActive(getToBlockProcess));
         boolean anyActive = miningActive || pathingActive;
 
         if (currentState == ProcessState.STARTING && anyActive) {
@@ -336,16 +332,16 @@ public class PreciseCompletionTracker {
     /**
      * Check if exploration has completed
      */
-    private boolean checkExplorationCompletion(IBaritone baritone, String taskId) {
-        IExploreProcess exploreProcess = baritone.getExploreProcess();
+    private boolean checkExplorationCompletion(Object baritone, String taskId) {
+        Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
         
         ProcessState currentState = processStates.get(taskId);
         
-        if (currentState == ProcessState.STARTING && exploreProcess.isActive()) {
+        if (currentState == ProcessState.STARTING && BaritoneApiProxy.isProcessActive(exploreProcess)) {
             // Exploration has started
             processStates.put(taskId, ProcessState.ACTIVE);
             System.out.println("PreciseCompletionTracker: " + taskId + " is now active");
-        } else if (currentState == ProcessState.ACTIVE && !exploreProcess.isActive()) {
+        } else if (currentState == ProcessState.ACTIVE && !BaritoneApiProxy.isProcessActive(exploreProcess)) {
             // Exploration has completed
             System.out.println("PreciseCompletionTracker: " + taskId + " completed - no longer active");
             completeTask(taskId);
@@ -358,22 +354,47 @@ public class PreciseCompletionTracker {
     /**
      * Check if farming has completed
      */
-    private boolean checkFarmingCompletion(IBaritone baritone, String taskId) {
-        IFarmProcess farmProcess = baritone.getFarmProcess();
+    private boolean checkFarmingCompletion(Object baritone, String taskId) {
+        Object farmProcess = BaritoneApiProxy.getFarmProcess(baritone);
         
         ProcessState currentState = processStates.get(taskId);
         
-        if (currentState == ProcessState.STARTING && farmProcess.isActive()) {
+        if (currentState == ProcessState.STARTING && BaritoneApiProxy.isProcessActive(farmProcess)) {
             // Farming has started
             processStates.put(taskId, ProcessState.ACTIVE);
             System.out.println("PreciseCompletionTracker: " + taskId + " is now active");
-        } else if (currentState == ProcessState.ACTIVE && !farmProcess.isActive()) {
+        } else if (currentState == ProcessState.ACTIVE && !BaritoneApiProxy.isProcessActive(farmProcess)) {
             // Farming has completed
             System.out.println("PreciseCompletionTracker: " + taskId + " completed - no longer active");
             completeTask(taskId);
             return true;
         }
         
+        return false;
+    }
+
+    private boolean checkBuildCompletion(Object baritone, String taskId) {
+        Object builderProcess = BaritoneApiProxy.getBuilderProcess(baritone);
+        if (builderProcess == null) {
+            completeTaskWithError(taskId, "Build process unavailable");
+            return true;
+        }
+
+        ProcessState currentState = processStates.get(taskId);
+        boolean active = BaritoneApiProxy.isProcessActive(builderProcess);
+
+        if (currentState == ProcessState.STARTING && active) {
+            processStates.put(taskId, ProcessState.ACTIVE);
+            System.out.println("PreciseCompletionTracker: " + taskId + " is now active");
+        } else if (currentState == ProcessState.STARTING && hasTaskExceededStartTimeout(taskId)) {
+            failTaskGracefully(taskId, "Build task never became active", "Build task could not start. Check the schematic name and Baritone availability.");
+            return true;
+        } else if (currentState == ProcessState.ACTIVE && !active) {
+            System.out.println("PreciseCompletionTracker: " + taskId + " completed - no longer active");
+            completeTask(taskId);
+            return true;
+        }
+
         return false;
     }
     
@@ -511,9 +532,9 @@ public class PreciseCompletionTracker {
     /**
      * Get the Baritone instance
      */
-    private IBaritone getBaritone() {
+    private Object getBaritone() {
         try {
-            return BaritoneAPI.getProvider().getPrimaryBaritone();
+            return BaritoneApiProxy.getPrimaryBaritone();
         } catch (Exception e) {
             System.err.println("Failed to get Baritone instance: " + e.getMessage());
             return null;

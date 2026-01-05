@@ -35,8 +35,9 @@ jobs:
         id: jar
         shell: bash
         run: |
-          # Choose the primary jar (ignore common extra jars)
-          JAR="$(ls -1 build/libs/*.jar \
+          # Choose the primary jar for the configured Minecraft version.
+          MC_VERSION="$(grep -E '^minecraft_version=' gradle.properties | head -n 1 | cut -d= -f2-)"
+          JAR="$(ls -1 "build/libs/"*mc"${MC_VERSION}".jar 2>/dev/null \
             | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
             | head -n 1)"
 

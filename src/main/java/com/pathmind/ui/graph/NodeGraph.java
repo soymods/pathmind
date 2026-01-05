@@ -19,6 +19,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.MathHelper;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -29,9 +30,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Stream;
+import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.InputCompatibilityBridge;
 
 /**
  * Manages the node graph for the Pathmind visual editor.
@@ -134,6 +139,13 @@ public class NodeGraph {
     private int stopTargetSelectionStart = -1;
     private int stopTargetSelectionEnd = -1;
     private int stopTargetSelectionAnchor = -1;
+    private Node schematicDropdownNode = null;
+    private boolean schematicDropdownOpen = false;
+    private java.util.List<String> schematicDropdownOptions = new java.util.ArrayList<>();
+    private int schematicDropdownScrollOffset = 0;
+    private int schematicDropdownHoverIndex = -1;
+    private static final int SCHEMATIC_DROPDOWN_MAX_ROWS = 8;
+    private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
     private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
     private ZoomLevel zoomLevel = ZoomLevel.FOCUSED;
@@ -898,7 +910,8 @@ public class NodeGraph {
                     }
                     newNode.getParameters().add(parameter);
                 }
-                if (newNode.getType() == NodeType.STOP_CHAIN && newNode.getParameter("StartNumber") == null) {
+                if ((newNode.getType() == NodeType.STOP_CHAIN || newNode.getType() == NodeType.START_CHAIN)
+                    && newNode.getParameter("StartNumber") == null) {
                     newNode.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 }
                 newNode.recalculateDimensions();
@@ -1883,8 +1896,8 @@ public class NodeGraph {
 
         if (!onlyDragged) {
             updateCascadeDeletionPreview();
-            renderConnections(context);
         }
+        renderConnections(context, onlyDragged);
 
         Set<Node> processedRoots = new HashSet<>();
         Set<Node> renderedNodes = new HashSet<>();
@@ -1915,7 +1928,7 @@ public class NodeGraph {
         int fillColor = 0x401AA3FF;
         int borderColor = 0x801AA3FF;
         context.fill(left, top, right, bottom, fillColor);
-        context.drawBorder(left, top, right - left, bottom - top, borderColor);
+        DrawContextBridge.drawBorder(context, left, top, right - left, bottom - top, borderColor);
     }
 
     private void renderHierarchy(Node node, DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta, boolean onlyDragged, boolean ancestorActive, Set<Node> renderedNodes) {
@@ -2017,13 +2030,7 @@ public class NodeGraph {
 
         // Check if node is being dragged over sidebar (grey-out effect)
         // Use screen coordinates (with camera offset) for this check
-        boolean isOverSidebar = node.isDragging() && isNodeOverSidebar(node, sidebarWidthForRendering, x, width);
-        if (!isOverSidebar && selectionDeletionPreviewActive && node.isSelected()) {
-            isOverSidebar = true;
-        }
-        if (!isOverSidebar && cascadeDeletionPreviewNodes.contains(node)) {
-            isOverSidebar = true;
-        }
+        boolean isOverSidebar = isNodeOverSidebarForRender(node, x, width);
 
         boolean simpleStyle = node.usesMinimalNodePresentation();
         boolean isStopControl = node.isStopControlNode();
@@ -2068,7 +2075,7 @@ public class NodeGraph {
         if (isOverSidebar && node.getType() != NodeType.START && !node.isDragging()) {
             borderColor = 0xFF555555; // Darker grey border when over sidebar (for regular nodes)
         }
-        context.drawBorder(x, y, width, height, borderColor);
+        DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
 
         // Node header (only for non-START/event function nodes)
         if (simpleStyle) {
@@ -2185,7 +2192,7 @@ public class NodeGraph {
             int inputBackground = isOverSidebar ? 0xFF2E2E2E : 0xFF1F1F1F;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             int inputBorder = isOverSidebar ? toGrayscale(0xFF6A3A50, 0.8f) : 0xFF000000;
-            context.drawBorder(boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+            DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Name");
             String value = nameParam != null ? nameParam.getDisplayValue() : "";
@@ -2223,7 +2230,7 @@ public class NodeGraph {
             int inputBackground = isOverSidebar ? 0xFF2E2E2E : 0xFF1F1F1F;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             int inputBorder = isOverSidebar ? toGrayscale(0xFF6A4E2A, 0.8f) : 0xFF000000;
-            context.drawBorder(boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+            DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Variable");
             String value = nameParam != null ? nameParam.getDisplayValue() : "";
@@ -2299,7 +2306,7 @@ public class NodeGraph {
             int inputBackground = isOverSidebar ? 0xFF2E2E2E : 0xFF1F1F1F;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             int inputBorder = isOverSidebar ? toGrayscale(0xFF51323E, 0.8f) : 0xFF000000;
-            context.drawBorder(boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+            DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Name");
             String value = nameParam != null ? nameParam.getDisplayValue() : "";
@@ -2362,6 +2369,9 @@ public class NodeGraph {
                 if (node.hasStopTargetInputField()) {
                     renderStopTargetInputField(context, textRenderer, node, isOverSidebar);
                 }
+                if (node.hasSchematicDropdownField()) {
+                    renderSchematicDropdownField(context, textRenderer, node, isOverSidebar);
+                }
                 if (node.hasParameterSlot()) {
                     int slotCount = node.getParameterSlotCount();
                     for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
@@ -2373,6 +2383,9 @@ public class NodeGraph {
                     if (node.hasAmountInputField()) {
                         renderAmountInputField(context, textRenderer, node, isOverSidebar);
                     }
+                }
+                if (node.hasSchematicDropdownField()) {
+                    renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
             }
 
@@ -2423,7 +2436,7 @@ public class NodeGraph {
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, fillColor);
-        context.drawBorder(buttonLeft, buttonTop, buttonWidth, buttonHeight, borderColor);
+        DrawContextBridge.drawBorder(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, borderColor);
 
         String label = node.getBooleanToggleValue() ? "TRUE" : "FALSE";
         int textWidth = textRenderer.getWidth(label);
@@ -2450,7 +2463,7 @@ public class NodeGraph {
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        context.drawBorder(slotX, slotY, slotWidth, slotHeight, borderColor);
+        DrawContextBridge.drawBorder(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
         if (!node.hasAttachedSensor()) {
             String placeholder = "Drag a sensor here";
@@ -2481,7 +2494,7 @@ public class NodeGraph {
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        context.drawBorder(slotX, slotY, slotWidth, slotHeight, borderColor);
+        DrawContextBridge.drawBorder(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
         if (!node.hasAttachedActionNode()) {
             String placeholder = "Drag a node here";
@@ -2557,7 +2570,7 @@ public class NodeGraph {
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        context.drawBorder(slotX, slotY, slotWidth, slotHeight, borderColor);
+        DrawContextBridge.drawBorder(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
         String headerText = node.getParameterSlotLabel(slotIndex);
         int headerColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
@@ -2568,7 +2581,7 @@ public class NodeGraph {
 
         if (!occupied && isDropTarget) {
             // Provide a minimal visual cue when dragging to an empty slot without adding text.
-            context.drawBorder(slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, 0xFF87CEEB);
+            DrawContextBridge.drawBorder(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, 0xFF87CEEB);
         }
     }
 
@@ -2613,7 +2626,7 @@ public class NodeGraph {
             int valueColor = editingAxis ? activeTextColor : textColor;
 
             context.fill(fieldX, inputTop, fieldX + fieldWidth, inputBottom, backgroundColor);
-            context.drawBorder(fieldX, inputTop, fieldWidth, fieldHeight, borderColor);
+            DrawContextBridge.drawBorder(context, fieldX, inputTop, fieldWidth, fieldHeight, borderColor);
 
             String value;
             if (editingAxis) {
@@ -2679,7 +2692,7 @@ public class NodeGraph {
         int valueColor = editing ? activeTextColor : textColor;
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
-        context.drawBorder(fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
         String value;
         if (editing) {
@@ -2718,10 +2731,14 @@ public class NodeGraph {
         int baseLabelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
         int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
         int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
-        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
-        int activeFieldBorder = 0xFFEF9A9A;
+        boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
+        int fieldBorder = isActivateNode
+            ? (isOverSidebar ? 0xFF5A5A5A : 0xFF666666)
+            : (isOverSidebar ? 0xFF5F4A4A : 0xFF6A4A4A);
+        int activeFieldBorder = isActivateNode ? 0xFF888888 : 0xFFF0B1B1;
         int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
-        int activeTextColor = 0xFFFFEBEE;
+        int activeTextColor = 0xFFFFEEEE;
+        int caretColor = isActivateNode ? 0xFFFFFFFF : 0xFFFFD6D6;
 
         boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
         if (editing) {
@@ -2739,7 +2756,7 @@ public class NodeGraph {
         int valueColor = editing ? activeTextColor : textColor;
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
-        context.drawBorder(fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
         String value;
         if (editing) {
@@ -2769,7 +2786,7 @@ public class NodeGraph {
             if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
                 int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                 int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
-                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, 0x80B94A4A);
+                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, 0x80E2A0A0);
             }
         }
         drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
@@ -2778,7 +2795,104 @@ public class NodeGraph {
             int caretIndex = MathHelper.clamp(stopTargetCaretPosition, 0, display.length());
             int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-            context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, 0xFFFFCDD2);
+            context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, caretColor);
+        }
+    }
+
+    private void renderSchematicDropdownField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int labelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
+        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
+        int activeFieldBorder = 0xFF9CCC65;
+        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+
+        boolean open = schematicDropdownOpen && schematicDropdownNode == node;
+
+        int labelTop = node.getSchematicFieldLabelTop() - cameraY;
+        int labelHeight = node.getSchematicFieldLabelHeight();
+        int fieldTop = node.getSchematicFieldInputTop() - cameraY;
+        int fieldHeight = node.getSchematicFieldHeight();
+        int fieldLeft = node.getSchematicFieldLeft() - cameraX;
+        int fieldWidth = node.getSchematicFieldWidth();
+
+        drawNodeText(context, textRenderer, Text.literal("Schematic"), fieldLeft, labelTop + (labelHeight - textRenderer.fontHeight) / 2, labelColor);
+
+        int fieldBottom = fieldTop + fieldHeight;
+        int backgroundColor = open ? activeFieldBackground : fieldBackground;
+        int borderColor = open ? activeFieldBorder : fieldBorder;
+        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
+        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+
+        NodeParameter schematicParam = node.getParameter("Schematic");
+        String value = schematicParam != null ? schematicParam.getDisplayValue() : "";
+        if (value != null && !value.isEmpty() && !schematicExistsInRoots(value)) {
+            value = "";
+        }
+        if (value == null || value.isEmpty()) {
+            value = "schematic";
+            textColor = isOverSidebar ? 0xFF777777 : 0xFF9E9E9E;
+        }
+
+        String display = trimTextToWidth(value, textRenderer, fieldWidth - 16);
+        int textX = fieldLeft + 3;
+        int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+
+        int arrowX = fieldLeft + fieldWidth - 10;
+        int arrowY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        String arrow = open ? ">" : "v";
+        drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, arrowY, 0xFFFFFFFF);
+    }
+
+    private void renderSchematicDropdownList(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        if (!schematicDropdownOpen || schematicDropdownNode != node) {
+            return;
+        }
+
+        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
+        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+
+        List<String> options = schematicDropdownOptions;
+        int optionCount = options.isEmpty() ? 1 : options.size();
+        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, optionCount);
+        int maxOffset = Math.max(0, optionCount - visibleCount);
+        schematicDropdownScrollOffset = MathHelper.clamp(schematicDropdownScrollOffset, 0, maxOffset);
+
+        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
+        int listHeight = visibleCount * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        int listBottom = listTop + listHeight;
+        int listLeft = node.getSchematicFieldLeft() - cameraX;
+        int listRight = listLeft + node.getSchematicFieldWidth();
+
+        context.fill(listLeft, listTop, listRight, listBottom, fieldBackground);
+        DrawContextBridge.drawBorder(context, listLeft, listTop, node.getSchematicFieldWidth(), listHeight, fieldBorder);
+
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        schematicDropdownHoverIndex = -1;
+        if (worldMouseX >= node.getSchematicFieldLeft()
+            && worldMouseX <= node.getSchematicFieldLeft() + node.getSchematicFieldWidth()
+            && worldMouseY >= node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2
+            && worldMouseY <= node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 + listHeight) {
+            int row = (worldMouseY - (node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2)) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+            if (row >= 0 && row < visibleCount) {
+                schematicDropdownHoverIndex = schematicDropdownScrollOffset + row;
+            }
+        }
+
+        for (int row = 0; row < visibleCount; row++) {
+            int optionIndex = schematicDropdownScrollOffset + row;
+            String optionLabel = options.isEmpty() ? "No schematics found" : options.get(optionIndex);
+            int rowTop = listTop + row * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+            int rowBottom = rowTop + SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+            boolean hovered = options.isEmpty() ? row == 0 && schematicDropdownHoverIndex >= 0 : optionIndex == schematicDropdownHoverIndex;
+            if (hovered) {
+                context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, 0xFF2E3A2E);
+            }
+            String rowText = trimTextToWidth(optionLabel, textRenderer, node.getSchematicFieldWidth() - 6);
+            drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + 3, rowTop + 4, textColor);
         }
     }
 
@@ -2832,6 +2946,7 @@ public class NodeGraph {
             return;
         }
 
+        closeSchematicDropdown();
         stopAmountEditing(true);
         stopStopTargetEditing(true);
 
@@ -2923,7 +3038,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = Screen.hasControlDown();
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -3039,6 +3154,7 @@ public class NodeGraph {
             return;
         }
 
+        closeSchematicDropdown();
         if (isEditingAmountField()) {
             if (amountEditingNode == node) {
                 return;
@@ -3122,7 +3238,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = Screen.hasControlDown();
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -3232,6 +3348,7 @@ public class NodeGraph {
             return;
         }
 
+        closeSchematicDropdown();
         if (isEditingStopTargetField()) {
             if (stopTargetEditingNode == node) {
                 return;
@@ -3309,7 +3426,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = Screen.hasControlDown();
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -3896,6 +4013,228 @@ public class NodeGraph {
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
     }
 
+    public boolean handleSchematicDropdownClick(Node clickedNode, int screenX, int screenY) {
+        if (schematicDropdownOpen && schematicDropdownNode != null) {
+            if (isPointInsideSchematicDropdownList(schematicDropdownNode, screenX, screenY)) {
+                int index = getSchematicDropdownIndexAt(schematicDropdownNode, screenX, screenY);
+                if (index >= 0 && index < schematicDropdownOptions.size()) {
+                    applySchematicSelection(schematicDropdownNode, schematicDropdownOptions.get(index));
+                }
+                closeSchematicDropdown();
+                return true;
+            }
+            if (isPointInsideSchematicField(schematicDropdownNode, screenX, screenY)) {
+                closeSchematicDropdown();
+                return true;
+            }
+            closeSchematicDropdown();
+        }
+
+        if (clickedNode != null && clickedNode.hasSchematicDropdownField()
+            && isPointInsideSchematicField(clickedNode, screenX, screenY)) {
+            openSchematicDropdown(clickedNode);
+            return true;
+        }
+
+        return false;
+    }
+
+    public boolean handleSchematicDropdownScroll(double screenX, double screenY, double amount) {
+        if (!schematicDropdownOpen || schematicDropdownNode == null || schematicDropdownOptions.isEmpty()) {
+            return false;
+        }
+        if (!isPointInsideSchematicDropdownList(schematicDropdownNode, (int) screenX, (int) screenY)) {
+            return false;
+        }
+        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, schematicDropdownOptions.size());
+        int maxOffset = Math.max(0, schematicDropdownOptions.size() - visibleCount);
+        if (maxOffset <= 0) {
+            return true;
+        }
+        int delta = amount > 0 ? -1 : 1;
+        schematicDropdownScrollOffset = MathHelper.clamp(schematicDropdownScrollOffset + delta, 0, maxOffset);
+        return true;
+    }
+
+    private boolean isPointInsideSchematicField(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasSchematicDropdownField()) {
+            return false;
+        }
+
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = node.getSchematicFieldLeft();
+        int fieldTop = node.getSchematicFieldInputTop();
+        int fieldWidth = node.getSchematicFieldWidth();
+        int fieldHeight = node.getSchematicFieldHeight();
+
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    private boolean isPointInsideSchematicDropdownList(Node node, int screenX, int screenY) {
+        if (node == null || !schematicDropdownOpen || schematicDropdownNode != node) {
+            return false;
+        }
+        int optionCount = Math.max(1, schematicDropdownOptions.size());
+        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, optionCount);
+        int listHeight = visibleCount * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int listLeft = node.getSchematicFieldLeft();
+        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
+
+        return worldX >= listLeft && worldX <= listLeft + node.getSchematicFieldWidth()
+            && worldY >= listTop && worldY <= listTop + listHeight;
+    }
+
+    private int getSchematicDropdownIndexAt(Node node, int screenX, int screenY) {
+        if (node == null || schematicDropdownOptions.isEmpty()) {
+            return -1;
+        }
+        int worldY = screenToWorldY(screenY);
+        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
+        int row = (worldY - listTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        if (row < 0) {
+            return -1;
+        }
+        int optionCount = schematicDropdownOptions.size();
+        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, optionCount);
+        if (row >= visibleCount) {
+            return -1;
+        }
+        return schematicDropdownScrollOffset + row;
+    }
+
+    private void openSchematicDropdown(Node node) {
+        schematicDropdownNode = node;
+        schematicDropdownOptions = loadSchematicOptions();
+        String current = "";
+        if (node != null) {
+            NodeParameter param = node.getParameter("Schematic");
+            current = param != null ? param.getStringValue() : "";
+        }
+        if (current != null && !current.isEmpty()
+            && !schematicDropdownOptions.contains(current)
+            && schematicExistsInRoots(current)) {
+            schematicDropdownOptions.add(0, current);
+        }
+        schematicDropdownOpen = true;
+        schematicDropdownScrollOffset = 0;
+        schematicDropdownHoverIndex = -1;
+    }
+
+    private void closeSchematicDropdown() {
+        schematicDropdownOpen = false;
+        schematicDropdownNode = null;
+        schematicDropdownHoverIndex = -1;
+        schematicDropdownScrollOffset = 0;
+    }
+
+    private void applySchematicSelection(Node node, String value) {
+        if (node == null || value == null || value.isEmpty()) {
+            return;
+        }
+        node.setParameterValueAndPropagate("Schematic", value);
+        node.recalculateDimensions();
+        notifyNodeParametersChanged(node);
+    }
+
+    private List<String> loadSchematicOptions() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.runDirectory == null) {
+            return List.of();
+        }
+
+        Path runDir = client.runDirectory.toPath();
+        List<Path> roots = new ArrayList<>();
+        roots.add(runDir.resolve("schematics"));
+        roots.add(runDir.resolve("baritone").resolve("schematics"));
+        roots.add(runDir.resolve("litematica").resolve("schematics"));
+        roots.addAll(resolveMinecraftSchematicRoots());
+
+        LinkedHashSet<String> results = new LinkedHashSet<>();
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) {
+                continue;
+            }
+            try (Stream<Path> stream = Files.walk(root, 12)) {
+                stream.filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+                        return name.endsWith(".schem") || name.endsWith(".schematic") || name.endsWith(".nbt")
+                            || name.endsWith(".litematic");
+                    })
+                    .forEach(path -> {
+                        Path relative = root.relativize(path);
+                        String normalized = relative.toString().replace(java.io.File.separatorChar, '/');
+                        results.add(normalized);
+                    });
+            } catch (Exception ignored) {
+            }
+        }
+
+        List<String> options = new ArrayList<>(results);
+        Collections.sort(options);
+        return options;
+    }
+
+    private List<Path> resolveMinecraftSchematicRoots() {
+        List<Path> roots = new ArrayList<>();
+        String home = System.getProperty("user.home");
+        if (home == null) {
+            return roots;
+        }
+        String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (osName.contains("mac")) {
+            Path macRoot = Path.of(home, "Library", "Application Support", "minecraft");
+            roots.add(macRoot.resolve("schematics"));
+            roots.add(macRoot.resolve("baritone").resolve("schematics"));
+            roots.add(macRoot.resolve("litematica").resolve("schematics"));
+            Path dotRoot = Path.of(home, ".minecraft");
+            roots.add(dotRoot.resolve("schematics"));
+            roots.add(dotRoot.resolve("baritone").resolve("schematics"));
+            roots.add(dotRoot.resolve("litematica").resolve("schematics"));
+        } else if (osName.contains("win")) {
+            String appData = System.getenv("APPDATA");
+            if (appData != null && !appData.isEmpty()) {
+                Path winRoot = Path.of(appData, ".minecraft");
+                roots.add(winRoot.resolve("schematics"));
+                roots.add(winRoot.resolve("baritone").resolve("schematics"));
+                roots.add(winRoot.resolve("litematica").resolve("schematics"));
+            }
+        } else {
+            Path linuxRoot = Path.of(home, ".minecraft");
+            roots.add(linuxRoot.resolve("schematics"));
+            roots.add(linuxRoot.resolve("baritone").resolve("schematics"));
+            roots.add(linuxRoot.resolve("litematica").resolve("schematics"));
+        }
+        return roots;
+    }
+
+    private boolean schematicExistsInRoots(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.runDirectory == null) {
+            return false;
+        }
+        Path runDir = client.runDirectory.toPath();
+        List<Path> roots = new ArrayList<>();
+        roots.add(runDir.resolve("schematics"));
+        roots.add(runDir.resolve("baritone").resolve("schematics"));
+        roots.add(runDir.resolve("litematica").resolve("schematics"));
+        roots.addAll(resolveMinecraftSchematicRoots());
+        for (Path root : roots) {
+            if (Files.isRegularFile(root.resolve(value))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void drawNodeText(DrawContext context, TextRenderer renderer, Text text, int x, int y, int color) {
         if (!shouldRenderNodeText()) {
             return;
@@ -3933,18 +4272,21 @@ public class NodeGraph {
     private void renderSocket(DrawContext context, int x, int y, boolean isInput, int color) {
         // Socket circle
         context.fill(x - 3, y - 3, x + 3, y + 3, color);
-        context.drawBorder(x - 3, y - 3, 6, 6, 0xFF000000);
+        DrawContextBridge.drawBorder(context, x - 3, y - 3, 6, 6, 0xFF000000);
         
         // Socket highlight
         context.fill(x - 1, y - 1, x + 1, y + 1, 0xFFFFFFFF);
     }
 
-    private void renderConnections(DrawContext context) {
+    private void renderConnections(DrawContext context, boolean onlyDragged) {
         ExecutionManager manager = ExecutionManager.getInstance();
         boolean animateConnections = manager.isExecuting();
         long animationTimestamp = System.currentTimeMillis();
 
         for (NodeConnection connection : connections) {
+            if (onlyDragged != isConnectionInDraggedLayer(connection)) {
+                continue;
+            }
             Node outputNode = connection.getOutputNode();
             Node inputNode = connection.getInputNode();
 
@@ -3956,19 +4298,24 @@ public class NodeGraph {
             int outputY = outputNode.getSocketY(connection.getOutputSocket(), false) - cameraY;
             int inputX = inputNode.getSocketX(true) - cameraX;
             int inputY = inputNode.getSocketY(connection.getInputSocket(), true) - cameraY;
-            
+
+            int color = outputNode.getOutputSocketColor(connection.getOutputSocket());
+            if (shouldGrayOutConnection(outputNode, inputNode)) {
+                color = toGrayscale(color, 0.65f);
+            }
+
             // Simple bezier-like curve
             if (animateConnections && manager.shouldAnimateConnection(connection)) {
                 renderAnimatedConnectionCurve(context, outputX, outputY, inputX, inputY,
-                        outputNode.getOutputSocketColor(connection.getOutputSocket()), animationTimestamp);
+                        color, animationTimestamp);
             } else {
                 renderConnectionCurve(context, outputX, outputY, inputX, inputY,
-                        outputNode.getOutputSocketColor(connection.getOutputSocket()));
+                        color);
             }
         }
 
         // Render dragging connection if active
-        if (isDraggingConnection && connectionSourceNode != null) {
+        if (onlyDragged && isDraggingConnection && connectionSourceNode != null) {
             int sourceX = connectionSourceNode.getSocketX(!isOutputSocket) - cameraX;
             int sourceY = connectionSourceNode.getSocketY(connectionSourceSocket, !isOutputSocket) - cameraY;
             int targetX = connectionDragX - cameraX;
@@ -3985,14 +4332,69 @@ public class NodeGraph {
             }
             
             // Render the dragging connection using the source node's color
+            int color = connectionSourceNode.getOutputSocketColor(connectionSourceSocket);
+            int sourceScreenX = connectionSourceNode.getX() - cameraX;
+            if (isNodeOverSidebarForRender(connectionSourceNode, sourceScreenX, connectionSourceNode.getWidth())) {
+                color = toGrayscale(color, 0.65f);
+            }
+
             if (animateConnections) {
                 renderAnimatedConnectionCurve(context, sourceX, sourceY, targetX, targetY,
-                        connectionSourceNode.getOutputSocketColor(connectionSourceSocket), animationTimestamp);
+                        color, animationTimestamp);
             } else {
                 renderConnectionCurve(context, sourceX, sourceY, targetX, targetY,
-                        connectionSourceNode.getOutputSocketColor(connectionSourceSocket));
+                        color);
             }
         }
+    }
+
+    private boolean isNodeOverSidebarForRender(Node node, int screenX, int screenWidth) {
+        if (node == null) {
+            return false;
+        }
+        boolean isOverSidebar = node.isDragging() && isNodeOverSidebar(node, sidebarWidthForRendering, screenX, screenWidth);
+        if (!isOverSidebar && selectionDeletionPreviewActive && node.isSelected()) {
+            isOverSidebar = true;
+        }
+        if (!isOverSidebar && cascadeDeletionPreviewNodes.contains(node)) {
+            isOverSidebar = true;
+        }
+        return isOverSidebar;
+    }
+
+    private boolean shouldGrayOutConnection(Node outputNode, Node inputNode) {
+        if (outputNode == null || inputNode == null) {
+            return false;
+        }
+        int outputScreenX = outputNode.getX() - cameraX;
+        int inputScreenX = inputNode.getX() - cameraX;
+        return isNodeOverSidebarForRender(outputNode, outputScreenX, outputNode.getWidth())
+            || isNodeOverSidebarForRender(inputNode, inputScreenX, inputNode.getWidth());
+    }
+
+    private boolean isConnectionInDraggedLayer(NodeConnection connection) {
+        if (connection == null) {
+            return false;
+        }
+        return isNodeInDraggedHierarchy(connection.getOutputNode())
+            || isNodeInDraggedHierarchy(connection.getInputNode());
+    }
+
+    private boolean isNodeInDraggedHierarchy(Node node) {
+        if (node == null) {
+            return false;
+        }
+        if (node.isDragging()) {
+            return true;
+        }
+        Node parent = getParentForNode(node);
+        while (parent != null) {
+            if (parent.isDragging()) {
+                return true;
+            }
+            parent = getParentForNode(parent);
+        }
+        return false;
     }
 
     private void renderAnimatedConnectionCurve(DrawContext context, int x1, int y1, int x2, int y2, int color, long timestamp) {
@@ -4416,7 +4818,8 @@ public class NodeGraph {
                     node.getParameters().add(param);
                 }
             }
-            if (node.getType() == NodeType.STOP_CHAIN && node.getParameter("StartNumber") == null) {
+            if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
+                && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
             }
             Integer startNodeNumber = nodeData.getStartNodeNumber();

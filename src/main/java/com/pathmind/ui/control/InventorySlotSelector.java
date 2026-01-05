@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
+import com.pathmind.util.DrawContextBridge;
 
 /**
  * Helper widget for selecting inventory/container slots via a visual grid.
@@ -119,7 +120,7 @@ public class InventorySlotSelector {
         int buttonBg = hoverButton ? 0xFF3A3A3A : 0xFF2A2A2A;
         int borderColor = dropdownOpen ? 0xFF87CEEB : (hoverButton ? 0xFFAAAAAA : 0xFF555555);
         context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, buttonBg);
-        context.drawBorder(buttonX, buttonY, buttonWidth, buttonHeight, borderColor);
+        DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonWidth, buttonHeight, borderColor);
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(mode.displayName),
@@ -175,7 +176,7 @@ public class InventorySlotSelector {
         int left = renderX;
 
         context.fill(left, top, left + backgroundWidth, top + backgroundHeight, 0xFF1A1A1A);
-        context.drawBorder(left, top, backgroundWidth, backgroundHeight, 0xFF444444);
+        DrawContextBridge.drawBorder(context, left, top, backgroundWidth, backgroundHeight, 0xFF444444);
 
         slotBoxes.clear();
         int slotLeft = left + GRID_PADDING;
@@ -200,7 +201,7 @@ public class InventorySlotSelector {
                 fill = 0xFF87CEEB;
             }
             context.fill(slotX, slotY, slotX + SLOT_SIZE, slotY + SLOT_SIZE, fill);
-            context.drawBorder(slotX, slotY, SLOT_SIZE, SLOT_SIZE, selected ? 0xFFFFFFFF : 0xFF555555);
+            DrawContextBridge.drawBorder(context, slotX, slotY, SLOT_SIZE, SLOT_SIZE, selected ? 0xFFFFFFFF : 0xFF555555);
 
             String label = String.valueOf(position.slotId);
             int textWidth = textRenderer.getWidth(label);
@@ -236,7 +237,7 @@ public class InventorySlotSelector {
         int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
 
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        context.drawBorder(dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF444444);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF444444);
         context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF444444);
 
         dropdownHoverIndex = -1;

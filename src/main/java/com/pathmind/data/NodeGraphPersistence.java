@@ -158,7 +158,8 @@ public class NodeGraphPersistence {
                     node.setBooleanToggleValue(true);
                 }
             }
-            if (node.getType() == NodeType.STOP_CHAIN && node.getParameter("StartNumber") == null) {
+            if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
+                && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
             }
             Integer startNodeNumber = nodeData.getStartNodeNumber();

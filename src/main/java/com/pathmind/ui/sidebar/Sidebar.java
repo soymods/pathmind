@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.pathmind.util.DrawContextBridge;
 
 /**
  * Manages the sidebar with categorized draggable nodes.
@@ -109,6 +110,7 @@ public class Sidebar {
             NodeType.PARAM_COORDINATE,
             NodeType.PARAM_ROTATION,
             NodeType.PARAM_RANGE,
+            NodeType.PARAM_DISTANCE,
             NodeType.PARAM_CLOSEST
         ));
         groups.add(new NodeGroup(
@@ -350,7 +352,7 @@ public class Sidebar {
             
             // Tab outline slightly darker than base color
             int outlineColor = darkenColor(baseColor, 0.8f);
-            context.drawBorder(tabX, tabY, TAB_SIZE, TAB_SIZE, outlineColor);
+            DrawContextBridge.drawBorder(context, tabX, tabY, TAB_SIZE, TAB_SIZE, outlineColor);
             
             // Render centered icon with bigger appearance
             String icon = category.getIcon();
@@ -435,7 +437,7 @@ public class Sidebar {
                             int indicatorX = currentInnerSidebarWidth + 8;
                             int indicatorY = contentY + 3;
                             context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
-                            context.drawBorder(indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
+                            DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
 
                             context.drawTextWithShadow(
                                 textRenderer,
@@ -468,7 +470,7 @@ public class Sidebar {
                         int indicatorX = currentInnerSidebarWidth + 8; // Align with category title
                         int indicatorY = contentY + 3;
                         context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
-                        context.drawBorder(indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
+                        DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
                         
                         context.drawTextWithShadow(
                             textRenderer,
@@ -671,7 +673,7 @@ public class Sidebar {
         int trackHeight = Math.max(1, trackBottom - trackTop);
 
         context.fill(trackLeft, trackTop, trackRight, trackBottom, 0xFF1A1A1A);
-        context.drawBorder(trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, 0xFF444444);
+        DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, 0xFF444444);
 
         int visibleHeight = Math.max(1, contentBottom - contentTop);
         int totalScrollableHeight = Math.max(visibleHeight, visibleHeight + maxScroll);

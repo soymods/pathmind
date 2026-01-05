@@ -1,12 +1,5 @@
 package com.pathmind.execution;
 
-import baritone.api.BaritoneAPI;
-import baritone.api.IBaritone;
-import baritone.api.behavior.IPathingBehavior;
-import baritone.api.process.ICustomGoalProcess;
-import baritone.api.process.IExploreProcess;
-import baritone.api.process.IFarmProcess;
-import baritone.api.process.IMineProcess;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
@@ -15,6 +8,7 @@ import com.pathmind.nodes.ParameterType;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
+import com.pathmind.util.BaritoneApiProxy;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -45,6 +39,8 @@ public class ExecutionManager {
     private NodeGraphData lastGlobalGraph;
     private List<Node> activeNodes;
     private List<NodeConnection> activeConnections;
+    private List<Node> workspaceNodes;
+    private List<NodeConnection> workspaceConnections;
     private final Set<ConnectionKey> activeConnectionLookup;
     private final List<String> executingEvents;
     private volatile boolean cancelRequested;
@@ -158,6 +154,8 @@ public class ExecutionManager {
         this.executionEndTime = 0;
         this.activeNodes = new ArrayList<>();
         this.activeConnections = new ArrayList<>();
+        this.workspaceNodes = new ArrayList<>();
+        this.workspaceConnections = new ArrayList<>();
         this.executingEvents = new ArrayList<>();
         this.cancelRequested = false;
         this.activeChains = new ConcurrentHashMap<>();
@@ -234,6 +232,9 @@ public class ExecutionManager {
             System.out.println("ExecutionManager: Cannot execute graph - missing nodes or connections.");
             return;
         }
+
+        this.workspaceNodes = new ArrayList<>(nodes);
+        this.workspaceConnections = new ArrayList<>(connections);
 
         List<Node> startNodes = findStartNodes(nodes);
         if (startNodes.isEmpty()) {
@@ -317,6 +318,9 @@ public class ExecutionManager {
             System.out.println("ExecutionManager: START node already executing, ignoring branch start request.");
             return false;
         }
+
+        this.workspaceNodes = new ArrayList<>(nodes);
+        this.workspaceConnections = new ArrayList<>(connections);
 
         List<NodeConnection> filteredConnections = filterConnections(connections);
         Set<Node> branchNodeSet = collectBranchNodes(startNode, filteredConnections);
@@ -453,35 +457,35 @@ public class ExecutionManager {
         PreciseCompletionTracker.getInstance().cancelAllTasks();
 
         try {
-            IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+            Object baritone = BaritoneApiProxy.getPrimaryBaritone();
             if (baritone == null) {
                 return;
             }
 
-            IPathingBehavior pathingBehavior = baritone.getPathingBehavior();
+            Object pathingBehavior = BaritoneApiProxy.getPathingBehavior(baritone);
             if (pathingBehavior != null) {
-                pathingBehavior.cancelEverything();
+                BaritoneApiProxy.cancelEverything(pathingBehavior);
             }
 
-            ICustomGoalProcess goalProcess = baritone.getCustomGoalProcess();
+            Object goalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
             if (goalProcess != null) {
-                goalProcess.setGoal(null);
-                goalProcess.onLostControl();
+                BaritoneApiProxy.setGoal(goalProcess, null);
+                BaritoneApiProxy.onLostControl(goalProcess);
             }
 
-            IMineProcess mineProcess = baritone.getMineProcess();
+            Object mineProcess = BaritoneApiProxy.getMineProcess(baritone);
             if (mineProcess != null) {
-                mineProcess.cancel();
+                BaritoneApiProxy.cancelMine(mineProcess);
             }
 
-            IExploreProcess exploreProcess = baritone.getExploreProcess();
-            if (exploreProcess != null && exploreProcess.isActive()) {
-                exploreProcess.onLostControl();
+            Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
+            if (exploreProcess != null && BaritoneApiProxy.isProcessActive(exploreProcess)) {
+                BaritoneApiProxy.onLostControl(exploreProcess);
             }
 
-            IFarmProcess farmProcess = baritone.getFarmProcess();
-            if (farmProcess != null && farmProcess.isActive()) {
-                farmProcess.onLostControl();
+            Object farmProcess = BaritoneApiProxy.getFarmProcess(baritone);
+            if (farmProcess != null && BaritoneApiProxy.isProcessActive(farmProcess)) {
+                BaritoneApiProxy.onLostControl(farmProcess);
             }
         } catch (Exception e) {
             System.err.println("ExecutionManager: Failed to cancel Baritone processes: " + e.getMessage());
@@ -528,6 +532,48 @@ public class ExecutionManager {
             return false;
         }
         return requestStopForStart(match);
+    }
+
+    public boolean requestStartForStartNumber(int startNodeNumber) {
+        if (startNodeNumber <= 0) {
+            return false;
+        }
+        if (workspaceNodes == null || workspaceNodes.isEmpty() || workspaceConnections == null) {
+            System.out.println("ExecutionManager: No workspace graph available to start START node " + startNodeNumber + ".");
+            return false;
+        }
+
+        Node match = findWorkspaceStartNode(startNodeNumber);
+
+        if (match == null) {
+            System.out.println("ExecutionManager: No START node found for number " + startNodeNumber + ".");
+            return false;
+        }
+        if (isChainActive(match)) {
+            System.out.println("ExecutionManager: START node already executing, ignoring start request.");
+            return false;
+        }
+
+        List<NodeConnection> filteredConnections = filterConnections(workspaceConnections);
+        BranchData branchData = buildBranchData(match, workspaceNodes, filteredConnections);
+        if (branchData == null || branchData.nodes.isEmpty()) {
+            System.out.println("ExecutionManager: START node " + startNodeNumber + " has no executable branch.");
+            return false;
+        }
+
+        mergeActiveGraph(branchData.nodes, branchData.connections);
+
+        if (!isExecuting && activeChains.isEmpty()) {
+            startExecution(Collections.singletonList(match), globalExecutionActive);
+        } else {
+            this.isExecuting = true;
+        }
+
+        ChainController controller = new ChainController(match);
+        activeChains.put(match, controller);
+        CompletableFuture<Void> chainFuture = runChain(match, controller);
+        chainFuture.whenComplete((ignored, throwable) -> handleChainCompletion(controller, throwable));
+        return true;
     }
 
     public boolean isChainActive(Node startNode) {
@@ -1032,6 +1078,16 @@ public class ExecutionManager {
         }
     }
 
+    private static final class BranchData {
+        final List<Node> nodes;
+        final List<NodeConnection> connections;
+
+        BranchData(List<Node> nodes, List<NodeConnection> connections) {
+            this.nodes = nodes;
+            this.connections = connections;
+        }
+    }
+
     public boolean shouldAnimateConnection(NodeConnection connection) {
         if (connection == null || !isExecuting) {
             return false;
@@ -1151,6 +1207,82 @@ public class ExecutionManager {
         }
 
         return visited;
+    }
+
+    private Node findWorkspaceStartNode(int startNodeNumber) {
+        if (workspaceNodes == null) {
+            return null;
+        }
+        for (Node startNode : workspaceNodes) {
+            if (startNode != null && startNode.getType() == NodeType.START
+                && startNode.getStartNodeNumber() == startNodeNumber) {
+                return startNode;
+            }
+        }
+        return null;
+    }
+
+    private BranchData buildBranchData(Node startNode, List<Node> nodes, List<NodeConnection> connections) {
+        if (startNode == null || nodes == null || connections == null) {
+            return null;
+        }
+        Set<Node> branchNodeSet = collectBranchNodes(startNode, connections);
+
+        for (Node node : nodes) {
+            if (node != null && node.getType() == NodeType.EVENT_FUNCTION) {
+                branchNodeSet.addAll(collectBranchNodes(node, connections));
+            }
+        }
+
+        List<Node> branchNodes = new ArrayList<>();
+        for (Node node : nodes) {
+            if (branchNodeSet.contains(node)) {
+                branchNodes.add(node);
+            }
+        }
+
+        List<NodeConnection> branchConnections = new ArrayList<>();
+        for (NodeConnection connection : connections) {
+            if (branchNodeSet.contains(connection.getOutputNode()) && branchNodeSet.contains(connection.getInputNode())) {
+                branchConnections.add(connection);
+            }
+        }
+
+        return new BranchData(branchNodes, branchConnections);
+    }
+
+    private void mergeActiveGraph(List<Node> branchNodes, List<NodeConnection> branchConnections) {
+        if (branchNodes == null || branchConnections == null) {
+            return;
+        }
+        if (activeNodes == null || activeNodes.isEmpty()) {
+            this.activeNodes = new ArrayList<>(branchNodes);
+        } else {
+            LinkedHashSet<Node> mergedNodes = new LinkedHashSet<>(activeNodes);
+            mergedNodes.addAll(branchNodes);
+            this.activeNodes = new ArrayList<>(mergedNodes);
+        }
+
+        if (activeConnections == null || activeConnections.isEmpty()) {
+            this.activeConnections = new ArrayList<>(branchConnections);
+        } else {
+            Map<ConnectionKey, NodeConnection> mergedConnections = new HashMap<>();
+            for (NodeConnection connection : activeConnections) {
+                ConnectionKey key = toKey(connection);
+                if (key != null) {
+                    mergedConnections.put(key, connection);
+                }
+            }
+            for (NodeConnection connection : branchConnections) {
+                ConnectionKey key = toKey(connection);
+                if (key != null && !mergedConnections.containsKey(key)) {
+                    mergedConnections.put(key, connection);
+                }
+            }
+            this.activeConnections = new ArrayList<>(mergedConnections.values());
+        }
+
+        rebuildConnectionState(this.activeNodes, this.activeConnections);
     }
 
     private NodeGraphData createGraphSnapshot(List<Node> nodes, List<NodeConnection> connections) {

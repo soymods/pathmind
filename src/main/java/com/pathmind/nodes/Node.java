@@ -15,20 +15,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import baritone.api.BaritoneAPI;
-import baritone.api.Settings;
-import baritone.api.IBaritone;
-import baritone.api.behavior.IPathingBehavior;
-import baritone.api.process.ICustomGoalProcess;
-import baritone.api.process.IExploreProcess;
-import baritone.api.process.IGetToBlockProcess;
-import baritone.api.process.IFarmProcess;
-import baritone.api.process.IMineProcess;
-import baritone.api.pathing.goals.GoalBlock;
-import baritone.api.pathing.goals.GoalNear;
-import baritone.api.utils.BlockOptionalMeta;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
+import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
 import com.pathmind.util.PlayerInventoryBridge;
@@ -74,6 +63,7 @@ import net.minecraft.recipe.RecipeManager;
 import net.minecraft.recipe.RecipeEntry;
 import net.minecraft.recipe.RecipeType;
 import net.minecraft.recipe.ShapedRecipe;
+import net.minecraft.recipe.input.CraftingRecipeInput;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.RegistryWrapper;
 import java.util.Arrays;
@@ -82,7 +72,6 @@ import net.minecraft.screen.PlayerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.recipe.input.CraftingRecipeInput;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import it.unimi.dsi.fastutil.ints.IntList;
@@ -91,6 +80,11 @@ import java.util.Comparator;
 import java.util.regex.Pattern;
 import org.lwjgl.glfw.GLFW;
 import java.lang.reflect.Field;
+import com.pathmind.util.CameraCompatibilityBridge;
+import com.pathmind.util.ChatScreenCompatibilityBridge;
+import com.pathmind.util.EntityCompatibilityBridge;
+import com.pathmind.util.GameProfileCompatibilityBridge;
+import com.pathmind.util.InputCompatibilityBridge;
 
 /**
  * Represents a single node in the Pathmind visual editor.
@@ -150,6 +144,10 @@ public class Node {
     private static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
     private static final int AMOUNT_FIELD_HEIGHT = 16;
     private static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
+    private static final int SCHEMATIC_FIELD_TOP_MARGIN = 6;
+    private static final int SCHEMATIC_FIELD_LABEL_HEIGHT = 10;
+    private static final int SCHEMATIC_FIELD_HEIGHT = 16;
+    private static final int SCHEMATIC_FIELD_BOTTOM_MARGIN = 6;
     private static final int STOP_TARGET_FIELD_MARGIN_HORIZONTAL = 8;
     private static final int STOP_TARGET_FIELD_TOP_MARGIN = 6;
     private static final int STOP_TARGET_FIELD_LABEL_HEIGHT = 0;
@@ -158,6 +156,7 @@ public class Node {
     private static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
     private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
+    private static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
     private static final Pattern UNSAFE_RESOURCE_ID_PATTERN = Pattern.compile("[^a-z0-9_:/.-]");
     private static final Object GOTO_BREAK_LOCK = new Object();
     private static final AtomicInteger ACTIVE_GOTO_BLOCKING_REQUESTS = new AtomicInteger(0);
@@ -305,11 +304,11 @@ public class Node {
 
     /**
      * Gets the Baritone instance for the current player
-     * @return IBaritone instance or null if not available
+     * @return Baritone instance or null if not available
      */
-    private IBaritone getBaritone() {
+    private Object getBaritone() {
         try {
-            return BaritoneAPI.getProvider().getPrimaryBaritone();
+            return BaritoneApiProxy.getPrimaryBaritone();
         } catch (Exception e) {
             System.err.println("Failed to get Baritone instance: " + e.getMessage());
             return null;
@@ -493,7 +492,7 @@ public class Node {
         if (type == NodeType.OPEN_INVENTORY || type == NodeType.CLOSE_GUI) {
             return false;
         }
-        if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL) {
+        if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL || type == NodeType.START_CHAIN) {
             return false;
         }
         if (hasBooleanToggle()) {
@@ -518,6 +517,7 @@ public class Node {
 
     public boolean usesMinimalNodePresentation() {
         return isStopControlNode()
+            || type == NodeType.START_CHAIN
             || type == NodeType.SWING
             || type == NodeType.JUMP
             || type == NodeType.OPEN_INVENTORY
@@ -594,6 +594,13 @@ public class Node {
                 return parameterType == NodeType.VARIABLE;
             }
             return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.WALK) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.PARAM_ROTATION;
+            }
+            return parameterType == NodeType.PARAM_DURATION || parameterType == NodeType.PARAM_DISTANCE;
         }
         if (type != NodeType.PLACE && type != NodeType.PLACE_HAND) {
             return true;
@@ -927,6 +934,9 @@ public class Node {
         if (type == NodeType.MOVE_ITEM) {
             return 2;
         }
+        if (type == NodeType.WALK) {
+            return 2;
+        }
         return 1;
     }
 
@@ -948,6 +958,9 @@ public class Node {
 
     public int getParameterSlotTop(int slotIndex) {
         int top = y + HEADER_HEIGHT + PARAMETER_SLOT_LABEL_HEIGHT;
+        if (hasSchematicDropdownField()) {
+            top += getSchematicFieldDisplayHeight();
+        }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             return top;
         }
@@ -969,11 +982,17 @@ public class Node {
         if (type == NodeType.SET_VARIABLE) {
             return slotIndex == 0 ? "Variable" : "Parameter";
         }
+        if (type == NodeType.BUILD) {
+            return "Position";
+        }
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
             return slotIndex == 0 ? "Source" : "Position";
         }
         if (type == NodeType.MOVE_ITEM) {
             return slotIndex == 0 ? "Source Slot" : "Target Slot";
+        }
+        if (type == NodeType.WALK) {
+            return slotIndex == 0 ? "Direction" : "Duration/Distance";
         }
         return "Parameter";
     }
@@ -1079,8 +1098,12 @@ public class Node {
         return false;
     }
 
+    public boolean hasSchematicDropdownField() {
+        return type == NodeType.BUILD;
+    }
+
     public boolean hasStopTargetInputField() {
-        return type == NodeType.STOP_CHAIN;
+        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN;
     }
 
     public int getAmountFieldDisplayHeight() {
@@ -1115,6 +1138,37 @@ public class Node {
     }
 
     public int getAmountFieldLeft() {
+        return getParameterSlotLeft();
+    }
+
+    public int getSchematicFieldDisplayHeight() {
+        if (!hasSchematicDropdownField()) {
+            return 0;
+        }
+        return SCHEMATIC_FIELD_TOP_MARGIN + SCHEMATIC_FIELD_LABEL_HEIGHT + SCHEMATIC_FIELD_HEIGHT + SCHEMATIC_FIELD_BOTTOM_MARGIN;
+    }
+
+    public int getSchematicFieldLabelTop() {
+        return y + HEADER_HEIGHT + SCHEMATIC_FIELD_TOP_MARGIN;
+    }
+
+    public int getSchematicFieldInputTop() {
+        return getSchematicFieldLabelTop() + SCHEMATIC_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getSchematicFieldLabelHeight() {
+        return SCHEMATIC_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getSchematicFieldHeight() {
+        return SCHEMATIC_FIELD_HEIGHT;
+    }
+
+    public int getSchematicFieldWidth() {
+        return getParameterSlotWidth();
+    }
+
+    public int getSchematicFieldLeft() {
         return getParameterSlotLeft();
     }
 
@@ -1595,9 +1649,17 @@ public class Node {
             case FOLLOW:
             case PATH:
             case INTERACT:
+                if (type == NodeType.GOTO || type == NodeType.GOAL) {
+                    return EnumSet.of(ParameterUsage.POSITION, ParameterUsage.LOOK_ORIENTATION);
+                }
                 return EnumSet.of(ParameterUsage.POSITION);
             case LOOK:
                 return EnumSet.of(ParameterUsage.LOOK_ORIENTATION, ParameterUsage.POSITION);
+            case WALK:
+                if (slotIndex == 0) {
+                    return EnumSet.of(ParameterUsage.LOOK_ORIENTATION);
+                }
+                return EnumSet.noneOf(ParameterUsage.class);
             case PLACE:
                 if (slotIndex == 0 || slotIndex == 1) {
                     return EnumSet.of(ParameterUsage.POSITION);
@@ -1752,10 +1814,10 @@ public class Node {
                     
                 // BUILD modes
                 case BUILD_PLAYER:
-                    parameters.add(new NodeParameter("Schematic", ParameterType.STRING, "house.schematic"));
+                    parameters.add(new NodeParameter("Schematic", ParameterType.STRING, ""));
                     break;
                 case BUILD_XYZ:
-                    parameters.add(new NodeParameter("Schematic", ParameterType.STRING, "house.schematic"));
+                    parameters.add(new NodeParameter("Schematic", ParameterType.STRING, ""));
                     parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                     parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
                     parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
@@ -1831,6 +1893,9 @@ public class Node {
             case MESSAGE:
                 parameters.add(new NodeParameter("Text", ParameterType.STRING, "Hello World"));
                 break;
+            case START_CHAIN:
+                parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
+                break;
             case STOP_CHAIN:
                 parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 break;
@@ -1894,6 +1959,10 @@ public class Node {
             case LOOK:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("Pitch", ParameterType.DOUBLE, "0.0"));
+                break;
+            case WALK:
+                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
+                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "0.0"));
                 break;
             case CROUCH:
                 parameters.add(new NodeParameter("Active", ParameterType.BOOLEAN, "true"));
@@ -1977,7 +2046,7 @@ public class Node {
                 parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "10"));
                 break;
             case PARAM_SCHEMATIC:
-                parameters.add(new NodeParameter("Schematic", ParameterType.STRING, "structure.schematic"));
+                parameters.add(new NodeParameter("Schematic", ParameterType.STRING, ""));
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
@@ -2007,11 +2076,15 @@ public class Node {
             case PARAM_RANGE:
                 parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "6"));
                 break;
+            case PARAM_DISTANCE:
+                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
+                break;
             case PARAM_ROTATION:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("Pitch", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("YawOffset", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("PitchOffset", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
                 break;
             case PARAM_PLACE_TARGET:
                 parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
@@ -2478,6 +2551,9 @@ public class Node {
                     contentHeight += SLOT_AREA_PADDING_TOP;
                 }
             } else {
+                if (hasSchematicDropdownField()) {
+                    contentHeight += getSchematicFieldDisplayHeight();
+                }
                 int slotCount = getParameterSlotCount();
                 for (int i = 0; i < slotCount; i++) {
                     contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
@@ -2892,7 +2968,7 @@ public class Node {
                     data.targetEntityId = entityId;
                     data.targetBlockPos = entity.get().getBlockPos();
                 }
-                return Optional.of(entity.get().getPos());
+                return Optional.ofNullable(EntityCompatibilityBridge.getPos(entity.get()));
             }
             case PARAM_PLAYER: {
                 if (client == null || client.player == null || client.world == null) {
@@ -2904,7 +2980,8 @@ public class Node {
                     return Optional.empty();
                 }
                 Optional<AbstractClientPlayerEntity> player = client.world.getPlayers().stream()
-                    .filter(p -> p.getGameProfile().getName().equalsIgnoreCase(playerName))
+                    .filter(p -> playerName.equalsIgnoreCase(
+                        GameProfileCompatibilityBridge.getName(p.getGameProfile())))
                     .findFirst();
                 if (player.isEmpty()) {
                     sendParameterSearchFailure("Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".", future);
@@ -2914,7 +2991,7 @@ public class Node {
                     data.targetPlayerName = playerName;
                     data.targetBlockPos = player.get().getBlockPos();
                 }
-                return Optional.of(player.get().getPos());
+                return Optional.ofNullable(EntityCompatibilityBridge.getPos(player.get()));
             }
             case PARAM_BLOCK:
             case PARAM_BLOCK_LIST: {
@@ -2943,6 +3020,48 @@ public class Node {
                     }
                 }
                 return Optional.of(Vec3d.ofCenter(match.get()));
+            }
+            case PARAM_ROTATION: {
+                if (type != NodeType.GOTO && type != NodeType.GOAL) {
+                    return Optional.empty();
+                }
+                if (mode != NodeMode.GOTO_XYZ && mode != NodeMode.GOTO_XZ
+                    && mode != NodeMode.GOAL_XYZ && mode != NodeMode.GOAL_XZ) {
+                    return Optional.empty();
+                }
+                if (client == null || client.player == null) {
+                    return Optional.empty();
+                }
+                Vec3d origin = EntityCompatibilityBridge.getPos(client.player);
+                if (origin == null) {
+                    return Optional.empty();
+                }
+                Float yawParam = parseNodeFloat(parameterNode, "Yaw");
+                Float pitchParam = parseNodeFloat(parameterNode, "Pitch");
+                float yaw = yawParam != null ? yawParam : client.player.getYaw();
+                float pitch = pitchParam != null ? pitchParam : client.player.getPitch();
+                Float yawOffset = parseNodeFloat(parameterNode, "YawOffset");
+                Float pitchOffset = parseNodeFloat(parameterNode, "PitchOffset");
+                if (yawOffset != null) {
+                    yaw += yawOffset;
+                }
+                if (pitchOffset != null) {
+                    pitch += pitchOffset;
+                }
+                double distance = Math.max(0.0, parseNodeDouble(parameterNode, "Distance", DEFAULT_DIRECTION_DISTANCE));
+                double yawRad = Math.toRadians(yaw);
+                double pitchRad = Math.toRadians(pitch);
+                double xDir = -Math.sin(yawRad) * Math.cos(pitchRad);
+                double yDir = -Math.sin(pitchRad);
+                double zDir = Math.cos(yawRad) * Math.cos(pitchRad);
+                Vec3d target = origin.add(xDir * distance, yDir * distance, zDir * distance);
+                if (data != null) {
+                    data.targetVector = target;
+                    data.targetBlockPos = new BlockPos(MathHelper.floor(target.x), MathHelper.floor(target.y), MathHelper.floor(target.z));
+                    data.resolvedYaw = yaw;
+                    data.resolvedPitch = pitch;
+                }
+                return Optional.of(target);
             }
             default: {
                 String xValue = getParameterString(parameterNode, "X");
@@ -3522,6 +3641,9 @@ public class Node {
             case STOP:
                 executeStopCommand(future);
                 break;
+            case START_CHAIN:
+                executeStartChainNode(future);
+                break;
             case STOP_CHAIN:
                 executeStopChainNode(future);
                 break;
@@ -3569,6 +3691,9 @@ public class Node {
                 break;
             case LOOK:
                 executeLookCommand(future);
+                break;
+            case WALK:
+                executeWalkCommand(future);
                 break;
             case JUMP:
                 executeJumpCommand(future);
@@ -3685,7 +3810,7 @@ public class Node {
             return;
         }
 
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for goto command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
@@ -3693,7 +3818,7 @@ public class Node {
         }
 
         resetBaritonePathing(baritone);
-        ICustomGoalProcess customGoalProcess = baritone.getCustomGoalProcess();
+        Object customGoalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
 
         if (tryExecuteGotoUsingAttachedParameter(baritone, customGoalProcess, future)) {
             return;
@@ -3717,8 +3842,8 @@ public class Node {
 
                 System.out.println("Executing goto to: " + x + ", " + y + ", " + z);
                 startGotoTaskWithBreakGuard(future);
-                GoalBlock goal = new GoalBlock(x, y, z);
-                customGoalProcess.setGoalAndPath(goal);
+                Object goal = BaritoneApiProxy.createGoalBlock(x, y, z);
+                BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
                 break;
                 
             case GOTO_XZ:
@@ -3736,8 +3861,8 @@ public class Node {
 
                 System.out.println("Executing goto to: " + x2 + ", " + z2);
                 startGotoTaskWithBreakGuard(future);
-                GoalBlock goal2 = new GoalBlock(x2, 0, z2); // Y will be determined by pathfinding
-                customGoalProcess.setGoalAndPath(goal2);
+                Object goal2 = BaritoneApiProxy.createGoalBlock(x2, 0, z2); // Y will be determined by pathfinding
+                BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal2);
                 break;
                 
             case GOTO_Y:
@@ -3756,8 +3881,8 @@ public class Node {
                     }
                     int currentX = (int) client.player.getX();
                     int currentZ = (int) client.player.getZ();
-                    GoalBlock goal3 = new GoalBlock(currentX, y3, currentZ);
-                    customGoalProcess.setGoalAndPath(goal3);
+                    Object goal3 = BaritoneApiProxy.createGoalBlock(currentX, y3, currentZ);
+                    BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal3);
                 }
                 break;
                 
@@ -3769,14 +3894,14 @@ public class Node {
                 }
 
                 System.out.println("Executing goto to block: " + block);
-                IGetToBlockProcess getToBlockProcess = baritone.getGetToBlockProcess();
+                Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
                 if (getToBlockProcess == null) {
                     future.completeExceptionally(new RuntimeException("GetToBlock process not available"));
                     break;
                 }
 
                 startGotoTaskWithBreakGuard(future);
-                getToBlockProcess.getToBlock(new BlockOptionalMeta(block));
+                BaritoneApiProxy.getToBlock(getToBlockProcess, BaritoneApiProxy.createBlockOptionalMeta(block));
                 break;
                 
             default:
@@ -3794,15 +3919,15 @@ public class Node {
         if (future == null) {
             return;
         }
-        Settings settings = BaritoneAPI.getSettings();
+        Object settings = BaritoneApiProxy.getSettings();
         if (settings == null) {
             return;
         }
 
         synchronized (GOTO_BREAK_LOCK) {
             if (ACTIVE_GOTO_BLOCKING_REQUESTS.getAndIncrement() == 0) {
-                gotoBreakOriginalValue = settings.allowBreak.value;
-                settings.allowBreak.value = false;
+                gotoBreakOriginalValue = BaritoneApiProxy.getAllowBreak(settings);
+                BaritoneApiProxy.setAllowBreak(settings, false);
             }
         }
 
@@ -3810,7 +3935,7 @@ public class Node {
     }
 
     private static void restoreBaritoneBlockBreakingAfterGoto() {
-        Settings settings = BaritoneAPI.getSettings();
+        Object settings = BaritoneApiProxy.getSettings();
         if (settings == null) {
             return;
         }
@@ -3821,12 +3946,12 @@ public class Node {
                 ACTIVE_GOTO_BLOCKING_REQUESTS.set(0);
                 Boolean originalValue = gotoBreakOriginalValue;
                 gotoBreakOriginalValue = null;
-                settings.allowBreak.value = originalValue != null ? originalValue : Boolean.TRUE;
+                BaritoneApiProxy.setAllowBreak(settings, originalValue != null ? originalValue : Boolean.TRUE);
             }
         }
     }
 
-    private boolean tryExecuteGotoUsingAttachedParameter(IBaritone baritone, ICustomGoalProcess customGoalProcess, CompletableFuture<Void> future) {
+    private boolean tryExecuteGotoUsingAttachedParameter(Object baritone, Object customGoalProcess, CompletableFuture<Void> future) {
         Node parameterNode = getAttachedParameter();
         if (parameterNode == null) {
             return false;
@@ -3848,7 +3973,7 @@ public class Node {
         }
     }
 
-    private boolean gotoNearestDroppedItem(Node parameterNode, ICustomGoalProcess customGoalProcess, CompletableFuture<Void> future) {
+    private boolean gotoNearestDroppedItem(Node parameterNode, Object customGoalProcess, CompletableFuture<Void> future) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null || client.world == null) {
             return false;
@@ -3900,11 +4025,12 @@ public class Node {
         }
 
         startGotoTaskWithBreakGuard(future);
-        customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
+        Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
+        BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
         return true;
     }
 
-    private boolean gotoNearestEntity(Node parameterNode, ICustomGoalProcess customGoalProcess, CompletableFuture<Void> future) {
+    private boolean gotoNearestEntity(Node parameterNode, Object customGoalProcess, CompletableFuture<Void> future) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null || client.world == null) {
             return false;
@@ -3939,11 +4065,12 @@ public class Node {
 
         BlockPos pos = target.get().getBlockPos();
         startGotoTaskWithBreakGuard(future);
-        customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
+        Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
+        BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
         return true;
     }
 
-    private boolean gotoNamedPlayer(Node parameterNode, ICustomGoalProcess customGoalProcess, CompletableFuture<Void> future) {
+    private boolean gotoNamedPlayer(Node parameterNode, Object customGoalProcess, CompletableFuture<Void> future) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null || client.world == null) {
             return false;
@@ -3955,7 +4082,8 @@ public class Node {
         }
 
         Optional<AbstractClientPlayerEntity> match = client.world.getPlayers().stream()
-            .filter(p -> p.getGameProfile().getName().equalsIgnoreCase(playerName))
+            .filter(p -> playerName.equalsIgnoreCase(
+                GameProfileCompatibilityBridge.getName(p.getGameProfile())))
             .findFirst();
 
         if (match.isEmpty()) {
@@ -3972,11 +4100,12 @@ public class Node {
 
         BlockPos pos = match.get().getBlockPos();
         startGotoTaskWithBreakGuard(future);
-        customGoalProcess.setGoalAndPath(new GoalBlock(pos.getX(), pos.getY(), pos.getZ()));
+        Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
+        BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
         return true;
     }
 
-    private boolean gotoBlockFromParameter(Node parameterNode, IBaritone baritone, CompletableFuture<Void> future) {
+    private boolean gotoBlockFromParameter(Node parameterNode, Object baritone, CompletableFuture<Void> future) {
         String blockId = getBlockParameterValue(parameterNode);
         if (blockId == null || blockId.isEmpty()) {
             return false;
@@ -4036,7 +4165,7 @@ public class Node {
         }
 
         if (targetPos != null) {
-            ICustomGoalProcess customGoalProcess = baritone != null ? baritone.getCustomGoalProcess() : null;
+            Object customGoalProcess = baritone != null ? BaritoneApiProxy.getCustomGoalProcess(baritone) : null;
             if (customGoalProcess == null) {
                 if (client != null) {
                     sendNodeErrorMessage(client, "Cannot navigate to block: goal process unavailable.");
@@ -4046,12 +4175,12 @@ public class Node {
             }
 
             startGotoTaskWithBreakGuard(future);
-            GoalNear goal = new GoalNear(targetPos, 1);
-            customGoalProcess.setGoalAndPath(goal);
+            Object goal = BaritoneApiProxy.createGoalNear(targetPos, 1);
+            BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
             return true;
         }
 
-        IGetToBlockProcess getToBlockProcess = baritone != null ? baritone.getGetToBlockProcess() : null;
+        Object getToBlockProcess = baritone != null ? BaritoneApiProxy.getGetToBlockProcess(baritone) : null;
         if (getToBlockProcess == null) {
             if (client != null) {
                 sendNodeErrorMessage(client, "Cannot navigate to block: block search process unavailable.");
@@ -4062,11 +4191,11 @@ public class Node {
 
         startGotoTaskWithBreakGuard(future);
         String targetId = (normalized != null && !normalized.isEmpty()) ? normalized : blockId;
-        getToBlockProcess.getToBlock(new BlockOptionalMeta(targetId));
+        BaritoneApiProxy.getToBlock(getToBlockProcess, BaritoneApiProxy.createBlockOptionalMeta(targetId));
         return true;
     }
 
-    private boolean gotoBlockListFromParameter(Node parameterNode, IBaritone baritone, CompletableFuture<Void> future) {
+    private boolean gotoBlockListFromParameter(Node parameterNode, Object baritone, CompletableFuture<Void> future) {
         String list = getParameterString(parameterNode, "Blocks");
         if (list == null || list.isEmpty()) {
             return false;
@@ -4087,11 +4216,11 @@ public class Node {
         return true;
     }
 
-    private boolean gotoBlockFromParameterValue(String blockId, IBaritone baritone, CompletableFuture<Void> future) {
+    private boolean gotoBlockFromParameterValue(String blockId, Object baritone, CompletableFuture<Void> future) {
         if (blockId == null || blockId.isEmpty()) {
             return false;
         }
-        IGetToBlockProcess getToBlockProcess = baritone != null ? baritone.getGetToBlockProcess() : null;
+        Object getToBlockProcess = baritone != null ? BaritoneApiProxy.getGetToBlockProcess(baritone) : null;
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (getToBlockProcess == null) {
             if (client != null) {
@@ -4101,7 +4230,7 @@ public class Node {
             return true;
         }
         startGotoTaskWithBreakGuard(future);
-        getToBlockProcess.getToBlock(new BlockOptionalMeta(blockId));
+        BaritoneApiProxy.getToBlock(getToBlockProcess, BaritoneApiProxy.createBlockOptionalMeta(blockId));
         return true;
     }
     
@@ -4119,12 +4248,12 @@ public class Node {
             return;
         }
 
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone == null) {
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
-        IMineProcess mineProcess = baritone.getMineProcess();
+        Object mineProcess = BaritoneApiProxy.getMineProcess(baritone);
         if (mineProcess == null) {
             future.completeExceptionally(new RuntimeException("Mine process not available"));
             return;
@@ -4143,8 +4272,8 @@ public class Node {
                 // Dispatch Baritone calls off the render thread so the client never blocks
                 CompletableFuture.runAsync(() -> {
                     try {
-                        mineProcess.mineByName(amount, targets.toArray(new String[0]));
-                        System.out.println("Collect (single) dispatched mine command; active=" + mineProcess.isActive());
+                        BaritoneApiProxy.mineByName(mineProcess, amount, targets.toArray(new String[0]));
+                        System.out.println("Collect (single) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
                     } catch (Exception e) {
                         System.err.println("Failed to start mine command: " + e.getMessage());
                         e.printStackTrace();
@@ -4159,8 +4288,8 @@ public class Node {
                 // Dispatch Baritone calls off the render thread so the client never blocks
                 CompletableFuture.runAsync(() -> {
                     try {
-                        mineProcess.mineByName(targets.toArray(new String[0]));
-                        System.out.println("Collect (multi) dispatched mine command; active=" + mineProcess.isActive());
+                        BaritoneApiProxy.mineByName(mineProcess, targets.toArray(new String[0]));
+                        System.out.println("Collect (multi) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
                     } catch (Exception e) {
                         System.err.println("Failed to start mine command: " + e.getMessage());
                         e.printStackTrace();
@@ -4174,55 +4303,55 @@ public class Node {
         }
     }
 
-    private void resetBaritonePathing(IBaritone baritone, IMineProcess mineProcess) {
+    private void resetBaritonePathing(Object baritone, Object mineProcess) {
         if (baritone == null) {
             return;
         }
 
         try {
             if (mineProcess != null) {
-                if (mineProcess.isActive()) {
-                    mineProcess.cancel();
+                if (BaritoneApiProxy.isProcessActive(mineProcess)) {
+                    BaritoneApiProxy.cancelMine(mineProcess);
                 }
                 // Ensure any queued mine targets from previous runs are cleared
-                mineProcess.onLostControl();
+                BaritoneApiProxy.onLostControl(mineProcess);
             }
 
-            IPathingBehavior pathingBehavior = baritone.getPathingBehavior();
-            if (pathingBehavior != null && (pathingBehavior.isPathing() || pathingBehavior.hasPath())) {
-                pathingBehavior.cancelEverything();
+            Object pathingBehavior = BaritoneApiProxy.getPathingBehavior(baritone);
+            if (pathingBehavior != null && (BaritoneApiProxy.isPathing(pathingBehavior) || BaritoneApiProxy.hasPath(pathingBehavior))) {
+                BaritoneApiProxy.cancelEverything(pathingBehavior);
             }
 
-            ICustomGoalProcess goalProcess = baritone.getCustomGoalProcess();
+            Object goalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
             if (goalProcess != null) {
-                goalProcess.setGoal(null);
-                goalProcess.onLostControl();
+                BaritoneApiProxy.setGoal(goalProcess, null);
+                BaritoneApiProxy.onLostControl(goalProcess);
             }
 
-            IGetToBlockProcess getToBlockProcess = baritone.getGetToBlockProcess();
-            if (getToBlockProcess != null && getToBlockProcess.isActive()) {
-                getToBlockProcess.onLostControl();
+            Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
+            if (getToBlockProcess != null && BaritoneApiProxy.isProcessActive(getToBlockProcess)) {
+                BaritoneApiProxy.onLostControl(getToBlockProcess);
             }
 
-            IExploreProcess exploreProcess = baritone.getExploreProcess();
-            if (exploreProcess != null && exploreProcess.isActive()) {
-                exploreProcess.onLostControl();
+            Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
+            if (exploreProcess != null && BaritoneApiProxy.isProcessActive(exploreProcess)) {
+                BaritoneApiProxy.onLostControl(exploreProcess);
             }
 
-            IFarmProcess farmProcess = baritone.getFarmProcess();
-            if (farmProcess != null && farmProcess.isActive()) {
-                farmProcess.onLostControl();
+            Object farmProcess = BaritoneApiProxy.getFarmProcess(baritone);
+            if (farmProcess != null && BaritoneApiProxy.isProcessActive(farmProcess)) {
+                BaritoneApiProxy.onLostControl(farmProcess);
             }
         } catch (Exception e) {
             System.err.println("Node: Failed to reset Baritone pathing before mining: " + e.getMessage());
         }
     }
 
-    private void resetBaritonePathing(IBaritone baritone) {
+    private void resetBaritonePathing(Object baritone) {
         if (baritone == null) {
             return;
         }
-        resetBaritonePathing(baritone, baritone.getMineProcess());
+        resetBaritonePathing(baritone, BaritoneApiProxy.getMineProcess(baritone));
     }
 
     private boolean hasRequiredBlockAlready(String blockId, int required) {
@@ -4338,7 +4467,8 @@ public class Node {
         Object serverRegistryManager = client.getServer() != null
             ? client.getServer().getRegistryManager()
             : null;
-        Object clientRegistryManager = client.player.getWorld().getRegistryManager();
+        net.minecraft.world.World clientWorld = EntityCompatibilityBridge.getWorld(client.player);
+        Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
         ItemStack outputTemplate = getRecipeOutput(recipeEntry.value(), serverRegistryManager);
         if (outputTemplate.isEmpty() && clientRegistryManager != serverRegistryManager) {
             outputTemplate = getRecipeOutput(recipeEntry.value(), clientRegistryManager);
@@ -4353,7 +4483,7 @@ public class Node {
         int perCraftOutput = Math.max(1, outputTemplate.getCount());
         int craftsRequested = Math.max(1, (int) Math.ceil(desiredCount / (double) perCraftOutput));
 
-        Object ingredientRegistryManager = client.player.getWorld().getRegistryManager();
+        Object ingredientRegistryManager = clientWorld;
         List<GridIngredient> gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode, ingredientRegistryManager);
         if (gridIngredients.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe has no ingredients.");
@@ -4406,7 +4536,7 @@ public class Node {
             runOnClientThread(client, () -> {
                 switch (screenMode) {
                     case SCREEN_OPEN_CHAT:
-                        client.setScreen(new ChatScreen(""));
+                        client.setScreen(ChatScreenCompatibilityBridge.create(""));
                         break;
                     case SCREEN_CLOSE_CURRENT:
                         if (client.player != null) {
@@ -4529,7 +4659,8 @@ public class Node {
         List<String> sampleOutputs = new ArrayList<>();
         boolean debugLogged = false;
         Object serverRegistryManager = client.getServer() != null ? client.getServer().getRegistryManager() : null;
-        Object clientRegistryManager = client.player.getWorld().getRegistryManager();
+        net.minecraft.world.World clientWorld = EntityCompatibilityBridge.getWorld(client.player);
+        Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
         for (RecipeManager manager : managers) {
             if (manager == null) {
                 continue;
@@ -4902,6 +5033,7 @@ public class Node {
         }
         return ItemStack.EMPTY;
     }
+
 
     private RegistryWrapper.WrapperLookup resolveWrapperLookup(Object registryManager) {
         if (registryManager == null) {
@@ -6208,6 +6340,12 @@ public class Node {
             future.completeExceptionally(new RuntimeException("No mode set for BUILD node"));
             return;
         }
+        Object baritone = getBaritone();
+        if (baritone == null) {
+            System.err.println("Baritone not available for build command");
+            future.completeExceptionally(new RuntimeException("Baritone not available"));
+            return;
+        }
         
         String schematic = "house.schematic";
         NodeParameter schematicParam = getParameter("Schematic");
@@ -6216,33 +6354,42 @@ public class Node {
         }
         
         String command;
-        switch (mode) {
-            case BUILD_PLAYER:
-                command = String.format("#build %s", schematic);
-                System.out.println("Executing build at player location: " + command);
-                break;
-                
-            case BUILD_XYZ:
-                int x = 0, y = 0, z = 0;
-                NodeParameter xParam = getParameter("X");
-                NodeParameter yParam = getParameter("Y");
-                NodeParameter zParam = getParameter("Z");
-                
-                if (xParam != null) x = xParam.getIntValue();
-                if (yParam != null) y = yParam.getIntValue();
-                if (zParam != null) z = zParam.getIntValue();
-                
-                command = String.format("#build %s %d %d %d", schematic, x, y, z);
-                System.out.println("Executing build at coordinates: " + command);
-                break;
-                
-            default:
-                future.completeExceptionally(new RuntimeException("Unknown BUILD mode: " + mode));
-                return;
+        Vec3d targetVector = runtimeParameterData != null ? runtimeParameterData.targetVector : null;
+        if (targetVector != null) {
+            int x = (int) Math.floor(targetVector.x);
+            int y = (int) Math.floor(targetVector.y);
+            int z = (int) Math.floor(targetVector.z);
+            command = String.format("#build %s %d %d %d", schematic, x, y, z);
+            System.out.println("Executing build at parameter coordinates: " + command);
+        } else {
+            switch (mode) {
+                case BUILD_PLAYER:
+                    command = String.format("#build %s", schematic);
+                    System.out.println("Executing build at player location: " + command);
+                    break;
+                    
+                case BUILD_XYZ:
+                    int x = 0, y = 0, z = 0;
+                    NodeParameter xParam = getParameter("X");
+                    NodeParameter yParam = getParameter("Y");
+                    NodeParameter zParam = getParameter("Z");
+                    
+                    if (xParam != null) x = xParam.getIntValue();
+                    if (yParam != null) y = yParam.getIntValue();
+                    if (zParam != null) z = zParam.getIntValue();
+                    
+                    command = String.format("#build %s %d %d %d", schematic, x, y, z);
+                    System.out.println("Executing build at coordinates: " + command);
+                    break;
+                    
+                default:
+                    future.completeExceptionally(new RuntimeException("Unknown BUILD mode: " + mode));
+                    return;
+            }
         }
         
+        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_BUILD, future);
         executeCommand(command);
-        future.complete(null); // These commands complete immediately
     }
     
     private void executeExploreCommand(CompletableFuture<Void> future) {
@@ -6254,7 +6401,7 @@ public class Node {
             return;
         }
         
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for explore command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
@@ -6262,13 +6409,13 @@ public class Node {
         }
         
         resetBaritonePathing(baritone);
-        IExploreProcess exploreProcess = baritone.getExploreProcess();
+        Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_EXPLORE, future);
         
         switch (mode) {
             case EXPLORE_CURRENT:
                 System.out.println("Executing explore from current position");
-                exploreProcess.explore(0, 0); // 0,0 means from current position
+                BaritoneApiProxy.explore(exploreProcess, 0, 0); // 0,0 means from current position
                 break;
                 
             case EXPLORE_XYZ:
@@ -6280,7 +6427,7 @@ public class Node {
                 if (zParam != null) z = zParam.getIntValue();
                 
                 System.out.println("Executing explore at: " + x + ", " + z);
-                exploreProcess.explore(x, z);
+                BaritoneApiProxy.explore(exploreProcess, x, z);
                 break;
                 
             case EXPLORE_FILTER:
@@ -6473,14 +6620,14 @@ public class Node {
             return;
         }
 
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for goal command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
         
-        ICustomGoalProcess customGoalProcess = baritone.getCustomGoalProcess();
+        Object customGoalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
         
         switch (mode) {
             case GOAL_XYZ:
@@ -6494,8 +6641,8 @@ public class Node {
                 if (zParam != null) z = zParam.getIntValue();
                 
                 System.out.println("Setting goal to: " + x + ", " + y + ", " + z);
-                GoalBlock goal = new GoalBlock(x, y, z);
-                customGoalProcess.setGoal(goal);
+                Object goal = BaritoneApiProxy.createGoalBlock(x, y, z);
+                BaritoneApiProxy.setGoal(customGoalProcess, goal);
                 break;
                 
             case GOAL_XZ:
@@ -6507,8 +6654,8 @@ public class Node {
                 if (zParam2 != null) z2 = zParam2.getIntValue();
                 
                 System.out.println("Setting goal to: " + x2 + ", " + z2);
-                GoalBlock goal2 = new GoalBlock(x2, 0, z2); // Y will be determined by pathfinding
-                customGoalProcess.setGoal(goal2);
+                Object goal2 = BaritoneApiProxy.createGoalBlock(x2, 0, z2); // Y will be determined by pathfinding
+                BaritoneApiProxy.setGoal(customGoalProcess, goal2);
                 break;
                 
             case GOAL_Y:
@@ -6522,8 +6669,8 @@ public class Node {
                 if (client != null && client.player != null) {
                     int currentX = (int) client.player.getX();
                     int currentZ = (int) client.player.getZ();
-                    GoalBlock goal3 = new GoalBlock(currentX, y3, currentZ);
-                    customGoalProcess.setGoal(goal3);
+                    Object goal3 = BaritoneApiProxy.createGoalBlock(currentX, y3, currentZ);
+                    BaritoneApiProxy.setGoal(customGoalProcess, goal3);
                 }
                 break;
                 
@@ -6534,14 +6681,14 @@ public class Node {
                     int currentX = (int) client2.player.getX();
                     int currentY = (int) client2.player.getY();
                     int currentZ = (int) client2.player.getZ();
-                    GoalBlock goal4 = new GoalBlock(currentX, currentY, currentZ);
-                    customGoalProcess.setGoal(goal4);
+                    Object goal4 = BaritoneApiProxy.createGoalBlock(currentX, currentY, currentZ);
+                    BaritoneApiProxy.setGoal(customGoalProcess, goal4);
                 }
                 break;
                 
             case GOAL_CLEAR:
                 System.out.println("Clearing current goal");
-                customGoalProcess.setGoal(null);
+                BaritoneApiProxy.setGoal(customGoalProcess, null);
                 break;
                 
             default:
@@ -6560,19 +6707,19 @@ public class Node {
 
         System.out.println("Executing path command");
 
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone != null) {
             resetBaritonePathing(baritone);
             // Start precise tracking of this task
             PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_PATH, future);
 
             // Start the Baritone pathing task
-            ICustomGoalProcess customGoalProcess = baritone.getCustomGoalProcess();
+            Object customGoalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
             if (runtimeParameterData != null && runtimeParameterData.targetBlockPos != null) {
                 BlockPos target = runtimeParameterData.targetBlockPos;
-                customGoalProcess.setGoal(new GoalBlock(target.getX(), target.getY(), target.getZ()));
+                BaritoneApiProxy.setGoal(customGoalProcess, BaritoneApiProxy.createGoalBlock(target.getX(), target.getY(), target.getZ()));
             }
-            customGoalProcess.path();
+            BaritoneApiProxy.path(customGoalProcess);
 
             // The future will be completed by the PreciseCompletionTracker when the path actually reaches the goal
         } else {
@@ -6590,7 +6737,7 @@ public class Node {
             return;
         }
         
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for stop command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
@@ -6603,7 +6750,7 @@ public class Node {
                 // Cancel all pending tasks first
                 PreciseCompletionTracker.getInstance().cancelAllTasks();
                 // Stop all Baritone processes
-                baritone.getPathingBehavior().cancelEverything();
+                BaritoneApiProxy.cancelEverything(BaritoneApiProxy.getPathingBehavior(baritone));
                 break;
                 
             case STOP_CANCEL:
@@ -6611,7 +6758,7 @@ public class Node {
                 // Cancel all pending tasks first
                 PreciseCompletionTracker.getInstance().cancelAllTasks();
                 // Stop all Baritone processes
-                baritone.getPathingBehavior().cancelEverything();
+                BaritoneApiProxy.cancelEverything(BaritoneApiProxy.getPathingBehavior(baritone));
                 break;
                 
             case STOP_FORCE:
@@ -6619,7 +6766,7 @@ public class Node {
                 // Force cancel all tasks
                 PreciseCompletionTracker.getInstance().cancelAllTasks();
                 // Force stop all Baritone processes
-                baritone.getPathingBehavior().cancelEverything();
+                BaritoneApiProxy.cancelEverything(BaritoneApiProxy.getPathingBehavior(baritone));
                 break;
                 
             default:
@@ -6656,6 +6803,23 @@ public class Node {
                 System.out.println("Stop node could not cancel its owning START chain. Stopping all node trees.");
                 manager.requestStopAll();
             }
+        }
+
+        future.complete(null);
+    }
+
+    private void executeStartChainNode(CompletableFuture<Void> future) {
+        int targetNumber = getIntParameter("StartNumber", 0);
+        if (targetNumber <= 0) {
+            System.out.println("Activate node executed without a valid START number.");
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        boolean started = manager.requestStartForStartNumber(targetNumber);
+        if (!started) {
+            System.out.println("Activate node could not find START node " + targetNumber + ".");
         }
 
         future.complete(null);
@@ -6720,14 +6884,14 @@ public class Node {
             return;
         }
         
-        IBaritone baritone = getBaritone();
+        Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for farm command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
         
-        IFarmProcess farmProcess = baritone.getFarmProcess();
+        Object farmProcess = BaritoneApiProxy.getFarmProcess(baritone);
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_FARM, future);
         
         switch (mode) {
@@ -6739,7 +6903,7 @@ public class Node {
                 }
                 
                 System.out.println("Executing farm within range: " + range);
-                farmProcess.farm(range);
+                BaritoneApiProxy.farm(farmProcess, range);
                 break;
                 
             case FARM_WAYPOINT:
@@ -8067,6 +8231,75 @@ public class Node {
         future.complete(null);
     }
 
+    private void executeWalkCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.LOOK_ORIENTATION), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        double durationSeconds = Math.max(0.0, getDoubleParameter("Duration", 1.0));
+        double distance = Math.max(0.0, getDoubleParameter("Distance", 0.0));
+        boolean useDistance = distance > 0.0;
+
+        if (!useDistance && durationSeconds <= 0.0) {
+            future.complete(null);
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                runOnClientThread(client, () -> {
+                    orientPlayerTowardsRuntimeTarget(client, runtimeParameterData);
+                    if (client.options != null && client.options.forwardKey != null) {
+                        client.options.forwardKey.setPressed(true);
+                    }
+                });
+
+                if (useDistance) {
+                    Vec3d startPos = supplyFromClient(client,
+                        () -> client.player != null ? EntityCompatibilityBridge.getPos(client.player) : null);
+                    if (startPos != null) {
+                        double targetDistanceSquared = distance * distance;
+                        while (true) {
+                            Thread.sleep(50L);
+                            Vec3d currentPos = supplyFromClient(client,
+                                () -> client.player != null ? EntityCompatibilityBridge.getPos(client.player) : null);
+                            if (currentPos == null) {
+                                break;
+                            }
+                            double dx = currentPos.x - startPos.x;
+                            double dz = currentPos.z - startPos.z;
+                            if ((dx * dx + dz * dz) >= targetDistanceSquared) {
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    Thread.sleep((long) (durationSeconds * 1000));
+                }
+
+                future.complete(null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            } finally {
+                try {
+                    runOnClientThread(client, () -> {
+                        if (client.options != null && client.options.forwardKey != null) {
+                            client.options.forwardKey.setPressed(false);
+                        }
+                    });
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "Pathmind-Walk").start();
+    }
+
     private void executeJumpCommand(CompletableFuture<Void> future) {
         if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
             return;
@@ -9110,6 +9343,10 @@ public class Node {
         if (client == null || client.player == null) {
             return false;
         }
+        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        if (world == null) {
+            return false;
+        }
         Box box = client.player.getBoundingBox().expand(0.05);
         int minX = MathHelper.floor(box.minX);
         int maxX = MathHelper.floor(box.maxX);
@@ -9122,7 +9359,7 @@ public class Node {
             for (int by = minY; by <= maxY; by++) {
                 for (int bz = minZ; bz <= maxZ; bz++) {
                     mutable.set(bx, by, bz);
-                    BlockState state = client.player.getWorld().getBlockState(mutable);
+                    BlockState state = world.getBlockState(mutable);
                     if (matchesAnyBlock(selections, state)) {
                         return true;
                     }
@@ -9137,12 +9374,16 @@ public class Node {
         if (client == null || client.player == null || entityId == null || entityId.isEmpty()) {
             return false;
         }
+        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        if (world == null) {
+            return false;
+        }
         Identifier identifier = Identifier.tryParse(entityId);
         if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
             return false;
         }
         EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-        List<Entity> entities = client.player.getWorld().getOtherEntities(
+        List<Entity> entities = world.getOtherEntities(
             client.player,
             client.player.getBoundingBox().expand(0.15),
             entity -> entity.getType() == entityType
@@ -9171,9 +9412,13 @@ public class Node {
         if (client == null || client.player == null) {
             return false;
         }
+        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        if (world == null) {
+            return false;
+        }
         Direction facing = client.player.getHorizontalFacing();
         BlockPos targetPos = client.player.getBlockPos().offset(facing);
-        BlockState state = client.player.getWorld().getBlockState(targetPos);
+        BlockState state = world.getBlockState(targetPos);
         return matchesAnyBlock(selections, state);
     }
 
@@ -9189,8 +9434,12 @@ public class Node {
         if (client == null || client.player == null) {
             return false;
         }
+        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        if (world == null) {
+            return false;
+        }
         BlockPos below = client.player.getBlockPos().down();
-        BlockState state = client.player.getWorld().getBlockState(below);
+        BlockState state = world.getBlockState(below);
         return matchesAnyBlock(selections, state);
     }
 
@@ -9223,11 +9472,15 @@ public class Node {
 
     private boolean isLightLevelBelow(int threshold) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.player.getWorld() == null) {
+        if (client == null || client.player == null) {
+            return false;
+        }
+        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        if (world == null) {
             return false;
         }
         BlockPos pos = client.player.getBlockPos();
-        return client.player.getWorld().getLightLevel(pos) < threshold;
+        return world.getLightLevel(pos) < threshold;
     }
 
     private boolean isDaytime() {
@@ -9256,7 +9509,7 @@ public class Node {
         if (keyCode == null) {
             return false;
         }
-        return InputUtil.isKeyPressed(client.getWindow().getHandle(), keyCode);
+        return InputCompatibilityBridge.isKeyPressed(client, keyCode);
     }
 
     private Integer resolveKeyCode(String keyName) {
@@ -9325,13 +9578,17 @@ public class Node {
         if (client == null || client.player == null || entityId == null || entityId.isEmpty()) {
             return false;
         }
+        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        if (world == null) {
+            return false;
+        }
         Identifier identifier = Identifier.tryParse(entityId);
         if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
             return false;
         }
         EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
         Box searchBox = client.player.getBoundingBox().expand(range);
-        List<Entity> entities = client.player.getWorld().getOtherEntities(
+        List<Entity> entities = world.getOtherEntities(
             client.player,
             searchBox,
             entity -> entity.getType() == entityType
@@ -9457,7 +9714,7 @@ public class Node {
         if (client == null || client.player == null || client.world == null) {
             return false;
         }
-        Vec3d cameraPos = client.gameRenderer.getCamera().getPos();
+        Vec3d cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
         Vec3d target = Vec3d.ofCenter(pos);
         RaycastContext context = new RaycastContext(
             cameraPos,
@@ -9536,7 +9793,8 @@ public class Node {
 
         HitResult hitResult = client.crosshairTarget;
         if (hitResult instanceof EntityHitResult entityHit && entityHit.getEntity() instanceof AbstractClientPlayerEntity targetPlayer) {
-            if (targetPlayer.getGameProfile().getName().equalsIgnoreCase(trimmed)) {
+            if (trimmed.equalsIgnoreCase(
+                GameProfileCompatibilityBridge.getName(targetPlayer.getGameProfile()))) {
                 return true;
             }
         }
@@ -9546,7 +9804,8 @@ public class Node {
             if (playerEntity == null || !playerEntity.isAlive()) {
                 continue;
             }
-            if (!playerEntity.getGameProfile().getName().equalsIgnoreCase(trimmed)) {
+            if (!trimmed.equalsIgnoreCase(
+                GameProfileCompatibilityBridge.getName(playerEntity.getGameProfile()))) {
                 continue;
             }
             if (playerEntity.squaredDistanceTo(client.player) > renderDistance * renderDistance) {

@@ -7,6 +7,7 @@ package com.pathmind.nodes;
 public enum NodeType {
     // Event nodes
     START("Start", 0xFF4CAF50, "Begins the automation sequence"),
+    START_CHAIN("Activate", 0xFF4CAF50, "Activates a node tree by its START number"),
     EVENT_FUNCTION("Function", 0xFFE91E63, "Runs a named function body when triggered"),
     EVENT_CALL("Call Function", 0xFFE91E63, "Triggers the execution of a named function"),
 
@@ -47,6 +48,7 @@ public enum NodeType {
 
     // Player movement commands
     LOOK("Look", 0xFF03A9F4, "Adjusts the player's view direction"),
+    WALK("Walk", 0xFF26C6DA, "Walks forward with optional rotation"),
     JUMP("Jump", 0xFF009688, "Makes the player jump"),
     CROUCH("Crouch", 0xFF607D8B, "Toggles crouching"),
     SPRINT("Sprint", 0xFFFFEB3B, "Toggles sprinting"),
@@ -117,7 +119,8 @@ public enum NodeType {
     PARAM_HAND("Hand", 0xFF8BC34A, "Represents a preferred hand selection"),
     PARAM_KEY("Key", 0xFF8BC34A, "Represents a keyboard key binding"),
     PARAM_RANGE("Range", 0xFF8BC34A, "Represents a generic radius or range"),
-    PARAM_ROTATION("Rotation", 0xFF8BC34A, "Represents yaw and pitch angles"),
+    PARAM_DISTANCE("Distance", 0xFF8BC34A, "Represents a linear distance value"),
+    PARAM_ROTATION("Direction", 0xFF8BC34A, "Represents yaw and pitch direction with optional distance"),
     PARAM_PLACE_TARGET("Place", 0xFF8BC34A, "Represents a block placement with coordinates"),
     PARAM_CLOSEST("Closest", 0xFF8BC34A, "Represents the nearest open block location");
 
@@ -137,7 +140,7 @@ public enum NodeType {
 
     public int getColor() {
         // Special nodes keep their original colors
-        if (this == START) {
+        if (this == START || this == START_CHAIN) {
             return baseColor; // Green
         }
         if (this == STOP_CHAIN || this == STOP_ALL) {
@@ -173,6 +176,7 @@ public enum NodeType {
             case START:
             case EVENT_FUNCTION:
             case EVENT_CALL:
+            case START_CHAIN:
                 return NodeCategory.EVENTS;
             case VARIABLE:
             case SET_VARIABLE:
@@ -214,6 +218,7 @@ public enum NodeType {
             case SURFACE:
             case EXPLORE:
             case FOLLOW:
+            case WALK:
             case JUMP:
             case CROUCH:
             case SPRINT:
@@ -263,6 +268,7 @@ public enum NodeType {
             case PARAM_HAND:
             case PARAM_KEY:
             case PARAM_RANGE:
+            case PARAM_DISTANCE:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
@@ -293,6 +299,7 @@ public enum NodeType {
             case DROP_ITEM:
             case USE:
             case LOOK:
+            case WALK:
             case CROUCH:
             case SPRINT:
             case INTERACT:
@@ -333,10 +340,34 @@ public enum NodeType {
             case PARAM_HAND:
             case PARAM_KEY:
             case PARAM_RANGE:
+            case PARAM_DISTANCE:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
             case VARIABLE:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public boolean requiresBaritone() {
+        switch (this) {
+            case GOTO:
+            case GOAL:
+            case PATH:
+            case INVERT:
+            case COME:
+            case SURFACE:
+            case COLLECT:
+            case BUILD:
+            case TUNNEL:
+            case FARM:
+            case EXPLORE:
+            case FOLLOW:
+            case STOP:
+            case PARAM_WAYPOINT:
+            case PARAM_SCHEMATIC:
                 return true;
             default:
                 return false;

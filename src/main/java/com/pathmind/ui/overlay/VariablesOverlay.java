@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.pathmind.util.DrawContextBridge;
 
 /**
  * HUD overlay that displays active runtime variables in the top left corner.
@@ -49,7 +50,7 @@ public class VariablesOverlay {
         int overlayY = MARGIN;
 
         context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + overlayHeight, BACKGROUND_COLOR);
-        context.drawBorder(overlayX, overlayY, OVERLAY_WIDTH, overlayHeight, BORDER_COLOR);
+        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, overlayHeight, BORDER_COLOR);
 
         int textX = overlayX + PADDING;
         int textY = overlayY + PADDING;

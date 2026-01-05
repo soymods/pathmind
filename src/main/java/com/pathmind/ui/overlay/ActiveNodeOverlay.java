@@ -5,6 +5,7 @@ import com.pathmind.nodes.Node;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
+import com.pathmind.util.DrawContextBridge;
 
 /**
  * HUD overlay that displays the currently active node in the top right corner.
@@ -44,7 +45,7 @@ public class ActiveNodeOverlay {
         context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT, BACKGROUND_COLOR);
         
         // Render border
-        context.drawBorder(overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT, BORDER_COLOR);
+        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT, BORDER_COLOR);
         
         // Calculate right-aligned text positions
         int textRightX = overlayX + OVERLAY_WIDTH - 8;
@@ -112,7 +113,7 @@ public class ActiveNodeOverlay {
         int dotX = overlayX + 8;
         int dotY = overlayY + 8;
         context.fill(dotX, dotY, dotX + 8, dotY + 8, nodeColor);
-        context.drawBorder(dotX, dotY, 8, 8, BORDER_COLOR);
+        DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, BORDER_COLOR);
     }
     
     /**

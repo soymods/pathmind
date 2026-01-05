@@ -27,6 +27,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.InputCompatibilityBridge;
+import com.pathmind.util.ButtonWidgetCompatibilityBridge;
 
 /**
  * Overlay widget for editing node parameters.
@@ -365,7 +368,7 @@ public class NodeParameterOverlay {
 
         // Render popup background
         context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, 0xFF2A2A2A);
-        context.drawBorder(popupX, popupY, popupWidth, popupHeight, 0xFF666666); // Grey outline
+        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, 0xFF666666); // Grey outline
 
         // Render title
         context.drawTextWithShadow(
@@ -406,7 +409,7 @@ public class NodeParameterOverlay {
             int modeBorderColor = modeButtonHovered ? 0xFF87CEEB : 0xFF666666;
 
             context.fill(modeButtonX, modeButtonY, modeButtonX + modeButtonWidth, modeButtonY + modeButtonHeight, modeBgColor);
-            context.drawBorder(modeButtonX, modeButtonY, modeButtonWidth, modeButtonHeight, modeBorderColor);
+            DrawContextBridge.drawBorder(context, modeButtonX, modeButtonY, modeButtonWidth, modeButtonHeight, modeBorderColor);
 
             String modeText = selectedMode != null ? selectedMode.getDisplayName() : "Select Mode";
             context.drawTextWithShadow(
@@ -489,7 +492,7 @@ public class NodeParameterOverlay {
             }
 
             context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
-            context.drawBorder(fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+            DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
             String text = parameterValues.get(i);
             if (isDropdownField) {
@@ -624,7 +627,7 @@ public class NodeParameterOverlay {
             }
 
             context.fill(modeButtonX, dropdownY, modeButtonX + modeButtonWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-            context.drawBorder(modeButtonX, dropdownY, modeButtonWidth, dropdownHeight, 0xFF666666);
+            DrawContextBridge.drawBorder(context, modeButtonX, dropdownY, modeButtonWidth, dropdownHeight, 0xFF666666);
 
             for (int i = 0; i < availableModes.size(); i++) {
                 NodeMode mode = availableModes.get(i);
@@ -671,7 +674,7 @@ public class NodeParameterOverlay {
 
         int bgColor = hovered ? 0xFF505050 : 0xFF3A3A3A;
         context.fill(button.getX(), button.getY(), button.getX() + button.getWidth(), button.getY() + button.getHeight(), bgColor);
-        context.drawBorder(button.getX(), button.getY(), button.getWidth(), button.getHeight(), 0xFF666666);
+        DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(), 0xFF666666);
 
         // Render button text
         context.drawCenteredTextWithShadow(
@@ -695,7 +698,7 @@ public class NodeParameterOverlay {
         int trackHeight = Math.max(1, trackBottom - trackTop);
 
         context.fill(trackLeft, trackTop, trackRight, trackBottom, 0xFF1A1A1A);
-        context.drawBorder(trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, 0xFF444444);
+        DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, 0xFF444444);
 
         int visibleScrollableHeight = Math.max(1, contentBottom - contentTop);
         int totalScrollableHeight = Math.max(visibleScrollableHeight, visibleScrollableHeight + maxScroll);
@@ -827,7 +830,7 @@ public class NodeParameterOverlay {
         }
 
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        context.drawBorder(dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
 
         if (options.isEmpty()) {
             int textY = dropdownY + (DROPDOWN_OPTION_HEIGHT - textRenderer.fontHeight) / 2 + 1;
@@ -891,7 +894,7 @@ public class NodeParameterOverlay {
         }
 
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
-        context.drawBorder(fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
         String display = getBlockStateDisplayText(hasOptions);
         int textColor = hasOptions ? 0xFFFFFFFF : 0xFF777777;
@@ -941,7 +944,7 @@ public class NodeParameterOverlay {
         int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
 
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        context.drawBorder(dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
 
         blockStateDropdownHoverIndex = -1;
         if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -1075,16 +1078,16 @@ public class NodeParameterOverlay {
 
         // Check button clicks after handling dropdown interactions so dropdown selections aren't swallowed by buttons beneath
         if (saveButton != null && saveButton.isMouseOver(mouseX, mouseY)) {
-            saveButton.onPress();
+            ButtonWidgetCompatibilityBridge.press(saveButton);
             return true;
         }
         if (cancelButton != null && cancelButton.isMouseOver(mouseX, mouseY)) {
-            cancelButton.onPress();
+            ButtonWidgetCompatibilityBridge.press(cancelButton);
             return true;
         }
 
         // Check field clicks
-        boolean shiftClick = Screen.hasShiftDown();
+        boolean shiftClick = InputCompatibilityBridge.hasShiftDown();
         for (int i = 0; i < node.getParameters().size(); i++) {
             if (!shouldDisplayParameter(i)) {
                 continue;
@@ -1642,7 +1645,7 @@ public class NodeParameterOverlay {
         int backgroundColor = 0xFF1A1A1A;
         int borderColor = 0xFF666666;
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + totalHeight, backgroundColor);
-        context.drawBorder(fieldX, fieldY, fieldWidth, totalHeight, borderColor);
+        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, totalHeight, borderColor);
 
         String currentValue = paramIndex >= 0 && paramIndex < parameterValues.size()
             ? parameterValues.get(paramIndex)
@@ -1672,7 +1675,7 @@ public class NodeParameterOverlay {
                 }
                 int keyBorder = selected ? 0xFF87CEEB : 0xFF555555;
                 context.fill(keyX, rowTop, keyX + keyWidth, rowTop + keyHeight, keyBase);
-                context.drawBorder(keyX, rowTop, keyWidth, keyHeight, keyBorder);
+                DrawContextBridge.drawBorder(context, keyX, rowTop, keyWidth, keyHeight, keyBorder);
 
                 String label = key.label;
                 int textWidth = textRenderer.getWidth(label);
@@ -2060,7 +2063,7 @@ public class NodeParameterOverlay {
         int index = focusedFieldIndex;
         ensureCaretEntry(index);
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = Screen.hasControlDown();
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -2240,7 +2243,7 @@ public class NodeParameterOverlay {
         int dropdownHeight = blockItemDropdownOptions.size() * DROPDOWN_OPTION_HEIGHT;
 
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        context.drawBorder(dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
 
         blockItemDropdownHoverIndex = -1;
         if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&

@@ -27,11 +27,6 @@ public final class PathmindScreens {
             return;
         }
 
-        if (!BaritoneDependencyChecker.isBaritoneApiPresent()) {
-            showMissingScreen(client, parent);
-            return;
-        }
-
         if (isVisualEditor(client.currentScreen)) {
             return;
         }

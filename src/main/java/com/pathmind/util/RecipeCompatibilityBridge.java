@@ -8,10 +8,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.entry.RegistryEntryList;
 import net.minecraft.registry.tag.TagKey;
+import net.minecraft.world.World;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -627,6 +629,19 @@ public final class RecipeCompatibilityBridge {
         if (registryManager == null) {
             return null;
         }
+        if (registryManager instanceof World world) {
+            try {
+                Object manager = world.getRegistryManager();
+                if (manager != registryManager) {
+                    RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(manager);
+                    if (lookup != null) {
+                        return lookup;
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // Fall through to reflection-based lookup.
+            }
+        }
         if (registryManager instanceof RegistryWrapper.WrapperLookup wrapper) {
             return wrapper;
         }
@@ -719,12 +734,396 @@ public final class RecipeCompatibilityBridge {
         if (itemEntry instanceof RegistryEntry<?> registryEntry && registryEntry.value() instanceof Item item) {
             return Ingredient.ofItems(item);
         }
+        Item holderItem = resolveItemFromHolder(itemEntry);
+        if (holderItem != null) {
+            return Ingredient.ofItems(holderItem);
+        }
 
         Ingredient tagIngredient = ingredientFromTag(accessValue(slotDisplay, "comp_3275", "tag"), registryManager);
         if (tagIngredient != null) {
             return tagIngredient;
         }
 
+        Object stackValue = accessValue(slotDisplay, "comp_3274", "stack", "getStack", "getItemStack");
+        if (stackValue instanceof ItemStack stack && !stack.isEmpty()) {
+            return Ingredient.ofItems(stack.getItem());
+        }
+
+        Ingredient displayIngredient = ingredientFromSlotDisplayStacks(slotDisplay, registryManager);
+        if (displayIngredient != null && !isIngredientEmpty(displayIngredient, registryManager)) {
+            return displayIngredient;
+        }
+
+        List<?> nested = extractDisplayEntries(slotDisplay, "comp_3272", "components", "displays", "children");
+        if (nested != null && !nested.isEmpty()) {
+            Ingredient combined = ingredientFromSlotDisplays(nested, registryManager);
+            if (combined != null && !isIngredientEmpty(combined, registryManager)) {
+                return combined;
+            }
+        }
+
+        Ingredient pair = ingredientFromSlotDisplayPair(slotDisplay, registryManager);
+        if (pair != null && !isIngredientEmpty(pair, registryManager)) {
+            return pair;
+        }
+
+        Ingredient fallback = ingredientFromSlotDisplayCandidates(slotDisplay, registryManager);
+        if (fallback != null && !isIngredientEmpty(fallback, registryManager)) {
+            return fallback;
+        }
+
+        return null;
+    }
+
+    private static Ingredient ingredientFromSlotDisplays(List<?> displays, Object registryManager) {
+        if (displays == null || displays.isEmpty()) {
+            return null;
+        }
+        List<Item> items = new ArrayList<>();
+        for (Object display : displays) {
+            Ingredient ingredient = ingredientFromSlotDisplay(display, registryManager);
+            if (ingredient == null || isIngredientEmpty(ingredient, registryManager)) {
+                continue;
+            }
+            for (ItemStack stack : getIngredientStacks(ingredient, registryManager)) {
+                if (stack == null || stack.isEmpty()) {
+                    continue;
+                }
+                items.add(stack.getItem());
+            }
+        }
+        return createIngredientFromItems(items);
+    }
+
+    private static Ingredient ingredientFromSlotDisplayPair(Object slotDisplay, Object registryManager) {
+        List<Object> candidates = new ArrayList<>(2);
+        addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3300", "first", "left", "base"));
+        addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3301", "second", "right", "addition"));
+        addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3297"));
+        addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3298"));
+
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return ingredientFromSlotDisplays(candidates, registryManager);
+    }
+
+    private static void addSlotDisplayCandidate(List<Object> candidates, Object value) {
+        if (value != null) {
+            candidates.add(value);
+        }
+    }
+
+    private static Ingredient createIngredientFromItems(List<Item> items) {
+        if (items == null || items.isEmpty()) {
+            return null;
+        }
+        return Ingredient.ofItems(items.stream().distinct().toArray(Item[]::new));
+    }
+
+    private static Ingredient ingredientFromSlotDisplayCandidates(Object slotDisplay, Object registryManager) {
+        List<Object> candidates = gatherEntryCandidates(slotDisplay);
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        List<Item> items = new ArrayList<>();
+        for (Object candidate : candidates) {
+            if (candidate == null) {
+                continue;
+            }
+            if (candidate instanceof TagKey<?> tagKey) {
+                Ingredient tagIngredient = ingredientFromTag(tagKey, registryManager);
+                if (tagIngredient != null && !isIngredientEmpty(tagIngredient, registryManager)) {
+                    return tagIngredient;
+                }
+                continue;
+            }
+            if (candidate instanceof RegistryEntryList<?> entryList) {
+                Ingredient tagIngredient = createIngredientFromEntryList(entryList);
+                if (tagIngredient != null && !isIngredientEmpty(tagIngredient, registryManager)) {
+                    return tagIngredient;
+                }
+                continue;
+            }
+            if (candidate instanceof RegistryEntry<?> registryEntry && registryEntry.value() instanceof Item item) {
+                items.add(item);
+                continue;
+            }
+            if (candidate instanceof Item item) {
+                items.add(item);
+                continue;
+            }
+            if (candidate instanceof ItemStack stack && !stack.isEmpty()) {
+                items.add(stack.getItem());
+                continue;
+            }
+            Item holderItem = resolveItemFromHolder(candidate);
+            if (holderItem != null) {
+                items.add(holderItem);
+                continue;
+            }
+            if (candidate instanceof Iterable<?> iterable) {
+                for (Object entry : iterable) {
+                    Item entryItem = resolveItemFromHolder(entry);
+                    if (entryItem != null) {
+                        items.add(entryItem);
+                    } else if (entry instanceof ItemStack stack && !stack.isEmpty()) {
+                        items.add(stack.getItem());
+                    }
+                }
+            }
+        }
+        return createIngredientFromItems(items);
+    }
+
+    private static Ingredient createIngredientFromEntryList(RegistryEntryList<?> entryList) {
+        if (entryList == null) {
+            return null;
+        }
+        try {
+            Method method = Ingredient.class.getMethod("ofTag", RegistryEntryList.class);
+            method.setAccessible(true);
+            Object result = method.invoke(null, entryList);
+            return result instanceof Ingredient ingredient ? ingredient : null;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static Item resolveItemFromHolder(Object holder) {
+        if (holder == null) {
+            return null;
+        }
+        if (holder instanceof Item item) {
+            return item;
+        }
+        if (holder instanceof RegistryEntry<?> registryEntry && registryEntry.value() instanceof Item entryItem) {
+            return entryItem;
+        }
+        Item item = invokeItemAccessor(holder, "comp_349");
+        if (item != null) {
+            return item;
+        }
+        item = invokeItemAccessor(holder, "value");
+        if (item != null) {
+            return item;
+        }
+        item = invokeItemAccessor(holder, "getValue");
+        if (item != null) {
+            return item;
+        }
+        try {
+            for (Method method : holder.getClass().getMethods()) {
+                if (method.getParameterCount() != 0 || method.getReturnType() != Item.class) {
+                    continue;
+                }
+                method.setAccessible(true);
+                Object result = method.invoke(holder);
+                if (result instanceof Item resolved) {
+                    return resolved;
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static Item invokeItemAccessor(Object holder, String methodName) {
+        try {
+            Method method = holder.getClass().getMethod(methodName);
+            if (method.getReturnType() != Item.class) {
+                return null;
+            }
+            method.setAccessible(true);
+            Object result = method.invoke(holder);
+            return result instanceof Item item ? item : null;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static Ingredient ingredientFromSlotDisplayStacks(Object slotDisplay, Object registryManager) {
+        List<ItemStack> stacks = resolveSlotDisplayStacks(slotDisplay, registryManager);
+        if (stacks == null || stacks.isEmpty()) {
+            return null;
+        }
+        List<Item> items = new ArrayList<>();
+        for (ItemStack stack : stacks) {
+            if (stack != null && !stack.isEmpty()) {
+                items.add(stack.getItem());
+            }
+        }
+        return createIngredientFromItems(items);
+    }
+
+    private static List<ItemStack> resolveSlotDisplayStacks(Object slotDisplay, Object registryManager) {
+        if (slotDisplay == null) {
+            return null;
+        }
+        ClassLoader loader = slotDisplay.getClass().getClassLoader();
+        Object context = createSlotDisplayContext(loader, registryManager);
+        if (context == null) {
+            return null;
+        }
+        List<ItemStack> stacks = invokeSlotDisplayList(slotDisplay, context);
+        if (stacks != null && !stacks.isEmpty()) {
+            return stacks;
+        }
+        ItemStack first = invokeSlotDisplayFirst(slotDisplay, context);
+        if (first != null && !first.isEmpty()) {
+            return List.of(first);
+        }
+        stacks = invokeSlotDisplayBySignature(slotDisplay, context);
+        if (stacks != null && !stacks.isEmpty()) {
+            return stacks;
+        }
+        return null;
+    }
+
+    private static List<ItemStack> invokeSlotDisplayList(Object slotDisplay, Object context) {
+        try {
+            Method method = slotDisplay.getClass().getMethod("getStacks", context.getClass());
+            method.setAccessible(true);
+            Object result = method.invoke(slotDisplay, context);
+            if (result instanceof List<?> list) {
+                return filterStacks(list);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static ItemStack invokeSlotDisplayFirst(Object slotDisplay, Object context) {
+        try {
+            Method method = slotDisplay.getClass().getMethod("getFirst", context.getClass());
+            method.setAccessible(true);
+            Object result = method.invoke(slotDisplay, context);
+            if (result instanceof ItemStack stack) {
+                return stack;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static List<ItemStack> invokeSlotDisplayBySignature(Object slotDisplay, Object context) {
+        try {
+            for (Method method : slotDisplay.getClass().getMethods()) {
+                if (method.getParameterCount() != 1) {
+                    continue;
+                }
+                Class<?> paramType = method.getParameterTypes()[0];
+                if (!paramType.isInstance(context)) {
+                    continue;
+                }
+                Class<?> returnType = method.getReturnType();
+                method.setAccessible(true);
+                Object result = method.invoke(slotDisplay, context);
+                if (result == null) {
+                    continue;
+                }
+                if (List.class.isAssignableFrom(returnType) && result instanceof List<?> list) {
+                    List<ItemStack> stacks = filterStacks(list);
+                    if (!stacks.isEmpty()) {
+                        return stacks;
+                    }
+                }
+                if (ItemStack.class.isAssignableFrom(returnType) && result instanceof ItemStack stack) {
+                    if (!stack.isEmpty()) {
+                        return List.of(stack);
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static List<ItemStack> filterStacks(List<?> list) {
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        List<ItemStack> stacks = new ArrayList<>();
+        for (Object entry : list) {
+            if (entry instanceof ItemStack stack && !stack.isEmpty()) {
+                stacks.add(stack);
+            }
+        }
+        return stacks;
+    }
+
+    private static Object createSlotDisplayContext(ClassLoader loader, Object registryManager) {
+        if (registryManager instanceof World world) {
+            Object context = createWorldSlotDisplayContext(loader, world);
+            if (context != null) {
+                return context;
+            }
+        }
+        RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
+        if (lookup == null) {
+            return null;
+        }
+        try {
+            Class<?> contextsClass = Class.forName("net.minecraft.recipe.display.SlotDisplayContexts", true, loader);
+            java.lang.reflect.Field registriesField = contextsClass.getField("REGISTRIES");
+            Object registriesParam = registriesField.get(null);
+
+            java.util.Map<Object, Object> values = new java.util.HashMap<>();
+            values.put(registriesParam, lookup);
+
+            Class<?> contextMapClass = Class.forName("net.minecraft.util.context.ContextParameterMap", true, loader);
+            java.lang.reflect.Constructor<?> ctor = contextMapClass.getDeclaredConstructor(java.util.Map.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(values);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static Object createWorldSlotDisplayContext(ClassLoader loader, World world) {
+        Class<?> contextsClass = loadSlotDisplayContextsClass(loader);
+        if (contextsClass == null) {
+            return null;
+        }
+        for (Method method : contextsClass.getMethods()) {
+            if (!java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
+                continue;
+            }
+            if (method.getParameterCount() != 1) {
+                continue;
+            }
+            Class<?> paramType = method.getParameterTypes()[0];
+            if (!paramType.isInstance(world)) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(null, world);
+                if (result != null) {
+                    return result;
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static Class<?> loadSlotDisplayContextsClass(ClassLoader loader) {
+        for (String name : new String[] {
+            "net.minecraft.recipe.display.SlotDisplayContexts",
+            "net.minecraft.class_10363"
+        }) {
+            try {
+                return Class.forName(name, true, loader);
+            } catch (ClassNotFoundException ignored) {
+                // Try next candidate.
+            }
+        }
         return null;
     }
 
@@ -742,12 +1141,14 @@ public final class RecipeCompatibilityBridge {
         RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
         if (lookup != null) {
             try {
-                RegistryWrapper.Impl<Item> itemWrapper = lookup.getOrThrow(RegistryKeys.ITEM);
-                Optional<? extends RegistryEntryList<Item>> optional = itemWrapper.getOptional(itemTag);
-                if (optional.isPresent()) {
-                    Ingredient ingredient = Ingredient.ofTag(optional.get());
-                    if (!isIngredientEmpty(ingredient, registryManager)) {
-                        return ingredient;
+                RegistryWrapper.Impl<Item> itemWrapper = resolveItemWrapper(lookup);
+                if (itemWrapper != null) {
+                    Optional<? extends RegistryEntryList<Item>> optional = itemWrapper.getOptional(itemTag);
+                    if (optional.isPresent()) {
+                        Ingredient ingredient = createIngredientFromTag(itemTag, optional.get());
+                        if (ingredient != null && !isIngredientEmpty(ingredient, registryManager)) {
+                            return ingredient;
+                        }
                     }
                 }
             } catch (RuntimeException ignored) {
@@ -822,5 +1223,89 @@ public final class RecipeCompatibilityBridge {
             }
         }
         return null;
+    }
+
+    private static RegistryWrapper.Impl<Item> resolveItemWrapper(RegistryWrapper.WrapperLookup lookup) {
+        if (lookup == null) {
+            return null;
+        }
+        RegistryWrapper.Impl<Item> wrapper = invokeLookupWrapper(lookup, "getOrThrow");
+        if (wrapper != null) {
+            return wrapper;
+        }
+        wrapper = invokeLookupWrapper(lookup, "getWrapperOrThrow");
+        if (wrapper != null) {
+            return wrapper;
+        }
+        wrapper = unwrapOptionalWrapper(invokeLookupOptional(lookup, "getOptional"));
+        if (wrapper != null) {
+            return wrapper;
+        }
+        return unwrapOptionalWrapper(invokeLookupOptional(lookup, "getOptionalWrapper"));
+    }
+
+    private static RegistryWrapper.Impl<Item> invokeLookupWrapper(RegistryWrapper.WrapperLookup lookup, String methodName) {
+        try {
+            Method method = lookup.getClass().getMethod(methodName, RegistryKey.class);
+            method.setAccessible(true);
+            Object result = method.invoke(lookup, RegistryKeys.ITEM);
+            if (result instanceof RegistryWrapper.Impl<?> impl) {
+                @SuppressWarnings("unchecked")
+                RegistryWrapper.Impl<Item> cast = (RegistryWrapper.Impl<Item>) impl;
+                return cast;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static Optional<?> invokeLookupOptional(RegistryWrapper.WrapperLookup lookup, String methodName) {
+        try {
+            Method method = lookup.getClass().getMethod(methodName, RegistryKey.class);
+            method.setAccessible(true);
+            Object result = method.invoke(lookup, RegistryKeys.ITEM);
+            if (result instanceof Optional<?> optional) {
+                return optional;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    private static RegistryWrapper.Impl<Item> unwrapOptionalWrapper(Optional<?> optional) {
+        if (optional == null || optional.isEmpty()) {
+            return null;
+        }
+        Object value = optional.get();
+        if (value instanceof RegistryWrapper.Impl<?> impl) {
+            @SuppressWarnings("unchecked")
+            RegistryWrapper.Impl<Item> cast = (RegistryWrapper.Impl<Item>) impl;
+            return cast;
+        }
+        return null;
+    }
+
+    private static Ingredient createIngredientFromTag(TagKey<Item> itemTag, RegistryEntryList<Item> entries) {
+        Ingredient ingredient = invokeIngredientFactory("ofTag", RegistryEntryList.class, entries);
+        if (ingredient != null) {
+            return ingredient;
+        }
+        return invokeIngredientFactory("fromTag", TagKey.class, itemTag);
+    }
+
+    private static Ingredient invokeIngredientFactory(String methodName, Class<?> paramType, Object arg) {
+        if (arg == null) {
+            return null;
+        }
+        try {
+            Method method = Ingredient.class.getMethod(methodName, paramType);
+            method.setAccessible(true);
+            Object result = method.invoke(null, arg);
+            return result instanceof Ingredient ingredient ? ingredient : null;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
     }
 }

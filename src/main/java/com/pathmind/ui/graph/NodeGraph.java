@@ -211,10 +211,6 @@ public class NodeGraph {
             this.maxX = maxX;
             this.maxY = maxY;
         }
-
-        private boolean isValid() {
-            return minX <= maxX && minY <= maxY;
-        }
     }
 
     private static final class DragStartInfo {
@@ -4315,35 +4311,38 @@ public class NodeGraph {
         }
 
         // Render dragging connection if active
-        if (onlyDragged && isDraggingConnection && connectionSourceNode != null) {
+        if (isDraggingConnection && connectionSourceNode != null) {
             int sourceX = connectionSourceNode.getSocketX(!isOutputSocket) - cameraX;
             int sourceY = connectionSourceNode.getSocketY(connectionSourceSocket, !isOutputSocket) - cameraY;
             int targetX = connectionDragX - cameraX;
             int targetY = connectionDragY - cameraY;
-            
-            
+
             // Snap to hovered socket if available
             if (hoveredNode != null && hoveredSocket != -1) {
                 targetX = hoveredNode.getSocketX(hoveredSocketIsInput) - cameraX;
                 targetY = hoveredNode.getSocketY(hoveredSocket, hoveredSocketIsInput) - cameraY;
-                
-                // Highlight the target socket
-                renderSocket(context, targetX, targetY, hoveredSocketIsInput, 0xFF87CEEB); // Light blue highlight
-            }
-            
-            // Render the dragging connection using the source node's color
-            int color = connectionSourceNode.getOutputSocketColor(connectionSourceSocket);
-            int sourceScreenX = connectionSourceNode.getX() - cameraX;
-            if (isNodeOverSidebarForRender(connectionSourceNode, sourceScreenX, connectionSourceNode.getWidth())) {
-                color = toGrayscale(color, 0.65f);
+
+                if (onlyDragged) {
+                    // Highlight the target socket above nodes while dragging.
+                    renderSocket(context, targetX, targetY, hoveredSocketIsInput, 0xFF87CEEB); // Light blue highlight
+                }
             }
 
-            if (animateConnections) {
-                renderAnimatedConnectionCurve(context, sourceX, sourceY, targetX, targetY,
-                        color, animationTimestamp);
-            } else {
-                renderConnectionCurve(context, sourceX, sourceY, targetX, targetY,
-                        color);
+            if (!onlyDragged) {
+                // Render the dragging connection below sockets in the main layer.
+                int color = connectionSourceNode.getOutputSocketColor(connectionSourceSocket);
+                int sourceScreenX = connectionSourceNode.getX() - cameraX;
+                if (isNodeOverSidebarForRender(connectionSourceNode, sourceScreenX, connectionSourceNode.getWidth())) {
+                    color = toGrayscale(color, 0.65f);
+                }
+
+                if (animateConnections) {
+                    renderAnimatedConnectionCurve(context, sourceX, sourceY, targetX, targetY,
+                            color, animationTimestamp);
+                } else {
+                    renderConnectionCurve(context, sourceX, sourceY, targetX, targetY,
+                            color);
+                }
             }
         }
     }

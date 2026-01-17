@@ -714,7 +714,8 @@ public class ExecutionManager {
 
         currentNode.setOwningStartNode(controller.startNode);
 
-        return scheduleNodeStartDelay()
+        return waitForExecutionResume()
+            .thenCompose(ignored -> scheduleNodeStartDelay())
             .thenCompose(ignored -> {
                 if (cancelRequested || controller.cancelRequested) {
                     return CompletableFuture.completedFuture(null);
@@ -726,13 +727,15 @@ public class ExecutionManager {
                     return CompletableFuture.completedFuture(null);
                 }
 
-                return currentNode.execute()
+                return waitForExecutionResume()
+                    .thenCompose(pausedIgnored -> currentNode.execute())
                     .thenCompose(ignoredFuture -> {
                         if (cancelRequested || controller.cancelRequested) {
                             return CompletableFuture.completedFuture(null);
                         }
                         return handleEventCallIfNeeded(currentNode, controller);
                     })
+                    .thenCompose(ignoredFuture -> waitForExecutionResume())
                     .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller));
             });
     }
@@ -744,6 +747,30 @@ public class ExecutionManager {
 
         return CompletableFuture.runAsync(() -> { },
             CompletableFuture.delayedExecutor(NODE_EXECUTION_DELAY_MS, TimeUnit.MILLISECONDS));
+    }
+
+    private CompletableFuture<Void> waitForExecutionResume() {
+        if (!singleplayerPaused) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        scheduleResumeCheck(future);
+        return future;
+    }
+
+    private void scheduleResumeCheck(CompletableFuture<Void> future) {
+        if (future.isDone()) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            if (cancelRequested || !singleplayerPaused) {
+                future.complete(null);
+                return;
+            }
+            scheduleResumeCheck(future);
+        }, CompletableFuture.delayedExecutor(50L, TimeUnit.MILLISECONDS));
     }
 
     private CompletableFuture<Void> handleEventCallIfNeeded(Node node, ChainController controller) {
@@ -1097,13 +1124,27 @@ public class ExecutionManager {
         if (key == null) {
             return false;
         }
-
-        Node owner = eventConnectionOwners.get(key);
-        if (owner != null) {
-            return activeEventFunctionNodes.contains(owner);
+        if (!activeConnectionLookup.contains(key)) {
+            return false;
         }
 
-        return activeConnectionLookup.contains(key);
+        Node currentNode = activeNode;
+        if (currentNode == null) {
+            return false;
+        }
+
+        Node outputNode = connection.getOutputNode();
+        Node inputNode = connection.getInputNode();
+        if (outputNode == null || inputNode == null) {
+            return false;
+        }
+
+        String activeId = currentNode.getId();
+        if (activeId == null) {
+            return false;
+        }
+
+        return activeId.equals(outputNode.getId()) || activeId.equals(inputNode.getId());
     }
 
     private String normalizeEventName(String value) {

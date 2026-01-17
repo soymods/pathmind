@@ -113,12 +113,16 @@ public class PathmindClientMod implements ClientModInitializer {
         }
 
         ExecutionManager manager = ExecutionManager.getInstance();
+        boolean editorOpen = PathmindScreens.isVisualEditorScreen(client.currentScreen);
+        boolean screenPauses = client.currentScreen != null && client.currentScreen.shouldPause();
         manager.setSingleplayerPaused(
-            client.isInSingleplayer() && client.isPaused()
+            client.isInSingleplayer() && (client.isPaused() || screenPauses || editorOpen)
         );
 
         if (client.world == null) {
-            handleClientShutdown("world unavailable", false);
+            if (!PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
+                handleClientShutdown("world unavailable", false);
+            }
             return;
         }
 

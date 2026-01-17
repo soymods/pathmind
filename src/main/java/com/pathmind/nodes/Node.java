@@ -609,7 +609,6 @@ public class Node {
         if (slotIndex == 0) {
             switch (parameterType) {
                 case PARAM_BLOCK:
-                case PARAM_BLOCK_LIST:
                 case PARAM_INVENTORY_SLOT:
                 case PARAM_PLACE_TARGET:
                     return true;
@@ -1366,7 +1365,6 @@ public class Node {
             && parameter.getType() != null) {
             NodeType parameterType = parameter.getType();
             if (parameterType == NodeType.PARAM_BLOCK
-                || parameterType == NodeType.PARAM_BLOCK_LIST
                 || parameterType == NodeType.PARAM_INVENTORY_SLOT
                 || parameterType == NodeType.PARAM_PLACE_TARGET) {
                 // Block-type parameters should always occupy the first slot
@@ -1458,29 +1456,6 @@ public class Node {
     private void onAttachedParameterResized(int slotIndex) {
         recalculateDimensions();
         updateParentControlLayout();
-    }
-
-    private boolean applyParameterValuesFromNode(Node parameter) {
-        if (parameter == null || !parameter.isParameterNode()) {
-            return false;
-        }
-        if (isParameterNode()) {
-            return false;
-        }
-        Map<String, String> exported = parameter.exportParameterValues();
-        if (exported.isEmpty()) {
-            return false;
-        }
-
-        Map<String, String> existing = exportParameterValues();
-        resetParametersToDefaults();
-        applyParameterValuesFromMap(existing);
-
-        boolean applied = applyParameterValuesFromMap(exported);
-        if (!applied) {
-            applyParameterValuesFromMap(existing);
-        }
-        return applied;
     }
 
     private boolean applyParameterValuesFromMap(Map<String, String> values) {
@@ -2028,15 +2003,11 @@ public class Node {
                 parameters.add(new NodeParameter("Block", ParameterType.STRING, "stone"));
                 parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
-            case PARAM_BLOCK_LIST:
-                parameters.add(new NodeParameter("Blocks", ParameterType.STRING, "stone,dirt"));
-                break;
             case PARAM_ITEM:
                 parameters.add(new NodeParameter("Item", ParameterType.STRING, "stick"));
                 break;
             case PARAM_ENTITY:
                 parameters.add(new NodeParameter("Entity", ParameterType.STRING, "cow"));
-                parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "6"));
                 break;
             case PARAM_PLAYER:
                 parameters.add(new NodeParameter("Player", ParameterType.STRING, "PlayerName"));
@@ -2186,14 +2157,6 @@ public class Node {
         }
 
         switch (type) {
-            case PARAM_BLOCK_LIST: {
-                String list = values.get("Blocks");
-                if (list != null) {
-                    values.put("Block", list);
-                    values.put(normalizeParameterKey("Block"), list);
-                }
-                break;
-            }
             case PARAM_DURATION: {
                 String duration = values.get("Duration");
                 if (duration != null) {
@@ -2791,7 +2754,7 @@ public class Node {
         // even when usages is empty (they provide block type, not position)
         if (!handled && usages.isEmpty() && (type == NodeType.PLACE || type == NodeType.PLACE_HAND)) {
             NodeType parameterType = parameterNode.getType();
-            if ((parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_BLOCK_LIST)
+            if (parameterType == NodeType.PARAM_BLOCK
                 && parameterNode.parentParameterSlotIndex == 0) {
                 handled = true;
             }
@@ -2946,29 +2909,42 @@ public class Node {
                 if (client == null || client.player == null) {
                     return Optional.empty();
                 }
-                String entityId = getParameterString(parameterNode, "Entity");
-                if (entityId == null || entityId.isEmpty()) {
+                List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
+                if (entityIds.isEmpty()) {
                     sendParameterSearchFailure("No entity selected on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
-                Identifier identifier = Identifier.tryParse(entityId);
-                if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
-                    sendParameterSearchFailure("Unknown entity \"" + entityId + "\" for " + type.getDisplayName() + ".", future);
-                    return Optional.empty();
-                }
-                EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
                 double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
-                Optional<Entity> entity = findNearestEntity(client, entityType, range);
-                if (entity.isEmpty()) {
-                    sendParameterSearchFailure("No nearby entity of type " + entityId + " for " + type.getDisplayName() + ".", future);
+                Entity nearest = null;
+                String nearestId = null;
+                double nearestDistance = Double.MAX_VALUE;
+                for (String candidateId : entityIds) {
+                    Identifier identifier = Identifier.tryParse(candidateId);
+                    if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                        continue;
+                    }
+                    EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+                    Optional<Entity> entity = findNearestEntity(client, entityType, range);
+                    if (entity.isEmpty()) {
+                        continue;
+                    }
+                    double distance = entity.get().squaredDistanceTo(client.player);
+                    if (distance < nearestDistance) {
+                        nearest = entity.get();
+                        nearestId = identifier.toString();
+                        nearestDistance = distance;
+                    }
+                }
+                if (nearest == null) {
+                    sendParameterSearchFailure("No nearby entity found for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
                 if (data != null) {
-                    data.targetEntity = entity.get();
-                    data.targetEntityId = entityId;
-                    data.targetBlockPos = entity.get().getBlockPos();
+                    data.targetEntity = nearest;
+                    data.targetEntityId = nearestId;
+                    data.targetBlockPos = nearest.getBlockPos();
                 }
-                return Optional.ofNullable(EntityCompatibilityBridge.getPos(entity.get()));
+                return Optional.ofNullable(EntityCompatibilityBridge.getPos(nearest));
             }
             case PARAM_PLAYER: {
                 if (client == null || client.player == null || client.world == null) {
@@ -2993,8 +2969,7 @@ public class Node {
                 }
                 return Optional.ofNullable(EntityCompatibilityBridge.getPos(player.get()));
             }
-            case PARAM_BLOCK:
-            case PARAM_BLOCK_LIST: {
+            case PARAM_BLOCK: {
                 if (client == null || client.player == null || client.world == null) {
                     return Optional.empty();
                 }
@@ -3161,7 +3136,13 @@ public class Node {
             return true;
         }
 
-        Vec3d target = data != null ? data.targetVector : null;
+        Vec3d target = null;
+        if (data != null && data.targetEntity != null && data.targetEntity.isAlive()) {
+            target = data.targetEntity.getBoundingBox().getCenter();
+        }
+        if (target == null && data != null) {
+            target = data.targetVector;
+        }
         if (target == null) {
             Optional<Vec3d> resolved = resolvePositionTarget(parameterNode, data, future);
             if (resolved.isEmpty()) {
@@ -3260,7 +3241,7 @@ public class Node {
                 return;
             }
             // Allow block parameters in slot 0 (they provide block type, not position)
-            if ((parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_BLOCK_LIST)
+            if (parameterType == NodeType.PARAM_BLOCK
                 && parameterNode.parentParameterSlotIndex == 0) {
                 return;
             }
@@ -3390,13 +3371,11 @@ public class Node {
         List<BlockSelection> selections = new ArrayList<>();
         String primary = getBlockParameterValue(parameterNode);
         String listValue = getParameterString(parameterNode, "Blocks");
-        if (listValue != null && !listValue.isEmpty()) {
-            for (String entry : listValue.split(",")) {
-                addBlockSelection(selections, entry.trim());
-            }
+        for (String entry : splitMultiValueList(listValue)) {
+            addBlockSelection(selections, entry);
         }
-        if (primary != null && !primary.isEmpty()) {
-            addBlockSelection(selections, primary.trim());
+        for (String entry : splitMultiValueList(primary)) {
+            addBlockSelection(selections, entry);
         }
         return selections;
     }
@@ -3421,13 +3400,24 @@ public class Node {
             return itemIds;
         }
         String listValue = getParameterString(parameterNode, "Items");
-        if (listValue != null && !listValue.isEmpty()) {
-            for (String entry : listValue.split(",")) {
-                addItemIdentifier(itemIds, entry);
-            }
+        for (String entry : splitMultiValueList(listValue)) {
+            addItemIdentifier(itemIds, entry);
         }
-        addItemIdentifier(itemIds, getParameterString(parameterNode, "Item"));
+        for (String entry : splitMultiValueList(getParameterString(parameterNode, "Item"))) {
+            addItemIdentifier(itemIds, entry);
+        }
         return itemIds;
+    }
+
+    private List<String> resolveEntityIdsFromParameter(Node parameterNode) {
+        List<String> entityIds = new ArrayList<>();
+        if (parameterNode == null) {
+            return entityIds;
+        }
+        for (String entry : splitMultiValueList(getParameterString(parameterNode, "Entity"))) {
+            addEntityIdentifier(entityIds, entry);
+        }
+        return entityIds;
     }
 
     private void addItemIdentifier(List<String> itemIds, String rawValue) {
@@ -3442,6 +3432,55 @@ public class Node {
         if (!itemIds.contains(normalized)) {
             itemIds.add(normalized);
         }
+    }
+
+    private void addEntityIdentifier(List<String> entityIds, String rawValue) {
+        if (rawValue == null || rawValue.isEmpty()) {
+            return;
+        }
+        String sanitized = sanitizeResourceId(rawValue);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return;
+        }
+        String normalized = normalizeResourceId(sanitized, "minecraft");
+        if (!entityIds.contains(normalized)) {
+            entityIds.add(normalized);
+        }
+    }
+
+    private List<String> splitMultiValueList(String rawValue) {
+        if (rawValue == null) {
+            return Collections.emptyList();
+        }
+        String trimmed = rawValue.trim();
+        if (trimmed.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int bracketDepth = 0;
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (c == '[') {
+                bracketDepth++;
+            } else if (c == ']') {
+                bracketDepth = Math.max(0, bracketDepth - 1);
+            }
+            if ((c == ',' || c == ';') && bracketDepth == 0) {
+                String entry = current.toString().trim();
+                if (!entry.isEmpty()) {
+                    parts.add(entry);
+                }
+                current.setLength(0);
+                continue;
+            }
+            current.append(c);
+        }
+        String entry = current.toString().trim();
+        if (!entry.isEmpty()) {
+            parts.add(entry);
+        }
+        return parts;
     }
 
     private List<String> resolveCollectTargets(CompletableFuture<Void> future) {
@@ -3966,8 +4005,6 @@ public class Node {
                 return gotoNamedPlayer(parameterNode, customGoalProcess, future);
             case PARAM_BLOCK:
                 return gotoBlockFromParameter(parameterNode, baritone, future);
-            case PARAM_BLOCK_LIST:
-                return gotoBlockListFromParameter(parameterNode, baritone, future);
             default:
                 return false;
         }
@@ -4036,23 +4073,31 @@ public class Node {
             return false;
         }
 
-        String entityId = getParameterString(parameterNode, "Entity");
-        if (entityId == null || entityId.isEmpty()) {
+        List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
+        if (entityIds.isEmpty()) {
             return false;
         }
-
-        Identifier identifier = Identifier.tryParse(entityId);
-        if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
-            sendNodeErrorMessage(client, "Cannot navigate to entity \"" + entityId + "\": unknown identifier.");
-            future.complete(null);
-            return true;
-        }
-
-        EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
         double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
-        Optional<Entity> target = findNearestEntity(client, entityType, range);
-        if (target.isEmpty()) {
-            sendNodeErrorMessage(client, "No entity of type " + entityId + " found nearby for " + type.getDisplayName() + ".");
+        Entity nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (String candidateId : entityIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                continue;
+            }
+            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+            Optional<Entity> target = findNearestEntity(client, entityType, range);
+            if (target.isEmpty()) {
+                continue;
+            }
+            double distance = target.get().squaredDistanceTo(client.player);
+            if (distance < nearestDistance) {
+                nearest = target.get();
+                nearestDistance = distance;
+            }
+        }
+        if (nearest == null) {
+            sendNodeErrorMessage(client, "No matching entity found nearby for " + type.getDisplayName() + ".");
             future.complete(null);
             return true;
         }
@@ -4063,7 +4108,7 @@ public class Node {
             return true;
         }
 
-        BlockPos pos = target.get().getBlockPos();
+        BlockPos pos = nearest.getBlockPos();
         startGotoTaskWithBreakGuard(future);
         Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
         BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
@@ -4109,6 +4154,10 @@ public class Node {
         String blockId = getBlockParameterValue(parameterNode);
         if (blockId == null || blockId.isEmpty()) {
             return false;
+        }
+        List<String> blockIds = splitMultiValueList(blockId);
+        if (!blockIds.isEmpty()) {
+            blockId = blockIds.get(0);
         }
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
@@ -4192,45 +4241,6 @@ public class Node {
         startGotoTaskWithBreakGuard(future);
         String targetId = (normalized != null && !normalized.isEmpty()) ? normalized : blockId;
         BaritoneApiProxy.getToBlock(getToBlockProcess, BaritoneApiProxy.createBlockOptionalMeta(targetId));
-        return true;
-    }
-
-    private boolean gotoBlockListFromParameter(Node parameterNode, Object baritone, CompletableFuture<Void> future) {
-        String list = getParameterString(parameterNode, "Blocks");
-        if (list == null || list.isEmpty()) {
-            return false;
-        }
-
-        String[] parts = list.split("[,;]");
-        for (String candidate : parts) {
-            String trimmed = candidate.trim();
-            if (!trimmed.isEmpty()) {
-                return gotoBlockFromParameterValue(trimmed, baritone, future);
-            }
-        }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client != null) {
-            sendNodeErrorMessage(client, "Block list parameter for " + type.getDisplayName() + " does not contain a valid block name.");
-        }
-        future.complete(null);
-        return true;
-    }
-
-    private boolean gotoBlockFromParameterValue(String blockId, Object baritone, CompletableFuture<Void> future) {
-        if (blockId == null || blockId.isEmpty()) {
-            return false;
-        }
-        Object getToBlockProcess = baritone != null ? BaritoneApiProxy.getGetToBlockProcess(baritone) : null;
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (getToBlockProcess == null) {
-            if (client != null) {
-                sendNodeErrorMessage(client, "Cannot navigate to block: block search process unavailable.");
-            }
-            future.complete(null);
-            return true;
-        }
-        startGotoTaskWithBreakGuard(future);
-        BaritoneApiProxy.getToBlock(getToBlockProcess, BaritoneApiProxy.createBlockOptionalMeta(blockId));
         return true;
     }
     
@@ -6161,14 +6171,6 @@ public class Node {
         }, "Pathmind-Place").start();
     }
 
-    private boolean shouldInheritPlacementCoordinates() {
-        Node parameterNode = getAttachedParameter(1);
-        if (parameterNode == null) {
-            parameterNode = getAttachedParameter();
-        }
-        return parameterProvidesCoordinates(parameterNode);
-    }
-
     private boolean parameterProvidesCoordinates(Node parameterNode) {
         if (parameterNode == null) {
             return false;
@@ -6188,7 +6190,6 @@ public class Node {
             case PARAM_ENTITY:
             case PARAM_PLAYER:
             case PARAM_BLOCK:
-            case PARAM_BLOCK_LIST:
             case PARAM_WAYPOINT:
             case PARAM_CLOSEST:
                 return true;
@@ -6218,7 +6219,6 @@ public class Node {
             case SENSOR_IS_RENDERED:
                 switch (parameterType) {
                     case PARAM_BLOCK:
-                    case PARAM_BLOCK_LIST:
                     case PARAM_ITEM:
                     case PARAM_ENTITY:
                     case PARAM_PLAYER:
@@ -6238,7 +6238,6 @@ public class Node {
         }
         NodeType parameterType = parameterNode.getType();
         return parameterType == NodeType.PARAM_BLOCK
-            || parameterType == NodeType.PARAM_BLOCK_LIST
             || parameterType == NodeType.PARAM_PLACE_TARGET;
     }
 
@@ -6287,23 +6286,12 @@ public class Node {
         NodeType parameterType = parameterNode.getType();
         switch (parameterType) {
             case PARAM_BLOCK:
-                return getBlockParameterValue(parameterNode);
-            case PARAM_PLACE_TARGET:
-                return getParameterString(parameterNode, "Block");
-            case PARAM_BLOCK_LIST: {
-                String blocks = getParameterString(parameterNode, "Blocks");
-                if (blocks == null || blocks.isEmpty()) {
-                    return null;
-                }
-                String[] entries = blocks.split(",");
-                for (String entry : entries) {
-                    String trimmed = entry.trim();
-                    if (!trimmed.isEmpty()) {
-                        return trimmed;
-                    }
+                for (String entry : splitMultiValueList(getBlockParameterValue(parameterNode))) {
+                    return entry;
                 }
                 return null;
-            }
+            case PARAM_PLACE_TARGET:
+                return getParameterString(parameterNode, "Block");
             default:
                 return null;
         }
@@ -6520,8 +6508,22 @@ public class Node {
 
         new Thread(() -> {
             try {
-                Thread.sleep((long) (waitSeconds * 1000));
-                future.complete(null);
+                ExecutionManager manager = ExecutionManager.getInstance();
+                String nodeId = getId();
+                long waitMs = (long) (waitSeconds * 1000);
+
+                while (true) {
+                    Node active = manager.getActiveNode();
+                    if (active == null || nodeId == null || !nodeId.equals(active.getId())) {
+                        future.complete(null);
+                        return;
+                    }
+                    if (manager.getActiveNodeDuration() >= waitMs) {
+                        future.complete(null);
+                        return;
+                    }
+                    Thread.sleep(25L);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 future.completeExceptionally(e);
@@ -6946,17 +6948,25 @@ public class Node {
         int slot;
 
         if (!itemId.isEmpty()) {
-            Identifier identifier = Identifier.tryParse(itemId);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-                sendNodeErrorMessage(client, "Hotbar slot item \"" + itemId + "\" is not a valid item ID.");
-                future.complete(null);
-                return;
+            List<String> itemIds = splitMultiValueList(itemId);
+            int foundSlot = -1;
+            for (String candidateId : itemIds) {
+                String sanitized = sanitizeResourceId(candidateId);
+                String normalized = sanitized != null && !sanitized.isEmpty()
+                    ? normalizeResourceId(sanitized, "minecraft")
+                    : candidateId;
+                Identifier identifier = Identifier.tryParse(normalized);
+                if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                    continue;
+                }
+                Item targetItem = Registries.ITEM.get(identifier);
+                foundSlot = findHotbarSlotWithItem(inventory, targetItem);
+                if (foundSlot != -1) {
+                    break;
+                }
             }
-
-            Item targetItem = Registries.ITEM.get(identifier);
-            int foundSlot = findHotbarSlotWithItem(inventory, targetItem);
             if (foundSlot == -1) {
-                sendNodeErrorMessage(client, "Item \"" + itemId + "\" is not in your hotbar.");
+                sendNodeErrorMessage(client, "No matching item found in your hotbar.");
                 future.complete(null);
                 return;
             }
@@ -8587,6 +8597,12 @@ public class Node {
             try {
                 for (int i = 0; i < count; i++) {
                     runOnClientThread(client, () -> {
+                        if (hand == Hand.MAIN_HAND && client.interactionManager != null) {
+                            HitResult target = client.crosshairTarget;
+                            if (target instanceof EntityHitResult entityHit) {
+                                client.interactionManager.attackEntity(client.player, entityHit.getEntity());
+                            }
+                        }
                         client.player.swingHand(hand);
                         if (client.player.networkHandler != null) {
                             client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
@@ -8712,16 +8728,6 @@ public class Node {
             throw error.get();
         }
         return result.get();
-    }
-
-    private boolean canStacksCombine(ItemStack first, ItemStack second) {
-        if (first.isEmpty() || second.isEmpty()) {
-            return false;
-        }
-        if (!ItemStack.areItemsEqual(first, second)) {
-            return false;
-        }
-        return first.getComponents().equals(second.getComponents());
     }
 
     private int clampInventorySlot(PlayerInventory inventory, int slot) {
@@ -9147,7 +9153,6 @@ public class Node {
                 String resourceId = getStringParameter("Resource", "stone");
                 Node parameterNode = getAttachedParameterOfType(
                     NodeType.PARAM_BLOCK,
-                    NodeType.PARAM_BLOCK_LIST,
                     NodeType.PARAM_ITEM,
                     NodeType.PARAM_ENTITY,
                     NodeType.PARAM_PLAYER,
@@ -9174,13 +9179,6 @@ public class Node {
                             String nodePlayer = getParameterString(parameterNode, "Player");
                             if (nodePlayer != null && !nodePlayer.isEmpty()) {
                                 resourceId = nodePlayer;
-                            }
-                            break;
-                        }
-                        case PARAM_BLOCK_LIST: {
-                            String nodeBlocks = getParameterString(parameterNode, "Blocks");
-                            if (nodeBlocks != null && !nodeBlocks.isEmpty()) {
-                                resourceId = nodeBlocks;
                             }
                             break;
                         }
@@ -9378,17 +9376,26 @@ public class Node {
         if (world == null) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(entityId);
-        if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
-            return false;
+        for (String candidateId : splitMultiValueList(entityId)) {
+            String sanitized = sanitizeResourceId(candidateId);
+            String normalized = sanitized != null && !sanitized.isEmpty()
+                ? normalizeResourceId(sanitized, "minecraft")
+                : candidateId;
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                continue;
+            }
+            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+            List<Entity> entities = world.getOtherEntities(
+                client.player,
+                client.player.getBoundingBox().expand(0.15),
+                entity -> entity.getType() == entityType
+            );
+            if (!entities.isEmpty()) {
+                return true;
+            }
         }
-        EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-        List<Entity> entities = world.getOtherEntities(
-            client.player,
-            client.player.getBoundingBox().expand(0.15),
-            entity -> entity.getType() == entityType
-        );
-        return !entities.isEmpty();
+        return false;
     }
     
     private boolean isAtCoordinates(int x, int y, int z) {
@@ -9448,12 +9455,8 @@ public class Node {
             return Collections.emptyList();
         }
         List<BlockSelection> selections = new ArrayList<>();
-        for (String entry : blockId.split("[,;]")) {
-            String trimmed = entry == null ? null : entry.trim();
-            if (trimmed == null || trimmed.isEmpty()) {
-                continue;
-            }
-            BlockSelection.parse(trimmed).ifPresent(selections::add);
+        for (String entry : splitMultiValueList(blockId)) {
+            BlockSelection.parse(entry).ifPresent(selections::add);
         }
         return selections;
     }
@@ -9582,18 +9585,27 @@ public class Node {
         if (world == null) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(entityId);
-        if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
-            return false;
-        }
-        EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
         Box searchBox = client.player.getBoundingBox().expand(range);
-        List<Entity> entities = world.getOtherEntities(
-            client.player,
-            searchBox,
-            entity -> entity.getType() == entityType
-        );
-        return !entities.isEmpty();
+        for (String candidateId : splitMultiValueList(entityId)) {
+            String sanitized = sanitizeResourceId(candidateId);
+            String normalized = sanitized != null && !sanitized.isEmpty()
+                ? normalizeResourceId(sanitized, "minecraft")
+                : candidateId;
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                continue;
+            }
+            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+            List<Entity> entities = world.getOtherEntities(
+                client.player,
+                searchBox,
+                entity -> entity.getType() == entityType
+            );
+            if (!entities.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasItemInInventory(String itemId) {
@@ -9601,12 +9613,21 @@ public class Node {
         if (client == null || client.player == null || itemId == null || itemId.isEmpty()) {
             return false;
         }
-        Identifier identifier = Identifier.tryParse(itemId);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-            return false;
+        for (String candidateId : splitMultiValueList(itemId)) {
+            String sanitized = sanitizeResourceId(candidateId);
+            String normalized = sanitized != null && !sanitized.isEmpty()
+                ? normalizeResourceId(sanitized, "minecraft")
+                : candidateId;
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            net.minecraft.item.Item item = Registries.ITEM.get(identifier);
+            if (client.player.getInventory().count(item) > 0) {
+                return true;
+            }
         }
-        net.minecraft.item.Item item = Registries.ITEM.get(identifier);
-        return client.player.getInventory().count(item) > 0;
+        return false;
     }
 
     private boolean isResourceRendered(String resourceId) {

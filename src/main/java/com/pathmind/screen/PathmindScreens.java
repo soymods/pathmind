@@ -44,6 +44,10 @@ public final class PathmindScreens {
         showMissingScreen(client, client != null ? client.currentScreen : null);
     }
 
+    public static boolean isVisualEditorScreen(Screen screen) {
+        return isVisualEditor(screen);
+    }
+
     private static void showMissingScreen(MinecraftClient client, Screen parent) {
         if (client == null) {
             return;

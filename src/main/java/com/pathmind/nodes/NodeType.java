@@ -55,7 +55,7 @@ public enum NodeType {
     STOP("Stop", 0xFFF44336, "Stops the current pathfinding task"),
     
     // Player combat commands
-    SWING("Swing", 0xFFFF7043, "Performs a hand swing without interaction"),
+    SWING("Swing", 0xFFFF7043, "Performs a hand swing and attacks if targeting an entity"),
     
     // Player interaction commands
     USE("Use", 0xFF8BC34A, "Uses the selected hand with fine-grained control"),
@@ -105,14 +105,13 @@ public enum NodeType {
     // Parameter nodes
     PARAM_COORDINATE("Coordinate", 0xFF8BC34A, "Reusable XYZ coordinate data"),
     PARAM_BLOCK("Block", 0xFF8BC34A, "Represents a single block type"),
-    PARAM_BLOCK_LIST("Block List", 0xFF8BC34A, "Represents multiple block types"),
     PARAM_ITEM("Item", 0xFF8BC34A, "Represents an item and quantity"),
-    PARAM_ENTITY("Entity", 0xFF8BC34A, "Represents an entity and range"),
+    PARAM_ENTITY("Entity", 0xFF8BC34A, "Represents an entity"),
     PARAM_PLAYER("Player", 0xFF8BC34A, "Represents a specific player target"),
     PARAM_WAYPOINT("Waypoint", 0xFF8BC34A, "Represents a waypoint name and optional range"),
     PARAM_SCHEMATIC("Schematic", 0xFF8BC34A, "Represents schematic placement data"),
     PARAM_INVENTORY_SLOT("Inventory Slot", 0xFF8BC34A, "Represents an inventory slot reference"),
-    PARAM_MESSAGE("Message Text", 0xFF8BC34A, "Represents reusable chat or sign text"),
+    PARAM_MESSAGE("Text", 0xFF8BC34A, "Represents reusable chat or sign text"),
     PARAM_DURATION("Duration", 0xFF8BC34A, "Represents a duration or interval"),
     PARAM_AMOUNT("Amount", 0xFF8BC34A, "Represents a generic numeric amount"),
     PARAM_BOOLEAN("Toggle", 0xFF8BC34A, "Represents a boolean toggle value"),
@@ -254,7 +253,6 @@ public enum NodeType {
                 return NodeCategory.EVENTS;
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
-            case PARAM_BLOCK_LIST:
             case PARAM_ITEM:
             case PARAM_ENTITY:
             case PARAM_PLAYER:
@@ -326,7 +324,6 @@ public enum NodeType {
             case SENSOR_IS_RENDERED:
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
-            case PARAM_BLOCK_LIST:
             case PARAM_ITEM:
             case PARAM_ENTITY:
             case PARAM_PLAYER:

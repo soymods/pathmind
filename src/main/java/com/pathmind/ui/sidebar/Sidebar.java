@@ -116,7 +116,6 @@ public class Sidebar {
         groups.add(new NodeGroup(
             "Targets & Objects",
             NodeType.PARAM_BLOCK,
-            NodeType.PARAM_BLOCK_LIST,
             NodeType.PARAM_ITEM,
             NodeType.PARAM_ENTITY,
             NodeType.PARAM_PLAYER,

@@ -15,16 +15,17 @@ import com.pathmind.util.TextCompatibilityBridge;
 public class PathmindMainMenuButton extends ButtonWidget {
     private static final Identifier ICON_TEXTURE = PathmindMod.id("textures/gui/button_logo.png");
     private static final int ICON_PADDING = 2;
-    private static final net.minecraft.text.Text OPEN_EDITOR_TEXT =
-        TextCompatibilityBridge.translatableWithFallback("gui.pathmind.open_editor", "Open Pathmind Editor");
+    private static final String OPEN_EDITOR_KEY = "gui.pathmind.open_editor";
+    private static final String OPEN_EDITOR_FALLBACK = "Open Pathmind Editor";
 
     public PathmindMainMenuButton(int x, int y, int size, PressAction pressAction) {
         super(x, y, size, size, TextCompatibilityBridge.empty(), pressAction, DEFAULT_NARRATION_SUPPLIER);
-        this.setTooltip(Tooltip.of(OPEN_EDITOR_TEXT));
+        this.setTooltip(Tooltip.of(resolveOpenEditorText()));
     }
 
     @Override
     protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+        this.setTooltip(Tooltip.of(resolveOpenEditorText()));
         super.renderWidget(context, mouseX, mouseY, delta);
 
         int iconSize = this.width - ICON_PADDING * 2;
@@ -51,6 +52,14 @@ public class PathmindMainMenuButton extends ButtonWidget {
 
     @Override
     public MutableText getNarrationMessage() {
-        return TextCompatibilityBridge.copy(OPEN_EDITOR_TEXT);
+        return TextCompatibilityBridge.copy(resolveOpenEditorText());
+    }
+
+    private static MutableText resolveOpenEditorText() {
+        MutableText text = TextCompatibilityBridge.translatable(OPEN_EDITOR_KEY);
+        if (OPEN_EDITOR_KEY.equals(text.getString())) {
+            return TextCompatibilityBridge.literal(OPEN_EDITOR_FALLBACK);
+        }
+        return text;
     }
 }

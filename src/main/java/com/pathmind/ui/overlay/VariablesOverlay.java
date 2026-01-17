@@ -125,9 +125,6 @@ public class VariablesOverlay {
             case PARAM_BLOCK:
                 result = formatSingle(values, "Block", "block");
                 break;
-            case PARAM_BLOCK_LIST:
-                result = formatSingle(values, "Blocks", "blocks");
-                break;
             case PARAM_ITEM:
                 result = formatSingle(values, "Item", "item");
                 break;

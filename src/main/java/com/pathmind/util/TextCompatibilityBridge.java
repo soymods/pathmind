@@ -58,6 +58,9 @@ public final class TextCompatibilityBridge {
         }
         value = translatable(key, safeArgs);
         if (value != null) {
+            if (fallback != null && !fallback.isEmpty() && key != null && key.equals(value.getString())) {
+                return literal(fallback);
+            }
             return value;
         }
         return literal(fallback == null ? "" : fallback);

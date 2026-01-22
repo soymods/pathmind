@@ -98,6 +98,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private NodeGraph nodeGraph;
     private Sidebar sidebar;
     private NodeParameterOverlay parameterOverlay;
+    private final boolean baritoneAvailable;
 
     // Drag and drop state
     private boolean isDraggingFromSidebar = false;
@@ -147,8 +148,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
     public PathmindVisualEditorScreen() {
         super(Text.translatable("screen.pathmind.visual_editor.title"));
+        this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
         this.nodeGraph = new NodeGraph();
-        this.sidebar = new Sidebar();
+        this.sidebar = new Sidebar(baritoneAvailable);
         refreshAvailablePresets();
         this.nodeGraph.setActivePreset(activePresetName);
         updateImportExportPathFromPreset();
@@ -192,6 +194,7 @@ public class PathmindVisualEditorScreen extends Screen {
             System.out.println("Found saved node graph, loading...");
             if (nodeGraph.load()) {
                 System.out.println("Successfully loaded saved node graph");
+                refreshMissingBaritonePopup();
                 return; // Don't initialize default nodes if we loaded a saved graph
             } else {
                 System.out.println("Failed to load saved node graph, using default");
@@ -200,6 +203,7 @@ public class PathmindVisualEditorScreen extends Screen {
         
         // Initialize node graph with proper centering based on screen dimensions
         nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+        refreshMissingBaritonePopup();
     }
 
     @Override
@@ -320,11 +324,15 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeType == null || !nodeType.requiresBaritone()) {
             return false;
         }
-        if (BaritoneDependencyChecker.isBaritoneApiPresent()) {
+        if (baritoneAvailable) {
             return false;
         }
         missingBaritonePopupVisible = true;
         return true;
+    }
+
+    private void refreshMissingBaritonePopup() {
+        missingBaritonePopupVisible = !baritoneAvailable && nodeGraph.containsBaritoneNodes();
     }
     
     private void renderDraggingNode(DrawContext context, int mouseX, int mouseY) {
@@ -1372,8 +1380,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int centerX = popupX + popupWidth / 2;
         int messageY = popupY + 16;
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone API is required for this node"), centerX, messageY, WHITE);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Download the latest baritone-api release"), centerX, messageY + 16, 0xFFD7D7D7);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone nodes need the Baritone API (optional)"), centerX, messageY, WHITE);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to enable these nodes"), centerX, messageY + 16, 0xFFD7D7D7);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 30, 0xFF87CEEB);
 
         int buttonWidth = 100;
@@ -1679,6 +1687,7 @@ public class PathmindVisualEditorScreen extends Screen {
             Path path = Paths.get(selection.trim());
             boolean success = nodeGraph.importFromPath(path);
             if (success) {
+                refreshMissingBaritonePopup();
                 lastImportExportPath = path;
                 Path fileName = path.getFileName();
                 String fileLabel = fileName != null ? fileName.toString() : path.toString();
@@ -2608,6 +2617,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (!nodeGraph.load()) {
                 nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
             }
+            refreshMissingBaritonePopup();
             nodeGraph.resetCamera();
             updateImportExportPathFromPreset();
         }
@@ -2681,6 +2691,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!nodeGraph.load()) {
             nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
         }
+        refreshMissingBaritonePopup();
         nodeGraph.resetCamera();
         updateImportExportPathFromPreset();
     }

@@ -36,7 +36,7 @@ A Minecraft Fabric mod that introduces a visual node editor system for creating 
 
 ## Compatibility
 
-- Release jars are suffixed with `+mc<version>` so you can keep multiple Minecraft targets side-by-side (e.g., `pathmind-1.0.6+mc1.21.11.jar`).
+- Release jars are suffixed with `+mc<version>` so you can keep multiple Minecraft targets side-by-side (e.g., `pathmind-1.0.7+mc1.21.11.jar`).
 - The default Gradle build targets the version listed in `gradle.properties`, but passing `-Pmc_version=<version>` (or using the auto-generated `buildMc<version>` tasks) compiles the identical codebase against any entry in `supportedMinecraftVersions`.
 - Use the `buildAllTargets` task to batch-build jars for every configured version.
 
@@ -84,7 +84,7 @@ A Minecraft Fabric mod that introduces a visual node editor system for creating 
 
 | Component | Version |
 |-----------|---------|
-| **Mod Version** | 1.0.6 |
+| **Mod Version** | 1.0.7 |
 | **Minecraft Version** | Matches the `+mc<version>` suffix on each jar |
 | **Yarn Mappings** | Automatically selected per target version |
 | **Fabric Loader** | 0.17.2 |

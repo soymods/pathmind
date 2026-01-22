@@ -85,7 +85,7 @@ repositories {
     // for more information about repositories.
 }
 
-val baritoneApiJar: File by extra {
+val baritoneApiJar: File? by extra {
     val candidates = listOfNotNull(
         System.getenv("BARITONE_API_JAR"),
         project.findProperty("baritoneApiPath") as? String,
@@ -95,9 +95,6 @@ val baritoneApiJar: File by extra {
     ).map { file(it) }
 
     candidates.firstOrNull { it.exists() }
-        ?: throw org.gradle.api.GradleException(
-            "Baritone API jar not found. Set BARITONE_API_JAR, provide -PbaritoneApiPath, or place the jar in libs/."
-        )
 }
 
 val baritoneRuntimeTargets = setOf("1.21.6", "1.21.7", "1.21.8")
@@ -113,12 +110,14 @@ dependencies {
     // Fabric API. This is technically optional, but you probably want it anyway.
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
 
-    // Baritone API dependency (compile-time only, users must provide the mod at runtime)
-    val baritoneApi = files(baritoneApiJar)
-    modCompileOnly(baritoneApi)
-    if (enableBaritoneRuntime && requestedMinecraftVersion in baritoneRuntimeTargets) {
-        modLocalRuntime(baritoneApi)
-    }
+    // Optional Baritone API (compile-time only; users may provide the mod at runtime)
+    baritoneApiJar?.let { jar ->
+        val baritoneApi = files(jar)
+        modCompileOnly(baritoneApi)
+        if (enableBaritoneRuntime && requestedMinecraftVersion in baritoneRuntimeTargets) {
+            modLocalRuntime(baritoneApi)
+        }
+    } ?: logger.warn("Baritone API jar not found; skipping optional Baritone compile/runtime classpath")
 
     // Gson for JSON serialization
     implementation("com.google.code.gson:gson:2.10.1")

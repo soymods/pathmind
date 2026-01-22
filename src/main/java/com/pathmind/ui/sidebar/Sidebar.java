@@ -3,6 +3,7 @@ package com.pathmind.ui.sidebar;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.util.BaritoneDependencyChecker;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
@@ -49,6 +50,7 @@ public class Sidebar {
     private final Map<NodeCategory, List<NodeType>> categoryNodes;
     private final Map<NodeCategory, List<NodeGroup>> groupedCategoryNodes;
     private final Map<NodeCategory, Boolean> categoryExpanded;
+    private final boolean baritoneAvailable;
     private NodeType hoveredNodeType = null;
     private NodeCategory hoveredCategory = null;
     private NodeCategory selectedCategory = null;
@@ -58,9 +60,14 @@ public class Sidebar {
     private int currentInnerSidebarWidth = INNER_SIDEBAR_WIDTH;
     
     public Sidebar() {
+        this(BaritoneDependencyChecker.isBaritoneApiPresent());
+    }
+
+    public Sidebar(boolean baritoneAvailable) {
         this.categoryExpanded = new HashMap<>();
         this.categoryNodes = new HashMap<>();
         this.groupedCategoryNodes = new HashMap<>();
+        this.baritoneAvailable = baritoneAvailable;
         
         // Initialize categories as expanded by default
         for (NodeCategory category : NodeCategory.values()) {
@@ -93,7 +100,7 @@ public class Sidebar {
                     if (nodeType == NodeType.PARAM_PLACE_TARGET) {
                         continue;
                     }
-                    if (nodeType.getCategory() == category && nodeType.isDraggableFromSidebar()) {
+                    if (nodeType.getCategory() == category && shouldIncludeNode(nodeType)) {
                         nodes.add(nodeType);
                     }
                 }
@@ -107,6 +114,7 @@ public class Sidebar {
         List<NodeGroup> groups = new ArrayList<>();
         groups.add(new NodeGroup(
             "Spatial Data",
+            baritoneAvailable,
             NodeType.PARAM_COORDINATE,
             NodeType.PARAM_ROTATION,
             NodeType.PARAM_RANGE,
@@ -115,6 +123,7 @@ public class Sidebar {
         ));
         groups.add(new NodeGroup(
             "Targets & Objects",
+            baritoneAvailable,
             NodeType.PARAM_BLOCK,
             NodeType.PARAM_ITEM,
             NodeType.PARAM_ENTITY,
@@ -124,15 +133,18 @@ public class Sidebar {
         ));
         groups.add(new NodeGroup(
             "Inventory & Equipment",
+            baritoneAvailable,
             NodeType.PARAM_INVENTORY_SLOT,
             NodeType.PARAM_HAND
         ));
         groups.add(new NodeGroup(
             "Input",
+            baritoneAvailable,
             NodeType.PARAM_KEY
         ));
         groups.add(new NodeGroup(
             "Utility Data",
+            baritoneAvailable,
             NodeType.PARAM_DURATION,
             NodeType.PARAM_AMOUNT,
             NodeType.PARAM_BOOLEAN,
@@ -145,6 +157,7 @@ public class Sidebar {
         List<NodeGroup> groups = new ArrayList<>();
         groups.add(new NodeGroup(
             "Player State",
+            baritoneAvailable,
             NodeType.SENSOR_IS_SWIMMING,
             NodeType.SENSOR_IS_IN_LAVA,
             NodeType.SENSOR_IS_UNDERWATER,
@@ -153,10 +166,12 @@ public class Sidebar {
         ));
         groups.add(new NodeGroup(
             "Input",
+            baritoneAvailable,
             NodeType.SENSOR_KEY_PRESSED
         ));
         groups.add(new NodeGroup(
             "Position & Blocks",
+            baritoneAvailable,
             NodeType.SENSOR_AT_COORDINATES,
             NodeType.SENSOR_TOUCHING_BLOCK,
             NodeType.SENSOR_BLOCK_AHEAD,
@@ -164,26 +179,40 @@ public class Sidebar {
         ));
         groups.add(new NodeGroup(
             "Entities & Visibility",
+            baritoneAvailable,
             NodeType.SENSOR_TOUCHING_ENTITY,
             NodeType.SENSOR_ENTITY_NEARBY,
             NodeType.SENSOR_IS_RENDERED
         ));
         groups.add(new NodeGroup(
             "Inventory & Items",
+            baritoneAvailable,
             NodeType.SENSOR_ITEM_IN_INVENTORY
         ));
         groups.add(new NodeGroup(
             "Player Stats",
+            baritoneAvailable,
             NodeType.SENSOR_HEALTH_BELOW,
             NodeType.SENSOR_HUNGER_BELOW
         ));
         groups.add(new NodeGroup(
             "Environment & Weather",
+            baritoneAvailable,
             NodeType.SENSOR_IS_DAYTIME,
             NodeType.SENSOR_IS_RAINING,
             NodeType.SENSOR_LIGHT_LEVEL_BELOW
         ));
         return groups;
+    }
+
+    private boolean shouldIncludeNode(NodeType nodeType) {
+        if (nodeType == null || !nodeType.isDraggableFromSidebar()) {
+            return false;
+        }
+        if (baritoneAvailable) {
+            return true;
+        }
+        return !nodeType.requiresBaritone();
     }
 
     private boolean hasGroupedContent(NodeCategory category) {
@@ -713,12 +742,13 @@ public class Sidebar {
         private final String title;
         private final List<NodeType> nodes;
 
-        NodeGroup(String title, NodeType... nodeTypes) {
+        NodeGroup(String title, boolean includeBaritoneNodes, NodeType... nodeTypes) {
             this.title = title;
             this.nodes = new ArrayList<>();
             if (nodeTypes != null) {
                 for (NodeType type : nodeTypes) {
-                    if (type != null && type.isDraggableFromSidebar()) {
+                    if (type != null && type.isDraggableFromSidebar()
+                        && (includeBaritoneNodes || !type.requiresBaritone())) {
                         this.nodes.add(type);
                     }
                 }

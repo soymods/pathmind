@@ -4635,6 +4635,15 @@ public class NodeGraph {
         this.executionEnabled = enabled;
     }
 
+    public boolean containsBaritoneNodes() {
+        for (Node node : nodes) {
+            if (node != null && node.getType() != null && node.getType().requiresBaritone()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void updateCascadeDeletionPreview() {
         cascadeDeletionPreviewNodes.clear();
         for (Node node : nodes) {

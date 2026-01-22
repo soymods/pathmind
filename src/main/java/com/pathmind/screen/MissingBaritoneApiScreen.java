@@ -9,7 +9,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 
 /**
- * Warning screen displayed when the Baritone API dependency is missing.
+ * Warning screen displayed when the user tries to use Baritone-only features without the Baritone API.
  */
 public class MissingBaritoneApiScreen extends Screen {
     private static final int BUTTON_WIDTH = 150;
@@ -71,8 +71,8 @@ public class MissingBaritoneApiScreen extends Screen {
         int centerX = this.width / 2;
         int messageY = this.height / 2 - 40;
 
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone API is required for Pathmind"), centerX, messageY, 0xFFFFFF);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Download the latest baritone-api release"), centerX, messageY + 16, 0xFFD7D7D7);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Optional Baritone API not detected"), centerX, messageY, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to unlock Baritone nodes"), centerX, messageY + 16, 0xFFD7D7D7);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 32, 0xFF87CEEB);
 
         super.render(context, mouseX, mouseY, delta);

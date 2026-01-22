@@ -34,9 +34,7 @@ public final class PathmindScreens {
         try {
             client.setScreen(instantiateVisualEditor());
         } catch (ReflectiveOperationException | LinkageError e) {
-            PathmindMod.LOGGER.error("Failed to open Pathmind visual editor due to missing Baritone classes", e);
-            BaritoneDependencyChecker.markUnavailable();
-            showMissingScreen(client, parent);
+            PathmindMod.LOGGER.error("Failed to open Pathmind visual editor", e);
         }
     }
 

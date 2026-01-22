@@ -3,33 +3,28 @@
   "id": "pathmind",
   "version": "${version}",
   "name": "Pathmind",
-  "description": "scratch for block game",
-  "authors": [
-    "ryduzz"
-  ],
+  "description": "A visual node editor for building workflows and automation logic in Minecraft.",
+  "authors": ["ryduzz"],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathmind",
     "sources": "https://github.com/soymods/pathmind",
     "issues": "https://github.com/soymods/pathmind/issues"
   },
-  "license": "Pathmind License (All Rights Reserved)",
+  "license": "All Rights Reserved",
   "icon": "assets/pathmind/logo.png",
-  "environment": "*",
+  "environment": "client",
   "entrypoints": {
-    "main": [
-      "com.pathmind.PathmindMod"
-    ],
-    "client": [
-      "com.pathmind.PathmindClientMod"
-    ]
+    "main": ["com.pathmind.PathmindMod"],
+    "client": ["com.pathmind.PathmindClientMod"]
   },
-  "mixins": [
-    "pathmind.mixins.json"
-  ],
+  "mixins": ["pathmind.mixins.json"],
   "depends": {
     "fabricloader": ">=0.17.2",
     "minecraft": "${minecraft_version}",
     "java": ">=21",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "baritone": "*"
   }
 }

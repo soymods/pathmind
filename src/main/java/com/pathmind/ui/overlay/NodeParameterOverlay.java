@@ -29,6 +29,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import org.lwjgl.glfw.GLFW;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -2405,7 +2406,14 @@ public class NodeParameterOverlay {
             return null;
         }
         try {
-            Entity entity = entityType.create(client.world, reason);
+            Entity entity = null;
+            try {
+                Method createWithReason = EntityType.class.getMethod("create", World.class, SpawnReason.class);
+                entity = (Entity) createWithReason.invoke(entityType, client.world, reason);
+            } catch (NoSuchMethodException ignored) {
+                Method createNoReason = EntityType.class.getMethod("create", World.class);
+                entity = (Entity) createNoReason.invoke(entityType, client.world);
+            }
             if (entity instanceof LivingEntity living) {
                 return living;
             }

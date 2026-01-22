@@ -9,8 +9,8 @@
   ],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathmind",
-    "sources": "https://github.com/ChudMC/pathmind",
-    "issues": "https://github.com/ChudMC/pathmind/issues"
+    "sources": "https://github.com/soymods/pathmind",
+    "issues": "https://github.com/soymods/pathmind/issues"
   },
   "license": "Pathmind License (All Rights Reserved)",
   "icon": "assets/pathmind/logo.png",

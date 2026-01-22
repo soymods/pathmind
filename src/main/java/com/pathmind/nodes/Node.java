@@ -144,6 +144,16 @@ public class Node {
     private static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
     private static final int AMOUNT_FIELD_HEIGHT = 16;
     private static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
+    private static final int MESSAGE_FIELD_MARGIN_HORIZONTAL = 6;
+    private static final int MESSAGE_FIELD_TOP_MARGIN = 6;
+    private static final int MESSAGE_FIELD_LABEL_HEIGHT = 10;
+    private static final int MESSAGE_FIELD_HEIGHT = 16;
+    private static final int MESSAGE_FIELD_VERTICAL_GAP = 6;
+    private static final int MESSAGE_FIELD_BOTTOM_MARGIN = 6;
+    private static final int MESSAGE_FIELD_MIN_CONTENT_WIDTH = 120;
+    private static final int MESSAGE_BUTTON_SIZE = 10;
+    private static final int MESSAGE_BUTTON_PADDING = 4;
+    private static final int MESSAGE_BUTTON_SPACING = 4;
     private static final int SCHEMATIC_FIELD_TOP_MARGIN = 6;
     private static final int SCHEMATIC_FIELD_LABEL_HEIGHT = 10;
     private static final int SCHEMATIC_FIELD_HEIGHT = 16;
@@ -183,6 +193,7 @@ public class Node {
     private RuntimeParameterData runtimeParameterData;
     private transient Node owningStartNode;
     private int startNodeNumber;
+    private final List<String> messageLines;
 
     public Node(NodeType type, int x, int y) {
         this.id = java.util.UUID.randomUUID().toString();
@@ -201,6 +212,10 @@ public class Node {
         this.socketsHidden = false;
         this.owningStartNode = null;
         this.startNodeNumber = 0;
+        this.messageLines = new ArrayList<>();
+        if (type == NodeType.MESSAGE) {
+            this.messageLines.add("Hello World");
+        }
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -493,6 +508,9 @@ public class Node {
             return false;
         }
         if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL || type == NodeType.START_CHAIN) {
+            return false;
+        }
+        if (type == NodeType.MESSAGE) {
             return false;
         }
         if (hasBooleanToggle()) {
@@ -1865,9 +1883,6 @@ public class Node {
                 parameters.add(new NodeParameter("MinimumDurationSeconds", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("RandomVarianceSeconds", ParameterType.DOUBLE, "0.0"));
                 break;
-            case MESSAGE:
-                parameters.add(new NodeParameter("Text", ParameterType.STRING, "Hello World"));
-                break;
             case START_CHAIN:
                 parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 break;
@@ -2408,6 +2423,128 @@ public class Node {
         return modes != null && modes.length > 0;
     }
 
+    public boolean hasMessageInputFields() {
+        return type == NodeType.MESSAGE;
+    }
+
+    public int getMessageFieldCount() {
+        return Math.max(1, messageLines.size());
+    }
+
+    public List<String> getMessageLines() {
+        return messageLines;
+    }
+
+    public String getMessageLine(int index) {
+        if (index < 0 || index >= getMessageFieldCount()) {
+            return "";
+        }
+        if (index >= messageLines.size()) {
+            return "";
+        }
+        String value = messageLines.get(index);
+        return value == null ? "" : value;
+    }
+
+    public void setMessageLine(int index, String value) {
+        if (!hasMessageInputFields() || index < 0) {
+            return;
+        }
+        while (index >= messageLines.size()) {
+            messageLines.add("Hello World");
+        }
+        messageLines.set(index, value == null ? "" : value);
+    }
+
+    public void setMessageLines(List<String> lines) {
+        messageLines.clear();
+        if (lines != null) {
+            for (String line : lines) {
+                messageLines.add(line == null ? "" : line);
+            }
+        }
+        if (messageLines.isEmpty()) {
+            messageLines.add("Hello World");
+        }
+        recalculateDimensions();
+    }
+
+    public void addMessageLine(String value) {
+        if (!hasMessageInputFields()) {
+            return;
+        }
+        messageLines.add(value == null ? "" : value);
+        recalculateDimensions();
+    }
+
+    public boolean removeMessageLine(int index) {
+        if (!hasMessageInputFields() || messageLines.size() <= 1) {
+            return false;
+        }
+        if (index < 0 || index >= messageLines.size()) {
+            return false;
+        }
+        messageLines.remove(index);
+        if (messageLines.isEmpty()) {
+            messageLines.add("Hello World");
+        }
+        recalculateDimensions();
+        return true;
+    }
+
+    public int getMessageFieldDisplayHeight() {
+        if (!hasMessageInputFields()) {
+            return 0;
+        }
+        int count = getMessageFieldCount();
+        int blockHeight = MESSAGE_FIELD_LABEL_HEIGHT + MESSAGE_FIELD_HEIGHT + MESSAGE_FIELD_VERTICAL_GAP;
+        return MESSAGE_FIELD_TOP_MARGIN + (count * blockHeight) - MESSAGE_FIELD_VERTICAL_GAP + MESSAGE_FIELD_BOTTOM_MARGIN;
+    }
+
+    public int getMessageFieldLabelTop(int index) {
+        return y + HEADER_HEIGHT + MESSAGE_FIELD_TOP_MARGIN + index * (MESSAGE_FIELD_LABEL_HEIGHT + MESSAGE_FIELD_HEIGHT + MESSAGE_FIELD_VERTICAL_GAP);
+    }
+
+    public int getMessageFieldInputTop(int index) {
+        return getMessageFieldLabelTop(index) + MESSAGE_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getMessageFieldLabelHeight() {
+        return MESSAGE_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getMessageFieldHeight() {
+        return MESSAGE_FIELD_HEIGHT;
+    }
+
+    public int getMessageFieldWidth() {
+        return Math.max(MESSAGE_FIELD_MIN_CONTENT_WIDTH, width - 2 * MESSAGE_FIELD_MARGIN_HORIZONTAL);
+    }
+
+    public int getMessageFieldLeft() {
+        return x + MESSAGE_FIELD_MARGIN_HORIZONTAL;
+    }
+
+    public int getMessageAddButtonLeft() {
+        return x + width - MESSAGE_BUTTON_PADDING - MESSAGE_BUTTON_SIZE;
+    }
+
+    public int getMessageRemoveButtonLeft() {
+        return getMessageAddButtonLeft() - MESSAGE_BUTTON_SPACING - MESSAGE_BUTTON_SIZE;
+    }
+
+    public int getMessageButtonTop() {
+        return y + 3;
+    }
+
+    public int getMessageButtonSize() {
+        return MESSAGE_BUTTON_SIZE;
+    }
+
+    public int getMessageButtonsWidth() {
+        return (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
+    }
+
     /**
      * Recalculate node dimensions based on current content
      */
@@ -2482,6 +2619,11 @@ public class Node {
             int requiredWidth = STOP_TARGET_FIELD_MIN_WIDTH + 2 * STOP_TARGET_FIELD_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, requiredWidth);
         }
+        if (hasMessageInputFields()) {
+            int messageFieldWidth = MESSAGE_FIELD_MIN_CONTENT_WIDTH + 2 * MESSAGE_FIELD_MARGIN_HORIZONTAL;
+            int buttonWidth = (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
+            computedWidth = Math.max(computedWidth, Math.max(messageFieldWidth, buttonWidth));
+        }
         int minWidth = usesMinimalNodePresentation() ? 70 : MIN_WIDTH;
         this.width = Math.max(minWidth, computedWidth);
 
@@ -2527,12 +2669,17 @@ public class Node {
                 if (hasAmountInputField()) {
                     contentHeight += getAmountFieldDisplayHeight();
                 }
+                if (hasMessageInputFields()) {
+                    contentHeight += getMessageFieldDisplayHeight();
+                }
                 if (hasSlots) {
                     contentHeight += SLOT_AREA_PADDING_TOP;
                 }
             }
         } else if (hasSlots) {
             contentHeight += SLOT_AREA_PADDING_TOP;
+        } else if (type == NodeType.MESSAGE) {
+            contentHeight += getMessageFieldDisplayHeight();
         } else if (hasStopTargetInputField()) {
             contentHeight += getStopTargetFieldDisplayHeight();
         } else if (hasBooleanToggle()) {
@@ -6598,15 +6745,29 @@ public class Node {
         if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
             return;
         }
-        String text = "Hello World";
-        NodeParameter textParam = getParameter("Text");
-        if (textParam != null) {
-            text = textParam.getStringValue();
+        List<String> lines = getMessageLines();
+        if (lines == null || lines.isEmpty()) {
+            lines = Collections.singletonList("Hello World");
         }
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client != null && client.player != null && client.player.networkHandler != null) {
-            client.player.networkHandler.sendChatMessage(text);
+            for (int i = 0; i < lines.size(); i++) {
+                String raw = lines.get(i);
+                String text = raw == null ? "" : raw.trim();
+                if (text.isEmpty()) {
+                    continue;
+                }
+                client.player.networkHandler.sendChatMessage(text);
+                if (i < lines.size() - 1) {
+                    try {
+                        Thread.sleep(100L);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
         } else {
             System.err.println("Unable to send chat message: client or player not available");
         }

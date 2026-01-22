@@ -667,6 +667,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopCoordinateEditing(true);
                         nodeGraph.stopAmountEditing(true);
                         nodeGraph.stopStopTargetEditing(true);
+                        nodeGraph.stopMessageEditing(true);
                         nodeGraph.startDraggingConnection(node, i, false, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -680,6 +681,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopCoordinateEditing(true);
                         nodeGraph.stopAmountEditing(true);
                         nodeGraph.stopStopTargetEditing(true);
+                        nodeGraph.stopMessageEditing(true);
                         nodeGraph.startDraggingConnection(node, i, true, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -698,6 +700,10 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 if (nodeGraph.handleSchematicDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
+
+                if (nodeGraph.handleMessageButtonClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     return true;
                 }
 
@@ -720,9 +726,17 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                int messageIndex = nodeGraph.getMessageFieldIndexAt(clickedNode, (int)mouseX, (int)mouseY);
+                if (messageIndex != -1) {
+                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.startMessageEditing(clickedNode, messageIndex);
+                    return true;
+                }
+
                 nodeGraph.stopAmountEditing(true);
                 nodeGraph.stopCoordinateEditing(true);
                 nodeGraph.stopStopTargetEditing(true);
+                nodeGraph.stopMessageEditing(true);
 
                 // Check for double-click to open parameter editor
                 boolean shouldOpenOverlay = (clickedNode.isParameterNode()
@@ -1047,6 +1061,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleMessageKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
         if (nodeGraph.handleAmountKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -1119,6 +1137,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.textRenderer)) {
+            return true;
+        }
+
+        if (nodeGraph.handleMessageCharTyped(chr, modifiers, this.textRenderer)) {
             return true;
         }
 

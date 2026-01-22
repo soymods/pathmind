@@ -22,14 +22,13 @@ import net.minecraft.entity.SpawnReason;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.item.SpawnEggItem;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import org.lwjgl.glfw.GLFW;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -2368,7 +2367,9 @@ public class NodeParameterOverlay {
         }
         int x2 = x + size;
         int y2 = y + size;
-        InventoryScreen.drawEntity(context, x, y, x2, y2, size, (float) size, 0.0f, 0.0f, entity);
+        float mouseX = (x + x2) / 2.0f;
+        float mouseY = (y + y2) / 2.0f;
+        InventoryScreen.drawEntity(context, x, y, x2, y2, size, mouseX, mouseY, 0.0f, entity);
         return true;
     }
 
@@ -2384,68 +2385,34 @@ public class NodeParameterOverlay {
         if (entityType == null) {
             return null;
         }
-        for (SpawnReason spawnReason : preferredSpawnReasons()) {
-            LivingEntity living = tryCreateEntityForIcon(entityType, client, spawnReason);
-            if (living != null) {
-                return living;
+        // Pick a spawn reason that exists in the current runtime; fall back to the first available value.
+        SpawnReason reason = null;
+        for (String candidate : new String[]{"SPAWN_EGG", "SPAWN_ITEM", "DISPENSER", "COMMAND", "NATURAL"}) {
+            try {
+                reason = SpawnReason.valueOf(candidate);
+                break;
+            } catch (IllegalArgumentException ignored) {
+                // Candidate not present in this version; try the next one.
             }
         }
-        for (SpawnReason spawnReason : SpawnReason.values()) {
-            LivingEntity living = tryCreateEntityForIcon(entityType, client, spawnReason);
-            if (living != null) {
-                return living;
+        if (reason == null) {
+            SpawnReason[] reasons = SpawnReason.values();
+            if (reasons.length > 0) {
+                reason = reasons[0];
             }
         }
-        LivingEntity direct = tryCreateEntityWithoutFeatureCheck(entityType, client);
-        if (direct != null) {
-            return direct;
-        }
-        return null;
-    }
-
-    private static LivingEntity tryCreateEntityForIcon(EntityType<?> entityType, MinecraftClient client, SpawnReason spawnReason) {
-        if (entityType == null || client == null || client.world == null) {
+        if (reason == null) {
             return null;
         }
         try {
-            Entity entity = createEntityForIcon(entityType, client.world, spawnReason);
+            Entity entity = entityType.create(client.world, reason);
             if (entity instanceof LivingEntity living) {
                 return living;
             }
         } catch (Exception ignored) {
+            // If creation fails for any reason, let caller fall back to icon stack.
         }
         return null;
-    }
-
-    private static LivingEntity tryCreateEntityWithoutFeatureCheck(EntityType<?> entityType, MinecraftClient client) {
-        if (entityType == null || client == null || client.world == null) {
-            return null;
-        }
-        try {
-            Field factoryField = EntityType.class.getDeclaredField("factory");
-            factoryField.setAccessible(true);
-            Object rawFactory = factoryField.get(entityType);
-            if (rawFactory instanceof EntityType.EntityFactory<?> factory) {
-                @SuppressWarnings("unchecked")
-                Entity entity = ((EntityType.EntityFactory<Entity>) (EntityType.EntityFactory<?>) factory)
-                    .create((EntityType<Entity>) entityType, client.world);
-                if (entity instanceof LivingEntity living) {
-                    return living;
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
-
-    private static Entity createEntityForIcon(EntityType<?> entityType, World world, SpawnReason spawnReason) throws Exception {
-        try {
-            Method createWithReason = EntityType.class.getMethod("create", World.class, SpawnReason.class);
-            return (Entity) createWithReason.invoke(entityType, world, spawnReason);
-        } catch (NoSuchMethodException ignored) {
-            Method createWithoutReason = EntityType.class.getMethod("create", World.class);
-            return (Entity) createWithoutReason.invoke(entityType, world);
-        }
     }
 
     private void renderBlockItemSuggestionText(DrawContext context, TextRenderer textRenderer, String baseValue, int index,
@@ -2845,24 +2812,21 @@ public class NodeParameterOverlay {
         private static List<RegistryOption> buildEntityOptions() {
             List<RegistryOption> options = new ArrayList<>();
             for (Identifier id : Registries.ENTITY_TYPE.getIds()) {
+                EntityType<?> entityType = Registries.ENTITY_TYPE.get(id);
                 String fullId = id.toString();
                 String value = isMinecraftNamespace(id) ? id.getPath() : fullId;
-                options.add(new RegistryOption(value, fullId, ItemStack.EMPTY));
+                ItemStack iconStack = ItemStack.EMPTY;
+                if (entityType != null) {
+                    Item spawnEgg = SpawnEggItem.forEntity(entityType);
+                    if (spawnEgg != null) {
+                        iconStack = new ItemStack(spawnEgg);
+                    }
+                }
+                options.add(new RegistryOption(value, fullId, iconStack));
             }
             options.sort((a, b) -> a.value().compareToIgnoreCase(b.value()));
             return options;
         }
-    }
-
-    private static SpawnReason[] preferredSpawnReasons() {
-        List<SpawnReason> reasons = new ArrayList<>();
-        for (String name : new String[]{"SPAWN_EGG", "SPAWN_ITEM", "COMMAND", "DISPENSER", "NATURAL"}) {
-            try {
-                reasons.add(SpawnReason.valueOf(name));
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-        return reasons.toArray(new SpawnReason[0]);
     }
 
 }

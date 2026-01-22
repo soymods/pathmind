@@ -57,6 +57,7 @@ public class NodeGraphData {
         private List<ParameterAttachmentData> parameterAttachments;
         private Boolean booleanToggleValue;
         private Integer startNodeNumber;
+        private List<String> messageLines;
 
         public NodeData() {
             this.parameters = new ArrayList<>();
@@ -133,6 +134,14 @@ public class NodeGraphData {
 
         public void setStartNodeNumber(Integer startNodeNumber) {
             this.startNodeNumber = startNodeNumber;
+        }
+
+        public List<String> getMessageLines() {
+            return messageLines;
+        }
+
+        public void setMessageLines(List<String> messageLines) {
+            this.messageLines = messageLines;
         }
     }
     

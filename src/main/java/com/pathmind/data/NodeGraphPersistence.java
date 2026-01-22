@@ -158,6 +158,9 @@ public class NodeGraphPersistence {
                     node.setBooleanToggleValue(true);
                 }
             }
+            if (node.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
+                node.setMessageLines(nodeData.getMessageLines());
+            }
             if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -405,6 +408,11 @@ public class NodeGraphPersistence {
                 nodeData.setBooleanToggleValue(null);
             }
             nodeData.setStartNodeNumber(node.getStartNodeNumber());
+            if (node.hasMessageInputFields()) {
+                nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
+            } else {
+                nodeData.setMessageLines(null);
+            }
 
             data.getNodes().add(nodeData);
         }

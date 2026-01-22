@@ -130,6 +130,16 @@ public class NodeGraph {
     private int amountSelectionStart = -1;
     private int amountSelectionEnd = -1;
     private int amountSelectionAnchor = -1;
+    private Node messageEditingNode = null;
+    private int messageEditingIndex = -1;
+    private String messageEditBuffer = "";
+    private String messageEditOriginalValue = "";
+    private long messageCaretLastToggleTime = 0L;
+    private boolean messageCaretVisible = true;
+    private int messageCaretPosition = 0;
+    private int messageSelectionStart = -1;
+    private int messageSelectionEnd = -1;
+    private int messageSelectionAnchor = -1;
     private Node stopTargetEditingNode = null;
     private String stopTargetEditBuffer = "";
     private String stopTargetEditOriginalValue = "";
@@ -397,6 +407,9 @@ public class NodeGraph {
         }
         if (stopTargetEditingNode == node) {
             stopStopTargetEditing(false);
+        }
+        if (messageEditingNode == node) {
+            stopMessageEditing(false);
         }
 
         if (node.hasAttachedSensor()) {
@@ -910,8 +923,11 @@ public class NodeGraph {
                     && newNode.getParameter("StartNumber") == null) {
                     newNode.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 }
-                newNode.recalculateDimensions();
             }
+            if (nodeData.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
+                newNode.setMessageLines(nodeData.getMessageLines());
+            }
+            newNode.recalculateDimensions();
             nodes.add(newNode);
             idToNode.put(nodeData.getId(), newNode);
         }
@@ -1004,6 +1020,11 @@ public class NodeGraph {
             nodeData.setX(node.getX());
             nodeData.setY(node.getY());
             nodeData.setStartNodeNumber(node.getStartNodeNumber());
+            if (node.hasMessageInputFields()) {
+                nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
+            } else {
+                nodeData.setMessageLines(null);
+            }
 
             List<NodeGraphData.ParameterData> paramDataList = new ArrayList<>();
             for (NodeParameter param : node.getParameters()) {
@@ -1138,6 +1159,7 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopMessageEditing(true);
         resetDropTargets();
 
         if (node == null) {
@@ -1185,6 +1207,7 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopMessageEditing(true);
         isDraggingConnection = true;
         connectionSourceNode = node;
         connectionSourceSocket = socketIndex;
@@ -2110,7 +2133,7 @@ public class NodeGraph {
                 titleColor
             );
         }
-        
+
         if (node.shouldRenderSockets()) {
             // Render input sockets
             for (int i = 0; i < node.getInputSocketCount(); i++) {
@@ -2380,6 +2403,10 @@ public class NodeGraph {
                         renderAmountInputField(context, textRenderer, node, isOverSidebar);
                     }
                 }
+                if (node.hasMessageInputFields()) {
+                    renderMessageInputFields(context, textRenderer, node, isOverSidebar);
+                    renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
                 if (node.hasSchematicDropdownField()) {
                     renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
@@ -2522,6 +2549,45 @@ public class NodeGraph {
         node.toggleBooleanToggleValue();
         notifyNodeParametersChanged(node);
         return true;
+    }
+
+    public boolean handleMessageButtonClick(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasMessageInputFields()) {
+            return false;
+        }
+        int size = node.getMessageButtonSize();
+        int top = node.getMessageButtonTop() - cameraY;
+        int addLeft = node.getMessageAddButtonLeft() - cameraX;
+        int removeLeft = node.getMessageRemoveButtonLeft() - cameraX;
+        boolean handled = false;
+
+        boolean overAdd = mouseX >= addLeft && mouseX <= addLeft + size
+            && mouseY >= top && mouseY <= top + size;
+        boolean overRemove = mouseX >= removeLeft && mouseX <= removeLeft + size
+            && mouseY >= top && mouseY <= top + size;
+
+        if (overAdd) {
+            stopMessageEditing(true);
+            node.addMessageLine("");
+            node.recalculateDimensions();
+            notifyNodeParametersChanged(node);
+            startMessageEditing(node, node.getMessageFieldCount() - 1);
+            handled = true;
+        } else if (overRemove && node.getMessageFieldCount() > 1) {
+            int targetIndex = (messageEditingNode == node && messageEditingIndex >= 0)
+                ? messageEditingIndex
+                : node.getMessageFieldCount() - 1;
+            stopMessageEditing(true);
+            int removeIndex = Math.min(node.getMessageFieldCount() - 1, targetIndex);
+            node.removeMessageLine(removeIndex);
+            node.recalculateDimensions();
+            notifyNodeParametersChanged(node);
+            int nextIndex = Math.max(0, Math.min(removeIndex, node.getMessageFieldCount() - 1));
+            startMessageEditing(node, nextIndex);
+            handled = true;
+        }
+
+        return handled;
     }
 
     private int adjustColorBrightness(int color, float factor) {
@@ -2721,6 +2787,109 @@ public class NodeGraph {
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, 0xFFE6F7FF);
         }
+    }
+
+    private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int baseLabelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
+        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
+        int activeFieldBorder = 0xFF87CEEB;
+        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int activeTextColor = 0xFFE6F7FF;
+
+        boolean editing = isEditingMessageField() && messageEditingNode == node;
+        if (editing) {
+            updateMessageCaretBlink();
+        }
+
+        int fieldCount = node.getMessageFieldCount();
+        for (int i = 0; i < fieldCount; i++) {
+            int labelTop = node.getMessageFieldLabelTop(i) - cameraY;
+            int labelHeight = node.getMessageFieldLabelHeight();
+            int fieldTop = node.getMessageFieldInputTop(i) - cameraY;
+            int fieldHeight = node.getMessageFieldHeight();
+            int fieldLeft = node.getMessageFieldLeft() - cameraX;
+            int fieldWidth = node.getMessageFieldWidth();
+
+            boolean editingThis = editing && messageEditingIndex == i;
+            int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
+            String label = fieldCount > 1 ? "Message " + (i + 1) : "Message";
+            drawNodeText(context, textRenderer, Text.literal(label), fieldLeft + 2, labelY, baseLabelColor);
+
+            int fieldBottom = fieldTop + fieldHeight;
+            int backgroundColor = editingThis ? activeFieldBackground : fieldBackground;
+            int borderColor = editingThis ? activeFieldBorder : fieldBorder;
+            int valueColor = editingThis ? activeTextColor : textColor;
+
+            context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
+            DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+
+            String value = editingThis ? messageEditBuffer : node.getMessageLine(i);
+            if (value == null) {
+                value = "";
+            }
+            String display = editingThis
+                ? value
+                : trimTextToWidth(value, textRenderer, fieldWidth - 6);
+
+            int textX = fieldLeft + 3;
+            int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+            if (editingThis && hasMessageSelection()) {
+                int start = messageSelectionStart;
+                int end = messageSelectionEnd;
+                if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
+                    int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
+                    int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
+                    context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, 0x805577D6);
+                }
+            }
+            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+
+            if (editingThis && messageCaretVisible) {
+                int caretIndex = MathHelper.clamp(messageCaretPosition, 0, display.length());
+                int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
+                caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
+                context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, 0xFFE6F7FF);
+            }
+        }
+    }
+
+    private void renderMessageButtons(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        int size = node.getMessageButtonSize();
+        int top = node.getMessageButtonTop() - cameraY;
+        int addLeft = node.getMessageAddButtonLeft() - cameraX;
+        int removeLeft = node.getMessageRemoveButtonLeft() - cameraX;
+
+        boolean canRemove = node.getMessageFieldCount() > 1;
+        boolean addHovered = mouseX >= addLeft && mouseX <= addLeft + size && mouseY >= top && mouseY <= top + size;
+        boolean removeHovered = mouseX >= removeLeft && mouseX <= removeLeft + size && mouseY >= top && mouseY <= top + size && canRemove;
+
+        int baseFill = isOverSidebar ? 0xFF2A2A2A : 0xFF1E1E1E;
+        int baseBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
+
+        // Add button
+        int addFill = addHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
+        int addBorder = addHovered ? 0xFF87CEEB : baseBorder;
+        context.fill(addLeft, top, addLeft + size, top + size, addFill);
+        DrawContextBridge.drawBorder(context, addLeft, top, size, size, addBorder);
+        int addTextX = addLeft + (size - textRenderer.getWidth("+")) / 2;
+        int addTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, 0xFFFFFFFF);
+
+        // Remove button
+        int removeFill = canRemove
+            ? (removeHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill)
+            : 0xFF1B1B1B;
+        int removeBorder = canRemove
+            ? (removeHovered ? 0xFFF0B1B1 : baseBorder)
+            : 0xFF3A3A3A;
+        context.fill(removeLeft, top, removeLeft + size, top + size, removeFill);
+        DrawContextBridge.drawBorder(context, removeLeft, top, size, size, removeBorder);
+        int removeTextX = removeLeft + (size - textRenderer.getWidth("-")) / 2;
+        int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
+        int removeTextColor = canRemove ? 0xFFFFFFFF : 0xFF777777;
+        drawNodeText(context, textRenderer, Text.literal("-"), removeTextX, removeTextY, removeTextColor);
     }
 
     private void renderStopTargetInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -3509,6 +3678,192 @@ public class NodeGraph {
         return false;
     }
 
+    public boolean isEditingMessageField() {
+        return messageEditingNode != null && messageEditingIndex >= 0;
+    }
+
+    private void updateMessageCaretBlink() {
+        long now = System.currentTimeMillis();
+        if (now - messageCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
+            messageCaretVisible = !messageCaretVisible;
+            messageCaretLastToggleTime = now;
+        }
+    }
+
+    private void resetMessageCaretBlink() {
+        messageCaretVisible = true;
+        messageCaretLastToggleTime = System.currentTimeMillis();
+    }
+
+    public void startMessageEditing(Node node, int index) {
+        if (node == null || !node.hasMessageInputFields() || index < 0 || index >= node.getMessageFieldCount()) {
+            stopMessageEditing(false);
+            return;
+        }
+
+        closeSchematicDropdown();
+        if (isEditingMessageField()) {
+            if (messageEditingNode == node && messageEditingIndex == index) {
+                return;
+            }
+            boolean changed = applyMessageEdit();
+            if (changed) {
+                notifyNodeParametersChanged(messageEditingNode);
+            }
+        }
+
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+        stopStopTargetEditing(true);
+
+        messageEditingNode = node;
+        messageEditingIndex = index;
+        messageEditBuffer = node.getMessageLine(index);
+        messageEditOriginalValue = messageEditBuffer;
+        resetMessageCaretBlink();
+        messageCaretPosition = messageEditBuffer.length();
+        messageSelectionAnchor = -1;
+        messageSelectionStart = -1;
+        messageSelectionEnd = -1;
+    }
+
+    public void stopMessageEditing(boolean commit) {
+        if (!isEditingMessageField()) {
+            return;
+        }
+
+        boolean changed = false;
+        if (commit) {
+            changed = applyMessageEdit();
+        } else {
+            revertMessageEdit();
+        }
+
+        if (commit && changed) {
+            notifyNodeParametersChanged(messageEditingNode);
+        }
+
+        messageEditingNode = null;
+        messageEditingIndex = -1;
+        messageEditBuffer = "";
+        messageEditOriginalValue = "";
+        messageCaretVisible = true;
+        messageCaretPosition = 0;
+        messageSelectionAnchor = -1;
+        messageSelectionStart = -1;
+        messageSelectionEnd = -1;
+    }
+
+    private boolean applyMessageEdit() {
+        if (!isEditingMessageField()) {
+            return false;
+        }
+        String value = messageEditBuffer == null ? "" : messageEditBuffer;
+        String previous = messageEditingNode.getMessageLine(messageEditingIndex);
+        messageEditingNode.setMessageLine(messageEditingIndex, value);
+        messageEditingNode.recalculateDimensions();
+        return !Objects.equals(previous, value);
+    }
+
+    private void revertMessageEdit() {
+        if (!isEditingMessageField()) {
+            return;
+        }
+        messageEditingNode.setMessageLine(messageEditingIndex, messageEditOriginalValue);
+        messageEditingNode.recalculateDimensions();
+    }
+
+    public boolean handleMessageKeyPressed(int keyCode, int modifiers) {
+        if (!isEditingMessageField()) {
+            return false;
+        }
+
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (deleteMessageSelection()) {
+                    return true;
+                }
+                if (messageCaretPosition > 0 && !messageEditBuffer.isEmpty()) {
+                    messageEditBuffer = messageEditBuffer.substring(0, messageCaretPosition - 1)
+                        + messageEditBuffer.substring(messageCaretPosition);
+                    setMessageCaretPosition(messageCaretPosition - 1);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (deleteMessageSelection()) {
+                    return true;
+                }
+                if (messageCaretPosition < messageEditBuffer.length()) {
+                    messageEditBuffer = messageEditBuffer.substring(0, messageCaretPosition)
+                        + messageEditBuffer.substring(messageCaretPosition + 1);
+                    setMessageCaretPosition(messageCaretPosition);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveMessageCaretTo(messageCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveMessageCaretTo(messageCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveMessageCaretTo(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveMessageCaretTo(messageEditBuffer.length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+                stopMessageEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_ESCAPE:
+                stopMessageEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllMessageText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copyMessageSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutMessageSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    TextRenderer textRenderer = getClientTextRenderer();
+                    if (textRenderer != null) {
+                        insertMessageText(getClipboardText(), textRenderer);
+                    }
+                    return true;
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    public boolean handleMessageCharTyped(char chr, int modifiers, TextRenderer textRenderer) {
+        if (!isEditingMessageField()) {
+            return false;
+        }
+        if (chr == '\n' || chr == '\r') {
+            return false;
+        }
+        return insertMessageText(String.valueOf(chr), textRenderer);
+    }
+
     private boolean hasCoordinateSelection() {
         return coordinateSelectionStart >= 0
             && coordinateSelectionEnd >= 0
@@ -3527,6 +3882,12 @@ public class NodeGraph {
             && stopTargetSelectionStart != stopTargetSelectionEnd;
     }
 
+    private boolean hasMessageSelection() {
+        return messageSelectionStart >= 0
+            && messageSelectionEnd >= 0
+            && messageSelectionStart != messageSelectionEnd;
+    }
+
     private void resetCoordinateSelectionRange() {
         coordinateSelectionStart = -1;
         coordinateSelectionEnd = -1;
@@ -3540,6 +3901,11 @@ public class NodeGraph {
     private void resetStopTargetSelectionRange() {
         stopTargetSelectionStart = -1;
         stopTargetSelectionEnd = -1;
+    }
+
+    private void resetMessageSelectionRange() {
+        messageSelectionStart = -1;
+        messageSelectionEnd = -1;
     }
 
     private void setCoordinateCaretPosition(int position) {
@@ -3755,6 +4121,35 @@ public class NodeGraph {
         resetStopTargetCaretBlink();
     }
 
+    private void setMessageCaretPosition(int position) {
+        messageCaretPosition = MathHelper.clamp(position, 0, messageEditBuffer.length());
+        messageSelectionAnchor = -1;
+        resetMessageSelectionRange();
+        resetMessageCaretBlink();
+    }
+
+    private void moveMessageCaretTo(int position, boolean extendSelection) {
+        position = MathHelper.clamp(position, 0, messageEditBuffer.length());
+        if (extendSelection) {
+            if (messageSelectionAnchor == -1) {
+                messageSelectionAnchor = messageCaretPosition;
+            }
+            int start = Math.min(messageSelectionAnchor, position);
+            int end = Math.max(messageSelectionAnchor, position);
+            if (start == end) {
+                resetMessageSelectionRange();
+            } else {
+                messageSelectionStart = start;
+                messageSelectionEnd = end;
+            }
+        } else {
+            messageSelectionAnchor = -1;
+            resetMessageSelectionRange();
+        }
+        messageCaretPosition = position;
+        resetMessageCaretBlink();
+    }
+
     private boolean deleteAmountSelection() {
         if (!hasAmountSelection()) {
             return false;
@@ -3833,6 +4228,46 @@ public class NodeGraph {
         }
         copyStopTargetSelection();
         deleteStopTargetSelection();
+    }
+
+    private boolean deleteMessageSelection() {
+        if (!hasMessageSelection()) {
+            return false;
+        }
+        messageEditBuffer = messageEditBuffer.substring(0, messageSelectionStart)
+            + messageEditBuffer.substring(messageSelectionEnd);
+        setMessageCaretPosition(messageSelectionStart);
+        return true;
+    }
+
+    private void selectAllMessageText() {
+        if (!isEditingMessageField()) {
+            return;
+        }
+        messageSelectionAnchor = 0;
+        if (messageEditBuffer.isEmpty()) {
+            resetMessageSelectionRange();
+        } else {
+            messageSelectionStart = 0;
+            messageSelectionEnd = messageEditBuffer.length();
+        }
+        messageCaretPosition = messageEditBuffer.length();
+        resetMessageCaretBlink();
+    }
+
+    private void copyMessageSelection() {
+        if (!hasMessageSelection()) {
+            return;
+        }
+        setClipboardText(messageEditBuffer.substring(messageSelectionStart, messageSelectionEnd));
+    }
+
+    private void cutMessageSelection() {
+        if (!hasMessageSelection()) {
+            return;
+        }
+        copyMessageSelection();
+        deleteMessageSelection();
     }
 
     private boolean insertAmountText(String text, TextRenderer textRenderer) {
@@ -3957,6 +4392,62 @@ public class NodeGraph {
         return false;
     }
 
+    private boolean insertMessageText(String text, TextRenderer textRenderer) {
+        if (!isEditingMessageField() || textRenderer == null || text == null || text.isEmpty()) {
+            return false;
+        }
+
+        String filtered = text.replace("\r", "").replace("\n", "");
+        if (filtered.isEmpty()) {
+            return false;
+        }
+
+        String originalBuffer = messageEditBuffer;
+        int originalCaret = messageCaretPosition;
+        int originalSelectionStart = messageSelectionStart;
+        int originalSelectionEnd = messageSelectionEnd;
+        int originalSelectionAnchor = messageSelectionAnchor;
+
+        String working = messageEditBuffer;
+        int caret = messageCaretPosition;
+
+        if (hasMessageSelection()) {
+            int start = messageSelectionStart;
+            int end = messageSelectionEnd;
+            working = working.substring(0, start) + working.substring(end);
+            caret = start;
+        }
+
+        boolean inserted = false;
+        int widthLimit = messageEditingNode != null
+            ? messageEditingNode.getMessageFieldWidth() - 6
+            : Integer.MAX_VALUE;
+
+        for (int i = 0; i < filtered.length(); i++) {
+            char c = filtered.charAt(i);
+            String candidate = working.substring(0, caret) + c + working.substring(caret);
+            if (textRenderer.getWidth(candidate) > widthLimit) {
+                break;
+            }
+            working = candidate;
+            caret++;
+            inserted = true;
+        }
+
+        if (inserted) {
+            messageEditBuffer = working;
+            setMessageCaretPosition(caret);
+            return true;
+        }
+
+        messageEditBuffer = originalBuffer;
+        messageCaretPosition = originalCaret;
+        messageSelectionStart = originalSelectionStart;
+        messageSelectionEnd = originalSelectionEnd;
+        messageSelectionAnchor = originalSelectionAnchor;
+        return false;
+    }
+
     private TextRenderer getClientTextRenderer() {
         MinecraftClient client = MinecraftClient.getInstance();
         return client != null ? client.textRenderer : null;
@@ -4007,6 +4498,26 @@ public class NodeGraph {
 
         return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    public int getMessageFieldIndexAt(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasMessageInputFields()) {
+            return -1;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int count = node.getMessageFieldCount();
+        int fieldLeft = node.getMessageFieldLeft();
+        int fieldWidth = node.getMessageFieldWidth();
+        for (int i = 0; i < count; i++) {
+            int fieldTop = node.getMessageFieldInputTop(i);
+            int fieldHeight = node.getMessageFieldHeight();
+            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + fieldHeight) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     public boolean handleSchematicDropdownClick(Node clickedNode, int screenX, int screenY) {
@@ -4869,6 +5380,12 @@ public class NodeGraph {
                 Node child = nodeMap.get(nodeData.getAttachedActionId());
                 if (control != null && child != null) {
                     control.attachActionNode(child);
+                }
+            }
+            if (nodeData.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
+                Node messageNode = nodeMap.get(nodeData.getId());
+                if (messageNode != null) {
+                    messageNode.setMessageLines(nodeData.getMessageLines());
                 }
             }
         }

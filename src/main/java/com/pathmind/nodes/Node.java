@@ -13,8 +13,11 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.Executors;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
 import com.pathmind.util.BaritoneApiProxy;
@@ -57,6 +60,7 @@ import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.ingame.CraftingScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
 import net.minecraft.recipe.RecipeManager;
@@ -144,6 +148,9 @@ public class Node {
     private static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
     private static final int AMOUNT_FIELD_HEIGHT = 16;
     private static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
+    private static final int AMOUNT_TOGGLE_WIDTH = 18;
+    private static final int AMOUNT_TOGGLE_HEIGHT = 10;
+    private static final int AMOUNT_TOGGLE_SPACING = 6;
     private static final int MESSAGE_FIELD_MARGIN_HORIZONTAL = 6;
     private static final int MESSAGE_FIELD_TOP_MARGIN = 6;
     private static final int MESSAGE_FIELD_LABEL_HEIGHT = 10;
@@ -171,6 +178,11 @@ public class Node {
     private static final Object GOTO_BREAK_LOCK = new Object();
     private static final AtomicInteger ACTIVE_GOTO_BLOCKING_REQUESTS = new AtomicInteger(0);
     private static Boolean gotoBreakOriginalValue = null;
+    private static final ScheduledExecutorService MESSAGE_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "Pathmind-Message-Scheduler");
+        t.setDaemon(true);
+        return t;
+    });
     private int width;
     private int height;
     private int nextOutputSocket = 0;
@@ -1112,6 +1124,9 @@ public class Node {
         if (type == NodeType.CRAFT && (mode == null || mode == NodeMode.CRAFT_PLAYER_GUI || mode == NodeMode.CRAFT_CRAFTING_TABLE)) {
             return true;
         }
+        if (type == NodeType.SENSOR_ITEM_IN_INVENTORY) {
+            return true;
+        }
         return false;
     }
 
@@ -1151,11 +1166,67 @@ public class Node {
     }
 
     public int getAmountFieldWidth() {
-        return getParameterSlotWidth();
+        int width = getParameterSlotWidth();
+        if (hasAmountToggle()) {
+            width = Math.max(40, width - (AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING));
+        }
+        return width;
     }
 
     public int getAmountFieldLeft() {
         return getParameterSlotLeft();
+    }
+
+    public boolean hasAmountToggle() {
+        return type == NodeType.SENSOR_ITEM_IN_INVENTORY;
+    }
+
+    public boolean isAmountInputEnabled() {
+        ensureInventoryAmountParameters();
+        if (!hasAmountInputField()) {
+            return false;
+        }
+        if (type == NodeType.SENSOR_ITEM_IN_INVENTORY) {
+            NodeParameter useParam = getParameter("UseAmount");
+            return useParam != null && useParam.getBoolValue();
+        }
+        return true;
+    }
+
+    public void setAmountInputEnabled(boolean enabled) {
+        ensureInventoryAmountParameters();
+        NodeParameter useParam = getParameter("UseAmount");
+        if (useParam != null) {
+            useParam.setStringValue(Boolean.toString(enabled));
+        }
+    }
+
+    public int getAmountToggleLeft() {
+        return getAmountFieldLeft() + getAmountFieldWidth() + AMOUNT_TOGGLE_SPACING;
+    }
+
+    public int getAmountToggleTop() {
+        return getAmountFieldInputTop() + (getAmountFieldHeight() - AMOUNT_TOGGLE_HEIGHT) / 2;
+    }
+
+    public int getAmountToggleWidth() {
+        return AMOUNT_TOGGLE_WIDTH;
+    }
+
+    public int getAmountToggleHeight() {
+        return AMOUNT_TOGGLE_HEIGHT;
+    }
+
+    private void ensureInventoryAmountParameters() {
+        if (type != NodeType.SENSOR_ITEM_IN_INVENTORY) {
+            return;
+        }
+        if (getParameter("Amount") == null) {
+            parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
+        }
+        if (getParameter("UseAmount") == null) {
+            parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
+        }
     }
 
     public int getSchematicFieldDisplayHeight() {
@@ -1988,6 +2059,9 @@ public class Node {
             case SENSOR_IS_RAINING:
             case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
+                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
+                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
+                break;
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -2040,9 +2114,6 @@ public class Node {
             case PARAM_INVENTORY_SLOT:
                 parameters.add(new NodeParameter("Slot", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Mode", ParameterType.STRING, "player_inventory"));
-                break;
-            case PARAM_MESSAGE:
-                parameters.add(new NodeParameter("Text", ParameterType.STRING, "Hello"));
                 break;
             case PARAM_DURATION:
                 parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
@@ -2595,6 +2666,9 @@ public class Node {
                 }
                 if (hasAmountInputField()) {
                     int amountWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                    if (type == NodeType.SENSOR_ITEM_IN_INVENTORY && hasAmountToggle()) {
+                        amountWidth += AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
+                    }
                     computedWidth = Math.max(computedWidth, amountWidth);
                 }
             }
@@ -6752,26 +6826,41 @@ public class Node {
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client != null && client.player != null && client.player.networkHandler != null) {
+            long delayMs = 120L;
+            int[] sent = {0};
             for (int i = 0; i < lines.size(); i++) {
                 String raw = lines.get(i);
                 String text = raw == null ? "" : raw.trim();
                 if (text.isEmpty()) {
                     continue;
                 }
-                client.player.networkHandler.sendChatMessage(text);
-                if (i < lines.size() - 1) {
-                    try {
-                        Thread.sleep(100L);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
+                long scheduledDelay = sent[0] * delayMs;
+                MESSAGE_SCHEDULER.schedule(() -> {
+                    MinecraftClient.getInstance().execute(() -> {
+                        if (MinecraftClient.getInstance().player != null
+                            && MinecraftClient.getInstance().player.networkHandler != null) {
+                            boolean isCommand = text.startsWith("/");
+                            if (isCommand) {
+                                String cmd = text.length() > 1 ? text.substring(1) : "";
+                                if (!cmd.isEmpty()) {
+                                    MinecraftClient.getInstance().player.networkHandler.sendChatCommand(cmd);
+                                }
+                            } else {
+                                MinecraftClient.getInstance().player.networkHandler.sendChatMessage(text);
+                            }
+                        }
+                    });
+                }, scheduledDelay, TimeUnit.MILLISECONDS);
+                sent[0]++;
             }
+            long completionDelay = Math.max(0, (sent[0] - 1) * delayMs + delayMs);
+            MESSAGE_SCHEDULER.schedule(() -> {
+                future.complete(null);
+            }, completionDelay, TimeUnit.MILLISECONDS);
         } else {
             System.err.println("Unable to send chat message: client or player not available");
+            future.complete(null);
         }
-        future.complete(null); // Message commands complete immediately
     }
     
     private void executeGoalCommand(CompletableFuture<Void> future) {
@@ -9263,13 +9352,30 @@ public class Node {
             }
             case SENSOR_ITEM_IN_INVENTORY: {
                 String itemId = getStringParameter("Item", "stone");
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ITEM);
+                boolean useAmount = isAmountInputEnabled();
+                int requiredAmount = Math.max(1, getIntParameter("Amount", 1));
+                Node amountNode = null;
+                Node parameterNode = null;
+                Node attached = getAttachedParameter();
+                if (attached != null && attached.isParameterNode()) {
+                    if (attached.getType() == NodeType.PARAM_AMOUNT) {
+                        amountNode = attached;
+                    } else if (attached.getType() == NodeType.PARAM_ITEM) {
+                        parameterNode = attached;
+                    } else {
+                        sendIncompatibleParameterMessage(attached);
+                    }
+                }
+                if (amountNode != null) {
+                    double parsed = parseNodeDouble(amountNode, "Amount", requiredAmount);
+                    requiredAmount = Math.max(1, (int) Math.round(parsed));
+                }
                 if (parameterNode != null) {
                     List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
                     if (!nodeItems.isEmpty()) {
                         boolean hasAny = false;
                         for (String candidate : nodeItems) {
-                            if (hasItemInInventory(candidate)) {
+                            if (useAmount ? hasItemAmountInInventory(candidate, requiredAmount) : hasItemInInventory(candidate)) {
                                 hasAny = true;
                                 break;
                             }
@@ -9278,7 +9384,7 @@ public class Node {
                         break;
                     }
                 }
-                result = hasItemInInventory(itemId);
+                result = useAmount ? hasItemAmountInInventory(itemId, requiredAmount) : hasItemInInventory(itemId);
                 break;
             }
             case SENSOR_IS_SWIMMING:
@@ -9785,6 +9891,29 @@ public class Node {
             }
             net.minecraft.item.Item item = Registries.ITEM.get(identifier);
             if (client.player.getInventory().count(item) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasItemAmountInInventory(String itemId, int requiredAmount) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || itemId == null || itemId.isEmpty()) {
+            return false;
+        }
+        int needed = Math.max(1, requiredAmount);
+        for (String candidateId : splitMultiValueList(itemId)) {
+            String sanitized = sanitizeResourceId(candidateId);
+            String normalized = sanitized != null && !sanitized.isEmpty()
+                ? normalizeResourceId(sanitized, "minecraft")
+                : candidateId;
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            net.minecraft.item.Item item = Registries.ITEM.get(identifier);
+            if (client.player.getInventory().count(item) >= needed) {
                 return true;
             }
         }

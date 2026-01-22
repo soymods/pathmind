@@ -849,27 +849,6 @@ public class ExecutionManager {
             }
         }
 
-        if (shouldLoopStartIf(currentNode, controller)) {
-            if (nextSocket == Node.NO_OUTPUT) {
-                return runChain(currentNode, controller);
-            }
-
-            Node nextNode = getNextConnectedNode(currentNode, activeConnections, nextSocket);
-            if (nextNode == null && nextSocket > 0) {
-                nextNode = getNextConnectedNode(currentNode, activeConnections, 0);
-            }
-            if (nextNode != null) {
-                return runChain(nextNode, controller)
-                    .thenCompose(ignored -> {
-                        if (cancelRequested || controller.cancelRequested) {
-                            return CompletableFuture.completedFuture(null);
-                        }
-                        return runChain(currentNode, controller);
-                    });
-            }
-            return runChain(currentNode, controller);
-        }
-
         if (nextSocket == Node.NO_OUTPUT) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1167,28 +1146,6 @@ public class ExecutionManager {
             }
         }
         return null;
-    }
-
-    private boolean shouldLoopStartIf(Node currentNode, ChainController controller) {
-        if (currentNode == null || controller == null) {
-            return false;
-        }
-        if (currentNode.getType() != NodeType.CONTROL_IF) {
-            return false;
-        }
-        Node startNode = controller.startNode;
-        if (startNode == null) {
-            return false;
-        }
-        if (activeConnections == null) {
-            return false;
-        }
-        for (NodeConnection connection : activeConnections) {
-            if (connection.getInputNode() == currentNode && connection.getOutputNode() == startNode) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private List<Node> findStartNodes(List<Node> nodes) {

@@ -147,8 +147,7 @@ public class Sidebar {
             baritoneAvailable,
             NodeType.PARAM_DURATION,
             NodeType.PARAM_AMOUNT,
-            NodeType.PARAM_BOOLEAN,
-            NodeType.PARAM_MESSAGE
+            NodeType.PARAM_BOOLEAN
         ));
         return groups;
     }

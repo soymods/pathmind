@@ -259,7 +259,6 @@ public enum NodeType {
             case PARAM_WAYPOINT:
             case PARAM_SCHEMATIC:
             case PARAM_INVENTORY_SLOT:
-            case PARAM_MESSAGE:
             case PARAM_DURATION:
             case PARAM_AMOUNT:
             case PARAM_BOOLEAN:
@@ -292,7 +291,6 @@ public enum NodeType {
             case EXPLORE:
             case FOLLOW:
             case WAIT:
-            case MESSAGE:
             case HOTBAR:
             case DROP_ITEM:
             case USE:
@@ -330,7 +328,6 @@ public enum NodeType {
             case PARAM_WAYPOINT:
             case PARAM_SCHEMATIC:
             case PARAM_INVENTORY_SLOT:
-            case PARAM_MESSAGE:
             case PARAM_DURATION:
             case PARAM_AMOUNT:
             case PARAM_BOOLEAN:

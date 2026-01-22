@@ -143,9 +143,6 @@ public class VariablesOverlay {
             case PARAM_INVENTORY_SLOT:
                 result = formatSlot(values);
                 break;
-            case PARAM_MESSAGE:
-                result = formatSingle(values, "Text", "text");
-                break;
             case PARAM_DURATION:
                 result = formatSingle(values, "Duration", "duration");
                 break;

@@ -720,6 +720,11 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleAmountToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
                 if (nodeGraph.isPointInsideAmountField(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     nodeGraph.startAmountEditing(clickedNode);
@@ -789,6 +794,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopCoordinateEditing(true);
                 nodeGraph.stopAmountEditing(true);
                 nodeGraph.stopStopTargetEditing(true);
+                nodeGraph.stopMessageEditing(true);
                 nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
             }
             return true;
@@ -1221,6 +1227,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopCoordinateEditing(true);
         nodeGraph.stopAmountEditing(true);
         nodeGraph.stopStopTargetEditing(true);
+        nodeGraph.stopMessageEditing(true);
 
         if (nodeGraph.save()) {
             System.out.println("Node graph auto-saved successfully");

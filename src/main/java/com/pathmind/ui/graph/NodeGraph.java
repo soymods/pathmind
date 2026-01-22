@@ -2138,7 +2138,11 @@ public class NodeGraph {
             // Render input sockets
             for (int i = 0; i < node.getInputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && hoveredSocketIsInput);
+                boolean isActive = isSocketActive(node, i, true);
                 int socketColor = isHovered ? 0xFF87CEEB : node.getType().getColor(); // Light blue when hovered
+                if (!isActive && !isHovered) {
+                    socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
+                }
                 if (isOverSidebar) {
                     socketColor = 0xFF666666; // Grey sockets when over sidebar
                 }
@@ -2148,7 +2152,11 @@ public class NodeGraph {
             // Render output sockets
             for (int i = 0; i < node.getOutputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && !hoveredSocketIsInput);
+                boolean isActive = isSocketActive(node, i, false);
                 int socketColor = isHovered ? 0xFF87CEEB : node.getOutputSocketColor(i);
+                if (!isActive && !isHovered) {
+                    socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
+                }
                 if (isOverSidebar) {
                     socketColor = 0xFF666666; // Grey sockets when over sidebar
                 }
@@ -2732,6 +2740,7 @@ public class NodeGraph {
         int activeFieldBorder = 0xFF87CEEB;
         int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
         int activeTextColor = 0xFFE6F7FF;
+        boolean amountEnabled = node.isAmountInputEnabled();
 
         boolean editing = isEditingAmountField() && amountEditingNode == node;
         if (editing) {
@@ -2749,15 +2758,16 @@ public class NodeGraph {
         drawNodeText(context, textRenderer, Text.literal("Amount"), fieldLeft + 2, labelY, baseLabelColor);
 
         int fieldBottom = fieldTop + fieldHeight;
-        int backgroundColor = editing ? activeFieldBackground : fieldBackground;
-        int borderColor = editing ? activeFieldBorder : fieldBorder;
-        int valueColor = editing ? activeTextColor : textColor;
+        int disabledBg = isOverSidebar ? 0xFF2F2F2F : 0xFF3A3A3A;
+        int backgroundColor = (editing && amountEnabled) ? activeFieldBackground : (amountEnabled ? fieldBackground : disabledBg);
+        int borderColor = (editing && amountEnabled) ? activeFieldBorder : fieldBorder;
+        int valueColor = (editing && amountEnabled) ? activeTextColor : (amountEnabled ? textColor : 0xFFB0B0B0);
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
         DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
         String value;
-        if (editing) {
+        if (editing && amountEnabled) {
             value = amountEditBuffer;
         } else {
             NodeParameter amountParam = node.getParameter("Amount");
@@ -2770,7 +2780,7 @@ public class NodeGraph {
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
-        if (editing && hasAmountSelection()) {
+        if (editing && amountEnabled && hasAmountSelection()) {
             int start = amountSelectionStart;
             int end = amountSelectionEnd;
             if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
@@ -2781,11 +2791,28 @@ public class NodeGraph {
         }
         drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
 
-        if (editing && amountCaretVisible) {
+        if (editing && amountEnabled && amountCaretVisible) {
             int caretIndex = MathHelper.clamp(amountCaretPosition, 0, display.length());
             int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, 0xFFE6F7FF);
+        }
+
+        if (node.hasAmountToggle()) {
+            int toggleLeft = node.getAmountToggleLeft() - cameraX;
+            int toggleTop = node.getAmountToggleTop() - cameraY;
+            int toggleWidth = node.getAmountToggleWidth();
+            int toggleHeight = node.getAmountToggleHeight();
+            int toggleBorder = amountEnabled ? 0xFF87CEEB : 0xFF555555;
+            int toggleBg = amountEnabled ? 0xFF2E4334 : 0xFF2F2F2F;
+            context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, toggleBg);
+            DrawContextBridge.drawBorder(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
+            int knobWidth = toggleHeight - 2;
+            int knobLeft = amountEnabled ? toggleLeft + toggleWidth - knobWidth - 1 : toggleLeft + 1;
+            context.fill(knobLeft, toggleTop + 1, knobLeft + knobWidth, toggleTop + toggleHeight - 1, 0xFFEFEFEF);
+
+            // Hit area debug outline (optional visual cue)
+            // DrawContextBridge.drawBorder(context, toggleLeft - 2, toggleTop - 2, toggleWidth + 4, toggleHeight + 4, 0x22000000);
         }
     }
 
@@ -3314,7 +3341,7 @@ public class NodeGraph {
     }
 
     public void startAmountEditing(Node node) {
-        if (node == null || !node.hasAmountInputField()) {
+        if (node == null || !node.hasAmountInputField() || !node.isAmountInputEnabled()) {
             stopAmountEditing(false);
             return;
         }
@@ -4480,8 +4507,35 @@ public class NodeGraph {
         int fieldWidth = node.getAmountFieldWidth();
         int fieldHeight = node.getAmountFieldHeight();
 
-        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+        boolean inside = worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        return inside && node.isAmountInputEnabled();
+    }
+
+    private boolean isPointInsideAmountToggle(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasAmountToggle()) {
+            return false;
+        }
+        int left = node.getAmountToggleLeft() - cameraX - 3;
+        int top = node.getAmountToggleTop() - cameraY - 3;
+        int width = node.getAmountToggleWidth() + 6;
+        int height = node.getAmountToggleHeight() + 6;
+        return screenX >= left && screenX <= left + width
+            && screenY >= top && screenY <= top + height;
+    }
+
+    public boolean handleAmountToggleClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideAmountToggle(node, mouseX, mouseY)) {
+            return false;
+        }
+        boolean newState = !node.isAmountInputEnabled();
+        node.setAmountInputEnabled(newState);
+        if (!newState && isEditingAmountField() && amountEditingNode == node) {
+            stopAmountEditing(false);
+        }
+        node.recalculateDimensions();
+        notifyNodeParametersChanged(node);
+        return true;
     }
 
     public boolean isPointInsideStopTargetField(Node node, int screenX, int screenY) {
@@ -4783,6 +4837,47 @@ public class NodeGraph {
         
         // Socket highlight
         context.fill(x - 1, y - 1, x + 1, y + 1, 0xFFFFFFFF);
+    }
+
+    private boolean isSocketConnected(Node node, int socketIndex, boolean isInput) {
+        for (NodeConnection connection : connections) {
+            if (isInput) {
+                if (connection.getInputNode() == node && connection.getInputSocket() == socketIndex) {
+                    return true;
+                }
+            } else {
+                if (connection.getOutputNode() == node && connection.getOutputSocket() == socketIndex) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isSocketActive(Node node, int socketIndex, boolean isInput) {
+        if (isSocketConnected(node, socketIndex, isInput)) {
+            return true;
+        }
+        if (isDraggingConnection && connectionSourceNode == node && connectionSourceSocket == socketIndex) {
+            // Treat the drag source as active so it stays bright while connecting.
+            if ((isInput && !isOutputSocket) || (!isInput && isOutputSocket)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int darkenColor(int color, float factor) {
+        int alpha = (color >>> 24) & 0xFF;
+        int red = (color >> 16) & 0xFF;
+        int green = (color >> 8) & 0xFF;
+        int blue = color & 0xFF;
+
+        red = Math.min(255, Math.max(0, Math.round(red * factor)));
+        green = Math.min(255, Math.max(0, Math.round(green * factor)));
+        blue = Math.min(255, Math.max(0, Math.round(blue * factor)));
+
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
     }
 
     private void renderConnections(DrawContext context, boolean onlyDragged) {

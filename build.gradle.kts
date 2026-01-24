@@ -90,8 +90,7 @@ val baritoneApiJar: File? by extra {
         System.getenv("BARITONE_API_JAR"),
         project.findProperty("baritoneApiPath") as? String,
         "libs/baritone-api-fabric-1.15.0.jar",
-        "run/mods/baritone-api-fabric-1.15.0.jar",
-        "/Users/holdenthomas/Documents/baritone/dist/baritone-api-fabric-1.15.0.jar"
+        "run/mods/baritone-api-fabric-1.15.0.jar"
     ).map { file(it) }
 
     candidates.firstOrNull { it.exists() }

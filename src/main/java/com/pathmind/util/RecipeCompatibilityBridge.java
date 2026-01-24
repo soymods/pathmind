@@ -116,6 +116,24 @@ public final class RecipeCompatibilityBridge {
         return ingredients;
     }
 
+    public static Ingredient extractDisplayIngredient(Object entry, Object registryManager) {
+        if (entry == null) {
+            return null;
+        }
+        return ingredientFromSlotDisplay(entry, registryManager);
+    }
+
+    public static ItemStack getSlotDisplayFirst(Object slotDisplay, Object registryManager) {
+        if (slotDisplay == null) {
+            return ItemStack.EMPTY;
+        }
+        List<ItemStack> stacks = resolveSlotDisplayStacks(slotDisplay, registryManager);
+        if (stacks != null && !stacks.isEmpty()) {
+            return stacks.get(0);
+        }
+        return ItemStack.EMPTY;
+    }
+
     public static boolean isIngredientEmpty(Ingredient ingredient) {
         return isIngredientEmpty(ingredient, null);
     }

@@ -10,6 +10,9 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.util.BaritoneApiProxy;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,7 +32,8 @@ import java.util.Objects;
  * Tracks which node is currently active and provides state information for overlays.
  */
 public class ExecutionManager {
-    private static ExecutionManager instance;
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExecutionManager.class);
+    private static volatile ExecutionManager instance;
     private Node activeNode;
     private boolean isExecuting;
     private long executionStartTime;
@@ -42,6 +46,7 @@ public class ExecutionManager {
     private List<Node> workspaceNodes;
     private List<NodeConnection> workspaceConnections;
     private final Set<ConnectionKey> activeConnectionLookup;
+    private final Map<String, Node> outputNodeLookup;
     private final List<String> executingEvents;
     private volatile boolean cancelRequested;
     private final Map<Node, ChainController> activeChains;
@@ -162,6 +167,7 @@ public class ExecutionManager {
         this.globalExecutionActive = false;
         this.lastSnapshotWasGlobal = false;
         this.activeConnectionLookup = ConcurrentHashMap.newKeySet();
+        this.outputNodeLookup = new ConcurrentHashMap<>();
         this.eventConnectionOwners = new ConcurrentHashMap<>();
         this.activeEventFunctionNodes = ConcurrentHashMap.newKeySet();
         this.activeNodeStartTime = 0;
@@ -174,10 +180,16 @@ public class ExecutionManager {
     }
     
     public static ExecutionManager getInstance() {
-        if (instance == null) {
-            instance = new ExecutionManager();
+        ExecutionManager result = instance;
+        if (result == null) {
+            synchronized (ExecutionManager.class) {
+                result = instance;
+                if (result == null) {
+                    instance = result = new ExecutionManager();
+                }
+            }
         }
-        return instance;
+        return result;
     }
 
     public boolean setRuntimeVariable(Node startNode, String name, RuntimeVariable value) {
@@ -229,7 +241,7 @@ public class ExecutionManager {
 
     private void executeGraphInternal(List<Node> nodes, List<NodeConnection> connections, boolean markGlobalSnapshot) {
         if (nodes == null || connections == null) {
-            System.out.println("ExecutionManager: Cannot execute graph - missing nodes or connections.");
+            LOGGER.warn("Cannot execute graph - missing nodes or connections");
             return;
         }
 
@@ -238,7 +250,7 @@ public class ExecutionManager {
 
         List<Node> startNodes = findStartNodes(nodes);
         if (startNodes.isEmpty()) {
-            System.out.println("ExecutionManager: No START nodes found!");
+            LOGGER.warn("No START nodes found");
             return;
         }
 
@@ -275,12 +287,12 @@ public class ExecutionManager {
         }
 
         if (lastExecutedGraph == null) {
-            System.out.println("ExecutionManager: No previously executed node graph to replay.");
+            LOGGER.debug("No previously executed node graph to replay");
             return;
         }
 
         if (!executeGraphSnapshot(lastExecutedGraph, lastSnapshotWasGlobal)) {
-            System.out.println("ExecutionManager: No nodes available to replay.");
+            LOGGER.debug("No nodes available to replay");
         }
     }
 
@@ -298,7 +310,7 @@ public class ExecutionManager {
             return;
         }
 
-        System.out.println("ExecutionManager: No saved node graph available to play.");
+        LOGGER.debug("No saved node graph available to play");
     }
 
     public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections) {
@@ -307,15 +319,15 @@ public class ExecutionManager {
 
     public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections, String presetName) {
         if (startNode == null || startNode.getType() != NodeType.START) {
-            System.out.println("ExecutionManager: Cannot execute branch - invalid START node.");
+            LOGGER.warn("Cannot execute branch - invalid START node");
             return false;
         }
         if (nodes == null || connections == null) {
-            System.out.println("ExecutionManager: Cannot execute branch - missing nodes or connections.");
+            LOGGER.warn("Cannot execute branch - missing nodes or connections");
             return false;
         }
         if (isChainActive(startNode)) {
-            System.out.println("ExecutionManager: START node already executing, ignoring branch start request.");
+            LOGGER.debug("START node already executing, ignoring branch start request");
             return false;
         }
 
@@ -382,11 +394,9 @@ public class ExecutionManager {
         this.executionStartTime = System.currentTimeMillis();
         this.executionEndTime = 0;
         if (!startNodes.isEmpty()) {
-            System.out.println(
-                    "ExecutionManager: Started execution with " + startNodes.size() +
-                            " start node(s) at time " + this.executionStartTime);
+            LOGGER.debug("Started execution with {} start node(s)", startNodes.size());
         } else {
-            System.out.println("ExecutionManager: Started execution without any root nodes at time " + this.executionStartTime);
+            LOGGER.debug("Started execution without any root nodes");
         }
     }
     
@@ -400,14 +410,14 @@ public class ExecutionManager {
         } else {
             clearActiveNodeTiming();
         }
-        System.out.println("ExecutionManager: Set active node to " + (node != null ? node.getType() : "null") + " at time " + System.currentTimeMillis());
+        LOGGER.trace("Set active node to {}", node != null ? node.getType() : "null");
     }
     
     /**
      * Stop execution
      */
     public void stopExecution() {
-        System.out.println("ExecutionManager: Stopping execution at time " + System.currentTimeMillis());
+        LOGGER.debug("Stopping execution");
         this.isExecuting = false;
         this.globalExecutionActive = false;
         if (cancelRequested) {
@@ -433,7 +443,7 @@ public class ExecutionManager {
             return;
         }
 
-        System.out.println("ExecutionManager: Stop requested for all node trees at time " + System.currentTimeMillis());
+        LOGGER.debug("Stop requested for all node trees");
         cancelRequested = true;
         for (ChainController controller : activeChains.values()) {
             controller.cancelRequested = true;
@@ -447,6 +457,7 @@ public class ExecutionManager {
         this.activeNodes.clear();
         this.activeConnections.clear();
         this.activeConnectionLookup.clear();
+        this.outputNodeLookup.clear();
         this.executingEvents.clear();
         this.eventConnectionOwners.clear();
         this.activeEventFunctionNodes.clear();
@@ -488,7 +499,7 @@ public class ExecutionManager {
                 BaritoneApiProxy.onLostControl(farmProcess);
             }
         } catch (Exception e) {
-            System.err.println("ExecutionManager: Failed to cancel Baritone processes: " + e.getMessage());
+            LOGGER.warn("Failed to cancel Baritone processes: {}", e.getMessage());
         }
     }
     
@@ -506,13 +517,13 @@ public class ExecutionManager {
 
         ChainController controller = activeChains.get(startNode);
         if (controller == null) {
-            System.out.println("ExecutionManager: No active chain found for requested START node stop.");
+            LOGGER.debug("No active chain found for requested START node stop");
             return false;
         }
 
         cancelAllBaritoneCommands();
         controller.cancelRequested = true;
-        System.out.println("ExecutionManager: Stop requested for START node " + startNode.getId() + " at time " + System.currentTimeMillis());
+        LOGGER.debug("Stop requested for START node {}", startNode.getId());
         return true;
     }
 
@@ -528,7 +539,7 @@ public class ExecutionManager {
             }
         }
         if (match == null) {
-            System.out.println("ExecutionManager: No START node found for number " + startNodeNumber + ".");
+            LOGGER.debug("No START node found for number {}", startNodeNumber);
             return false;
         }
         return requestStopForStart(match);
@@ -539,25 +550,25 @@ public class ExecutionManager {
             return false;
         }
         if (workspaceNodes == null || workspaceNodes.isEmpty() || workspaceConnections == null) {
-            System.out.println("ExecutionManager: No workspace graph available to start START node " + startNodeNumber + ".");
+            LOGGER.debug("No workspace graph available to start START node {}", startNodeNumber);
             return false;
         }
 
         Node match = findWorkspaceStartNode(startNodeNumber);
 
         if (match == null) {
-            System.out.println("ExecutionManager: No START node found for number " + startNodeNumber + ".");
+            LOGGER.debug("No START node found for number {}", startNodeNumber);
             return false;
         }
         if (isChainActive(match)) {
-            System.out.println("ExecutionManager: START node already executing, ignoring start request.");
+            LOGGER.debug("START node already executing, ignoring start request");
             return false;
         }
 
         List<NodeConnection> filteredConnections = filterConnections(workspaceConnections);
         BranchData branchData = buildBranchData(match, workspaceNodes, filteredConnections);
         if (branchData == null || branchData.nodes.isEmpty()) {
-            System.out.println("ExecutionManager: START node " + startNodeNumber + " has no executable branch.");
+            LOGGER.debug("START node {} has no executable branch", startNodeNumber);
             return false;
         }
 
@@ -785,7 +796,7 @@ public class ExecutionManager {
         }
 
         if (executingEvents.contains(eventName)) {
-            System.out.println("ExecutionManager: Skipping recursive event call for " + eventName);
+            LOGGER.debug("Skipping recursive event call for {}", eventName);
             return CompletableFuture.completedFuture(null);
         }
 
@@ -878,8 +889,7 @@ public class ExecutionManager {
         }
 
         if (throwable != null && !cancelRequested && !controller.cancelRequested) {
-            System.err.println("ExecutionManager: Error during execution - " + throwable.getMessage());
-            throwable.printStackTrace();
+            LOGGER.error("Error during execution", throwable);
         }
 
         activeChains.remove(controller.startNode);
@@ -889,6 +899,7 @@ public class ExecutionManager {
             activeNodes.clear();
             activeConnections.clear();
             activeConnectionLookup.clear();
+            outputNodeLookup.clear();
             executingEvents.clear();
             eventConnectionOwners.clear();
             activeEventFunctionNodes.clear();
@@ -920,8 +931,8 @@ public class ExecutionManager {
                 java.lang.reflect.Field idField = Node.class.getDeclaredField("id");
                 idField.setAccessible(true);
                 idField.set(node, nodeData.getId());
-            } catch (Exception e) {
-                System.err.println("ExecutionManager: Failed to set node ID during replay - " + e.getMessage());
+            } catch (ReflectiveOperationException e) {
+                LOGGER.warn("Failed to set node ID during replay: {}", e.getMessage());
             }
 
             if (nodeData.getMode() != null) {
@@ -1046,7 +1057,7 @@ public class ExecutionManager {
 
         NodeGraphData graphData = NodeGraphPersistence.loadNodeGraphForPreset(lastStartPreset);
         if (graphData == null) {
-            System.out.println("ExecutionManager: Failed to load node graph for preset " + lastStartPreset);
+            LOGGER.debug("Failed to load node graph for preset {}", lastStartPreset);
             return false;
         }
 
@@ -1057,7 +1068,7 @@ public class ExecutionManager {
 
         Node startNode = loadedGraph.nodeLookup.get(lastStartNodeId);
         if (startNode == null || startNode.getType() != NodeType.START) {
-            System.out.println("ExecutionManager: Last START node not found in current workspace.");
+            LOGGER.debug("Last START node not found in current workspace");
             return false;
         }
 
@@ -1138,6 +1149,15 @@ public class ExecutionManager {
     }
 
     private Node getNextConnectedNode(Node currentNode, List<NodeConnection> connections, int outputSocket) {
+        // Use O(1) lookup map when available
+        if (currentNode != null && currentNode.getId() != null) {
+            String lookupKey = currentNode.getId() + ":" + outputSocket;
+            Node result = outputNodeLookup.get(lookupKey);
+            if (result != null) {
+                return result;
+            }
+        }
+        // Fallback to linear search if lookup map not populated
         for (NodeConnection connection : connections) {
             if (connection.getOutputNode() == currentNode) {
                 if (connection.getOutputSocket() == outputSocket) {
@@ -1371,6 +1391,7 @@ public class ExecutionManager {
 
     private void rebuildConnectionState(List<Node> nodes, List<NodeConnection> connections) {
         activeConnectionLookup.clear();
+        outputNodeLookup.clear();
         eventConnectionOwners.clear();
         activeEventFunctionNodes.clear();
 
@@ -1379,6 +1400,12 @@ public class ExecutionManager {
                 ConnectionKey key = toKey(connection);
                 if (key != null) {
                     activeConnectionLookup.add(key);
+                }
+                // Build output node lookup for O(1) access in getNextConnectedNode
+                Node outputNode = connection.getOutputNode();
+                if (outputNode != null && outputNode.getId() != null) {
+                    String lookupKey = outputNode.getId() + ":" + connection.getOutputSocket();
+                    outputNodeLookup.put(lookupKey, connection.getInputNode());
                 }
             }
         }

@@ -29,7 +29,7 @@ public final class BaritoneApiProxy {
             Class<?> apiClass = Class.forName(BARITONE_API_CLASS);
             Object provider = invokeStatic(apiClass, "getProvider");
             return invoke(provider, "getPrimaryBaritone");
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -38,7 +38,7 @@ public final class BaritoneApiProxy {
         try {
             Class<?> apiClass = Class.forName(BARITONE_API_CLASS);
             return invokeStatic(apiClass, "getSettings");
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -161,7 +161,7 @@ public final class BaritoneApiProxy {
             Method method = clazz.getMethod(methodName);
             method.setAccessible(true);
             return method.invoke(null);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -174,7 +174,7 @@ public final class BaritoneApiProxy {
             Method method = target.getClass().getMethod(methodName);
             method.setAccessible(true);
             return method.invoke(target);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -187,7 +187,7 @@ public final class BaritoneApiProxy {
             Method method = target.getClass().getMethod(methodName, paramTypes);
             method.setAccessible(true);
             return method.invoke(target, args);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -224,7 +224,7 @@ public final class BaritoneApiProxy {
         try {
             best.setAccessible(true);
             return best.invoke(target, args);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -269,7 +269,7 @@ public final class BaritoneApiProxy {
             Constructor<?> ctor = clazz.getConstructor(paramTypes);
             ctor.setAccessible(true);
             return ctor.newInstance(args);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -282,7 +282,7 @@ public final class BaritoneApiProxy {
             Field field = target.getClass().getField(fieldName);
             field.setAccessible(true);
             return field.get(target);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
         }
     }
@@ -295,7 +295,7 @@ public final class BaritoneApiProxy {
             Field field = target.getClass().getField(fieldName);
             field.setAccessible(true);
             field.set(target, value);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | LinkageError ignored) {
         }
     }
 }

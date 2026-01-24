@@ -61,12 +61,19 @@ import net.minecraft.client.gui.screen.ingame.CraftingScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.recipebook.ClientRecipeBook;
+import net.minecraft.client.gui.screen.recipebook.RecipeResultCollection;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
+import net.minecraft.recipe.RecipeDisplayEntry;
 import net.minecraft.recipe.RecipeManager;
 import net.minecraft.recipe.RecipeEntry;
 import net.minecraft.recipe.RecipeType;
 import net.minecraft.recipe.ShapedRecipe;
+import net.minecraft.recipe.display.RecipeDisplay;
+import net.minecraft.recipe.display.ShapedCraftingRecipeDisplay;
+import net.minecraft.recipe.display.ShapelessCraftingRecipeDisplay;
+import net.minecraft.recipe.display.SlotDisplay;
 import net.minecraft.recipe.input.CraftingRecipeInput;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.RegistryWrapper;
@@ -4681,30 +4688,43 @@ public class Node {
             effectiveCraftMode = craftMode;
         }
 
-        java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable = new java.util.concurrent.atomic.AtomicBoolean(false);
-        RecipeEntry<CraftingRecipe> recipeEntry = findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable);
-        if (recipeEntry == null) {
-            String message;
-            if (effectiveCraftMode == NodeMode.CRAFT_PLAYER_GUI && requiresCraftingTable.get()) {
-                message = "Cannot craft " + itemDisplayName + ": recipe requires a crafting table.";
-            } else {
-                message = "Cannot craft " + itemDisplayName + ": no matching recipe found.";
-            }
-            sendNodeErrorMessage(client, message);
-            future.complete(null);
-            return;
-        }
-
         Object serverRegistryManager = client.getServer() != null
             ? client.getServer().getRegistryManager()
             : null;
         net.minecraft.world.World clientWorld = EntityCompatibilityBridge.getWorld(client.player);
-        Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
-        ItemStack outputTemplate = getRecipeOutput(recipeEntry.value(), serverRegistryManager);
-        if (outputTemplate.isEmpty() && clientRegistryManager != serverRegistryManager) {
-            outputTemplate = getRecipeOutput(recipeEntry.value(), clientRegistryManager);
+        if (clientWorld == null) {
+            clientWorld = client.world;
         }
-        if (outputTemplate.isEmpty()) {
+        Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
+
+        java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable = new java.util.concurrent.atomic.AtomicBoolean(false);
+        RecipeEntry<CraftingRecipe> recipeEntry = findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable);
+        RecipeDisplayEntry displayEntry = null;
+        if (recipeEntry == null) {
+            displayEntry = findCraftingDisplayEntry(client, targetItem, effectiveCraftMode, requiresCraftingTable, clientWorld);
+            if (displayEntry == null) {
+                String message;
+                if (effectiveCraftMode == NodeMode.CRAFT_PLAYER_GUI && requiresCraftingTable.get()) {
+                    message = "Cannot craft " + itemDisplayName + ": recipe requires a crafting table.";
+                } else {
+                    message = "Cannot craft " + itemDisplayName + ": no matching recipe found.";
+                }
+                sendNodeErrorMessage(client, message);
+                future.complete(null);
+                return;
+            }
+        }
+
+        ItemStack outputTemplate;
+        if (recipeEntry != null) {
+            outputTemplate = getRecipeOutput(recipeEntry.value(), serverRegistryManager);
+            if (outputTemplate.isEmpty() && clientRegistryManager != serverRegistryManager) {
+                outputTemplate = getRecipeOutput(recipeEntry.value(), clientRegistryManager);
+            }
+        } else {
+            outputTemplate = getDisplayOutput(displayEntry.display(), clientWorld);
+        }
+        if (outputTemplate == null || outputTemplate.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe produced no output.");
             future.complete(null);
             return;
@@ -4715,7 +4735,12 @@ public class Node {
         int craftsRequested = Math.max(1, (int) Math.ceil(desiredCount / (double) perCraftOutput));
 
         Object ingredientRegistryManager = clientWorld;
-        List<GridIngredient> gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode, ingredientRegistryManager);
+        List<GridIngredient> gridIngredients;
+        if (recipeEntry != null) {
+            gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode, ingredientRegistryManager);
+        } else {
+            gridIngredients = resolveDisplayGridIngredients(displayEntry.display(), effectiveCraftMode, ingredientRegistryManager);
+        }
         if (gridIngredients.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe has no ingredients.");
             future.complete(null);
@@ -4878,7 +4903,7 @@ public class Node {
                                                            Item targetItem,
                                                            NodeMode craftMode,
                                                            java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable) {
-        List<RecipeManager> managers = getRecipeManagers(client);
+        List<Object> managers = getRecipeManagers(client);
         if (managers.isEmpty()) {
             return null;
         }
@@ -4892,10 +4917,12 @@ public class Node {
         Object serverRegistryManager = client.getServer() != null ? client.getServer().getRegistryManager() : null;
         net.minecraft.world.World clientWorld = EntityCompatibilityBridge.getWorld(client.player);
         Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
-        for (RecipeManager manager : managers) {
+        List<String> managerTypes = new ArrayList<>();
+        for (Object manager : managers) {
             if (manager == null) {
                 continue;
             }
+            managerTypes.add(manager.getClass().getName());
             for (RecipeEntry<?> entry : getCraftingRecipeEntries(manager)) {
                 totalEntries++;
                 if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
@@ -4937,8 +4964,86 @@ public class Node {
             }
         }
 
-        logCraftDebug(targetItem, craftMode, managers.size(), totalEntries, craftingEntries, emptyOutputs, matchingOutputs, sampleOutputs);
+        logCraftDebug(targetItem, craftMode, managers.size(), totalEntries, craftingEntries, emptyOutputs, matchingOutputs, sampleOutputs, managerTypes);
         return null;
+    }
+
+    private RecipeDisplayEntry findCraftingDisplayEntry(net.minecraft.client.MinecraftClient client,
+                                                        Item targetItem,
+                                                        NodeMode craftMode,
+                                                        java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable,
+                                                        Object registryManager) {
+        if (client == null || client.player == null) {
+            return null;
+        }
+        if (!(client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook)) {
+            return null;
+        }
+        List<RecipeResultCollection> collections = clientRecipeBook.getOrderedResults();
+        if (collections == null || collections.isEmpty()) {
+            return null;
+        }
+        for (RecipeResultCollection collection : collections) {
+            if (collection == null) {
+                continue;
+            }
+            List<RecipeDisplayEntry> entries = collection.getAllRecipes();
+            if (entries == null || entries.isEmpty()) {
+                continue;
+            }
+            for (RecipeDisplayEntry entry : entries) {
+                if (entry == null) {
+                    continue;
+                }
+                RecipeDisplay display = entry.display();
+                if (!isCraftingDisplay(display)) {
+                    continue;
+                }
+                ItemStack output = getDisplayOutput(display, registryManager);
+                if (output == null || output.isEmpty() || !output.isOf(targetItem)) {
+                    continue;
+                }
+                if (craftMode == NodeMode.CRAFT_PLAYER_GUI && !displayFitsPlayerGrid(display, registryManager)) {
+                    if (requiresCraftingTable != null) {
+                        requiresCraftingTable.set(true);
+                    }
+                    continue;
+                }
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private boolean isCraftingDisplay(RecipeDisplay display) {
+        return display instanceof ShapedCraftingRecipeDisplay
+            || display instanceof ShapelessCraftingRecipeDisplay;
+    }
+
+    private boolean displayFitsPlayerGrid(RecipeDisplay display, Object registryManager) {
+        if (display instanceof ShapedCraftingRecipeDisplay shaped) {
+            return shaped.width() <= 2 && shaped.height() <= 2;
+        }
+        if (display instanceof ShapelessCraftingRecipeDisplay shapeless) {
+            int count = countDisplayIngredients(shapeless.ingredients(), registryManager);
+            return count > 0 && count <= 4;
+        }
+        return false;
+    }
+
+    private int countDisplayIngredients(List<SlotDisplay> slots, Object registryManager) {
+        if (slots == null || slots.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (SlotDisplay slot : slots) {
+            Ingredient ingredient = RecipeCompatibilityBridge.extractDisplayIngredient(slot, registryManager);
+            if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                continue;
+            }
+            count++;
+        }
+        return count;
     }
 
     private void logRecipeOutputDebug(CraftingRecipe recipe, Object serverRegistryManager, Object clientRegistryManager) {
@@ -5013,12 +5118,14 @@ public class Node {
                                int craftingEntries,
                                int emptyOutputs,
                                int matchingOutputs,
-                               List<String> sampleOutputs) {
+                               List<String> sampleOutputs,
+                               List<String> managerTypes) {
         String targetId = targetItem != null ? Registries.ITEM.getId(targetItem).toString() : "unknown";
         System.out.println(
             "Pathmind craft debug: target=" + targetId
                 + " mode=" + craftMode
                 + " managers=" + managerCount
+                + " managerTypes=" + managerTypes
                 + " entries=" + totalEntries
                 + " craftingEntries=" + craftingEntries
                 + " emptyOutputs=" + emptyOutputs
@@ -5027,7 +5134,7 @@ public class Node {
         );
     }
 
-    private List<RecipeEntry<?>> getCraftingRecipeEntries(RecipeManager manager) {
+    private List<RecipeEntry<?>> getCraftingRecipeEntries(Object manager) {
         if (manager == null) {
             return List.of();
         }
@@ -5067,10 +5174,14 @@ public class Node {
             }
         }
 
-        return getRecipeEntries(manager);
+        entries.addAll(getRecipeEntries(manager));
+        if (entries.isEmpty()) {
+            collectRecipeEntriesFromFields(manager, entries, 0, new java.util.IdentityHashMap<>());
+        }
+        return entries;
     }
 
-    private List<RecipeEntry<?>> getRecipeEntries(RecipeManager manager) {
+    private List<RecipeEntry<?>> getRecipeEntries(Object manager) {
         List<RecipeEntry<?>> entries = new ArrayList<>();
         if (manager == null) {
             return entries;
@@ -5109,6 +5220,9 @@ public class Node {
             }
         }
 
+        if (entries.isEmpty()) {
+            collectRecipeEntriesFromFields(manager, entries, 0, new java.util.IdentityHashMap<>());
+        }
         return entries;
     }
 
@@ -5138,14 +5252,143 @@ public class Node {
             }
             return added;
         }
+        if (result instanceof java.util.Iterator<?> iterator) {
+            boolean added = false;
+            while (iterator.hasNext()) {
+                Object item = iterator.next();
+                if (item instanceof RecipeEntry<?> recipeEntry) {
+                    entries.add(recipeEntry);
+                    added = true;
+                } else if (item instanceof java.util.Map<?, ?> map) {
+                    if (collectRecipeEntries(map.values(), entries)) {
+                        added = true;
+                    }
+                } else if (item instanceof Iterable<?> nested) {
+                    if (collectRecipeEntries(nested, entries)) {
+                        added = true;
+                    }
+                }
+            }
+            return added;
+        }
         if (result instanceof java.util.Map<?, ?> map) {
             return collectRecipeEntries(map.values(), entries);
+        }
+        // Handle container-like objects with values() or iterator() accessors.
+        try {
+            java.lang.reflect.Method valuesMethod = result.getClass().getMethod("values");
+            if (valuesMethod.getParameterCount() == 0) {
+                valuesMethod.setAccessible(true);
+                Object values = valuesMethod.invoke(result);
+                if (collectRecipeEntries(values, entries)) {
+                    return true;
+                }
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Ignore missing values() method.
+        }
+        try {
+            java.lang.reflect.Method iteratorMethod = result.getClass().getMethod("iterator");
+            if (iteratorMethod.getParameterCount() == 0) {
+                iteratorMethod.setAccessible(true);
+                Object iter = iteratorMethod.invoke(result);
+                if (collectRecipeEntries(iter, entries)) {
+                    return true;
+                }
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Ignore missing iterator() method.
         }
         return false;
     }
 
-    private List<RecipeManager> getRecipeManagers(net.minecraft.client.MinecraftClient client) {
-        List<RecipeManager> managers = new ArrayList<>();
+    private void collectRecipeEntriesFromFields(Object manager,
+                                                List<RecipeEntry<?>> entries,
+                                                int depth,
+                                                java.util.IdentityHashMap<Object, Boolean> seen) {
+        if (manager == null || entries == null) {
+            return;
+        }
+        if (isJdkType(manager.getClass())) {
+            return;
+        }
+        if (depth > 3) {
+            return;
+        }
+        if (seen.put(manager, Boolean.TRUE) != null) {
+            return;
+        }
+        for (java.lang.reflect.Field field : getAllFields(manager.getClass())) {
+            try {
+                if (!field.canAccess(manager)) {
+                    try {
+                        field.setAccessible(true);
+                    } catch (RuntimeException ignored) {
+                        continue;
+                    }
+                }
+                Object value = field.get(manager);
+                if (value == null || seen.containsKey(value)) {
+                    continue;
+                }
+                if (isJdkType(value.getClass())) {
+                    continue;
+                }
+                if (collectRecipeEntries(value, entries)) {
+                    continue;
+                }
+                // Dive into nested containers (common in recipe managers).
+                if (value instanceof java.util.Map<?, ?> map) {
+                    Object crafting = map.get(RecipeType.CRAFTING);
+                    if (collectRecipeEntries(crafting, entries)) {
+                        continue;
+                    }
+                    for (Object nested : map.values()) {
+                        collectRecipeEntriesFromFields(nested, entries, depth + 1, seen);
+                    }
+                } else if (value instanceof Iterable<?> iterable) {
+                    for (Object nested : iterable) {
+                        collectRecipeEntriesFromFields(nested, entries, depth + 1, seen);
+                    }
+                } else {
+                    collectRecipeEntriesFromFields(value, entries, depth + 1, seen);
+                }
+            } catch (IllegalAccessException ignored) {
+                // Skip inaccessible fields.
+            }
+        }
+    }
+
+    private List<java.lang.reflect.Field> getAllFields(Class<?> type) {
+        List<java.lang.reflect.Field> fields = new ArrayList<>();
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            if (isJdkType(current)) {
+                break;
+            }
+            for (java.lang.reflect.Field field : current.getDeclaredFields()) {
+                fields.add(field);
+            }
+            current = current.getSuperclass();
+        }
+        return fields;
+    }
+
+    private boolean isJdkType(Class<?> type) {
+        if (type == null) {
+            return true;
+        }
+        Package pkg = type.getPackage();
+        String name = pkg != null ? pkg.getName() : "";
+        return name.startsWith("java.")
+            || name.startsWith("javax.")
+            || name.startsWith("jdk.")
+            || name.startsWith("sun.")
+            || name.startsWith("com.sun.");
+    }
+
+    private List<Object> getRecipeManagers(net.minecraft.client.MinecraftClient client) {
+        List<Object> managers = new ArrayList<>();
         if (client == null) {
             return managers;
         }
@@ -5161,8 +5404,8 @@ public class Node {
                 java.lang.reflect.Method method = client.getNetworkHandler().getClass().getMethod("getRecipeManager");
                 method.setAccessible(true);
                 Object result = method.invoke(client.getNetworkHandler());
-                if (result instanceof RecipeManager manager && !managers.contains(manager)) {
-                    managers.add(manager);
+                if (result != null && !managers.contains(result)) {
+                    managers.add(result);
                 }
             } catch (ReflectiveOperationException ignored) {
                 // Ignore network handlers without recipe managers.
@@ -5263,6 +5506,91 @@ public class Node {
             }
         }
         return ItemStack.EMPTY;
+    }
+
+    private ItemStack getDisplayOutput(RecipeDisplay display, Object registryManager) {
+        if (display == null) {
+            return ItemStack.EMPTY;
+        }
+        SlotDisplay result = display.result();
+        if (result == null) {
+            return ItemStack.EMPTY;
+        }
+        return RecipeCompatibilityBridge.getSlotDisplayFirst(result, registryManager);
+    }
+
+    private List<GridIngredient> resolveDisplayGridIngredients(RecipeDisplay display, NodeMode craftMode, Object registryManager) {
+        if (display instanceof ShapedCraftingRecipeDisplay shaped) {
+            return resolveShapedDisplayGridIngredients(shaped, craftMode, registryManager);
+        }
+        if (display instanceof ShapelessCraftingRecipeDisplay shapeless) {
+            return resolveShapelessDisplayGridIngredients(shapeless, craftMode, registryManager);
+        }
+        return Collections.emptyList();
+    }
+
+    private List<GridIngredient> resolveShapedDisplayGridIngredients(ShapedCraftingRecipeDisplay display,
+                                                                     NodeMode craftMode,
+                                                                     Object registryManager) {
+        List<GridIngredient> result = new ArrayList<>();
+        if (display == null) {
+            return result;
+        }
+        int recipeWidth = Math.max(display.width(), 1);
+        int recipeHeight = Math.max(display.height(), 1);
+        if (craftMode == NodeMode.CRAFT_PLAYER_GUI && (recipeWidth > 2 || recipeHeight > 2)) {
+            return result;
+        }
+        int gridWidth = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 3 : 2;
+        int width = Math.min(recipeWidth, gridWidth);
+        int height = Math.min(recipeHeight, gridWidth);
+        List<SlotDisplay> slots = display.ingredients();
+        if (slots == null || slots.isEmpty()) {
+            return result;
+        }
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = x + (y * recipeWidth);
+                if (index < 0 || index >= slots.size()) {
+                    continue;
+                }
+                Ingredient ingredient = RecipeCompatibilityBridge.extractDisplayIngredient(slots.get(index), registryManager);
+                if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                    continue;
+                }
+                int slotIndex = 1 + x + (y * gridWidth);
+                result.add(new GridIngredient(slotIndex, ingredient, false));
+            }
+        }
+        return result;
+    }
+
+    private List<GridIngredient> resolveShapelessDisplayGridIngredients(ShapelessCraftingRecipeDisplay display,
+                                                                        NodeMode craftMode,
+                                                                        Object registryManager) {
+        List<GridIngredient> result = new ArrayList<>();
+        if (display == null) {
+            return result;
+        }
+        List<SlotDisplay> slots = display.ingredients();
+        if (slots == null || slots.isEmpty()) {
+            return result;
+        }
+        int gridLimit = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 9 : 4;
+        int placed = 0;
+        for (SlotDisplay slot : slots) {
+            if (placed >= gridLimit) {
+                break;
+            }
+            Ingredient ingredient = RecipeCompatibilityBridge.extractDisplayIngredient(slot, registryManager);
+            if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                continue;
+            }
+            result.add(new GridIngredient(1 + placed, ingredient, false));
+            placed++;
+        }
+        return result;
     }
 
 

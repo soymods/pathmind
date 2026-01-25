@@ -1,9 +1,9 @@
 # Pathmind
 
-[![Minecraft](https://img.shields.io/badge/Minecraft-Multi--Version-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
-[![Fabric](https://img.shields.io/badge/Fabric-0.17.2-CC6E3E?style=for-the-badge&logo=modrinth)](https://fabricmc.net)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.21--1.21.11-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
+[![Fabric](https://img.shields.io/badge/Fabric-0.18.3-CC6E3E?style=for-the-badge&logo=modrinth)](https://fabricmc.net)
 [![Java](https://img.shields.io/badge/Java-21+-FF6B6B?style=for-the-badge&logo=openjdk)](https://openjdk.java.net)
-[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-See%20LICENSE-lightgrey?style=for-the-badge)](LICENSE.txt)
 [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen?style=for-the-badge)](https://github.com/soymods/pathmind)
 
 A Minecraft Fabric mod that introduces a visual node editor system for creating complex workflows and automation sequences through an intuitive graphical interface.

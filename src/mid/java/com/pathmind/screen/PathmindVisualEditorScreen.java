@@ -10,6 +10,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
+import com.pathmind.ui.overlay.BookTextEditorOverlay;
 import com.pathmind.ui.overlay.NodeParameterOverlay;
 import com.pathmind.ui.sidebar.Sidebar;
 import com.pathmind.ui.theme.UITheme;
@@ -99,6 +100,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private NodeGraph nodeGraph;
     private Sidebar sidebar;
     private NodeParameterOverlay parameterOverlay;
+    private BookTextEditorOverlay bookTextEditorOverlay;
     private final boolean baritoneAvailable;
 
     // Drag and drop state
@@ -264,6 +266,11 @@ public class PathmindVisualEditorScreen extends Screen {
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
             parameterOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
+        }
+
+        // Render book text editor overlay if visible
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            bookTextEditorOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
         }
 
         if (clearPopupVisible) {
@@ -590,6 +597,13 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
+        // Handle book text editor overlay clicks
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            if (bookTextEditorOverlay.handleMouseClick(mouseX, mouseY, button)) {
+                return true;
+            }
+        }
+
         // Check if clicking home button
         if (isHomeButtonClicked((int)mouseX, (int)mouseY, button)) {
             nodeGraph.resetCamera();
@@ -741,6 +755,12 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopCoordinateEditing(true);
                 nodeGraph.stopStopTargetEditing(true);
                 nodeGraph.stopMessageEditing(true);
+
+                // Check if clicking on Edit Text button for WRITE_BOOK nodes
+                if (clickedNode.hasBookTextInput() && nodeGraph.isPointInsideBookTextButton(clickedNode, (int)mouseX, (int)mouseY)) {
+                    openBookTextEditor(clickedNode);
+                    return true;
+                }
 
                 // Check for double-click to open parameter editor
                 boolean shouldOpenOverlay = (clickedNode.isParameterNode()
@@ -1062,6 +1082,12 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
+        // Handle book text editor overlay key presses
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            bookTextEditorOverlay.handleKeyInput(keyCode, scanCode, modifiers);
+            return true;
+        }
+
         if (nodeGraph.handleStopTargetKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -1141,6 +1167,12 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
+        // Handle book text editor overlay character typing
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            bookTextEditorOverlay.handleCharInput(chr);
+            return true;
+        }
+
         if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.textRenderer)) {
             return true;
         }
@@ -1193,6 +1225,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
             parameterOverlay.mouseScrolled(mouseX, mouseY, verticalAmount);
+            return true;
+        }
+
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            bookTextEditorOverlay.handleMouseScroll(mouseX, mouseY, verticalAmount);
             return true;
         }
 
@@ -1847,6 +1884,22 @@ public class PathmindVisualEditorScreen extends Screen {
             parameterOverlay.close();
         }
         parameterOverlay = null;
+    }
+
+    private void openBookTextEditor(Node node) {
+        dismissParameterOverlay();
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            bookTextEditorOverlay.hide();
+        }
+        bookTextEditorOverlay = new BookTextEditorOverlay(
+            node,
+            this.width,
+            this.height,
+            () -> bookTextEditorOverlay = null,
+            nodeGraph::notifyNodeParametersChanged
+        );
+        bookTextEditorOverlay.init();
+        bookTextEditorOverlay.show();
     }
 
     private void renderPlayButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {

@@ -928,6 +928,9 @@ public class NodeGraph {
             if (nodeData.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
                 newNode.setMessageLines(nodeData.getMessageLines());
             }
+            if (nodeData.getType() == NodeType.WRITE_BOOK && nodeData.getBookText() != null) {
+                newNode.setBookText(nodeData.getBookText());
+            }
             newNode.recalculateDimensions();
             nodes.add(newNode);
             idToNode.put(nodeData.getId(), newNode);
@@ -1025,6 +1028,11 @@ public class NodeGraph {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
             } else {
                 nodeData.setMessageLines(null);
+            }
+            if (node.hasBookTextInput()) {
+                nodeData.setBookText(node.getBookText());
+            } else {
+                nodeData.setBookText(null);
             }
 
             List<NodeGraphData.ParameterData> paramDataList = new ArrayList<>();
@@ -2416,6 +2424,9 @@ public class NodeGraph {
                     renderMessageInputFields(context, textRenderer, node, isOverSidebar);
                     renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
+                if (node.hasBookTextInput()) {
+                    renderBookTextInput(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
                 if (node.hasSchematicDropdownField()) {
                     renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
@@ -2918,6 +2929,70 @@ public class NodeGraph {
         int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
         int removeTextColor = canRemove ? UITheme.TEXT_PRIMARY : 0xFF777777;
         drawNodeText(context, textRenderer, Text.literal("-"), removeTextX, removeTextY, removeTextColor);
+    }
+
+    private void renderBookTextInput(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        // Render "Edit Text" button
+        int buttonLeft = node.getBookTextButtonLeft() - cameraX;
+        int buttonTop = node.getBookTextButtonTop() - cameraY;
+        int buttonWidth = node.getBookTextButtonWidth();
+        int buttonHeight = node.getBookTextButtonHeight();
+
+        boolean buttonHovered = !isOverSidebar &&
+            mouseX >= buttonLeft && mouseX <= buttonLeft + buttonWidth &&
+            mouseY >= buttonTop && mouseY <= buttonTop + buttonHeight;
+
+        int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG;
+        int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
+        if (buttonHovered) {
+            buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
+            buttonBorder = UITheme.ACCENT_DEFAULT;
+        }
+
+        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
+        DrawContextBridge.drawBorder(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
+
+        String buttonLabel = "Edit Text";
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int textX = buttonLeft + (buttonWidth - textRenderer.getWidth(buttonLabel)) / 2;
+        int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2;
+        drawNodeText(context, textRenderer, Text.literal(buttonLabel), textX, textY, textColor);
+
+        // Render Page label and field
+        int labelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
+        int labelTop = node.getBookTextPageLabelTop() - cameraY;
+        drawNodeText(context, textRenderer, Text.literal("Page:"), buttonLeft, labelTop, labelColor);
+
+        int fieldTop = node.getBookTextPageFieldTop() - cameraY;
+        int fieldWidth = node.getBookTextPageFieldWidth();
+        int fieldHeight = node.getBookTextPageFieldHeight();
+
+        int fieldFill = isOverSidebar ? 0xFF252525 : UITheme.BACKGROUND_SIDEBAR;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
+
+        context.fill(buttonLeft, fieldTop, buttonLeft + fieldWidth, fieldTop + fieldHeight, fieldFill);
+        DrawContextBridge.drawBorder(context, buttonLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+
+        // Display the page value
+        NodeParameter pageParam = node.getParameter("Page");
+        String pageValue = pageParam != null ? pageParam.getDisplayValue() : "1";
+        int pageTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        drawNodeText(context, textRenderer, Text.literal(pageValue), buttonLeft + 4, fieldTop + (fieldHeight - textRenderer.fontHeight) / 2, pageTextColor);
+    }
+
+    public boolean isPointInsideBookTextButton(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasBookTextInput()) {
+            return false;
+        }
+        int worldX = screenToWorldX(mouseX);
+        int worldY = screenToWorldY(mouseY);
+        int buttonLeft = node.getBookTextButtonLeft();
+        int buttonTop = node.getBookTextButtonTop();
+        int buttonWidth = node.getBookTextButtonWidth();
+        int buttonHeight = node.getBookTextButtonHeight();
+
+        return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth &&
+               worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
     }
 
     private void renderStopTargetInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -5482,6 +5557,12 @@ public class NodeGraph {
                 Node messageNode = nodeMap.get(nodeData.getId());
                 if (messageNode != null) {
                     messageNode.setMessageLines(nodeData.getMessageLines());
+                }
+            }
+            if (nodeData.getType() == NodeType.WRITE_BOOK && nodeData.getBookText() != null) {
+                Node bookNode = nodeMap.get(nodeData.getId());
+                if (bookNode != null) {
+                    bookNode.setBookText(nodeData.getBookText());
                 }
             }
         }

@@ -58,6 +58,7 @@ public class NodeGraphData {
         private Boolean booleanToggleValue;
         private Integer startNodeNumber;
         private List<String> messageLines;
+        private String bookText;
 
         public NodeData() {
             this.parameters = new ArrayList<>();
@@ -142,6 +143,14 @@ public class NodeGraphData {
 
         public void setMessageLines(List<String> messageLines) {
             this.messageLines = messageLines;
+        }
+
+        public String getBookText() {
+            return bookText;
+        }
+
+        public void setBookText(String bookText) {
+            this.bookText = bookText;
         }
     }
     

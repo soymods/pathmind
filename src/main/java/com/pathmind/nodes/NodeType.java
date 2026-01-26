@@ -69,6 +69,7 @@ public enum NodeType {
     MOVE_ITEM("Move Item", 0xFFFFB74D, "Moves items between inventory slots"),
     OPEN_INVENTORY("Open Inventory", 0xFFB0BEC5, "Opens the player's inventory screen"),
     CLOSE_GUI("Close GUI", 0xFFB0BEC5, "Closes the currently open GUI"),
+    WRITE_BOOK("Write Book", 0xFFB0BEC5, "Writes text to an open book and quill"),
 
     // Equipment Commands
     EQUIP_ARMOR("Equip Armor", 0xFF7E57C2, "Equips armor from an inventory slot"),
@@ -241,6 +242,7 @@ public enum NodeType {
             case MOVE_ITEM:
             case OPEN_INVENTORY:
             case CLOSE_GUI:
+            case WRITE_BOOK:
             case EQUIP_ARMOR:
             case EQUIP_HAND:
                 return NodeCategory.GUI;
@@ -305,6 +307,7 @@ public enum NodeType {
             case EQUIP_ARMOR:
             case EQUIP_HAND:
             case CLOSE_GUI:
+            case WRITE_BOOK:
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
             case CONTROL_IF_ELSE:

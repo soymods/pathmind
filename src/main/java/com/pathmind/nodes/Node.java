@@ -44,6 +44,7 @@ import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
+import net.minecraft.network.packet.c2s.play.BookUpdateC2SPacket;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
@@ -57,8 +58,13 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Box;
 import net.minecraft.world.RaycastContext;
 import net.minecraft.client.gui.screen.ChatScreen;
+import net.minecraft.client.gui.screen.ingame.BookEditScreen;
 import net.minecraft.client.gui.screen.ingame.CraftingScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.WritableBookContentComponent;
+import net.minecraft.text.RawFilteredPair;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.recipebook.ClientRecipeBook;
@@ -91,6 +97,7 @@ import java.util.Comparator;
 import java.util.regex.Pattern;
 import org.lwjgl.glfw.GLFW;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import com.pathmind.util.CameraCompatibilityBridge;
 import com.pathmind.util.ChatScreenCompatibilityBridge;
 import com.pathmind.util.EntityCompatibilityBridge;
@@ -178,6 +185,15 @@ public class Node {
     private static final int STOP_TARGET_FIELD_HEIGHT = 16;
     private static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
     private static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
+    private static final int BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL = 6;
+    private static final int BOOK_TEXT_TOP_MARGIN = 6;
+    private static final int BOOK_TEXT_BUTTON_HEIGHT = 16;
+    private static final int BOOK_TEXT_BUTTON_MIN_WIDTH = 70;
+    private static final int BOOK_TEXT_LABEL_HEIGHT = 10;
+    private static final int BOOK_TEXT_PAGE_FIELD_HEIGHT = 16;
+    private static final int BOOK_TEXT_FIELD_SPACING = 6;
+    private static final int BOOK_TEXT_BOTTOM_MARGIN = 6;
+    private static final int BOOK_PAGE_MAX_CHARS = 256;
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
     private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
     private static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
@@ -213,6 +229,7 @@ public class Node {
     private transient Node owningStartNode;
     private int startNodeNumber;
     private final List<String> messageLines;
+    private String bookText;
 
     public Node(NodeType type, int x, int y) {
         this.id = java.util.UUID.randomUUID().toString();
@@ -235,6 +252,7 @@ public class Node {
         if (type == NodeType.MESSAGE) {
             this.messageLines.add("Hello World");
         }
+        this.bookText = "";
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -529,6 +547,10 @@ public class Node {
         if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL || type == NodeType.START_CHAIN) {
             return false;
         }
+        if (type == NodeType.WRITE_BOOK) {
+            // Write Book handles its own text/page UI and shouldn't expose a parameter slot
+            return false;
+        }
         if (type == NodeType.MESSAGE) {
             return false;
         }
@@ -603,6 +625,9 @@ public class Node {
             return blockParameter == null || !parameterProvidesCoordinates(blockParameter);
         }
         if (type == NodeType.PLACE_HAND) {
+            return false;
+        }
+        if (type == NodeType.WRITE_BOOK) {
             return false;
         }
         return slotIndex == 0;
@@ -1994,6 +2019,9 @@ public class Node {
                 parameters.add(new NodeParameter("SourceSlot", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
                 break;
+            case WRITE_BOOK:
+                parameters.add(new NodeParameter("Page", ParameterType.INTEGER, "1"));
+                break;
             case USE:
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
                 parameters.add(new NodeParameter("UseDurationSeconds", ParameterType.DOUBLE, "0.0"));
@@ -2623,6 +2651,74 @@ public class Node {
         return (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
     }
 
+    // Book text methods for WRITE_BOOK node
+    public boolean hasBookTextInput() {
+        return type == NodeType.WRITE_BOOK;
+    }
+
+    public String getBookText() {
+        return bookText != null ? bookText : "";
+    }
+
+    public void setBookText(String text) {
+        if (text == null) {
+            this.bookText = "";
+        } else if (text.length() > BOOK_PAGE_MAX_CHARS) {
+            this.bookText = text.substring(0, BOOK_PAGE_MAX_CHARS);
+        } else {
+            this.bookText = text;
+        }
+    }
+
+    public int getBookTextMaxChars() {
+        return BOOK_PAGE_MAX_CHARS;
+    }
+
+    public int getBookTextDisplayHeight() {
+        if (!hasBookTextInput()) {
+            return 0;
+        }
+        // Height for: Edit Text button + spacing + Page label + Page field
+        return BOOK_TEXT_TOP_MARGIN + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_FIELD_SPACING
+               + BOOK_TEXT_LABEL_HEIGHT + BOOK_TEXT_PAGE_FIELD_HEIGHT + BOOK_TEXT_BOTTOM_MARGIN;
+    }
+
+    public int getBookTextButtonTop() {
+        return y + HEADER_HEIGHT + BOOK_TEXT_TOP_MARGIN;
+    }
+
+    public int getBookTextButtonLeft() {
+        return x + BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
+    }
+
+    public int getBookTextButtonWidth() {
+        return Math.max(BOOK_TEXT_BUTTON_MIN_WIDTH, width - 2 * BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL);
+    }
+
+    public int getBookTextButtonHeight() {
+        return BOOK_TEXT_BUTTON_HEIGHT;
+    }
+
+    public int getBookTextPageLabelTop() {
+        return getBookTextButtonTop() + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_FIELD_SPACING;
+    }
+
+    public int getBookTextPageFieldTop() {
+        return getBookTextPageLabelTop() + BOOK_TEXT_LABEL_HEIGHT;
+    }
+
+    public int getBookTextPageFieldLeft() {
+        return x + BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
+    }
+
+    public int getBookTextPageFieldWidth() {
+        return width - 2 * BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
+    }
+
+    public int getBookTextPageFieldHeight() {
+        return BOOK_TEXT_PAGE_FIELD_HEIGHT;
+    }
+
     /**
      * Recalculate node dimensions based on current content
      */
@@ -2705,6 +2801,10 @@ public class Node {
             int buttonWidth = (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
             computedWidth = Math.max(computedWidth, Math.max(messageFieldWidth, buttonWidth));
         }
+        if (hasBookTextInput()) {
+            int bookTextWidth = BOOK_TEXT_BUTTON_MIN_WIDTH + 2 * BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
+            computedWidth = Math.max(computedWidth, bookTextWidth);
+        }
         int minWidth = usesMinimalNodePresentation() ? 70 : MIN_WIDTH;
         this.width = Math.max(minWidth, computedWidth);
 
@@ -2761,6 +2861,8 @@ public class Node {
             contentHeight += SLOT_AREA_PADDING_TOP;
         } else if (type == NodeType.MESSAGE) {
             contentHeight += getMessageFieldDisplayHeight();
+        } else if (type == NodeType.WRITE_BOOK) {
+            contentHeight += getBookTextDisplayHeight();
         } else if (hasStopTargetInputField()) {
             contentHeight += getStopTargetFieldDisplayHeight();
         } else if (hasBooleanToggle()) {
@@ -3928,6 +4030,9 @@ public class Node {
                 break;
             case CLOSE_GUI:
                 executePlayerGuiCommand(future, NodeMode.PLAYER_GUI_CLOSE);
+                break;
+            case WRITE_BOOK:
+                executeWriteBookCommand(future);
                 break;
             case SCREEN_CONTROL:
                 executeScreenControlCommand(future);
@@ -7190,7 +7295,515 @@ public class Node {
             future.complete(null);
         }
     }
-    
+
+    private void executeWriteBookCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+
+        String text = getBookText();
+        int pageNumber = getIntParameter("Page", 1);
+        // Convert to 0-indexed page
+        int pageIndex = Math.max(0, pageNumber - 1);
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            sendNodeErrorMessage(client, "Client or player not available");
+            future.completeExceptionally(new RuntimeException("Client or player not available"));
+            return;
+        }
+
+        // Check if a book edit screen is open
+        if (!(client.currentScreen instanceof BookEditScreen)) {
+            sendNodeErrorMessage(client, "No book and quill screen is open");
+            future.completeExceptionally(new RuntimeException("No book and quill screen is open"));
+            return;
+        }
+
+        BookEditScreen bookScreen = (BookEditScreen) client.currentScreen;
+
+        client.execute(() -> {
+            try {
+                // Use reflection to access the book screen's internal state
+                // Get the pages list
+                java.util.List<Object> pages = null;
+                int currentPage = 0;
+
+                // Try to find the pages field
+                java.util.List<Object> emptyCandidate = null;
+                java.util.List<Field> stringListFields = new java.util.ArrayList<>();
+                Field pagesField = null;
+                try {
+                    pagesField = bookScreen.getClass().getDeclaredField("pages");
+                    pagesField.setAccessible(true);
+                    Object value = pagesField.get(bookScreen);
+                    if (value instanceof java.util.List) {
+                    @SuppressWarnings("unchecked")
+                    java.util.List<Object> list = (java.util.List<Object>) value;
+                    pages = list;
+                    }
+                } catch (NoSuchFieldException ignored) {
+                    // Fallback to heuristic search below
+                }
+                for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                    if (pages != null) {
+                        break;
+                    }
+                    if (field.getType() != java.util.List.class) {
+                        continue;
+                    }
+                    field.setAccessible(true);
+                    Object value = field.get(bookScreen);
+                    if (!(value instanceof java.util.List)) {
+                        continue;
+                    }
+                    @SuppressWarnings("unchecked")
+                    java.util.List<Object> list = (java.util.List<Object>) value;
+                    stringListFields.add(field);
+                    if (!list.isEmpty()) {
+                        pages = list;
+                        break;
+                    }
+                    String fieldName = field.getName().toLowerCase();
+                    if (fieldName.contains("page")) {
+                        pages = list;
+                        break;
+                    }
+                    if (emptyCandidate == null) {
+                        emptyCandidate = list;
+                    }
+                }
+                if (pages == null && emptyCandidate != null) {
+                    pages = emptyCandidate;
+                }
+
+                if (pages == null) {
+                    System.err.println("BookEditScreen pages list not found. Fields:");
+                    for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                        System.err.println(" - " + field.getName() + " : " + field.getType());
+                    }
+                    sendNodeErrorMessage(client, "Could not access book pages");
+                    future.completeExceptionally(new RuntimeException("Could not access book pages"));
+                    return;
+                }
+
+                // Ensure we have enough pages
+                Method appendNewPageMethod = null;
+                Method countPagesMethod = null;
+                Method setPageTextMethod = null;
+                Method updatePageMethod = null;
+                Method writeNbtDataMethod = null;
+                System.out.println("WRITE_BOOK: screen=" + bookScreen.getClass().getName()
+                    + " pageIndex=" + pageIndex);
+                for (Method method : bookScreen.getClass().getDeclaredMethods()) {
+                    String methodName = method.getName().toLowerCase();
+                    if (method.getParameterCount() == 0 && method.getReturnType() == void.class) {
+                        if (appendNewPageMethod == null
+                            && (methodName.contains("appendnewpage") || methodName.contains("method_2436"))) {
+                            method.setAccessible(true);
+                            appendNewPageMethod = method;
+                        }
+                    }
+                    if (method.getParameterCount() == 0 && method.getReturnType() == int.class) {
+                        if (countPagesMethod == null
+                            && (methodName.contains("countpages") || methodName.contains("method_17046"))) {
+                            method.setAccessible(true);
+                            countPagesMethod = method;
+                        }
+                    }
+                    if (method.getParameterCount() == 0 && method.getReturnType() == void.class) {
+                        if (updatePageMethod == null
+                            && (methodName.contains("updatepage") || methodName.contains("method_71537"))) {
+                            method.setAccessible(true);
+                            updatePageMethod = method;
+                        }
+                        if (writeNbtDataMethod == null
+                            && (methodName.contains("writenbtdata") || methodName.contains("method_37433"))) {
+                            method.setAccessible(true);
+                            writeNbtDataMethod = method;
+                        }
+                    }
+                    if (method.getParameterCount() == 1
+                        && method.getParameterTypes()[0] == String.class
+                        && method.getReturnType() == void.class) {
+                        if (setPageTextMethod == null
+                            && (methodName.contains("setpage") || methodName.contains("pagetext") || methodName.contains("method_71539"))) {
+                            method.setAccessible(true);
+                            setPageTextMethod = method;
+                        }
+                    }
+                }
+
+                if (pagesField != null) {
+                    Object value = pagesField.get(bookScreen);
+                    if (value instanceof java.util.List) {
+                        @SuppressWarnings("unchecked")
+                        java.util.List<Object> list = (java.util.List<Object>) value;
+                        System.out.println("WRITE_BOOK: pagesField list size before=" + list.size());
+                        if (list.isEmpty()) {
+                            try {
+                                list.add(setPageTextMethod != null ? RawFilteredPair.of("") : "");
+                            } catch (UnsupportedOperationException ignored) {
+                                // replace with mutable list if backing list is immutable
+                                list = null;
+                            }
+                        }
+                        if (list == null) {
+                            java.util.List<Object> seeded = new java.util.ArrayList<>();
+                            seeded.add(setPageTextMethod != null ? RawFilteredPair.of("") : "");
+                            pagesField.set(bookScreen, seeded);
+                            pages = seeded;
+                        } else {
+                            pages = list;
+                        }
+                    }
+                } else if (pages.isEmpty()) {
+                    pages.add(setPageTextMethod != null ? RawFilteredPair.of("") : "");
+                }
+                System.out.println("WRITE_BOOK: pages size after seed=" + pages.size());
+
+                boolean useRawFilteredPairs = false;
+                if (!pages.isEmpty()) {
+                    useRawFilteredPairs = !(pages.get(0) instanceof String);
+                } else if (setPageTextMethod != null) {
+                    useRawFilteredPairs = true;
+                }
+                if (!pages.isEmpty()) {
+                    Object first = pages.get(0);
+                    System.out.println("WRITE_BOOK: pages element type=" + (first == null ? "null" : first.getClass().getName()));
+                }
+                System.out.println("WRITE_BOOK: useRawFilteredPairs=" + useRawFilteredPairs
+                    + " setPageText=" + (setPageTextMethod != null)
+                    + " updatePage=" + (updatePageMethod != null)
+                    + " writeNbtData=" + (writeNbtDataMethod != null));
+
+                int pageCount = pages.size();
+                if (countPagesMethod != null) {
+                    try {
+                        pageCount = (int) countPagesMethod.invoke(bookScreen);
+                    } catch (Exception ignored) {
+                        pageCount = pages.size();
+                    }
+                }
+
+                while (pageCount <= pageIndex) {
+                    if (appendNewPageMethod != null) {
+                        int beforeSize = pages.size();
+                        appendNewPageMethod.invoke(bookScreen);
+                        if (pagesField != null) {
+                            Object value = pagesField.get(bookScreen);
+                            if (value instanceof java.util.List) {
+                                @SuppressWarnings("unchecked")
+                                java.util.List<Object> list = (java.util.List<Object>) value;
+                                pages = list;
+                            }
+                        }
+                        if (countPagesMethod != null) {
+                            pageCount = (int) countPagesMethod.invoke(bookScreen);
+                        } else {
+                            pageCount = pages.size();
+                        }
+                        if (pages.size() == beforeSize && pageCount == beforeSize) {
+                            pages.add(useRawFilteredPairs ? RawFilteredPair.of("") : "");
+                            pageCount = pages.size();
+                        }
+                    } else {
+                        pages.add(useRawFilteredPairs ? RawFilteredPair.of("") : "");
+                        pageCount = pages.size();
+                    }
+                }
+
+                // Set the current page before applying text
+                for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                    if (field.getType() == int.class) {
+                        String fieldName = field.getName().toLowerCase();
+                        if (fieldName.contains("page") || fieldName.contains("current")) {
+                            field.setAccessible(true);
+                            field.setInt(bookScreen, pageIndex);
+                            break;
+                        }
+                    }
+                }
+
+                // Set the text on the specified page
+                String truncatedText = text;
+                if (truncatedText.length() > BOOK_PAGE_MAX_CHARS) {
+                    truncatedText = truncatedText.substring(0, BOOK_PAGE_MAX_CHARS);
+                }
+                System.out.println("WRITE_BOOK: text length=" + truncatedText.length()
+                    + " preview=\"" + (truncatedText.length() > 40 ? truncatedText.substring(0, 40) + "..." : truncatedText) + "\"");
+                boolean setViaMethod = false;
+                if (setPageTextMethod != null && pageIndex >= 0 && pageIndex < pages.size()) {
+                    try {
+                        setPageTextMethod.invoke(bookScreen, truncatedText);
+                        setViaMethod = true;
+                    } catch (Exception ignored) {
+                        // Ignore UI refresh errors
+                    }
+                }
+                if (!setViaMethod && pageIndex >= 0 && pageIndex < pages.size()) {
+                    pages.set(pageIndex, useRawFilteredPairs ? RawFilteredPair.of(truncatedText) : truncatedText);
+                    if (pagesField != null) {
+                        java.util.List<Object> copy = new java.util.ArrayList<>(pages);
+                        pagesField.set(bookScreen, copy);
+                        pages = copy;
+                    }
+                } else if (setViaMethod && pagesField != null) {
+                    Object value = pagesField.get(bookScreen);
+                    if (value instanceof java.util.List) {
+                        @SuppressWarnings("unchecked")
+                        java.util.List<Object> list = (java.util.List<Object>) value;
+                        pages = list;
+                    }
+                }
+
+                java.util.List<String> pageStrings = new java.util.ArrayList<>();
+                for (Object page : pages) {
+                    if (page instanceof String) {
+                        pageStrings.add((String) page);
+                    } else if (page instanceof RawFilteredPair) {
+                        @SuppressWarnings("unchecked")
+                        RawFilteredPair<String> pair = (RawFilteredPair<String>) page;
+                        pageStrings.add(pair.get(false));
+                    } else {
+                        pageStrings.add("");
+                    }
+                }
+
+                // Update any page-related fields to ensure the UI refreshes
+                TextFieldWidget editBox = null;
+                for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                    String fieldName = field.getName().toLowerCase();
+                    if (field.getType() == java.util.List.class) {
+                        if (!fieldName.contains("page")) {
+                            continue;
+                        }
+                        field.setAccessible(true);
+                        Object value = field.get(bookScreen);
+                        if (value instanceof java.util.List) {
+                            @SuppressWarnings("unchecked")
+                            java.util.List<Object> list = (java.util.List<Object>) value;
+                            try {
+                                list.clear();
+                                list.addAll(pages);
+                            } catch (UnsupportedOperationException ignored) {
+                                // Skip immutable lists
+                            }
+                        }
+                        continue;
+                    }
+                    if (field.getType() == String[].class && fieldName.contains("page")) {
+                        field.setAccessible(true);
+                        field.set(bookScreen, pageStrings.toArray(new String[0]));
+                        continue;
+                    }
+                    if (field.getType() == String.class
+                        && fieldName.contains("page")
+                        && (fieldName.contains("text") || fieldName.contains("content"))) {
+                        field.setAccessible(true);
+                        field.set(bookScreen, truncatedText);
+                        continue;
+                    }
+                    if (field.getType() == TextFieldWidget.class
+                        && (fieldName.contains("page") || fieldName.contains("text"))) {
+                        field.setAccessible(true);
+                        Object value = field.get(bookScreen);
+                        if (value instanceof TextFieldWidget) {
+                            editBox = (TextFieldWidget) value;
+                            editBox.setText(truncatedText);
+                        }
+                    }
+                }
+                if (editBox == null) {
+                    for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                        if (field.getType() == TextFieldWidget.class) {
+                            field.setAccessible(true);
+                            Object value = field.get(bookScreen);
+                            if (value instanceof TextFieldWidget) {
+                                editBox = (TextFieldWidget) value;
+                                editBox.setText(truncatedText);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Keep the screen's backing ItemStack in sync so UI updates immediately
+                ItemStack screenStack = null;
+                for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                    if (field.getType() == ItemStack.class) {
+                        field.setAccessible(true);
+                        Object value = field.get(bookScreen);
+                        if (value instanceof ItemStack) {
+                            screenStack = (ItemStack) value;
+                            break;
+                        }
+                    }
+                }
+                if (screenStack != null && screenStack.isOf(Items.WRITABLE_BOOK)) {
+                    try {
+                        java.util.List<RawFilteredPair<String>> componentPages = new java.util.ArrayList<>();
+                        for (String page : pageStrings) {
+                            componentPages.add(RawFilteredPair.of(page));
+                        }
+                        screenStack.set(DataComponentTypes.WRITABLE_BOOK_CONTENT,
+                            new WritableBookContentComponent(componentPages));
+                    } catch (Exception ignored) {
+                        // Ignore component sync errors
+                    }
+                }
+
+                // Write updated pages into the book stack if possible
+                if (writeNbtDataMethod != null) {
+                    try {
+                        writeNbtDataMethod.invoke(bookScreen);
+                    } catch (Exception ignored) {
+                        // Ignore persistence errors to avoid stopping execution
+                    }
+                }
+
+                // Send book update to server and client so text becomes visible immediately.
+                Hand hand = Hand.MAIN_HAND;
+                for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                    if (field.getType() == Hand.class) {
+                        field.setAccessible(true);
+                        Object value = field.get(bookScreen);
+                        if (value instanceof Hand) {
+                            hand = (Hand) value;
+                            break;
+                        }
+                    }
+                }
+                ItemStack main = client.player.getMainHandStack();
+                ItemStack offhand = client.player.getOffHandStack();
+                if (!main.isOf(Items.WRITABLE_BOOK) && offhand.isOf(Items.WRITABLE_BOOK)) {
+                    hand = Hand.OFF_HAND;
+                }
+                ItemStack heldBook = client.player.getStackInHand(hand);
+                if (heldBook != null && heldBook.isOf(Items.WRITABLE_BOOK)) {
+                    // Keep stack component in sync so the UI reflects the change immediately
+                    try {
+                        java.util.List<RawFilteredPair<String>> componentPages = new java.util.ArrayList<>();
+                        for (String page : pageStrings) {
+                            componentPages.add(RawFilteredPair.of(page));
+                        }
+                        heldBook.set(DataComponentTypes.WRITABLE_BOOK_CONTENT,
+                            new WritableBookContentComponent(componentPages));
+                    } catch (Exception ignored) {
+                        // Fallback to packet-only update
+                    }
+
+                    // Tell server (and client) via standard packet (works in dev env)
+                    int slot = hand == Hand.MAIN_HAND
+                        ? client.player.getInventory().getSelectedSlot()
+                        : PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
+                    client.getNetworkHandler().sendPacket(
+                        new BookUpdateC2SPacket(slot, pageStrings, java.util.Optional.empty())
+                    );
+
+                    // Reopen the book screen to force a full UI refresh of the edited text
+                    ItemStack reopenStack = screenStack != null ? screenStack : heldBook;
+                    if (reopenStack != null && reopenStack.isOf(Items.WRITABLE_BOOK)) {
+                        WritableBookContentComponent content = reopenStack.get(DataComponentTypes.WRITABLE_BOOK_CONTENT);
+                        if (content == null) {
+                            content = WritableBookContentComponent.DEFAULT;
+                        }
+                        final ItemStack reopenStackFinal = reopenStack;
+                        final WritableBookContentComponent contentFinal = content;
+                        final Hand reopenHand = hand;
+                        final PlayerEntity playerFinal = client.player;
+                        client.execute(() -> {
+                            if (playerFinal != null) {
+                                client.setScreen(new BookEditScreen(playerFinal, reopenStackFinal, reopenHand, contentFinal));
+                            }
+                        });
+                    }
+                }
+
+                // Flag book screen as dirty if such a field exists
+                for (Field field : bookScreen.getClass().getDeclaredFields()) {
+                    if (field.getType() == boolean.class) {
+                        String fieldName = field.getName().toLowerCase();
+                        if (fieldName.contains("dirty") || fieldName.contains("modified")) {
+                            field.setAccessible(true);
+                            field.setBoolean(bookScreen, true);
+                            break;
+                        }
+                    }
+                }
+
+                // Safely invoke updatePage if it exists (only after pages are populated)
+                if (updatePageMethod != null) {
+                    try {
+                        if (!pages.isEmpty()) {
+                            updatePageMethod.invoke(bookScreen);
+                        }
+                    } catch (Exception ignored) {
+                        // Ignore UI refresh errors to avoid stopping execution
+                    }
+                }
+
+                // One more refresh on the next tick in case the edit box wasn't ready yet
+                final Method setPageTextMethodFinal = setPageTextMethod;
+                final Method updatePageMethodFinal = updatePageMethod;
+                final java.util.List<Object> pagesFinal = pages;
+                final String truncatedTextFinal = truncatedText;
+                final int pageIndexFinal = pageIndex;
+                final BookEditScreen bookScreenFinal = bookScreen;
+                client.execute(() -> {
+                    try {
+                        if (setPageTextMethodFinal != null && pageIndexFinal >= 0 && pageIndexFinal < pagesFinal.size()) {
+                            setPageTextMethodFinal.invoke(bookScreenFinal, truncatedTextFinal);
+                        }
+                        if (updatePageMethodFinal != null && !pagesFinal.isEmpty()) {
+                            updatePageMethodFinal.invoke(bookScreenFinal);
+                        }
+                        // Force edit box text refresh on the next tick
+                        TextFieldWidget delayedEditBox = null;
+                        try {
+                            Field editBoxField = bookScreenFinal.getClass().getDeclaredField("editBox");
+                            editBoxField.setAccessible(true);
+                            Object value = editBoxField.get(bookScreenFinal);
+                            if (value instanceof TextFieldWidget) {
+                                delayedEditBox = (TextFieldWidget) value;
+                            }
+                        } catch (NoSuchFieldException ignored) {
+                            // fall back to scanning fields below
+                        }
+                        if (delayedEditBox == null) {
+                            for (Field field : bookScreenFinal.getClass().getDeclaredFields()) {
+                                if (field.getType() == TextFieldWidget.class) {
+                                    field.setAccessible(true);
+                                    Object value = field.get(bookScreenFinal);
+                                    if (value instanceof TextFieldWidget) {
+                                        delayedEditBox = (TextFieldWidget) value;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (delayedEditBox != null) {
+                            delayedEditBox.setText(truncatedTextFinal);
+                            bookScreenFinal.setFocused(delayedEditBox);
+                        }
+                    } catch (Exception ignored) {
+                        // Ignore delayed UI refresh errors
+                    }
+                });
+
+                future.complete(null);
+            } catch (Exception e) {
+                e.printStackTrace();
+                String message = e.getMessage();
+                if (message == null || message.isBlank()) {
+                    message = e.getClass().getSimpleName();
+                }
+                sendNodeErrorMessage(client, "Error writing to book: " + message);
+                future.completeExceptionally(e);
+            }
+        });
+    }
+
     private void executeGoalCommand(CompletableFuture<Void> future) {
         if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
             return;

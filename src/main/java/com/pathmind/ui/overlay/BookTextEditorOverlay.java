@@ -1,6 +1,8 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.nodes.Node;
+import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
@@ -251,7 +253,12 @@ public class BookTextEditorOverlay {
                          mouseY >= button.getY() && mouseY <= button.getY() + button.getHeight();
 
         int bgColor = hovered ? UITheme.BUTTON_DEFAULT_HOVER : UITheme.BUTTON_DEFAULT_BG;
-        int borderColor = hovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BUTTON_DEFAULT_BORDER;
+        float hoverProgress = HoverAnimator.getProgress(button, hovered);
+        int borderColor = AnimationHelper.lerpColor(
+            UITheme.BUTTON_DEFAULT_BORDER,
+            UITheme.BUTTON_HOVER_OUTLINE,
+            hoverProgress
+        );
 
         context.fill(button.getX(), button.getY(),
                     button.getX() + button.getWidth(),

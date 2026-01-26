@@ -8,6 +8,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
@@ -401,10 +402,8 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         context.fill(x + 1, y + 1, x + ZOOM_BUTTON_SIZE - 1, y + ZOOM_BUTTON_SIZE - 1, bgColor);
 
-        int borderColor = UITheme.BORDER_SUBTLE;
-        if (hovered) {
-            borderColor = getAccentColor();
-        }
+        String hoverKey = isMinus ? "zoom-minus-button" : "zoom-plus-button";
+        int borderColor = getAnimatedBorderColor(hoverKey, hovered, UITheme.BORDER_SUBTLE, getAccentColor());
         DrawContextBridge.drawBorder(context, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE, borderColor);
 
         int iconColor = UITheme.TEXT_PRIMARY;
@@ -2909,6 +2908,15 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(x, y, x + boxWidth, y + boxHeight, backgroundColor);
         DrawContextBridge.drawBorder(context, x, y, boxWidth, boxHeight, borderColor);
         context.drawTextWithShadow(this.textRenderer, Text.literal(text), x + paddingX, y + paddingY, 0xFFE0E0E0);
+    }
+
+    private float getHoverProgress(Object key, boolean hovered) {
+        return HoverAnimator.getProgress(key, hovered);
+    }
+
+    private int getAnimatedBorderColor(Object key, boolean hovered, int normalColor, int hoverColor) {
+        float hoverProgress = getHoverProgress(key, hovered);
+        return AnimationHelper.lerpColor(normalColor, hoverColor, hoverProgress);
     }
 
     private void renderSettingsButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {

@@ -6,6 +6,8 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.control.InventorySlotSelector;
+import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
@@ -698,7 +700,13 @@ public class NodeParameterOverlay {
 
         int bgColor = hovered ? UITheme.BUTTON_DEFAULT_HOVER : UITheme.BUTTON_DEFAULT_BG;
         context.fill(button.getX(), button.getY(), button.getX() + button.getWidth(), button.getY() + button.getHeight(), bgColor);
-        DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(), UITheme.BORDER_HIGHLIGHT);
+        float hoverProgress = HoverAnimator.getProgress(button, hovered);
+        int borderColor = AnimationHelper.lerpColor(
+            UITheme.BORDER_HIGHLIGHT,
+            UITheme.BUTTON_HOVER_OUTLINE,
+            hoverProgress
+        );
+        DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(), borderColor);
 
         // Render button text
         context.drawCenteredTextWithShadow(

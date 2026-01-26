@@ -1326,4 +1326,96 @@ public final class RecipeCompatibilityBridge {
             return null;
         }
     }
+
+    // --- Recipe display bridge methods (for versions where RecipeDisplayEntry / RecipeDisplay exist) ---
+
+    public static boolean isCraftingDisplay(Object display) {
+        if (display == null) {
+            return false;
+        }
+        String name = display.getClass().getName();
+        return name.contains("ShapedCraftingRecipeDisplay") || name.contains("ShapelessCraftingRecipeDisplay");
+    }
+
+    public static boolean isShapedCraftingDisplay(Object display) {
+        if (display == null) {
+            return false;
+        }
+        return display.getClass().getName().contains("ShapedCraftingRecipeDisplay");
+    }
+
+    public static Object getDisplayFromEntry(Object entry) {
+        if (entry == null) {
+            return null;
+        }
+        return reflectNoArgMethod(entry, "display");
+    }
+
+    public static Object getResultSlotDisplay(Object display) {
+        if (display == null) {
+            return null;
+        }
+        return reflectNoArgMethod(display, "result");
+    }
+
+    public static int getShapedWidth(Object display) {
+        return reflectIntMethod(display, "width", 0);
+    }
+
+    public static int getShapedHeight(Object display) {
+        return reflectIntMethod(display, "height", 0);
+    }
+
+    public static List<?> getDisplayIngredientSlots(Object display) {
+        if (display == null) {
+            return Collections.emptyList();
+        }
+        Object result = reflectNoArgMethod(display, "ingredients");
+        if (result instanceof List<?> list) {
+            return list;
+        }
+        result = reflectNoArgMethod(display, "comp_3271");
+        if (result instanceof List<?> list) {
+            return list;
+        }
+        return Collections.emptyList();
+    }
+
+    public static List<?> getAllRecipesFromCollection(Object collection) {
+        if (collection == null) {
+            return Collections.emptyList();
+        }
+        Object result = reflectNoArgMethod(collection, "getAllRecipes");
+        if (result instanceof List<?> list) {
+            return list;
+        }
+        return Collections.emptyList();
+    }
+
+    private static Object reflectNoArgMethod(Object target, String methodName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(target);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static int reflectIntMethod(Object target, String methodName, int defaultValue) {
+        if (target == null) {
+            return defaultValue;
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
+            Object result = method.invoke(target);
+            return result instanceof Number num ? num.intValue() : defaultValue;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return defaultValue;
+        }
+    }
 }

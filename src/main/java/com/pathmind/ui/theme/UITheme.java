@@ -126,6 +126,9 @@ public final class UITheme {
     /** Default button border */
     public static final int BUTTON_DEFAULT_BORDER = 0xFF505050;
 
+    /** Button hover outline - light blue */
+    public static final int BUTTON_HOVER_OUTLINE = 0xFF7DB9E8;
+
     /** Primary button background - uses accent */
     public static final int BUTTON_PRIMARY_BG = 0xFF4A6B7C;
 

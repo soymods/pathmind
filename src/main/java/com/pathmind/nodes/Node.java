@@ -71,15 +71,10 @@ import net.minecraft.client.recipebook.ClientRecipeBook;
 import net.minecraft.client.gui.screen.recipebook.RecipeResultCollection;
 import net.minecraft.recipe.CraftingRecipe;
 import net.minecraft.recipe.Ingredient;
-import net.minecraft.recipe.RecipeDisplayEntry;
 import net.minecraft.recipe.RecipeManager;
 import net.minecraft.recipe.RecipeEntry;
 import net.minecraft.recipe.RecipeType;
 import net.minecraft.recipe.ShapedRecipe;
-import net.minecraft.recipe.display.RecipeDisplay;
-import net.minecraft.recipe.display.ShapedCraftingRecipeDisplay;
-import net.minecraft.recipe.display.ShapelessCraftingRecipeDisplay;
-import net.minecraft.recipe.display.SlotDisplay;
 import net.minecraft.recipe.input.CraftingRecipeInput;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.RegistryWrapper;
@@ -4804,7 +4799,7 @@ public class Node {
 
         java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable = new java.util.concurrent.atomic.AtomicBoolean(false);
         RecipeEntry<CraftingRecipe> recipeEntry = findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable);
-        RecipeDisplayEntry displayEntry = null;
+        Object displayEntry = null;
         if (recipeEntry == null) {
             displayEntry = findCraftingDisplayEntry(client, targetItem, effectiveCraftMode, requiresCraftingTable, clientWorld);
             if (displayEntry == null) {
@@ -4827,7 +4822,7 @@ public class Node {
                 outputTemplate = getRecipeOutput(recipeEntry.value(), clientRegistryManager);
             }
         } else {
-            outputTemplate = getDisplayOutput(displayEntry.display(), clientWorld);
+            outputTemplate = getDisplayOutput(RecipeCompatibilityBridge.getDisplayFromEntry(displayEntry), clientWorld);
         }
         if (outputTemplate == null || outputTemplate.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe produced no output.");
@@ -4844,7 +4839,7 @@ public class Node {
         if (recipeEntry != null) {
             gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode, ingredientRegistryManager);
         } else {
-            gridIngredients = resolveDisplayGridIngredients(displayEntry.display(), effectiveCraftMode, ingredientRegistryManager);
+            gridIngredients = resolveDisplayGridIngredients(RecipeCompatibilityBridge.getDisplayFromEntry(displayEntry), effectiveCraftMode, ingredientRegistryManager);
         }
         if (gridIngredients.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe has no ingredients.");
@@ -5073,11 +5068,11 @@ public class Node {
         return null;
     }
 
-    private RecipeDisplayEntry findCraftingDisplayEntry(net.minecraft.client.MinecraftClient client,
-                                                        Item targetItem,
-                                                        NodeMode craftMode,
-                                                        java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable,
-                                                        Object registryManager) {
+    private Object findCraftingDisplayEntry(net.minecraft.client.MinecraftClient client,
+                                            Item targetItem,
+                                            NodeMode craftMode,
+                                            java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable,
+                                            Object registryManager) {
         if (client == null || client.player == null) {
             return null;
         }
@@ -5092,16 +5087,16 @@ public class Node {
             if (collection == null) {
                 continue;
             }
-            List<RecipeDisplayEntry> entries = collection.getAllRecipes();
+            List<?> entries = RecipeCompatibilityBridge.getAllRecipesFromCollection(collection);
             if (entries == null || entries.isEmpty()) {
                 continue;
             }
-            for (RecipeDisplayEntry entry : entries) {
+            for (Object entry : entries) {
                 if (entry == null) {
                     continue;
                 }
-                RecipeDisplay display = entry.display();
-                if (!isCraftingDisplay(display)) {
+                Object display = RecipeCompatibilityBridge.getDisplayFromEntry(entry);
+                if (!RecipeCompatibilityBridge.isCraftingDisplay(display)) {
                     continue;
                 }
                 ItemStack output = getDisplayOutput(display, registryManager);
@@ -5120,28 +5115,25 @@ public class Node {
         return null;
     }
 
-    private boolean isCraftingDisplay(RecipeDisplay display) {
-        return display instanceof ShapedCraftingRecipeDisplay
-            || display instanceof ShapelessCraftingRecipeDisplay;
-    }
-
-    private boolean displayFitsPlayerGrid(RecipeDisplay display, Object registryManager) {
-        if (display instanceof ShapedCraftingRecipeDisplay shaped) {
-            return shaped.width() <= 2 && shaped.height() <= 2;
+    private boolean displayFitsPlayerGrid(Object display, Object registryManager) {
+        if (RecipeCompatibilityBridge.isShapedCraftingDisplay(display)) {
+            return RecipeCompatibilityBridge.getShapedWidth(display) <= 2
+                && RecipeCompatibilityBridge.getShapedHeight(display) <= 2;
         }
-        if (display instanceof ShapelessCraftingRecipeDisplay shapeless) {
-            int count = countDisplayIngredients(shapeless.ingredients(), registryManager);
+        if (display != null && display.getClass().getName().contains("ShapelessCraftingRecipeDisplay")) {
+            List<?> slots = RecipeCompatibilityBridge.getDisplayIngredientSlots(display);
+            int count = countDisplayIngredients(slots, registryManager);
             return count > 0 && count <= 4;
         }
         return false;
     }
 
-    private int countDisplayIngredients(List<SlotDisplay> slots, Object registryManager) {
+    private int countDisplayIngredients(List<?> slots, Object registryManager) {
         if (slots == null || slots.isEmpty()) {
             return 0;
         }
         int count = 0;
-        for (SlotDisplay slot : slots) {
+        for (Object slot : slots) {
             Ingredient ingredient = RecipeCompatibilityBridge.extractDisplayIngredient(slot, registryManager);
             if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                 continue;
@@ -5613,43 +5605,43 @@ public class Node {
         return ItemStack.EMPTY;
     }
 
-    private ItemStack getDisplayOutput(RecipeDisplay display, Object registryManager) {
+    private ItemStack getDisplayOutput(Object display, Object registryManager) {
         if (display == null) {
             return ItemStack.EMPTY;
         }
-        SlotDisplay result = display.result();
+        Object result = RecipeCompatibilityBridge.getResultSlotDisplay(display);
         if (result == null) {
             return ItemStack.EMPTY;
         }
         return RecipeCompatibilityBridge.getSlotDisplayFirst(result, registryManager);
     }
 
-    private List<GridIngredient> resolveDisplayGridIngredients(RecipeDisplay display, NodeMode craftMode, Object registryManager) {
-        if (display instanceof ShapedCraftingRecipeDisplay shaped) {
-            return resolveShapedDisplayGridIngredients(shaped, craftMode, registryManager);
+    private List<GridIngredient> resolveDisplayGridIngredients(Object display, NodeMode craftMode, Object registryManager) {
+        if (RecipeCompatibilityBridge.isShapedCraftingDisplay(display)) {
+            return resolveShapedDisplayGridIngredients(display, craftMode, registryManager);
         }
-        if (display instanceof ShapelessCraftingRecipeDisplay shapeless) {
-            return resolveShapelessDisplayGridIngredients(shapeless, craftMode, registryManager);
+        if (display != null && display.getClass().getName().contains("ShapelessCraftingRecipeDisplay")) {
+            return resolveShapelessDisplayGridIngredients(display, craftMode, registryManager);
         }
         return Collections.emptyList();
     }
 
-    private List<GridIngredient> resolveShapedDisplayGridIngredients(ShapedCraftingRecipeDisplay display,
+    private List<GridIngredient> resolveShapedDisplayGridIngredients(Object display,
                                                                      NodeMode craftMode,
                                                                      Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
         if (display == null) {
             return result;
         }
-        int recipeWidth = Math.max(display.width(), 1);
-        int recipeHeight = Math.max(display.height(), 1);
+        int recipeWidth = Math.max(RecipeCompatibilityBridge.getShapedWidth(display), 1);
+        int recipeHeight = Math.max(RecipeCompatibilityBridge.getShapedHeight(display), 1);
         if (craftMode == NodeMode.CRAFT_PLAYER_GUI && (recipeWidth > 2 || recipeHeight > 2)) {
             return result;
         }
         int gridWidth = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 3 : 2;
         int width = Math.min(recipeWidth, gridWidth);
         int height = Math.min(recipeHeight, gridWidth);
-        List<SlotDisplay> slots = display.ingredients();
+        List<?> slots = RecipeCompatibilityBridge.getDisplayIngredientSlots(display);
         if (slots == null || slots.isEmpty()) {
             return result;
         }
@@ -5671,20 +5663,20 @@ public class Node {
         return result;
     }
 
-    private List<GridIngredient> resolveShapelessDisplayGridIngredients(ShapelessCraftingRecipeDisplay display,
+    private List<GridIngredient> resolveShapelessDisplayGridIngredients(Object display,
                                                                         NodeMode craftMode,
                                                                         Object registryManager) {
         List<GridIngredient> result = new ArrayList<>();
         if (display == null) {
             return result;
         }
-        List<SlotDisplay> slots = display.ingredients();
+        List<?> slots = RecipeCompatibilityBridge.getDisplayIngredientSlots(display);
         if (slots == null || slots.isEmpty()) {
             return result;
         }
         int gridLimit = craftMode == NodeMode.CRAFT_CRAFTING_TABLE ? 9 : 4;
         int placed = 0;
-        for (SlotDisplay slot : slots) {
+        for (Object slot : slots) {
             if (placed >= gridLimit) {
                 break;
             }
@@ -7695,7 +7687,7 @@ public class Node {
 
                     // Tell server (and client) via standard packet (works in dev env)
                     int slot = hand == Hand.MAIN_HAND
-                        ? client.player.getInventory().getSelectedSlot()
+                        ? PlayerInventoryBridge.getSelectedSlot(client.player.getInventory())
                         : PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
                     client.getNetworkHandler().sendPacket(
                         new BookUpdateC2SPacket(slot, pageStrings, java.util.Optional.empty())
@@ -7714,7 +7706,10 @@ public class Node {
                         final PlayerEntity playerFinal = client.player;
                         client.execute(() -> {
                             if (playerFinal != null) {
-                                client.setScreen(new BookEditScreen(playerFinal, reopenStackFinal, reopenHand, contentFinal));
+                                net.minecraft.client.gui.screen.Screen bookEditScreen = createBookEditScreen(playerFinal, reopenStackFinal, reopenHand, contentFinal);
+                                if (bookEditScreen != null) {
+                                    client.setScreen(bookEditScreen);
+                                }
                             }
                         });
                     }
@@ -7802,6 +7797,28 @@ public class Node {
                 future.completeExceptionally(e);
             }
         });
+    }
+
+    private static net.minecraft.client.gui.screen.Screen createBookEditScreen(
+            PlayerEntity player, ItemStack stack, Hand hand, WritableBookContentComponent content) {
+        try {
+            // Try 4-arg constructor (newer MC versions)
+            java.lang.reflect.Constructor<?> ctor = BookEditScreen.class.getConstructor(
+                PlayerEntity.class, ItemStack.class, Hand.class, WritableBookContentComponent.class);
+            return (net.minecraft.client.gui.screen.Screen) ctor.newInstance(player, stack, hand, content);
+        } catch (NoSuchMethodException ignored) {
+            // Fall through to 3-arg constructor
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+        try {
+            // Try 3-arg constructor (MC 1.21)
+            java.lang.reflect.Constructor<?> ctor = BookEditScreen.class.getConstructor(
+                PlayerEntity.class, ItemStack.class, Hand.class);
+            return (net.minecraft.client.gui.screen.Screen) ctor.newInstance(player, stack, hand);
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
     }
 
     private void executeGoalCommand(CompletableFuture<Void> future) {

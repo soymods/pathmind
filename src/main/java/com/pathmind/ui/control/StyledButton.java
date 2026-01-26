@@ -132,7 +132,7 @@ public class StyledButton {
         int bgColor = AnimationHelper.lerpColor(bgNormal, bgHover, hoverProg);
 
         int borderNormal = getBorderColor();
-        int borderHover = AnimationHelper.brighten(borderNormal, 1.2f);
+        int borderHover = UITheme.BUTTON_HOVER_OUTLINE;
         int borderColor = AnimationHelper.lerpColor(borderNormal, borderHover, hoverProg);
 
         // Apply disabled state
@@ -256,7 +256,7 @@ public class StyledButton {
         int bgColor = hovered ? getStaticHoverColor(style, accentColor) : getStaticBgColor(style, accentColor);
         int borderColor = getStaticBorderColor(style, accentColor);
         if (hovered) {
-            borderColor = AnimationHelper.brighten(borderColor, 1.2f);
+            borderColor = UITheme.BUTTON_HOVER_OUTLINE;
         }
 
         context.fill(x, y, x + width, y + height, bgColor);

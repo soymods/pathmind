@@ -4,6 +4,7 @@ import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.ExecutionManager.RuntimeVariable;
 import com.pathmind.execution.ExecutionManager.RuntimeVariableEntry;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.ui.theme.UITheme;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
@@ -22,10 +23,6 @@ public class VariablesOverlay {
     private static final int MARGIN = 10;
     private static final int PADDING = 6;
     private static final int LINE_SPACING = 2;
-    private static final int BACKGROUND_COLOR = 0x80000000; // Semi-transparent black
-    private static final int BORDER_COLOR = 0xFF666666; // Grey border
-    private static final int TEXT_COLOR = 0xFFFFFFFF; // White text
-    private static final int ACCENT_COLOR = 0xFFFF9800; // Orange accent
 
     private final ExecutionManager executionManager;
 
@@ -49,14 +46,14 @@ public class VariablesOverlay {
         int overlayX = MARGIN;
         int overlayY = MARGIN;
 
-        context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + overlayHeight, BACKGROUND_COLOR);
-        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, overlayHeight, BORDER_COLOR);
+        context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + overlayHeight, UITheme.OVERLAY_BACKGROUND);
+        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, overlayHeight, UITheme.BORDER_HIGHLIGHT);
 
         int textX = overlayX + PADDING;
         int textY = overlayY + PADDING;
         for (int i = 0; i < lines.size(); i++) {
             String line = trimTextToWidth(lines.get(i), textRenderer, OVERLAY_WIDTH - PADDING * 2);
-            int color = i == 0 ? ACCENT_COLOR : TEXT_COLOR;
+            int color = i == 0 ? UITheme.ACCENT_AMBER : UITheme.TEXT_HEADER;
             context.drawTextWithShadow(textRenderer, Text.literal(line), textX, textY + i * lineHeight, color);
         }
     }

@@ -2,6 +2,7 @@ package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.Node;
+import com.pathmind.ui.theme.UITheme;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
@@ -15,11 +16,6 @@ public class ActiveNodeOverlay {
     private static final int OVERLAY_WIDTH = 150;
     private static final int OVERLAY_HEIGHT = 60;
     private static final int MARGIN = 10;
-    private static final int BACKGROUND_COLOR = 0x80000000; // Semi-transparent black
-    private static final int BORDER_COLOR = 0xFF666666; // Grey border
-    private static final int TEXT_COLOR = 0xFFFFFFFF; // White text
-    private static final int ACCENT_COLOR = 0xFF87CEEB; // Light blue accent
-    private static final int COMPLETION_COLOR = 0xFFFF5555; // Red for completion state
     
     private final ExecutionManager executionManager;
     
@@ -42,10 +38,10 @@ public class ActiveNodeOverlay {
         int overlayY = MARGIN;
         
         // Render semi-transparent background
-        context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT, BACKGROUND_COLOR);
-        
+        context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT, UITheme.OVERLAY_BACKGROUND);
+
         // Render border
-        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT, BORDER_COLOR);
+        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT, UITheme.BORDER_HIGHLIGHT);
         
         // Calculate right-aligned text positions
         int textRightX = overlayX + OVERLAY_WIDTH - 8;
@@ -58,7 +54,7 @@ public class ActiveNodeOverlay {
             Text.literal(titleText),
             textRightX - titleWidth,
             overlayY + 6,
-            ACCENT_COLOR
+            UITheme.ACCENT_SKY
         );
         
         // Render node type with color (right-aligned)
@@ -71,11 +67,11 @@ public class ActiveNodeOverlay {
                 nodeColor = activeNode.getType().getColor();
             } else {
                 nodeTypeName = "End";
-                nodeColor = COMPLETION_COLOR;
+                nodeColor = UITheme.STATE_ERROR;
             }
         } else {
             nodeTypeName = activeNode != null ? activeNode.getType().getDisplayName() : "";
-            nodeColor = activeNode != null ? activeNode.getType().getColor() : ACCENT_COLOR;
+            nodeColor = activeNode != null ? activeNode.getType().getColor() : UITheme.ACCENT_SKY;
         }
         int nodeTypeWidth = textRenderer.getWidth(nodeTypeName);
         context.drawTextWithShadow(
@@ -95,7 +91,7 @@ public class ActiveNodeOverlay {
             Text.literal(timeText),
             textRightX - timeWidth,
             overlayY + 30,
-            TEXT_COLOR
+            UITheme.TEXT_HEADER
         );
         
         // Render status indicator (right-aligned)
@@ -106,14 +102,14 @@ public class ActiveNodeOverlay {
             Text.literal(statusText),
             textRightX - statusWidth,
             overlayY + 42,
-            showingCompletion ? COMPLETION_COLOR : ACCENT_COLOR
+            showingCompletion ? UITheme.STATE_ERROR : UITheme.ACCENT_SKY
         );
         
         // Render a small colored indicator dot (top left)
         int dotX = overlayX + 8;
         int dotY = overlayY + 8;
         context.fill(dotX, dotY, dotX + 8, dotY + 8, nodeColor);
-        DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, BORDER_COLOR);
+        DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, UITheme.BORDER_HIGHLIGHT);
     }
     
     /**

@@ -1,5 +1,7 @@
 package com.pathmind.ui.control;
 
+import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
@@ -8,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
-import com.pathmind.util.DrawContextBridge;
 
 /**
  * Helper widget for selecting inventory/container slots via a visual grid.
@@ -105,7 +106,7 @@ public class InventorySlotSelector {
             Text.literal("Interface Mode:"),
             x,
             sectionY,
-            0xFFE0E0E0
+            UITheme.TEXT_PRIMARY
         );
         sectionY += textRenderer.fontHeight + 4;
 
@@ -117,8 +118,8 @@ public class InventorySlotSelector {
 
         boolean hoverButton = mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
                               mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
-        int buttonBg = hoverButton ? 0xFF3A3A3A : 0xFF2A2A2A;
-        int borderColor = dropdownOpen ? 0xFF87CEEB : (hoverButton ? 0xFFAAAAAA : 0xFF555555);
+        int buttonBg = hoverButton ? UITheme.BUTTON_DEFAULT_BG : UITheme.BACKGROUND_SECONDARY;
+        int borderColor = dropdownOpen ? UITheme.ACCENT_DEFAULT : (hoverButton ? UITheme.TEXT_SECONDARY : UITheme.BORDER_SUBTLE);
         context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, buttonBg);
         DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonWidth, buttonHeight, borderColor);
         context.drawTextWithShadow(
@@ -126,14 +127,14 @@ public class InventorySlotSelector {
             Text.literal(mode.displayName),
             buttonX + MODE_BUTTON_TEXT_PADDING,
             buttonY + 6,
-            0xFFFFFFFF
+            UITheme.TEXT_PRIMARY
         );
         context.drawTextWithShadow(
             textRenderer,
             Text.literal("▼"),
             buttonX + buttonWidth - 12,
             buttonY + 6,
-            0xFFE0E0E0
+            UITheme.TEXT_PRIMARY
         );
         sectionY += MODE_BUTTON_HEIGHT + SECTION_SPACING;
 
@@ -149,7 +150,7 @@ public class InventorySlotSelector {
             Text.literal(selectionText),
             x,
             sectionY,
-            0xFFAAAAAA
+            UITheme.TEXT_SECONDARY
         );
         sectionY += textRenderer.fontHeight;
 
@@ -175,8 +176,8 @@ public class InventorySlotSelector {
         int backgroundHeight = layout.height + GRID_PADDING * 2;
         int left = renderX;
 
-        context.fill(left, top, left + backgroundWidth, top + backgroundHeight, 0xFF1A1A1A);
-        DrawContextBridge.drawBorder(context, left, top, backgroundWidth, backgroundHeight, 0xFF444444);
+        context.fill(left, top, left + backgroundWidth, top + backgroundHeight, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, left, top, backgroundWidth, backgroundHeight, UITheme.BORDER_DEFAULT);
 
         slotBoxes.clear();
         int slotLeft = left + GRID_PADDING;
@@ -198,16 +199,16 @@ public class InventorySlotSelector {
                 fill = adjustColor(fill, 1.2f);
             }
             if (selected) {
-                fill = 0xFF87CEEB;
+                fill = UITheme.ACCENT_DEFAULT;
             }
             context.fill(slotX, slotY, slotX + SLOT_SIZE, slotY + SLOT_SIZE, fill);
-            DrawContextBridge.drawBorder(context, slotX, slotY, SLOT_SIZE, SLOT_SIZE, selected ? 0xFFFFFFFF : 0xFF555555);
+            DrawContextBridge.drawBorder(context, slotX, slotY, SLOT_SIZE, SLOT_SIZE, selected ? UITheme.TEXT_PRIMARY : UITheme.BORDER_SUBTLE);
 
             String label = String.valueOf(position.slotId);
             int textWidth = textRenderer.getWidth(label);
             int textX = slotX + (SLOT_SIZE - textWidth) / 2;
             int textY = slotY + 4;
-            context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, 0xFFFFFFFF);
+            context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, UITheme.TEXT_PRIMARY);
         }
 
         return backgroundHeight;
@@ -236,9 +237,9 @@ public class InventorySlotSelector {
         }
         int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
 
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF444444);
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF444444);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_DEFAULT);
+        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BORDER_DEFAULT);
 
         dropdownHoverIndex = -1;
         InventoryGuiMode[] modes = InventoryGuiMode.values();
@@ -252,7 +253,7 @@ public class InventorySlotSelector {
                 dropdownHoverIndex = optionIndex;
             }
 
-            int bg = option == mode ? 0xFF2D2D2D : 0xFF1A1A1A;
+            int bg = option == mode ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_SIDEBAR;
             if (hovered) {
                 bg = adjustColor(bg, 1.2f);
             }
@@ -262,12 +263,12 @@ public class InventorySlotSelector {
                 Text.literal(option.displayName),
                 dropdownX + MODE_BUTTON_TEXT_PADDING,
                 optionTop + 5,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
         }
 
         if (totalOptions > visibleCount) {
-            int indicatorColor = 0xFF666666;
+            int indicatorColor = UITheme.BORDER_HIGHLIGHT;
             if (dropdownScrollIndex > 0) {
                 context.drawTextWithShadow(textRenderer, Text.literal("▲"), dropdownX + dropdownWidth - 12, dropdownY + 2, indicatorColor);
             }

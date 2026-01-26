@@ -3,13 +3,14 @@ package com.pathmind.ui.graph;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
+import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
-import com.pathmind.execution.ExecutionManager;
+import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.MatrixStackBridge;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.MinecraftClient;
@@ -2055,7 +2056,7 @@ public class NodeGraph {
         boolean isStopControl = node.isStopControlNode();
 
         // Node background
-        int bgColor = node.isSelected() ? 0xFF404040 : 0xFF2A2A2A;
+        int bgColor = node.isSelected() ? 0xFF404040 : UITheme.BACKGROUND_SECONDARY;
         if (isOverSidebar) {
             bgColor = 0xFF333333; // Grey when over sidebar for deletion
         }
@@ -2074,7 +2075,7 @@ public class NodeGraph {
         if (node.isDragging()) {
             borderColor = 0xFFAAAAAA; // Medium grey outline when dragging
         } else if (node.isSelected()) {
-            borderColor = 0xFF87CEEB; // Light blue selection
+            borderColor = UITheme.ACCENT_DEFAULT; // Light blue selection
         } else if (node.getType() == NodeType.START) {
             borderColor = isOverSidebar ? toGrayscale(0xFF2E7D32, 0.75f) : 0xFF2E7D32; // Darker green for START
         } else if (node.getType() == NodeType.EVENT_FUNCTION) {
@@ -2092,7 +2093,7 @@ public class NodeGraph {
             borderColor = node.getType().getColor(); // Regular node type color
         }
         if (isOverSidebar && node.getType() != NodeType.START && !node.isDragging()) {
-            borderColor = 0xFF555555; // Darker grey border when over sidebar (for regular nodes)
+            borderColor = UITheme.BORDER_SUBTLE; // Darker grey border when over sidebar (for regular nodes)
         }
         DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
 
@@ -2100,7 +2101,7 @@ public class NodeGraph {
         if (simpleStyle) {
             String label = node.getType().getDisplayName().toUpperCase(java.util.Locale.ROOT);
             int textWidth = textRenderer.getWidth(label);
-            int titleColor = isOverSidebar ? 0xFFBBBBBB : 0xFFFFFFFF;
+            int titleColor = isOverSidebar ? 0xFFBBBBBB : UITheme.TEXT_PRIMARY;
             int textX;
             int textY;
             if (node.hasStopTargetInputField()) {
@@ -2123,7 +2124,7 @@ public class NodeGraph {
             context.fill(x + 1, y + 1, x + width - 1, y + 14, headerColor);
             
             // Node title
-            int titleColor = isOverSidebar ? 0xFF888888 : 0xFFFFFFFF; // Grey text when over sidebar
+            int titleColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY; // Grey text when over sidebar
             drawNodeText(
                 context,
                 textRenderer,
@@ -2139,12 +2140,12 @@ public class NodeGraph {
             for (int i = 0; i < node.getInputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && hoveredSocketIsInput);
                 boolean isActive = isSocketActive(node, i, true);
-                int socketColor = isHovered ? 0xFF87CEEB : node.getType().getColor(); // Light blue when hovered
+                int socketColor = isHovered ? UITheme.ACCENT_DEFAULT : node.getType().getColor(); // Light blue when hovered
                 if (!isActive && !isHovered) {
                     socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
                 }
                 if (isOverSidebar) {
-                    socketColor = 0xFF666666; // Grey sockets when over sidebar
+                    socketColor = UITheme.BORDER_HIGHLIGHT; // Grey sockets when over sidebar
                 }
                 renderSocket(context, node.getSocketX(true) - cameraX, node.getSocketY(i, true) - cameraY, true, socketColor);
             }
@@ -2153,12 +2154,12 @@ public class NodeGraph {
             for (int i = 0; i < node.getOutputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && !hoveredSocketIsInput);
                 boolean isActive = isSocketActive(node, i, false);
-                int socketColor = isHovered ? 0xFF87CEEB : node.getOutputSocketColor(i);
+                int socketColor = isHovered ? UITheme.ACCENT_DEFAULT : node.getOutputSocketColor(i);
                 if (!isActive && !isHovered) {
                     socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
                 }
                 if (isOverSidebar) {
-                    socketColor = 0xFF666666; // Grey sockets when over sidebar
+                    socketColor = UITheme.BORDER_HIGHLIGHT; // Grey sockets when over sidebar
                 }
                 renderSocket(context, node.getSocketX(false) - cameraX, node.getSocketY(i, false) - cameraY, false, socketColor);
             }
@@ -2173,9 +2174,9 @@ public class NodeGraph {
             // Draw play button (triangle pointing right) - with hover effect
             int playColor;
             if (hoveringStartButton) {
-                playColor = isOverSidebar ? 0xFFCCCCCC : 0xFFE0E0E0; // Darker when hovered
+                playColor = isOverSidebar ? 0xFFCCCCCC : UITheme.TEXT_PRIMARY; // Darker when hovered
             } else {
-                playColor = isOverSidebar ? 0xFFE0E0E0 : 0xFFFFFFFF; // Normal white
+                playColor = isOverSidebar ? UITheme.TEXT_PRIMARY : UITheme.TEXT_PRIMARY; // Normal white
             }
             int centerX = x + width / 2;
             int centerY = y + height / 2;
@@ -2352,7 +2353,7 @@ public class NodeGraph {
         } else {
             if (node.isParameterNode()) {
                 if (shouldShowParameters(node)) {
-                    int paramBgColor = isOverSidebar ? 0xFF2A2A2A : 0xFF1A1A1A; // Grey when over sidebar
+                    int paramBgColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR; // Grey when over sidebar
                     context.fill(x + 3, y + 16, x + width - 3, y + height - 3, paramBgColor);
 
                     // Render parameters
@@ -2361,7 +2362,7 @@ public class NodeGraph {
 
                     if (node.supportsModeSelection()) {
                         String modeLabel = trimTextToWidth(node.getModeDisplayLabel(), textRenderer, width - 10);
-                        int paramTextColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0; // Grey text when over sidebar
+                        int paramTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY; // Grey text when over sidebar
                         drawNodeText(
                             context,
                             textRenderer,
@@ -2380,7 +2381,7 @@ public class NodeGraph {
                         }
                         displayText = trimTextToWidth(displayText, textRenderer, width - 10);
 
-                        int paramTextColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0; // Grey text when over sidebar
+                        int paramTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY; // Grey text when over sidebar
                         drawNodeText(
                             context,
                             textRenderer,
@@ -2439,7 +2440,7 @@ public class NodeGraph {
         }
 
         String label = String.valueOf(number);
-        int textColor = isOverSidebar ? 0xFFCCCCCC : 0xFFFFFFFF;
+        int textColor = isOverSidebar ? 0xFFCCCCCC : UITheme.TEXT_PRIMARY;
         drawNodeText(context, textRenderer, label, x + 4, y + 4, textColor);
     }
 
@@ -2454,16 +2455,16 @@ public class NodeGraph {
         int fillColor;
         int textColor;
         if (isOverSidebar) {
-            borderColor = 0xFF666666;
-            fillColor = 0xFF2A2A2A;
-            textColor = 0xFF888888;
+            borderColor = UITheme.BORDER_HIGHLIGHT;
+            fillColor = UITheme.BACKGROUND_SECONDARY;
+            textColor = UITheme.TEXT_TERTIARY;
         } else {
             borderColor = node.getBooleanToggleValue() ? 0xFF5FB470 : 0xFFE07A7A;
             fillColor = node.getBooleanToggleValue() ? 0xFF1F3C28 : 0xFF4C1F1F;
             if (hovered) {
                 fillColor = adjustColorBrightness(fillColor, 1.15f);
             }
-            textColor = 0xFFFFFFFF;
+            textColor = UITheme.TEXT_PRIMARY;
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, fillColor);
@@ -2487,10 +2488,10 @@ public class NodeGraph {
             backgroundColor = 0xFF2E2E2E;
         }
 
-        int borderColor = node.hasAttachedSensor() ? 0xFF666666 : 0xFF444444;
+        int borderColor = node.hasAttachedSensor() ? UITheme.BORDER_HIGHLIGHT : 0xFF444444;
         if (sensorDropTarget == node) {
             backgroundColor = 0xFF21303E;
-            borderColor = 0xFF87CEEB;
+            borderColor = UITheme.ACCENT_DEFAULT;
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
@@ -2502,7 +2503,7 @@ public class NodeGraph {
             int textWidth = textRenderer.getWidth(display);
             int textX = slotX + Math.max(4, (slotWidth - textWidth) / 2);
             int textY = slotY + (slotHeight - textRenderer.fontHeight) / 2;
-            int textColor = sensorDropTarget == node ? 0xFF87CEEB : 0xFF888888;
+            int textColor = sensorDropTarget == node ? UITheme.ACCENT_DEFAULT : UITheme.TEXT_TERTIARY;
             drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
         }
     }
@@ -2518,7 +2519,7 @@ public class NodeGraph {
             backgroundColor = 0xFF2E2E2E;
         }
 
-        int borderColor = node.hasAttachedActionNode() ? 0xFF666666 : 0xFF444444;
+        int borderColor = node.hasAttachedActionNode() ? UITheme.BORDER_HIGHLIGHT : 0xFF444444;
         if (actionDropTarget == node) {
             backgroundColor = 0xFF2E3221;
             borderColor = 0xFF8BC34A;
@@ -2533,7 +2534,7 @@ public class NodeGraph {
             int textWidth = textRenderer.getWidth(display);
             int textX = slotX + Math.max(4, (slotWidth - textWidth) / 2);
             int textY = slotY + (slotHeight - textRenderer.fontHeight) / 2;
-            int textColor = actionDropTarget == node ? 0xFF8BC34A : 0xFF888888;
+            int textColor = actionDropTarget == node ? 0xFF8BC34A : UITheme.TEXT_TERTIARY;
             drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
         }
     }
@@ -2633,10 +2634,10 @@ public class NodeGraph {
             backgroundColor = occupied ? 0xFF2E2E2E : 0xFF202020;
         }
 
-        int borderColor = occupied ? 0xFF666666 : 0xFF444444;
+        int borderColor = occupied ? UITheme.BORDER_HIGHLIGHT : 0xFF444444;
         if (isDropTarget) {
             backgroundColor = 0xFF21303E;
-            borderColor = 0xFF87CEEB;
+            borderColor = UITheme.ACCENT_DEFAULT;
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
@@ -2651,17 +2652,17 @@ public class NodeGraph {
 
         if (!occupied && isDropTarget) {
             // Provide a minimal visual cue when dragging to an empty slot without adding text.
-            DrawContextBridge.drawBorder(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, 0xFF87CEEB);
+            DrawContextBridge.drawBorder(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, UITheme.ACCENT_DEFAULT);
         }
     }
 
     private void renderCoordinateInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
         int baseLabelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
-        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
-        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
-        int activeFieldBorder = 0xFF87CEEB;
-        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFF444444;
+        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = 0xFFE6F7FF;
 
         if (isEditingCoordinateField() && coordinateEditingNode == node) {
@@ -2734,11 +2735,11 @@ public class NodeGraph {
 
     private void renderAmountInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
         int baseLabelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
-        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
-        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
-        int activeFieldBorder = 0xFF87CEEB;
-        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFF444444;
+        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = 0xFFE6F7FF;
         boolean amountEnabled = node.isAmountInputEnabled();
 
@@ -2803,7 +2804,7 @@ public class NodeGraph {
             int toggleTop = node.getAmountToggleTop() - cameraY;
             int toggleWidth = node.getAmountToggleWidth();
             int toggleHeight = node.getAmountToggleHeight();
-            int toggleBorder = amountEnabled ? 0xFF87CEEB : 0xFF555555;
+            int toggleBorder = amountEnabled ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
             int toggleBg = amountEnabled ? 0xFF2E4334 : 0xFF2F2F2F;
             context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, toggleBg);
             DrawContextBridge.drawBorder(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
@@ -2818,11 +2819,11 @@ public class NodeGraph {
 
     private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
         int baseLabelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
-        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
-        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
-        int activeFieldBorder = 0xFF87CEEB;
-        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFF444444;
+        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = 0xFFE6F7FF;
 
         boolean editing = isEditingMessageField() && messageEditingNode == node;
@@ -2892,17 +2893,17 @@ public class NodeGraph {
         boolean addHovered = mouseX >= addLeft && mouseX <= addLeft + size && mouseY >= top && mouseY <= top + size;
         boolean removeHovered = mouseX >= removeLeft && mouseX <= removeLeft + size && mouseY >= top && mouseY <= top + size && canRemove;
 
-        int baseFill = isOverSidebar ? 0xFF2A2A2A : 0xFF1E1E1E;
-        int baseBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
+        int baseFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : 0xFF1E1E1E;
+        int baseBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFF444444;
 
         // Add button
         int addFill = addHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
-        int addBorder = addHovered ? 0xFF87CEEB : baseBorder;
+        int addBorder = addHovered ? UITheme.ACCENT_DEFAULT : baseBorder;
         context.fill(addLeft, top, addLeft + size, top + size, addFill);
         DrawContextBridge.drawBorder(context, addLeft, top, size, size, addBorder);
         int addTextX = addLeft + (size - textRenderer.getWidth("+")) / 2;
         int addTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, 0xFFFFFFFF);
+        drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, UITheme.TEXT_PRIMARY);
 
         // Remove button
         int removeFill = canRemove
@@ -2915,22 +2916,22 @@ public class NodeGraph {
         DrawContextBridge.drawBorder(context, removeLeft, top, size, size, removeBorder);
         int removeTextX = removeLeft + (size - textRenderer.getWidth("-")) / 2;
         int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
-        int removeTextColor = canRemove ? 0xFFFFFFFF : 0xFF777777;
+        int removeTextColor = canRemove ? UITheme.TEXT_PRIMARY : 0xFF777777;
         drawNodeText(context, textRenderer, Text.literal("-"), removeTextX, removeTextY, removeTextColor);
     }
 
     private void renderStopTargetInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
         int baseLabelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
-        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
         boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
         int fieldBorder = isActivateNode
-            ? (isOverSidebar ? 0xFF5A5A5A : 0xFF666666)
+            ? (isOverSidebar ? 0xFF5A5A5A : UITheme.BORDER_HIGHLIGHT)
             : (isOverSidebar ? 0xFF5F4A4A : 0xFF6A4A4A);
-        int activeFieldBorder = isActivateNode ? 0xFF888888 : 0xFFF0B1B1;
-        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int activeFieldBorder = isActivateNode ? UITheme.TEXT_TERTIARY : 0xFFF0B1B1;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = 0xFFFFEEEE;
-        int caretColor = isActivateNode ? 0xFFFFFFFF : 0xFFFFD6D6;
+        int caretColor = isActivateNode ? UITheme.TEXT_PRIMARY : 0xFFFFD6D6;
 
         boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
         if (editing) {
@@ -2993,11 +2994,11 @@ public class NodeGraph {
 
     private void renderSchematicDropdownField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
         int labelColor = isOverSidebar ? 0xFF777777 : 0xFFAAAAAA;
-        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? 0xFF2F2F2F : 0xFF242424;
-        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFF444444;
         int activeFieldBorder = 0xFF9CCC65;
-        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
 
         boolean open = schematicDropdownOpen && schematicDropdownNode == node;
 
@@ -3034,7 +3035,7 @@ public class NodeGraph {
         int arrowX = fieldLeft + fieldWidth - 10;
         int arrowY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
         String arrow = open ? ">" : "v";
-        drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, arrowY, 0xFFFFFFFF);
+        drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, arrowY, UITheme.TEXT_PRIMARY);
     }
 
     private void renderSchematicDropdownList(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
@@ -3042,9 +3043,9 @@ public class NodeGraph {
             return;
         }
 
-        int fieldBackground = isOverSidebar ? 0xFF252525 : 0xFF1A1A1A;
-        int fieldBorder = isOverSidebar ? 0xFF555555 : 0xFF444444;
-        int textColor = isOverSidebar ? 0xFF888888 : 0xFFE0E0E0;
+        int fieldBackground = isOverSidebar ? 0xFF252525 : UITheme.BACKGROUND_SIDEBAR;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFF444444;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
 
         List<String> options = schematicDropdownOptions;
         int optionCount = options.isEmpty() ? 1 : options.size();
@@ -4836,7 +4837,7 @@ public class NodeGraph {
         DrawContextBridge.drawBorder(context, x - 3, y - 3, 6, 6, 0xFF000000);
         
         // Socket highlight
-        context.fill(x - 1, y - 1, x + 1, y + 1, 0xFFFFFFFF);
+        context.fill(x - 1, y - 1, x + 1, y + 1, UITheme.TEXT_PRIMARY);
     }
 
     private boolean isSocketConnected(Node node, int socketIndex, boolean isInput) {
@@ -4930,7 +4931,7 @@ public class NodeGraph {
 
                 if (onlyDragged) {
                     // Highlight the target socket above nodes while dragging.
-                    renderSocket(context, targetX, targetY, hoveredSocketIsInput, 0xFF87CEEB); // Light blue highlight
+                    renderSocket(context, targetX, targetY, hoveredSocketIsInput, UITheme.ACCENT_DEFAULT); // Light blue highlight
                 }
             }
 

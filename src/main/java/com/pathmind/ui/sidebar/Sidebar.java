@@ -3,7 +3,11 @@ package com.pathmind.ui.sidebar;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.ui.animation.AnimatedValue;
+import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneDependencyChecker;
+import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
@@ -12,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.pathmind.util.DrawContextBridge;
 
 /**
  * Manages the sidebar with categorized draggable nodes.
@@ -39,17 +42,11 @@ public class Sidebar {
     private static final int CATEGORY_HEADER_LINE_SPACING = 2;
     private static final int GROUP_HEADER_HEIGHT = 16;
     private static final int GROUP_HEADER_LINE_SPACING = 2;
-    
-    // Colors
-    private static final int DARK_GREY_ALT = 0xFF2A2A2A;
-    private static final int DARKER_GREY = 0xFF1F1F1F;
-    private static final int WHITE_MUTED = 0xFFE0E0E0;
-    private static final int GREY_LINE = 0xFF666666;
-    private static final int HOVER_COLOR = 0xFF404040;
-    
+
     private final Map<NodeCategory, List<NodeType>> categoryNodes;
     private final Map<NodeCategory, List<NodeGroup>> groupedCategoryNodes;
     private final Map<NodeCategory, Boolean> categoryExpanded;
+    private final Map<NodeCategory, AnimatedValue> tabHoverAnimations;
     private final boolean baritoneAvailable;
     private NodeType hoveredNodeType = null;
     private NodeCategory hoveredCategory = null;
@@ -67,6 +64,7 @@ public class Sidebar {
         this.categoryExpanded = new HashMap<>();
         this.categoryNodes = new HashMap<>();
         this.groupedCategoryNodes = new HashMap<>();
+        this.tabHoverAnimations = new HashMap<>();
         this.baritoneAvailable = baritoneAvailable;
         
         // Initialize categories as expanded by default
@@ -327,13 +325,13 @@ public class Sidebar {
         calculateMaxScroll(sidebarHeight, headerHeight, groupHeaders);
         
         // Outer sidebar background
-        int outerColor = totalWidth > currentInnerSidebarWidth ? DARK_GREY_ALT : DARKER_GREY;
+        int outerColor = totalWidth > currentInnerSidebarWidth ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         context.fill(0, sidebarStartY, totalWidth, sidebarStartY + sidebarHeight, outerColor);
-        context.drawVerticalLine(totalWidth, sidebarStartY, sidebarStartY + sidebarHeight, GREY_LINE);
-        
+        context.drawVerticalLine(totalWidth, sidebarStartY, sidebarStartY + sidebarHeight, UITheme.BORDER_SUBTLE);
+
         // Inner sidebar background (for tabs)
-        context.fill(0, sidebarStartY, currentInnerSidebarWidth, sidebarStartY + sidebarHeight, DARKER_GREY);
-        context.drawVerticalLine(currentInnerSidebarWidth, sidebarStartY, sidebarStartY + sidebarHeight, GREY_LINE);
+        context.fill(0, sidebarStartY, currentInnerSidebarWidth, sidebarStartY + sidebarHeight, UITheme.BACKGROUND_SIDEBAR);
+        context.drawVerticalLine(currentInnerSidebarWidth, sidebarStartY, sidebarStartY + sidebarHeight, UITheme.BORDER_SUBTLE);
 
         // Tabs stay static (don't scroll with content)
         int currentY = sidebarStartY + TOP_PADDING;
@@ -356,38 +354,40 @@ public class Sidebar {
             int tabY = currentY + row * (TAB_SIZE + TAB_SPACING);
             int tabX = TAB_COLUMN_MARGIN + column * (TAB_SIZE + TAB_COLUMN_SPACING);
             visibleTabIndex++; // Increment only for visible tabs
-            
+
             // Check if tab is hovered
-            boolean tabHovered = mouseX >= tabX && mouseX <= tabX + TAB_SIZE && 
+            boolean tabHovered = mouseX >= tabX && mouseX <= tabX + TAB_SIZE &&
                                mouseY >= tabY && mouseY < tabY + TAB_SIZE;
-            
+
             // Check if tab is selected
             boolean tabSelected = category == selectedCategory;
-            
-            // Tab background color
+
+            // Get or create hover animation for this tab
+            AnimatedValue hoverAnim = tabHoverAnimations.computeIfAbsent(category, k -> AnimatedValue.forHover());
+            hoverAnim.animateTo(tabHovered ? 1f : 0f, UITheme.HOVER_ANIM_MS);
+            hoverAnim.tick();
+            float hoverProgress = hoverAnim.getValue();
+
+            // Tab background color with smooth hover transition
             int baseColor = category.getColor();
-            int tabColor = baseColor;
-            if (tabSelected) {
-                // Darken the category color for selected state
-                tabColor = darkenColor(baseColor, 0.75f);
-            } else if (tabHovered) {
-                tabColor = lightenColor(baseColor, 1.2f);
-            }
-            
+            int normalColor = tabSelected ? darkenColor(baseColor, 0.75f) : baseColor;
+            int hoverColor = lightenColor(baseColor, 1.2f);
+            int tabColor = tabSelected ? normalColor : AnimationHelper.lerpColor(normalColor, hoverColor, hoverProgress);
+
             // Render square tab
             context.fill(tabX, tabY, tabX + TAB_SIZE, tabY + TAB_SIZE, tabColor);
-            
-            // Tab outline slightly darker than base color
-            int outlineColor = darkenColor(baseColor, 0.8f);
+
+            // Tab outline - subtle border
+            int outlineColor = darkenColor(baseColor, 0.7f);
             DrawContextBridge.drawBorder(context, tabX, tabY, TAB_SIZE, TAB_SIZE, outlineColor);
-            
-            // Render centered icon with bigger appearance
+
+            // Render centered icon
             String icon = category.getIcon();
             int iconX = tabX + (TAB_SIZE - textRenderer.getWidth(icon)) / 2;
             int iconY = tabY + (TAB_SIZE - textRenderer.fontHeight) / 2 + 1;
-            
-            context.drawTextWithShadow(textRenderer, icon, iconX, iconY, 0xFFFFFFFF);
-            
+
+            context.drawTextWithShadow(textRenderer, icon, iconX, iconY, UITheme.TEXT_HEADER);
+
             // Update hover state
             if (tabHovered) {
                 hoveredCategory = category;
@@ -440,7 +440,7 @@ public class Sidebar {
                                 Text.literal(line),
                                 contentTextX,
                                 groupTextY,
-                                GREY_LINE
+                                UITheme.TEXT_TERTIARY
                             );
                             groupTextY += groupLineHeight;
                         }
@@ -457,21 +457,21 @@ public class Sidebar {
 
                             if (nodeHovered) {
                                 hoveredNodeType = nodeType;
-                                context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, HOVER_COLOR);
+                                context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
                             }
 
                             int indicatorSize = 12;
                             int indicatorX = currentInnerSidebarWidth + 8;
                             int indicatorY = contentY + 3;
                             context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
-                            DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
+                            DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, UITheme.BORDER_SUBTLE);
 
                             context.drawTextWithShadow(
                                 textRenderer,
                                 Text.literal(nodeType.getDisplayName()),
                                 indicatorX + indicatorSize + 4,
                                 contentY + 4,
-                                WHITE_MUTED
+                                UITheme.TEXT_PRIMARY
                             );
 
                             contentY += NODE_HEIGHT;
@@ -490,21 +490,21 @@ public class Sidebar {
 
                         if (nodeHovered) {
                             hoveredNodeType = nodeType;
-                            context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, HOVER_COLOR);
+                            context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
                         }
 
                         int indicatorSize = 12;
                         int indicatorX = currentInnerSidebarWidth + 8; // Align with category title
                         int indicatorY = contentY + 3;
                         context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
-                        DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, 0xFF000000);
-                        
+                        DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, UITheme.BORDER_SUBTLE);
+
                         context.drawTextWithShadow(
                             textRenderer,
                             Text.literal(nodeType.getDisplayName()),
                             indicatorX + indicatorSize + 4, // Position after the indicator with some spacing
                             contentY + 4,
-                            WHITE_MUTED
+                            UITheme.TEXT_PRIMARY
                         );
                         
                         contentY += NODE_HEIGHT;
@@ -593,22 +593,14 @@ public class Sidebar {
      * Darkens a color by the specified factor
      */
     private int darkenColor(int color, float factor) {
-        int a = (color >> 24) & 0xFF;
-        int r = (int) (((color >> 16) & 0xFF) * factor);
-        int g = (int) (((color >> 8) & 0xFF) * factor);
-        int b = (int) ((color & 0xFF) * factor);
-        return (a << 24) | (r << 16) | (g << 8) | b;
+        return AnimationHelper.darken(color, factor);
     }
-    
+
     /**
      * Lightens a color by the specified factor
      */
     private int lightenColor(int color, float factor) {
-        int a = (color >> 24) & 0xFF;
-        int r = Math.min(255, (int) (((color >> 16) & 0xFF) * factor));
-        int g = Math.min(255, (int) (((color >> 8) & 0xFF) * factor));
-        int b = Math.min(255, (int) ((color & 0xFF) * factor));
-        return (a << 24) | (r << 16) | (g << 8) | b;
+        return AnimationHelper.brighten(color, factor);
     }
 
     private List<String> wrapText(String text, TextRenderer textRenderer, int maxWidth) {
@@ -694,13 +686,13 @@ public class Sidebar {
         }
 
         int trackRight = totalWidth - SCROLLBAR_MARGIN;
-        int trackLeft = trackRight - SCROLLBAR_WIDTH;
+        int trackLeft = trackRight - UITheme.SCROLLBAR_WIDTH;
         int trackTop = contentTop;
         int trackBottom = contentBottom;
         int trackHeight = Math.max(1, trackBottom - trackTop);
 
-        context.fill(trackLeft, trackTop, trackRight, trackBottom, 0xFF1A1A1A);
-        DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, 0xFF444444);
+        // Slim track background
+        context.fill(trackLeft, trackTop, trackRight, trackBottom, UITheme.BACKGROUND_SIDEBAR);
 
         int visibleHeight = Math.max(1, contentBottom - contentTop);
         int totalScrollableHeight = Math.max(visibleHeight, visibleHeight + maxScroll);
@@ -710,7 +702,8 @@ public class Sidebar {
         int knobOffset = maxKnobTravel <= 0 ? 0 : (int) (scrollRatio * maxKnobTravel);
         int knobTop = trackTop + knobOffset;
 
-        context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight, 0xFF777777);
+        // Scrollbar knob
+        context.fill(trackLeft, knobTop, trackRight, knobTop + knobHeight, UITheme.BORDER_DEFAULT);
     }
 
     private static final class GroupHeaderInfo {

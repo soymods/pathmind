@@ -1,11 +1,12 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.nodes.Node;
-import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeMode;
+import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.control.InventorySlotSelector;
+import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
 import net.minecraft.block.Block;
@@ -376,11 +377,11 @@ public class NodeParameterOverlay {
         }
 
         // Render semi-transparent background overlay
-        context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), 0x80000000);
+        context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), UITheme.OVERLAY_BACKGROUND);
 
         // Render popup background
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, 0xFF2A2A2A);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, 0xFF666666); // Grey outline
+        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_HIGHLIGHT); // Grey outline
 
         // Render title
         context.drawTextWithShadow(
@@ -388,7 +389,7 @@ public class NodeParameterOverlay {
             Text.literal("Edit Parameters: " + node.getType().getDisplayName()),
             popupX + 20,
             popupY + 15,
-            0xFFFFFFFF
+            UITheme.TEXT_PRIMARY
         );
 
         updateButtonPositions();
@@ -406,7 +407,7 @@ public class NodeParameterOverlay {
                 Text.literal("Mode:"),
                 popupX + 20,
                 sectionY + 4,
-                0xFFE0E0E0
+                UITheme.TEXT_PRIMARY
             );
 
             int modeButtonX = popupX + 20;
@@ -417,8 +418,8 @@ public class NodeParameterOverlay {
             boolean modeButtonHovered = mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
                                       mouseY >= modeButtonY && mouseY <= modeButtonY + modeButtonHeight;
 
-            int modeBgColor = modeButtonHovered ? adjustColorBrightness(0xFF1A1A1A, 1.1f) : 0xFF1A1A1A;
-            int modeBorderColor = modeButtonHovered ? 0xFF87CEEB : 0xFF666666;
+            int modeBgColor = modeButtonHovered ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.1f) : UITheme.BACKGROUND_SIDEBAR;
+            int modeBorderColor = modeButtonHovered ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_HIGHLIGHT;
 
             context.fill(modeButtonX, modeButtonY, modeButtonX + modeButtonWidth, modeButtonY + modeButtonHeight, modeBgColor);
             DrawContextBridge.drawBorder(context, modeButtonX, modeButtonY, modeButtonWidth, modeButtonHeight, modeBorderColor);
@@ -429,7 +430,7 @@ public class NodeParameterOverlay {
                 Text.literal(modeText),
                 modeButtonX + 4,
                 modeButtonY + 6,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
 
             context.drawTextWithShadow(
@@ -437,7 +438,7 @@ public class NodeParameterOverlay {
                 Text.literal("▼"),
                 modeButtonX + modeButtonWidth - 16,
                 modeButtonY + 6,
-                0xFFE0E0E0
+                UITheme.TEXT_PRIMARY
             );
 
             sectionY = modeButtonY + modeButtonHeight + SECTION_SPACING;
@@ -454,7 +455,7 @@ public class NodeParameterOverlay {
                 Text.literal(param.getName() + " (" + param.getType().getDisplayName() + "):"),
                 popupX + 20,
                 sectionY + 4,
-                0xFFE0E0E0
+                UITheme.TEXT_PRIMARY
             );
 
             int fieldX = popupX + 20;
@@ -493,14 +494,14 @@ public class NodeParameterOverlay {
             int bgColor;
             int borderColor;
             if (dropdownActive) {
-                bgColor = adjustColorBrightness(0xFF1A1A1A, 1.2f);
-                borderColor = 0xFF87CEEB;
+                bgColor = adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.2f);
+                borderColor = UITheme.ACCENT_DEFAULT;
             } else if (isFocused) {
-                bgColor = 0xFF2A2A2A;
-                borderColor = 0xFF87CEEB;
+                bgColor = UITheme.BACKGROUND_SECONDARY;
+                borderColor = UITheme.ACCENT_DEFAULT;
             } else {
-                bgColor = 0xFF1A1A1A;
-                borderColor = 0xFF666666;
+                bgColor = UITheme.BACKGROUND_SIDEBAR;
+                borderColor = UITheme.BORDER_HIGHLIGHT;
             }
 
             context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
@@ -512,10 +513,10 @@ public class NodeParameterOverlay {
                 int textColor;
                 if (!functionDropdownEnabled) {
                     displayValue = "";
-                    textColor = 0xFF666666;
+                    textColor = UITheme.BORDER_HIGHLIGHT;
                 } else {
                     displayValue = (text == null || text.isEmpty()) ? "select function" : text;
-                    textColor = (text == null || text.isEmpty()) ? 0xFFAAAAAA : 0xFFFFFFFF;
+                    textColor = (text == null || text.isEmpty()) ? UITheme.TEXT_SECONDARY : UITheme.TEXT_PRIMARY;
                 }
                 int availableWidth = fieldWidth - 24;
                 String displayText = trimDisplayString(textRenderer, displayValue, availableWidth);
@@ -531,7 +532,7 @@ public class NodeParameterOverlay {
                     Text.literal("▼"),
                     fieldX + fieldWidth - 14,
                     fieldY + 6,
-                    functionDropdownEnabled ? 0xFFE0E0E0 : 0xFF555555
+                    functionDropdownEnabled ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY
                 );
             } else {
                 String baseValue = text != null ? text : "";
@@ -541,13 +542,13 @@ public class NodeParameterOverlay {
                 if (showingPlaceholder) {
                     String placeholder = getPlaceholderText(i);
                     displayText = trimDisplayString(textRenderer, placeholder, fieldWidth - 8);
-                    textColor = 0xFF888888;
+                    textColor = UITheme.TEXT_TERTIARY;
                 } else if (isFocused) {
                     displayText = baseValue;
-                    textColor = 0xFFFFFFFF;
+                    textColor = UITheme.TEXT_PRIMARY;
                 } else {
                     displayText = trimDisplayString(textRenderer, baseValue, fieldWidth - 8);
-                    textColor = 0xFFFFFFFF;
+                    textColor = UITheme.TEXT_PRIMARY;
                 }
                 int textX = fieldX + 4;
                 int textY = fieldY + 6;
@@ -592,7 +593,7 @@ public class NodeParameterOverlay {
                         int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
                         int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
                         caretX = Math.min(caretX, fieldX + fieldWidth - 2);
-                        context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4, 0xFFFFFFFF);
+                        context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4, UITheme.TEXT_PRIMARY);
                     }
                 }
             }
@@ -649,8 +650,8 @@ public class NodeParameterOverlay {
                 }
             }
 
-            context.fill(modeButtonX, dropdownY, modeButtonX + modeButtonWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-            DrawContextBridge.drawBorder(context, modeButtonX, dropdownY, modeButtonWidth, dropdownHeight, 0xFF666666);
+            context.fill(modeButtonX, dropdownY, modeButtonX + modeButtonWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
+            DrawContextBridge.drawBorder(context, modeButtonX, dropdownY, modeButtonWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
 
             for (int i = 0; i < availableModes.size(); i++) {
                 NodeMode mode = availableModes.get(i);
@@ -658,7 +659,7 @@ public class NodeParameterOverlay {
 
                 boolean isSelected = selectedMode == mode;
                 boolean isHovered = i == modeDropdownHoverIndex;
-                int optionColor = isSelected ? adjustColorBrightness(0xFF1A1A1A, 0.9f) : 0xFF1A1A1A;
+                int optionColor = isSelected ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 0.9f) : UITheme.BACKGROUND_SIDEBAR;
                 if (isHovered) {
                     optionColor = adjustColorBrightness(optionColor, 1.2f);
                 }
@@ -669,7 +670,7 @@ public class NodeParameterOverlay {
                     Text.literal(mode.getDisplayName()),
                     modeButtonX + 4,
                     optionY + 6,
-                    0xFFFFFFFF
+                    UITheme.TEXT_PRIMARY
                 );
             }
         }
@@ -695,9 +696,9 @@ public class NodeParameterOverlay {
         boolean hovered = mouseX >= button.getX() && mouseX <= button.getX() + button.getWidth() &&
                          mouseY >= button.getY() && mouseY <= button.getY() + button.getHeight();
 
-        int bgColor = hovered ? 0xFF505050 : 0xFF3A3A3A;
+        int bgColor = hovered ? UITheme.BUTTON_DEFAULT_HOVER : UITheme.BUTTON_DEFAULT_BG;
         context.fill(button.getX(), button.getY(), button.getX() + button.getWidth(), button.getY() + button.getHeight(), bgColor);
-        DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(), 0xFF666666);
+        DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(), UITheme.BORDER_HIGHLIGHT);
 
         // Render button text
         context.drawCenteredTextWithShadow(
@@ -705,7 +706,7 @@ public class NodeParameterOverlay {
             button.getMessage(),
             button.getX() + button.getWidth() / 2,
             button.getY() + 6,
-            0xFFFFFFFF
+            UITheme.TEXT_PRIMARY
         );
     }
 
@@ -720,8 +721,8 @@ public class NodeParameterOverlay {
         int trackBottom = contentBottom;
         int trackHeight = Math.max(1, trackBottom - trackTop);
 
-        context.fill(trackLeft, trackTop, trackRight, trackBottom, 0xFF1A1A1A);
-        DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, 0xFF444444);
+        context.fill(trackLeft, trackTop, trackRight, trackBottom, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, UITheme.BORDER_DEFAULT);
 
         int visibleScrollableHeight = Math.max(1, contentBottom - contentTop);
         int totalScrollableHeight = Math.max(visibleScrollableHeight, visibleScrollableHeight + maxScroll);
@@ -730,7 +731,7 @@ public class NodeParameterOverlay {
         int knobOffset = maxKnobTravel <= 0 ? 0 : (int) ((float) scrollOffset / (float) maxScroll * maxKnobTravel);
         int knobTop = trackTop + knobOffset;
 
-        context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight, 0xFF777777);
+        context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight, UITheme.BORDER_DEFAULT);
     }
 
     private void persistInventorySlotModeValue() {
@@ -853,8 +854,8 @@ public class NodeParameterOverlay {
             }
         }
 
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
 
         if (options.isEmpty()) {
             int textY = dropdownY + (DROPDOWN_OPTION_HEIGHT - textRenderer.fontHeight) / 2 + 1;
@@ -863,7 +864,7 @@ public class NodeParameterOverlay {
                 Text.literal("No functions available"),
                 dropdownX + 4,
                 textY,
-                0xFFAAAAAA
+                UITheme.TEXT_SECONDARY
             );
             return;
         }
@@ -877,7 +878,7 @@ public class NodeParameterOverlay {
             boolean isHovered = i == functionDropdownHoverIndex;
             boolean isSelected = currentValue != null && currentValue.equals(options.get(i));
 
-            int optionColor = isSelected ? adjustColorBrightness(0xFF1A1A1A, 0.9f) : 0xFF1A1A1A;
+            int optionColor = isSelected ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 0.9f) : UITheme.BACKGROUND_SIDEBAR;
             if (isHovered) {
                 optionColor = adjustColorBrightness(optionColor, 1.2f);
             }
@@ -889,7 +890,7 @@ public class NodeParameterOverlay {
                 Text.literal(display),
                 dropdownX + 4,
                 optionTop + 6,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
         }
     }
@@ -907,21 +908,21 @@ public class NodeParameterOverlay {
         int bgColor;
         int borderColor;
         if (dropdownActive) {
-            bgColor = adjustColorBrightness(0xFF1A1A1A, 1.2f);
-            borderColor = 0xFF87CEEB;
+            bgColor = adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.2f);
+            borderColor = UITheme.ACCENT_DEFAULT;
         } else if (hovered) {
-            bgColor = adjustColorBrightness(0xFF1A1A1A, 1.1f);
-            borderColor = 0xFF87CEEB;
+            bgColor = adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.1f);
+            borderColor = UITheme.ACCENT_DEFAULT;
         } else {
-            bgColor = 0xFF1A1A1A;
-            borderColor = 0xFF666666;
+            bgColor = UITheme.BACKGROUND_SIDEBAR;
+            borderColor = UITheme.BORDER_HIGHLIGHT;
         }
 
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
         DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
         String display = getBlockStateDisplayText(hasOptions);
-        int textColor = hasOptions ? 0xFFFFFFFF : 0xFF777777;
+        int textColor = hasOptions ? UITheme.TEXT_PRIMARY : UITheme.BORDER_DEFAULT;
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(display),
@@ -930,7 +931,7 @@ public class NodeParameterOverlay {
             textColor
         );
 
-        int arrowColor = hasOptions ? 0xFFE0E0E0 : 0xFF555555;
+        int arrowColor = hasOptions ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
         context.drawTextWithShadow(
             textRenderer,
             Text.literal("▼"),
@@ -967,8 +968,8 @@ public class NodeParameterOverlay {
         int optionCount = blockStateOptions.size();
         int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
 
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
 
         blockStateDropdownHoverIndex = -1;
         if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -989,7 +990,7 @@ public class NodeParameterOverlay {
             BlockSelection.StateOption option = blockStateOptions.get(i);
             boolean isSelected = option.value().equalsIgnoreCase(currentValue);
             boolean isHovered = i == blockStateDropdownHoverIndex;
-            int optionColor = isSelected ? adjustColorBrightness(0xFF1A1A1A, 0.9f) : 0xFF1A1A1A;
+            int optionColor = isSelected ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 0.9f) : UITheme.BACKGROUND_SIDEBAR;
             if (isHovered) {
                 optionColor = adjustColorBrightness(optionColor, 1.2f);
             }
@@ -999,7 +1000,7 @@ public class NodeParameterOverlay {
                 Text.literal(option.displayText()),
                 dropdownX + 4,
                 optionTop + 6,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
         }
     }
@@ -1702,8 +1703,8 @@ public class NodeParameterOverlay {
     private int renderKeySelector(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth,
                                   int mouseX, int mouseY, int paramIndex) {
         int totalHeight = getKeySelectorHeight();
-        int backgroundColor = 0xFF1A1A1A;
-        int borderColor = 0xFF666666;
+        int backgroundColor = UITheme.BACKGROUND_SIDEBAR;
+        int borderColor = UITheme.BORDER_HIGHLIGHT;
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + totalHeight, backgroundColor);
         DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, totalHeight, borderColor);
 
@@ -1729,11 +1730,11 @@ public class NodeParameterOverlay {
                     mouseY >= rowTop && mouseY <= rowTop + keyHeight;
                 boolean selected = currentValue != null && currentValue.equalsIgnoreCase(key.value);
 
-                int keyBase = selected ? 0xFF2F5E8A : 0xFF2A2A2A;
+                int keyBase = selected ? 0xFF2F5E8A : UITheme.BACKGROUND_SECONDARY;
                 if (hovered) {
                     keyBase = adjustColorBrightness(keyBase, 1.2f);
                 }
-                int keyBorder = selected ? 0xFF87CEEB : 0xFF555555;
+                int keyBorder = selected ? UITheme.ACCENT_DEFAULT : UITheme.TEXT_TERTIARY;
                 context.fill(keyX, rowTop, keyX + keyWidth, rowTop + keyHeight, keyBase);
                 DrawContextBridge.drawBorder(context, keyX, rowTop, keyWidth, keyHeight, keyBorder);
 
@@ -1741,7 +1742,7 @@ public class NodeParameterOverlay {
                 int textWidth = textRenderer.getWidth(label);
                 int textX = keyX + Math.max(2, (keyWidth - textWidth) / 2);
                 int textY = rowTop + (keyHeight - textRenderer.fontHeight) / 2 + 1;
-                context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, 0xFFFFFFFF);
+                context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, UITheme.TEXT_PRIMARY);
 
                 keyX += keyWidth + KEY_SELECTOR_KEY_GAP;
             }
@@ -2305,8 +2306,8 @@ public class NodeParameterOverlay {
         int maxScroll = Math.max(0, blockItemDropdownOptions.size() - visibleCount);
         blockItemDropdownScrollOffset = MathHelper.clamp(blockItemDropdownScrollOffset, 0, maxScroll);
 
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, 0xFF1A1A1A);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, 0xFF666666);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
 
         blockItemDropdownHoverIndex = -1;
         if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -2323,7 +2324,7 @@ public class NodeParameterOverlay {
         for (int i = startIndex; i < endIndex; i++) {
             int optionTop = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
             boolean isHovered = i == blockItemDropdownHoverIndex;
-            int optionColor = 0xFF1A1A1A;
+            int optionColor = UITheme.BACKGROUND_SIDEBAR;
             if (isHovered) {
                 optionColor = adjustColorBrightness(optionColor, 1.2f);
             }
@@ -2349,7 +2350,7 @@ public class NodeParameterOverlay {
                 Text.literal(display),
                 textX,
                 optionTop + 6,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
         }
     }
@@ -2433,7 +2434,7 @@ public class NodeParameterOverlay {
                 Text.literal(value),
                 textX,
                 textY,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
             return;
         }
@@ -2445,7 +2446,7 @@ public class NodeParameterOverlay {
                 Text.literal(value),
                 textX,
                 textY,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
             return;
         }
@@ -2459,7 +2460,7 @@ public class NodeParameterOverlay {
                 Text.literal(value),
                 textX,
                 textY,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
             return;
         }
@@ -2472,7 +2473,7 @@ public class NodeParameterOverlay {
                 Text.literal(trimmed),
                 textX,
                 textY,
-                0xFFFFFFFF
+                UITheme.TEXT_PRIMARY
             );
             return;
         }
@@ -2482,7 +2483,7 @@ public class NodeParameterOverlay {
             Text.literal(value),
             textX,
             textY,
-            0xFFFFFFFF
+            UITheme.TEXT_PRIMARY
         );
 
         String remainder = fullSuggestion.substring(value.length());
@@ -2495,7 +2496,7 @@ public class NodeParameterOverlay {
                     Text.literal(trimmedRemainder),
                     textX + valueWidth,
                     textY,
-                    0xFF777777
+                    UITheme.BORDER_DEFAULT
                 );
             }
         }

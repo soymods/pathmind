@@ -598,7 +598,7 @@ public class Sidebar {
     }
     
     public int getWidth() {
-        return selectedCategory != null ? OUTER_SIDEBAR_WIDTH : currentInnerSidebarWidth;
+        return currentRenderedWidth;
     }
 
     /**

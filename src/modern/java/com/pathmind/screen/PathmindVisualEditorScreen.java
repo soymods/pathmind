@@ -117,6 +117,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean presetDropdownOpen = false;
     private final AnimatedValue presetDropdownAnimation = AnimatedValue.forHover();
+    private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
     private List<String> availablePresets = new ArrayList<>();
     private String activePresetName = "";
     private boolean createPresetPopupVisible = false;
@@ -227,9 +228,11 @@ public class PathmindVisualEditorScreen extends Screen {
         
         boolean titleHovered = isTitleHovered(mouseX, mouseY);
         boolean titleActive = titleHovered || infoPopupVisible;
+        titleUnderlineAnimation.animateTo(titleActive ? 1f : 0f, UITheme.HOVER_ANIM_MS);
+        titleUnderlineAnimation.tick();
 
         // Render title bar text
-        drawTitle(context, titleActive);
+        drawTitle(context, titleUnderlineAnimation.getValue());
         
         // Update mouse hover for socket highlighting
         nodeGraph.updateMouseHover(mouseX, mouseY);
@@ -307,7 +310,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Re-render title bar on top of everything to ensure it's always visible
         context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
-        drawTitle(context, titleActive);
+        drawTitle(context, titleUnderlineAnimation.getValue());
 
         // Controls are already rendered before overlays so they appear dimmed underneath
     }
@@ -1484,16 +1487,19 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
     }
 
-    private void drawTitle(DrawContext context, boolean underline) {
+    private void drawTitle(DrawContext context, float underlineProgress) {
         int centerX = this.width / 2;
         int textY = (TITLE_BAR_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
         context.drawCenteredTextWithShadow(this.textRenderer, TITLE_TEXT, centerX, textY, UITheme.TEXT_PRIMARY);
 
-        if (underline) {
+        if (underlineProgress > 0.001f) {
             int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
-            int underlineStartX = centerX - textWidth / 2;
-            int underlineY = textY + this.textRenderer.fontHeight;
-            context.fill(underlineStartX, underlineY, underlineStartX + textWidth, underlineY + 1, UITheme.TEXT_PRIMARY);
+            int underlineWidth = Math.round(textWidth * underlineProgress);
+            if (underlineWidth > 0) {
+                int underlineStartX = centerX - underlineWidth / 2;
+                int underlineY = textY + this.textRenderer.fontHeight;
+                context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, UITheme.TEXT_PRIMARY);
+            }
         }
     }
 

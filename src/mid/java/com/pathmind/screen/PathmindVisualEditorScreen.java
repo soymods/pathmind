@@ -9,6 +9,7 @@ import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
+import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
@@ -109,8 +110,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private NodeType draggingNodeType = null;
 
     // Workspace dialogs
-    private boolean clearPopupVisible = false;
-    private boolean importExportPopupVisible = false;
+    private final PopupAnimationHandler clearPopupAnimation = new PopupAnimationHandler();
+    private final PopupAnimationHandler importExportPopupAnimation = new PopupAnimationHandler();
     private Path lastImportExportPath;
     private String importExportStatus = "";
     private int importExportStatusColor = UITheme.TEXT_SECONDARY;
@@ -120,20 +121,20 @@ public class PathmindVisualEditorScreen extends Screen {
     private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
     private List<String> availablePresets = new ArrayList<>();
     private String activePresetName = "";
-    private boolean createPresetPopupVisible = false;
+    private final PopupAnimationHandler createPresetPopupAnimation = new PopupAnimationHandler();
     private TextFieldWidget createPresetField;
     private String createPresetStatus = "";
     private int createPresetStatusColor = UITheme.TEXT_SECONDARY;
-    private boolean renamePresetPopupVisible = false;
+    private final PopupAnimationHandler renamePresetPopupAnimation = new PopupAnimationHandler();
     private TextFieldWidget renamePresetField;
     private String renamePresetStatus = "";
     private int renamePresetStatusColor = UITheme.TEXT_SECONDARY;
     private String pendingPresetRenameName = "";
-    private boolean infoPopupVisible = false;
-    private boolean presetDeletePopupVisible = false;
+    private final PopupAnimationHandler infoPopupAnimation = new PopupAnimationHandler();
+    private final PopupAnimationHandler presetDeletePopupAnimation = new PopupAnimationHandler();
     private String pendingPresetDeletionName = "";
-    private boolean missingBaritonePopupVisible = false;
-    private boolean settingsPopupVisible = false;
+    private final PopupAnimationHandler missingBaritonePopupAnimation = new PopupAnimationHandler();
+    private final PopupAnimationHandler settingsPopupAnimation = new PopupAnimationHandler();
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
     private AccentOption accentOption = AccentOption.SKY;
@@ -227,7 +228,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
         
         boolean titleHovered = isTitleHovered(mouseX, mouseY);
-        boolean titleActive = titleHovered || infoPopupVisible;
+        boolean titleActive = titleHovered || infoPopupAnimation.isVisible();
         titleUnderlineAnimation.animateTo(titleActive ? 1f : 0f, UITheme.HOVER_ANIM_MS);
         titleUnderlineAnimation.tick();
 
@@ -267,6 +268,16 @@ public class PathmindVisualEditorScreen extends Screen {
         renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
 
+        // Tick all popup animations
+        clearPopupAnimation.tick();
+        importExportPopupAnimation.tick();
+        createPresetPopupAnimation.tick();
+        renamePresetPopupAnimation.tick();
+        presetDeletePopupAnimation.tick();
+        infoPopupAnimation.tick();
+        missingBaritonePopupAnimation.tick();
+        settingsPopupAnimation.tick();
+
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
             parameterOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
@@ -277,33 +288,33 @@ public class PathmindVisualEditorScreen extends Screen {
             bookTextEditorOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
         }
 
-        if (clearPopupVisible) {
+        if (clearPopupAnimation.isVisible()) {
             renderClearConfirmationPopup(context, mouseX, mouseY);
         }
 
-        if (importExportPopupVisible) {
+        if (importExportPopupAnimation.isVisible()) {
             renderImportExportPopup(context, mouseX, mouseY, delta);
         }
 
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             renderCreatePresetPopup(context, mouseX, mouseY, delta);
         }
 
-        if (renamePresetPopupVisible) {
+        if (renamePresetPopupAnimation.isVisible()) {
             renderRenamePresetPopup(context, mouseX, mouseY, delta);
         }
 
-        if (presetDeletePopupVisible) {
+        if (presetDeletePopupAnimation.isVisible()) {
             renderPresetDeletePopup(context, mouseX, mouseY);
         }
 
-        if (infoPopupVisible) {
+        if (infoPopupAnimation.isVisible()) {
             renderInfoPopup(context, mouseX, mouseY);
         }
-        if (missingBaritonePopupVisible) {
+        if (missingBaritonePopupAnimation.isVisible()) {
             renderMissingBaritonePopup(context, mouseX, mouseY);
         }
-        if (settingsPopupVisible) {
+        if (settingsPopupAnimation.isVisible()) {
             renderSettingsPopup(context, mouseX, mouseY);
         }
 
@@ -317,15 +328,17 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean isPopupObscuringWorkspace() {
         boolean overlayVisible = parameterOverlay != null && parameterOverlay.isVisible();
+        boolean bookOverlayVisible = bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible();
         return overlayVisible
-                || clearPopupVisible
-                || importExportPopupVisible
-                || createPresetPopupVisible
-                || renamePresetPopupVisible
-                || presetDeletePopupVisible
-                || infoPopupVisible
-                || missingBaritonePopupVisible
-                || settingsPopupVisible;
+                || bookOverlayVisible
+                || clearPopupAnimation.isVisible()
+                || importExportPopupAnimation.isVisible()
+                || createPresetPopupAnimation.isVisible()
+                || renamePresetPopupAnimation.isVisible()
+                || presetDeletePopupAnimation.isVisible()
+                || infoPopupAnimation.isVisible()
+                || missingBaritonePopupAnimation.isVisible()
+                || settingsPopupAnimation.isVisible();
     }
     
     private boolean shouldShowExecutionControls() {
@@ -340,12 +353,12 @@ public class PathmindVisualEditorScreen extends Screen {
         if (baritoneAvailable) {
             return false;
         }
-        missingBaritonePopupVisible = true;
+        missingBaritonePopupAnimation.show();
         return true;
     }
 
     private void refreshMissingBaritonePopup() {
-        missingBaritonePopupVisible = !baritoneAvailable && nodeGraph.containsBaritoneNodes();
+        if (!baritoneAvailable && nodeGraph.containsBaritoneNodes()) { missingBaritonePopupAnimation.show(); } else { missingBaritonePopupAnimation.hide(); }
     }
     
     private void renderDraggingNode(DrawContext context, int mouseX, int mouseY) {
@@ -485,23 +498,23 @@ public class PathmindVisualEditorScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
-        if (missingBaritonePopupVisible) {
+        if (missingBaritonePopupAnimation.isVisible()) {
             return handleMissingBaritonePopupClick(mouseX, mouseY, button);
         }
-        if (settingsPopupVisible) {
+        if (settingsPopupAnimation.isVisible()) {
             if (handleSettingsPopupClick(mouseX, mouseY, button)) {
                 return true;
             }
             return true;
         }
-        if (infoPopupVisible) {
+        if (infoPopupAnimation.isVisible()) {
             if (handleInfoPopupClick(mouseX, mouseY, button)) {
                 return true;
             }
             return true;
         }
 
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null && createPresetField.mouseClicked(click, inBounds)) {
                 return true;
             }
@@ -511,7 +524,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (renamePresetPopupVisible) {
+        if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null && renamePresetField.mouseClicked(click, inBounds)) {
                 return true;
             }
@@ -521,21 +534,21 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (presetDeletePopupVisible) {
+        if (presetDeletePopupAnimation.isVisible()) {
             if (handlePresetDeletePopupClick(mouseX, mouseY, button)) {
                 return true;
             }
             return true;
         }
 
-        if (clearPopupVisible) {
+        if (clearPopupAnimation.isVisible()) {
             if (handleClearPopupClick(mouseX, mouseY, button)) {
                 return true;
             }
             return true;
         }
 
-        if (importExportPopupVisible) {
+        if (importExportPopupAnimation.isVisible()) {
             if (handleImportExportPopupClick(mouseX, mouseY, button)) {
                 return true;
             }
@@ -829,21 +842,21 @@ public class PathmindVisualEditorScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
-        if (missingBaritonePopupVisible) {
+        if (missingBaritonePopupAnimation.isVisible()) {
             return true;
         }
-        if (settingsPopupVisible) {
+        if (settingsPopupAnimation.isVisible()) {
             return true;
         }
-        if (createPresetPopupVisible) {
-            return true;
-        }
-
-        if (clearPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             return true;
         }
 
-        if (importExportPopupVisible) {
+        if (clearPopupAnimation.isVisible()) {
+            return true;
+        }
+
+        if (importExportPopupAnimation.isVisible()) {
             return true;
         }
 
@@ -885,35 +898,35 @@ public class PathmindVisualEditorScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
-        if (missingBaritonePopupVisible) {
+        if (missingBaritonePopupAnimation.isVisible()) {
             return true;
         }
-        if (settingsPopupVisible) {
+        if (settingsPopupAnimation.isVisible()) {
             return true;
         }
-        if (infoPopupVisible) {
+        if (infoPopupAnimation.isVisible()) {
             return true;
         }
 
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null) {
                 createPresetField.mouseReleased(click);
             }
             return true;
         }
 
-        if (renamePresetPopupVisible) {
+        if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null) {
                 renamePresetField.mouseReleased(click);
             }
             return true;
         }
 
-        if (clearPopupVisible) {
+        if (clearPopupAnimation.isVisible()) {
             return true;
         }
 
-        if (importExportPopupVisible) {
+        if (importExportPopupAnimation.isVisible()) {
             return true;
         }
 
@@ -978,19 +991,19 @@ public class PathmindVisualEditorScreen extends Screen {
         int keyCode = input.key();
         int scanCode = input.scancode();
         int modifiers = input.modifiers();
-        if (missingBaritonePopupVisible) {
+        if (missingBaritonePopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                missingBaritonePopupVisible = false;
+                missingBaritonePopupAnimation.hide();
             }
             return true;
         }
-        if (settingsPopupVisible) {
+        if (settingsPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 closeSettingsPopup();
             }
             return true;
         }
-        if (infoPopupVisible) {
+        if (infoPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 closeInfoPopup();
                 return true;
@@ -998,7 +1011,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null && createPresetField.keyPressed(input)) {
                 return true;
             }
@@ -1016,7 +1029,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (renamePresetPopupVisible) {
+        if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null && renamePresetField.keyPressed(input)) {
                 return true;
             }
@@ -1034,7 +1047,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (presetDeletePopupVisible) {
+        if (presetDeletePopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closePresetDeletePopup();
                 return true;
@@ -1046,9 +1059,9 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (clearPopupVisible) {
+        if (clearPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                clearPopupVisible = false;
+                clearPopupAnimation.hide();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -1058,7 +1071,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (importExportPopupVisible) {
+        if (importExportPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeImportExportPopup();
                 return true;
@@ -1133,32 +1146,32 @@ public class PathmindVisualEditorScreen extends Screen {
     public boolean charTyped(CharInput input) {
         int modifiers = input.modifiers();
         char chr = (char) input.codepoint();
-        if (settingsPopupVisible) {
+        if (settingsPopupAnimation.isVisible()) {
             return true;
         }
-        if (infoPopupVisible) {
+        if (infoPopupAnimation.isVisible()) {
             return true;
         }
 
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null && createPresetField.charTyped(input)) {
                 return true;
             }
             return true;
         }
 
-        if (renamePresetPopupVisible) {
+        if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null && renamePresetField.charTyped(input)) {
                 return true;
             }
             return true;
         }
 
-        if (clearPopupVisible) {
+        if (clearPopupAnimation.isVisible()) {
             return true;
         }
 
-        if (importExportPopupVisible) {
+        if (importExportPopupAnimation.isVisible()) {
             return true;
         }
 
@@ -1196,32 +1209,32 @@ public class PathmindVisualEditorScreen extends Screen {
     
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (settingsPopupVisible) {
+        if (settingsPopupAnimation.isVisible()) {
             return true;
         }
-        if (infoPopupVisible) {
+        if (infoPopupAnimation.isVisible()) {
             return true;
         }
 
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null && createPresetField.mouseScrolled(mouseX, mouseY, 0.0, verticalAmount)) {
                 return true;
             }
             return true;
         }
 
-        if (renamePresetPopupVisible) {
+        if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null && renamePresetField.mouseScrolled(mouseX, mouseY, 0.0, verticalAmount)) {
                 return true;
             }
             return true;
         }
 
-        if (clearPopupVisible) {
+        if (clearPopupAnimation.isVisible()) {
             return true;
         }
 
-        if (importExportPopupVisible) {
+        if (importExportPopupAnimation.isVisible()) {
             return true;
         }
 
@@ -1289,20 +1302,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderClearConfirmationPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, clearPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         int popupWidth = 280;
         int popupHeight = 150;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = clearPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.literal("Clear workspace?"),
-            popupX + popupWidth / 2,
+            popupX + scaledWidth / 2,
             popupY + 14,
             UITheme.TEXT_PRIMARY
         );
@@ -1317,9 +1333,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int buttonWidth = 90;
         int buttonHeight = 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         int cancelX = popupX + 20;
-        int confirmX = popupX + popupWidth - buttonWidth - 20;
+        int confirmX = popupX + scaledWidth - buttonWidth - 20;
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean confirmHovered = isPointInRect(mouseX, mouseY, confirmX, buttonY, buttonWidth, buttonHeight);
@@ -1329,20 +1345,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderImportExportPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, importExportPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         int popupWidth = 360;
         int popupHeight = 210;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = importExportPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.literal("Import / Export Workspace"),
-            popupX + popupWidth / 2,
+            popupX + scaledWidth / 2,
             popupY + 14,
             UITheme.TEXT_PRIMARY
         );
@@ -1369,7 +1388,7 @@ public class PathmindVisualEditorScreen extends Screen {
         Path defaultPath = NodeGraphPersistence.getDefaultSavePath();
         if (defaultPath != null) {
             String defaultLabel = "Default save: " + defaultPath.toString();
-            String trimmedDefault = this.textRenderer.trimToWidth(defaultLabel, popupWidth - 40);
+            String trimmedDefault = this.textRenderer.trimToWidth(defaultLabel, scaledWidth - 40);
             context.drawTextWithShadow(
                 this.textRenderer,
                 Text.literal(trimmedDefault),
@@ -1380,23 +1399,23 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (!importExportStatus.isEmpty()) {
-            int textAreaWidth = popupWidth - 40;
+            int textAreaWidth = scaledWidth - 40;
             String statusText = this.textRenderer.trimToWidth(importExportStatus, textAreaWidth);
             context.drawTextWithShadow(
                 this.textRenderer,
                 Text.literal(statusText),
                 popupX + 20,
-                popupY + popupHeight - 56,
+                popupY + scaledHeight - 56,
                 importExportStatusColor
             );
         }
 
         int buttonWidth = 100;
         int buttonHeight = 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         int importX = popupX + 20;
         int exportX = importX + buttonWidth + 8;
-        int cancelX = popupX + popupWidth - buttonWidth - 20;
+        int cancelX = popupX + scaledWidth - buttonWidth - 20;
 
         boolean importHovered = isPointInRect(mouseX, mouseY, importX, buttonY, buttonWidth, buttonHeight);
         boolean exportHovered = isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
@@ -1408,27 +1427,30 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderInfoPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, infoPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         int popupWidth = INFO_POPUP_WIDTH;
         int popupHeight = INFO_POPUP_HEIGHT;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = infoPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             TITLE_TEXT,
-            popupX + popupWidth / 2,
+            popupX + scaledWidth / 2,
             popupY + 14,
             UITheme.TEXT_PRIMARY
         );
 
         int textStartY = popupY + 42;
         int lineSpacing = 12;
-        int centerX = popupX + popupWidth / 2;
+        int centerX = popupX + scaledWidth / 2;
 
         String authorLine = "Created by: " + INFO_POPUP_AUTHOR;
         String targetLine = "Built for Minecraft: " + INFO_POPUP_TARGET_VERSION;
@@ -1444,25 +1466,28 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int buttonWidth = 100;
         int buttonHeight = 20;
-        int buttonX = popupX + (popupWidth - buttonWidth) / 2;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int buttonX = popupX + (scaledWidth - buttonWidth) / 2;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
 
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
     }
 
     private void renderMissingBaritonePopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, missingBaritonePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         int popupWidth = MISSING_BARITONE_POPUP_WIDTH;
         int popupHeight = MISSING_BARITONE_POPUP_HEIGHT;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = missingBaritonePopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
-        int centerX = popupX + popupWidth / 2;
+        int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone nodes need the Baritone API (optional)"), centerX, messageY, UITheme.TEXT_PRIMARY);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to enable these nodes"), centerX, messageY + 16, 0xFFD7D7D7);
@@ -1471,9 +1496,9 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonWidth = 100;
         int buttonHeight = 20;
         int buttonGap = 8;
-        int buttonY = popupY + popupHeight - buttonHeight - 10;
+        int buttonY = popupY + scaledHeight - buttonHeight - 10;
         int totalButtonsWidth = buttonWidth * 3 + buttonGap * 2;
-        int buttonsStartX = popupX + (popupWidth - totalButtonsWidth) / 2;
+        int buttonsStartX = popupX + (scaledWidth - totalButtonsWidth) / 2;
         int openX = buttonsStartX;
         int copyX = openX + buttonWidth + buttonGap;
         int closeX = copyX + buttonWidth + buttonGap;
@@ -1527,7 +1552,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (isPointInRect(mouseXi, mouseYi, cancelX, buttonY, buttonWidth, buttonHeight)) {
-            clearPopupVisible = false;
+            clearPopupAnimation.hide();
             return true;
         }
 
@@ -1604,7 +1629,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (isPointInRect(mouseXi, mouseYi, closeX, buttonY, buttonWidth, buttonHeight)) {
-            missingBaritonePopupVisible = false;
+            missingBaritonePopupAnimation.hide();
             return true;
         }
 
@@ -1696,46 +1721,46 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void openInfoPopup() {
         dismissParameterOverlay();
-        clearPopupVisible = false;
-        importExportPopupVisible = false;
-        if (createPresetPopupVisible) {
+        clearPopupAnimation.hide();
+        importExportPopupAnimation.hide();
+        if (createPresetPopupAnimation.isVisible()) {
             closeCreatePresetPopup();
         }
         presetDropdownOpen = false;
-        infoPopupVisible = true;
+        infoPopupAnimation.show();
     }
 
     private void closeInfoPopup() {
-        infoPopupVisible = false;
+        infoPopupAnimation.hide();
     }
 
     private void openClearPopup() {
         dismissParameterOverlay();
         closeImportExportPopup();
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             closeCreatePresetPopup();
         }
         closeInfoPopup();
         closeSettingsPopup();
         presetDropdownOpen = false;
-        clearPopupVisible = true;
+        clearPopupAnimation.show();
     }
 
     private void confirmClearWorkspace() {
         nodeGraph.clearWorkspace();
-        clearPopupVisible = false;
+        clearPopupAnimation.hide();
     }
 
     private void openImportExportPopup() {
         dismissParameterOverlay();
-        clearPopupVisible = false;
-        if (createPresetPopupVisible) {
+        clearPopupAnimation.hide();
+        if (createPresetPopupAnimation.isVisible()) {
             closeCreatePresetPopup();
         }
         closeInfoPopup();
         closeSettingsPopup();
         presetDropdownOpen = false;
-        importExportPopupVisible = true;
+        importExportPopupAnimation.show();
         clearImportExportStatus();
         if (lastImportExportPath == null) {
             lastImportExportPath = NodeGraphPersistence.getDefaultSavePath();
@@ -1743,7 +1768,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void closeImportExportPopup() {
-        importExportPopupVisible = false;
+        importExportPopupAnimation.hide();
     }
 
     private void attemptImport() {
@@ -2275,7 +2300,7 @@ public class PathmindVisualEditorScreen extends Screen {
         clearCreatePresetStatus();
         closeInfoPopup();
         closeRenamePresetPopup();
-        createPresetPopupVisible = true;
+        createPresetPopupAnimation.show();
         if (createPresetField != null) {
             createPresetField.setText("");
             createPresetField.setVisible(true);
@@ -2285,7 +2310,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void closeCreatePresetPopup() {
-        createPresetPopupVisible = false;
+        createPresetPopupAnimation.hide();
         clearCreatePresetStatus();
         if (createPresetField != null) {
             createPresetField.setFocused(false);
@@ -2303,7 +2328,7 @@ public class PathmindVisualEditorScreen extends Screen {
         closeInfoPopup();
         closeCreatePresetPopup();
         pendingPresetRenameName = presetName;
-        renamePresetPopupVisible = true;
+        renamePresetPopupAnimation.show();
         if (renamePresetField != null) {
             renamePresetField.setText(presetName);
             renamePresetField.setVisible(true);
@@ -2313,7 +2338,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void closeRenamePresetPopup() {
-        renamePresetPopupVisible = false;
+        renamePresetPopupAnimation.hide();
         pendingPresetRenameName = "";
         clearRenamePresetStatus();
         if (renamePresetField != null) {
@@ -2407,20 +2432,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderCreatePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, createPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         int popupWidth = CREATE_PRESET_POPUP_WIDTH;
         int popupHeight = CREATE_PRESET_POPUP_HEIGHT;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = createPresetPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.literal("Create workspace preset"),
-            popupX + popupWidth / 2,
+            popupX + scaledWidth / 2,
             popupY + 14,
             UITheme.TEXT_PRIMARY
         );
@@ -2435,7 +2463,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int fieldX = popupX + 20;
         int fieldY = popupY + 70;
-        int fieldWidth = popupWidth - 40;
+        int fieldWidth = scaledWidth - 40;
         int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
@@ -2468,9 +2496,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int buttonWidth = 90;
         int buttonHeight = 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         int cancelX = popupX + 20;
-        int createX = popupX + popupWidth - buttonWidth - 20;
+        int createX = popupX + scaledWidth - buttonWidth - 20;
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean createHovered = isPointInRect(mouseX, mouseY, createX, buttonY, buttonWidth, buttonHeight);
@@ -2480,20 +2508,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderRenamePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, renamePresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         int popupWidth = CREATE_PRESET_POPUP_WIDTH;
         int popupHeight = CREATE_PRESET_POPUP_HEIGHT;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = renamePresetPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
         context.drawCenteredTextWithShadow(
                 this.textRenderer,
                 Text.literal("Rename workspace preset"),
-                popupX + popupWidth / 2,
+                popupX + scaledWidth / 2,
                 popupY + 14,
                 UITheme.TEXT_PRIMARY
         );
@@ -2501,7 +2532,7 @@ public class PathmindVisualEditorScreen extends Screen {
         String presetLabel = pendingPresetRenameName == null || pendingPresetRenameName.isEmpty()
                 ? "the selected preset"
                 : "Preset: " + pendingPresetRenameName;
-        String trimmedPreset = this.textRenderer.trimToWidth(presetLabel, popupWidth - 40);
+        String trimmedPreset = this.textRenderer.trimToWidth(presetLabel, scaledWidth - 40);
         context.drawTextWithShadow(
                 this.textRenderer,
                 Text.literal("Enter a new name."),
@@ -2519,7 +2550,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int fieldX = popupX + 20;
         int fieldY = popupY + 80;
-        int fieldWidth = popupWidth - 40;
+        int fieldWidth = scaledWidth - 40;
         int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
@@ -2552,9 +2583,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int buttonWidth = 90;
         int buttonHeight = 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         int cancelX = popupX + 20;
-        int renameX = popupX + popupWidth - buttonWidth - 20;
+        int renameX = popupX + scaledWidth - buttonWidth - 20;
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean renameHovered = isPointInRect(mouseX, mouseY, renameX, buttonY, buttonWidth, buttonHeight);
@@ -2564,20 +2595,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderPresetDeletePopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, presetDeletePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         int popupWidth = PRESET_DELETE_POPUP_WIDTH;
         int popupHeight = PRESET_DELETE_POPUP_HEIGHT;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = presetDeletePopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.literal("Delete preset?"),
-            popupX + popupWidth / 2,
+            popupX + scaledWidth / 2,
             popupY + 14,
             UITheme.TEXT_PRIMARY
         );
@@ -2587,8 +2621,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 : "this preset";
         String warningLine = "This will permanently remove the preset.";
         String presetLine = "Preset: " + presetLabel;
-        String trimmedWarning = this.textRenderer.trimToWidth(warningLine, popupWidth - 40);
-        String trimmedPreset = this.textRenderer.trimToWidth(presetLine, popupWidth - 40);
+        String trimmedWarning = this.textRenderer.trimToWidth(warningLine, scaledWidth - 40);
+        String trimmedPreset = this.textRenderer.trimToWidth(presetLine, scaledWidth - 40);
 
         context.drawTextWithShadow(
             this.textRenderer,
@@ -2607,9 +2641,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int buttonWidth = 90;
         int buttonHeight = 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         int cancelX = popupX + 20;
-        int deleteX = popupX + popupWidth - buttonWidth - 20;
+        int deleteX = popupX + scaledWidth - buttonWidth - 20;
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean deleteHovered = isPointInRect(mouseX, mouseY, deleteX, buttonY, buttonWidth, buttonHeight);
@@ -2681,12 +2715,12 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
         pendingPresetDeletionName = presetName;
-        presetDeletePopupVisible = true;
+        presetDeletePopupAnimation.show();
         presetDropdownOpen = false;
     }
 
     private void closePresetDeletePopup() {
-        presetDeletePopupVisible = false;
+        presetDeletePopupAnimation.hide();
         pendingPresetDeletionName = "";
     }
 
@@ -2733,7 +2767,7 @@ public class PathmindVisualEditorScreen extends Screen {
             dismissParameterOverlay();
             isDraggingFromSidebar = false;
             draggingNodeType = null;
-            clearPopupVisible = false;
+            clearPopupAnimation.hide();
             clearImportExportStatus();
 
             if (!nodeGraph.load()) {
@@ -2796,16 +2830,16 @@ public class PathmindVisualEditorScreen extends Screen {
         dismissParameterOverlay();
         isDraggingFromSidebar = false;
         draggingNodeType = null;
-        if (importExportPopupVisible) {
+        if (importExportPopupAnimation.isVisible()) {
             closeImportExportPopup();
         }
-        if (createPresetPopupVisible) {
+        if (createPresetPopupAnimation.isVisible()) {
             closeCreatePresetPopup();
         }
-        if (renamePresetPopupVisible) {
+        if (renamePresetPopupAnimation.isVisible()) {
             closeRenamePresetPopup();
         }
-        clearPopupVisible = false;
+        clearPopupAnimation.hide();
         closeSettingsPopup();
         presetDropdownOpen = false;
         clearImportExportStatus();
@@ -2853,8 +2887,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean renderClearButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getClearButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, clearPopupVisible);
-        int iconColor = (hovered || clearPopupVisible) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, clearPopupAnimation.isVisible());
+        int iconColor = (hovered || clearPopupAnimation.isVisible()) ? getAccentColor() : UITheme.TEXT_PRIMARY;
         int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
         int top = buttonY + 4;
         int bottom = buttonY + BOTTOM_BUTTON_SIZE - 4;
@@ -2871,8 +2905,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean renderImportExportButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getImportExportButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, importExportPopupVisible);
-        int iconColor = (hovered || importExportPopupVisible) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, importExportPopupAnimation.isVisible());
+        int iconColor = (hovered || importExportPopupAnimation.isVisible()) ? getAccentColor() : UITheme.TEXT_PRIMARY;
         int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
         int centerY = buttonY + BOTTOM_BUTTON_SIZE / 2;
 
@@ -2928,7 +2962,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private void renderSettingsButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getSettingsButtonX();
         int buttonY = getSettingsButtonY();
-        boolean active = settingsPopupVisible;
+        boolean active = settingsPopupAnimation.isVisible();
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
         boolean highlight = hovered || active;
         int bgColor = highlight ? 0xFF505050 : 0xFF3A3A3A;
@@ -2963,17 +2997,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, this.width, this.height, settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
-        int popupX = getSettingsPopupX();
-        int popupY = getSettingsPopupY();
-        context.fill(popupX, popupY, popupX + SETTINGS_POPUP_WIDTH, popupY + SETTINGS_POPUP_HEIGHT, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, SETTINGS_POPUP_WIDTH, SETTINGS_POPUP_HEIGHT, UITheme.BORDER_SUBTLE);
+        int popupWidth = SETTINGS_POPUP_WIDTH;
+        int popupHeight = SETTINGS_POPUP_HEIGHT;
+        int[] bounds = settingsPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
+
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.literal("Settings"),
-            popupX + SETTINGS_POPUP_WIDTH / 2,
+            popupX + scaledWidth / 2,
             popupY + 14,
             UITheme.TEXT_PRIMARY
         );
@@ -2994,22 +3034,22 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int sectionDividerX = popupX + 16;
         int sectionDividerY = accentOptionsY + SETTINGS_OPTION_HEIGHT + 10;
-        context.drawHorizontalLine(sectionDividerX, popupX + SETTINGS_POPUP_WIDTH - 16, sectionDividerY, UITheme.BORDER_SUBTLE);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, sectionDividerY, UITheme.BORDER_SUBTLE);
 
         int settingDividerY = sectionDividerY + 22;
         int gridRowCenterY = (sectionDividerY + settingDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, "Show grid", showGrid);
-        context.drawHorizontalLine(sectionDividerX, popupX + SETTINGS_POPUP_WIDTH - 16, settingDividerY, UITheme.BORDER_SUBTLE);
+        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, "Show grid", showGrid, scaledWidth);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, settingDividerY, UITheme.BORDER_SUBTLE);
 
         int footerDividerY = settingDividerY + 22;
         int tooltipRowCenterY = (settingDividerY + footerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, "Show tooltips", showWorkspaceTooltips);
-        context.drawHorizontalLine(sectionDividerX, popupX + SETTINGS_POPUP_WIDTH - 16, footerDividerY, UITheme.BORDER_SUBTLE);
+        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, "Show tooltips", showWorkspaceTooltips, scaledWidth);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY, UITheme.BORDER_SUBTLE);
 
         int buttonWidth = 90;
         int buttonHeight = 20;
-        int buttonX = popupX + SETTINGS_POPUP_WIDTH - buttonWidth - 20;
-        int buttonY = popupY + SETTINGS_POPUP_HEIGHT - buttonHeight - 16;
+        int buttonX = popupX + scaledWidth - buttonWidth - 20;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
     }
@@ -3036,11 +3076,11 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer, Text.literal(option.label), labelX, labelY, UITheme.TEXT_PRIMARY);
     }
 
-    private void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active) {
+    private void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int scaledWidth) {
         int labelY = centerY - this.textRenderer.fontHeight / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), labelX, labelY, UITheme.TEXT_SECONDARY);
 
-        int toggleX = getSettingsPopupX() + SETTINGS_POPUP_WIDTH - SETTINGS_TOGGLE_WIDTH - 20;
+        int toggleX = getSettingsPopupX() + scaledWidth - SETTINGS_TOGGLE_WIDTH - 20;
         int toggleY = centerY - SETTINGS_TOGGLE_HEIGHT / 2;
         boolean hovered = isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT);
         PopupButtonStyle style = active ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
@@ -3159,14 +3199,14 @@ public class PathmindVisualEditorScreen extends Screen {
     private void openSettingsPopup() {
         dismissParameterOverlay();
         closeInfoPopup();
-        clearPopupVisible = false;
-        importExportPopupVisible = false;
+        clearPopupAnimation.hide();
+        importExportPopupAnimation.hide();
         presetDropdownOpen = false;
-        settingsPopupVisible = true;
+        settingsPopupAnimation.show();
     }
 
     private void closeSettingsPopup() {
-        settingsPopupVisible = false;
+        settingsPopupAnimation.hide();
     }
 
     private boolean handleSettingsPopupClick(double mouseX, double mouseY, int button) {

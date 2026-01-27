@@ -141,18 +141,20 @@ public class PopupAnimationHandler {
     }
 
     /**
-     * Calculates animated popup position and size for centered scaling.
+     * Calculates animated popup position and size centered on screen.
      *
-     * @param centerX The center X position of the popup
-     * @param centerY The center Y position of the popup
-     * @param width The width of the popup
-     * @param height The height of the popup
-     * @return Array of [x, y, width, height] with scale applied
+     * @param screenWidth The width of the screen
+     * @param screenHeight The height of the screen
+     * @param popupWidth The width of the popup
+     * @param popupHeight The height of the popup
+     * @return Array of [x, y, width, height] with scale applied, centered on screen
      */
-    public int[] getScaledPopupBounds(int centerX, int centerY, int width, int height) {
+    public int[] getScaledPopupBounds(int screenWidth, int screenHeight, int popupWidth, int popupHeight) {
         float scale = getPopupScale();
-        int scaledWidth = (int) (width * scale);
-        int scaledHeight = (int) (height * scale);
+        int scaledWidth = (int) (popupWidth * scale);
+        int scaledHeight = (int) (popupHeight * scale);
+        int centerX = screenWidth / 2;
+        int centerY = screenHeight / 2;
         int scaledX = centerX - scaledWidth / 2;
         int scaledY = centerY - scaledHeight / 2;
         return new int[]{scaledX, scaledY, scaledWidth, scaledHeight};

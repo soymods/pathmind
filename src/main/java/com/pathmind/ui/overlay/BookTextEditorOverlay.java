@@ -3,6 +3,7 @@ package com.pathmind.ui.overlay;
 import com.pathmind.nodes.Node;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
+import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
@@ -43,7 +44,7 @@ public class BookTextEditorOverlay {
     private int selectionStart;
     private int selectionEnd;
     private int selectionAnchor;
-    private boolean visible = false;
+    private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
     private ButtonWidget saveButton;
     private ButtonWidget cancelButton;
 
@@ -89,26 +90,34 @@ public class BookTextEditorOverlay {
     }
 
     public void show() {
-        this.visible = true;
+        popupAnimation.show();
     }
 
     public void hide() {
-        this.visible = false;
+        popupAnimation.hide();
     }
 
     public boolean isVisible() {
-        return visible;
+        return popupAnimation.isVisible();
     }
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
-        if (!visible) return;
+        popupAnimation.tick();
+        if (!popupAnimation.isVisible()) return;
 
         // Render semi-transparent background overlay
-        context.fill(0, 0, screenWidth, screenHeight, UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, screenWidth, screenHeight, popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
+
+        // Get animated popup bounds
+        int[] bounds = popupAnimation.getScaledPopupBounds(screenWidth, screenHeight, POPUP_WIDTH, POPUP_HEIGHT);
+        int scaledX = bounds[0];
+        int scaledY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
         // Render popup background
-        context.fill(popupX, popupY, popupX + POPUP_WIDTH, popupY + POPUP_HEIGHT, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, POPUP_WIDTH, POPUP_HEIGHT, UITheme.BORDER_HIGHLIGHT);
+        context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight, UITheme.BORDER_HIGHLIGHT);
 
         // Render title
         String title = "Edit Book Text";
@@ -286,7 +295,7 @@ public class BookTextEditorOverlay {
     }
 
     public void handleKeyInput(int key, int scanCode, int modifiers) {
-        if (!visible) return;
+        if (!popupAnimation.isVisible()) return;
 
         boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0 || (modifiers & GLFW.GLFW_MOD_SUPER) != 0;
 
@@ -372,7 +381,7 @@ public class BookTextEditorOverlay {
     }
 
     public void handleCharInput(char chr) {
-        if (!visible) return;
+        if (!popupAnimation.isVisible()) return;
 
         if (chr >= 32 && chr != 127) {
             insertText(String.valueOf(chr));
@@ -416,7 +425,7 @@ public class BookTextEditorOverlay {
     }
 
     public boolean handleMouseClick(double mouseX, double mouseY, int button) {
-        if (!visible) return false;
+        if (!popupAnimation.isVisible()) return false;
 
         // Check if click is outside popup
         if (mouseX < popupX || mouseX > popupX + POPUP_WIDTH ||
@@ -446,7 +455,7 @@ public class BookTextEditorOverlay {
     }
 
     public boolean handleMouseScroll(double mouseX, double mouseY, double amount) {
-        if (!visible) return false;
+        if (!popupAnimation.isVisible()) return false;
 
         // Scroll the text area
         scrollOffset -= (int)(amount * 12);

@@ -8,6 +8,7 @@ import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.control.InventorySlotSelector;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
+import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
@@ -171,7 +172,7 @@ public class NodeParameterOverlay {
     private final Runnable onClose;
     private final Consumer<Node> onSave;
     private final Supplier<List<String>> functionNameSupplier;
-    private boolean visible = false;
+    private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
     private int focusedFieldIndex = -1;
     
     // Mode selection fields
@@ -369,7 +370,8 @@ public class NodeParameterOverlay {
     }
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
-        if (!visible) return;
+        popupAnimation.tick();
+        if (!popupAnimation.isVisible()) return;
         updateBlockStateOptions(false);
         if (focusedFieldIndex < 0 || !isBlockOrItemParameter(focusedFieldIndex) || isBlockItemDropdownSuppressed(focusedFieldIndex)) {
             blockItemDropdownOpen = false;
@@ -379,11 +381,18 @@ public class NodeParameterOverlay {
         }
 
         // Render semi-transparent background overlay
-        context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), UITheme.OVERLAY_BACKGROUND);
+        context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
+
+        // Get animated popup bounds
+        int[] bounds = popupAnimation.getScaledPopupBounds(context.getScaledWindowWidth(), context.getScaledWindowHeight(), popupWidth, popupHeight);
+        int scaledX = bounds[0];
+        int scaledY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
 
         // Render popup background
-        context.fill(popupX, popupY, popupX + popupWidth, popupY + popupHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, popupWidth, popupHeight, UITheme.BORDER_HIGHLIGHT); // Grey outline
+        context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight, UITheme.BORDER_HIGHLIGHT); // Grey outline
 
         // Render title
         context.drawTextWithShadow(
@@ -1014,7 +1023,7 @@ public class NodeParameterOverlay {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!visible) return false;
+        if (!popupAnimation.isVisible()) return false;
 
         updateButtonPositions();
 
@@ -1262,7 +1271,7 @@ public class NodeParameterOverlay {
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
-        if (!visible) return false;
+        if (!popupAnimation.isVisible()) return false;
 
         if (inventorySlotEditorActive && inventorySlotSelector != null) {
             if (inventorySlotSelector.mouseScrolled(mouseX, mouseY, verticalAmount)) {
@@ -1310,7 +1319,7 @@ public class NodeParameterOverlay {
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (!visible) return false;
+        if (!popupAnimation.isVisible()) return false;
 
         boolean handledFieldInput = false;
         if (focusedFieldIndex >= 0
@@ -1345,7 +1354,7 @@ public class NodeParameterOverlay {
     }
 
     public boolean charTyped(char chr, int modifiers) {
-        if (!visible) return false;
+        if (!popupAnimation.isVisible()) return false;
         
         if (focusedFieldIndex >= 0
             && focusedFieldIndex < parameterValues.size()
@@ -1425,7 +1434,7 @@ public class NodeParameterOverlay {
     }
 
     public void close() {
-        visible = false;
+        popupAnimation.hide();
         modeDropdownOpen = false;
         modeDropdownHoverIndex = -1;
         functionDropdownOpen = false;
@@ -1442,7 +1451,7 @@ public class NodeParameterOverlay {
     }
 
     public void show() {
-        visible = true;
+        popupAnimation.show();
         focusedFieldIndex = -1;
         modeDropdownOpen = false;
         modeDropdownHoverIndex = -1;
@@ -1455,7 +1464,7 @@ public class NodeParameterOverlay {
     }
 
     public boolean isVisible() {
-        return visible;
+        return popupAnimation.isVisible();
     }
     
     private void resetParameterFields() {

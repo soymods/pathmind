@@ -30,8 +30,8 @@ public final class UITheme {
     /** Input field backgrounds - near black */
     public static final int BACKGROUND_INPUT = 0xFF0E0E0E;
 
-    /** Semi-transparent overlay for modals */
-    public static final int OVERLAY_BACKGROUND = 0xCC000000;
+    /** Semi-transparent overlay for modals - dark gray with 50% opacity */
+    public static final int OVERLAY_BACKGROUND = 0x80101010;
 
     /** Section header background - slightly distinct from panel */
     public static final int BACKGROUND_SECTION = 0xFF1A1A1A;

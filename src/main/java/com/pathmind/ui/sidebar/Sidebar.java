@@ -273,7 +273,9 @@ public class Sidebar {
         maxScroll = Math.max(0, totalHeight - sidebarHeight + 100); // Extra 100px for better scrolling
     }
     
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, int sidebarStartY, int sidebarHeight) {
+    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, int sidebarStartY, int sidebarHeight, boolean interactionsEnabled) {
+        int effectiveMouseX = interactionsEnabled ? mouseX : Integer.MIN_VALUE;
+        int effectiveMouseY = interactionsEnabled ? mouseY : Integer.MIN_VALUE;
         // Store current sidebar height so scroll can be recalculated
         this.currentSidebarHeight = sidebarHeight;
         categoryOpenAnimation.animateTo(selectedCategory != null ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
@@ -369,8 +371,8 @@ public class Sidebar {
             visibleTabIndex++; // Increment only for visible tabs
 
             // Check if tab is hovered
-            boolean tabHovered = mouseX >= tabX && mouseX <= tabX + TAB_SIZE &&
-                               mouseY >= tabY && mouseY < tabY + TAB_SIZE;
+            boolean tabHovered = effectiveMouseX >= tabX && effectiveMouseX <= tabX + TAB_SIZE &&
+                               effectiveMouseY >= tabY && effectiveMouseY < tabY + TAB_SIZE;
 
             // Check if tab is selected
             boolean tabSelected = category == selectedCategory;
@@ -472,8 +474,8 @@ public class Sidebar {
                                 break outer;
                             }
 
-                            boolean nodeHovered = mouseX >= nodeBackgroundLeft && mouseX <= totalWidth &&
-                                                mouseY >= contentY && mouseY < contentY + NODE_HEIGHT;
+                            boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth &&
+                                                effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
 
                             if (nodeHovered) {
                                 hoveredNodeType = nodeType;
@@ -505,8 +507,8 @@ public class Sidebar {
                     for (NodeType nodeType : nodes) {
                         if (contentY >= sidebarBottom) break; // Don't render beyond sidebar
                         
-                        boolean nodeHovered = mouseX >= nodeBackgroundLeft && mouseX <= totalWidth &&
-                                            mouseY >= contentY && mouseY < contentY + NODE_HEIGHT;
+                        boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth &&
+                                            effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
 
                         if (nodeHovered) {
                             hoveredNodeType = nodeType;
@@ -537,7 +539,7 @@ public class Sidebar {
         }
         
         // Reset hover states if mouse is not in sidebar
-        if (mouseX < 0 || mouseX > currentRenderedWidth) {
+        if (effectiveMouseX < 0 || effectiveMouseX > currentRenderedWidth) {
             hoveredNodeType = null;
             hoveredCategory = null;
         }

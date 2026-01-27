@@ -138,6 +138,11 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
     private AccentOption accentOption = AccentOption.SKY;
+    private boolean overlayCutoutActive = false;
+    private int overlayCutoutX = 0;
+    private int overlayCutoutY = 0;
+    private int overlayCutoutWidth = 0;
+    private int overlayCutoutHeight = 0;
 
     private enum AccentOption {
         SKY("Sky", UITheme.ACCENT_SKY),
@@ -220,6 +225,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        resetOverlayCutout();
         // Fill background with dark grey theme
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
         
@@ -245,28 +251,17 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Workspace utilities should sit beneath the sidebar when it expands
         renderWorkspaceButtons(context, mouseX, mouseY);
-        
+
         // Always render sidebar after node graph/buttons so expanded categories sit on top
-        sidebar.render(context, this.textRenderer, mouseX, mouseY, TITLE_BAR_HEIGHT, this.height - TITLE_BAR_HEIGHT);
-        
+        boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
+        sidebar.render(context, this.textRenderer, mouseX, mouseY, TITLE_BAR_HEIGHT, this.height - TITLE_BAR_HEIGHT, sidebarInteractionsEnabled);
+
         // Render dragged nodes above sidebar
-        renderNodeGraph(context, mouseX, mouseY, delta, true);
-        nodeGraph.renderSelectionBox(context);
-        
-        // Render dragging node from sidebar
+                renderNodeGraph(context, mouseX, mouseY, delta, true);
+                // Render dragging node from sidebar
         if (isDraggingFromSidebar && draggingNodeType != null) {
             renderDraggingNode(context, mouseX, mouseY);
         }
-        
-        boolean controlsDisabled = isPopupObscuringWorkspace();
-        renderZoomControls(context, mouseX, mouseY, controlsDisabled);
-
-        if (shouldShowExecutionControls()) {
-            renderStopButton(context, mouseX, mouseY, controlsDisabled);
-            renderPlayButton(context, mouseX, mouseY, controlsDisabled);
-        }
-        renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
-        renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
 
         // Tick all popup animations
         clearPopupAnimation.tick();
@@ -323,6 +318,8 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
         drawTitle(context, titleUnderlineAnimation.getValue());
 
+
+        renderPopupScrimOverlay(context);
         // Controls are already rendered before overlays so they appear dimmed underneath
     }
 
@@ -344,6 +341,82 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean shouldShowExecutionControls() {
         MinecraftClient client = MinecraftClient.getInstance();
         return client != null && client.player != null;
+    }
+
+    private void resetOverlayCutout() {
+        overlayCutoutActive = false;
+    }
+
+    private void setOverlayCutout(int x, int y, int width, int height) {
+        overlayCutoutActive = true;
+        overlayCutoutX = x;
+        overlayCutoutY = y;
+        overlayCutoutWidth = width;
+        overlayCutoutHeight = height;
+    }
+
+    private boolean isScreenPopupVisible() {
+        return clearPopupAnimation.isVisible()
+            || importExportPopupAnimation.isVisible()
+            || createPresetPopupAnimation.isVisible()
+            || renamePresetPopupAnimation.isVisible()
+            || presetDeletePopupAnimation.isVisible()
+            || infoPopupAnimation.isVisible()
+            || missingBaritonePopupAnimation.isVisible()
+            || settingsPopupAnimation.isVisible();
+    }
+
+    private int getScreenPopupOverlayColor() {
+        if (clearPopupAnimation.isVisible()) {
+            return clearPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (importExportPopupAnimation.isVisible()) {
+            return importExportPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (createPresetPopupAnimation.isVisible()) {
+            return createPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (renamePresetPopupAnimation.isVisible()) {
+            return renamePresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (presetDeletePopupAnimation.isVisible()) {
+            return presetDeletePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (infoPopupAnimation.isVisible()) {
+            return infoPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (missingBaritonePopupAnimation.isVisible()) {
+            return missingBaritonePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (settingsPopupAnimation.isVisible()) {
+            return settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        return UITheme.OVERLAY_BACKGROUND;
+    }
+
+    private void renderPopupScrimOverlay(DrawContext context) {
+        if (!isScreenPopupVisible()) {
+            return;
+        }
+        int color = getScreenPopupOverlayColor();
+        if (!overlayCutoutActive || overlayCutoutWidth <= 0 || overlayCutoutHeight <= 0) {
+            DrawContextBridge.fillOverlay(context, 0, 0, this.width, this.height, color);
+            return;
+        }
+        int cutoutRight = overlayCutoutX + overlayCutoutWidth;
+        int cutoutBottom = overlayCutoutY + overlayCutoutHeight;
+        if (overlayCutoutY > 0) {
+            DrawContextBridge.fillOverlay(context, 0, 0, this.width, overlayCutoutY, color);
+        }
+        if (overlayCutoutX > 0) {
+            DrawContextBridge.fillOverlay(context, 0, overlayCutoutY, overlayCutoutX, cutoutBottom, color);
+        }
+        if (cutoutRight < this.width) {
+            DrawContextBridge.fillOverlay(context, cutoutRight, overlayCutoutY, this.width, cutoutBottom, color);
+        }
+        if (cutoutBottom < this.height) {
+            DrawContextBridge.fillOverlay(context, 0, cutoutBottom, this.width, this.height, color);
+        }
     }
 
     private boolean shouldBlockBaritoneNode(NodeType nodeType) {
@@ -1309,6 +1382,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
@@ -1352,6 +1426,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
@@ -1434,6 +1509,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
@@ -1481,6 +1557,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
@@ -2439,6 +2516,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
@@ -2515,6 +2593,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
@@ -2602,6 +2681,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
@@ -2851,12 +2931,16 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderWorkspaceButtons(DrawContext context, int mouseX, int mouseY) {
+        if (isPopupObscuringWorkspace()) {
+            mouseX = Integer.MIN_VALUE;
+            mouseY = Integer.MIN_VALUE;
+        }
         int buttonY = getWorkspaceButtonY();
         boolean importHovered = renderImportExportButton(context, mouseX, mouseY, buttonY);
         boolean clearHovered = renderClearButton(context, mouseX, mouseY, buttonY);
         boolean homeHovered = renderHomeButton(context, mouseX, mouseY, buttonY);
 
-        if (showWorkspaceTooltips) {
+        if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
             if (homeHovered) {
                 drawWorkspaceTooltip(context, "Reset view", mouseX, mouseY);
             } else if (clearHovered) {
@@ -2975,7 +3059,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int iconColor = highlight ? getAccentColor() : UITheme.TEXT_PRIMARY;
         drawSettingsIcon(context, buttonX, buttonY, iconColor);
 
-        if (hovered && showWorkspaceTooltips) {
+        if (hovered && showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
             drawWorkspaceTooltip(context, "Settings", mouseX, mouseY);
         }
     }
@@ -3004,6 +3088,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
 

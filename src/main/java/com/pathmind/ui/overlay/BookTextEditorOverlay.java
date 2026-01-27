@@ -101,12 +101,17 @@ public class BookTextEditorOverlay {
         return popupAnimation.isVisible();
     }
 
+    public PopupAnimationHandler getPopupAnimation() {
+        return popupAnimation;
+    }
+
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
         popupAnimation.tick();
         if (!popupAnimation.isVisible()) return;
 
         // Render semi-transparent background overlay
-        context.fill(0, 0, screenWidth, screenHeight, popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
+        context.fill(0, 0, screenWidth, screenHeight,
+            popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         // Get animated popup bounds
         int[] bounds = popupAnimation.getScaledPopupBounds(screenWidth, screenHeight, POPUP_WIDTH, POPUP_HEIGHT);

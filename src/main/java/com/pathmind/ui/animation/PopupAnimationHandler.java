@@ -130,8 +130,8 @@ public class PopupAnimationHandler {
     public int getAnimatedBackgroundColor(int baseColor) {
         float animationProgress = getBackgroundAlpha();
 
-        // Extract the original alpha from the base color
-        int originalAlpha = (baseColor >> 24) & 0xFF;
+        // Extract the original alpha from the base color (unsigned shift)
+        int originalAlpha = (baseColor >>> 24) & 0xFF;
 
         // Multiply the original alpha by animation progress
         int animatedAlpha = (int) (originalAlpha * animationProgress);

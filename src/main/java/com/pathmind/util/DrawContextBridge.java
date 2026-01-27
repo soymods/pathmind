@@ -10,6 +10,8 @@ import java.lang.reflect.Method;
 public final class DrawContextBridge {
     private static final Method DRAW_BORDER = resolveMethod("drawBorder");
     private static final Method DRAW_STROKED_RECTANGLE = resolveMethod("drawStrokedRectangle");
+    private static final Object GUI_OVERLAY_LAYER = resolveGuiOverlayLayer();
+    private static final Method FILL_LAYER = resolveFillLayerMethod();
 
     private DrawContextBridge() {
     }
@@ -33,6 +35,21 @@ public final class DrawContextBridge {
         context.drawVerticalLine(right, y, bottom, color);
     }
 
+    public static void fillOverlay(DrawContext context, int x1, int y1, int x2, int y2, int color) {
+        if (context == null) {
+            return;
+        }
+        if (FILL_LAYER != null && GUI_OVERLAY_LAYER != null) {
+            try {
+                FILL_LAYER.invoke(context, GUI_OVERLAY_LAYER, x1, y1, x2, y2, color);
+                return;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Fall back to the default fill below.
+            }
+        }
+        context.fill(x1, y1, x2, y2, color);
+    }
+
     private static boolean invokeBorderMethod(DrawContext context, Method method,
                                               int x, int y, int width, int height, int color) {
         if (method == null) {
@@ -54,5 +71,53 @@ public final class DrawContextBridge {
         } catch (NoSuchMethodException ignored) {
             return null;
         }
+    }
+
+    private static Method resolveFillLayerMethod() {
+        Class<?> renderLayerClass = tryLoadClass("net.minecraft.client.render.RenderLayer", "net.minecraft.class_1921");
+        if (renderLayerClass == null) {
+            return null;
+        }
+        for (Method method : DrawContext.class.getMethods()) {
+            if (!"fill".equals(method.getName())) {
+                continue;
+            }
+            Class<?>[] params = method.getParameterTypes();
+            if (params.length == 6 && params[0].isAssignableFrom(renderLayerClass)) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static Object resolveGuiOverlayLayer() {
+        Class<?> renderLayerClass = tryLoadClass("net.minecraft.client.render.RenderLayer", "net.minecraft.class_1921");
+        if (renderLayerClass == null) {
+            return null;
+        }
+        String[] candidateNames = {"getGuiOverlay", "getGui"};
+        for (String name : candidateNames) {
+            try {
+                Method method = renderLayerClass.getMethod(name);
+                if (!renderLayerClass.isAssignableFrom(method.getReturnType())) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method.invoke(null);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static Class<?> tryLoadClass(String... names) {
+        for (String name : names) {
+            try {
+                return Class.forName(name);
+            } catch (ClassNotFoundException ignored) {
+            }
+        }
+        return null;
     }
 }

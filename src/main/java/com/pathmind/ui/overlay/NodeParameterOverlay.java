@@ -381,7 +381,8 @@ public class NodeParameterOverlay {
         }
 
         // Render semi-transparent background overlay
-        context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
+        context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(),
+            popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         // Get animated popup bounds
         int[] bounds = popupAnimation.getScaledPopupBounds(context.getScaledWindowWidth(), context.getScaledWindowHeight(), popupWidth, popupHeight);
@@ -1465,6 +1466,10 @@ public class NodeParameterOverlay {
 
     public boolean isVisible() {
         return popupAnimation.isVisible();
+    }
+
+    public PopupAnimationHandler getPopupAnimation() {
+        return popupAnimation;
     }
     
     private void resetParameterFields() {

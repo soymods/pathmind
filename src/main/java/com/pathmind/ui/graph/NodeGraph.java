@@ -51,6 +51,7 @@ public class NodeGraph {
     private static final int DUPLICATE_OFFSET_Y = 24;
     private static final int SELECTION_BOX_MIN_DRAG = 3;
     private static final int CONNECTION_CLICK_THRESHOLD = 4;
+    private static final int MINIMAL_NODE_TAB_WIDTH = 6;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
@@ -176,8 +177,8 @@ public class NodeGraph {
 
     public enum ZoomLevel {
         FOCUSED(1.0f, true),
-        OVERVIEW(0.35f, false),
-        DISTANT(0.18f, false);
+        OVERVIEW(0.35f, true),
+        DISTANT(0.18f, true);
 
         private final float scale;
         private final boolean showText;
@@ -194,6 +195,11 @@ public class NodeGraph {
         public boolean shouldShowText() {
             return showText;
         }
+    }
+
+    private enum NodeStyle {
+        STANDARD,
+        MINIMAL
     }
 
     private static final class ClipboardSnapshot {
@@ -2050,6 +2056,13 @@ public class NodeGraph {
         return false;
     }
 
+    private NodeStyle getNodeStyle(Node node) {
+        if (node == null) {
+            return NodeStyle.STANDARD;
+        }
+        return node.usesMinimalNodePresentation() ? NodeStyle.MINIMAL : NodeStyle.STANDARD;
+    }
+
     private void renderNode(DrawContext context, TextRenderer textRenderer, Node node, int mouseX, int mouseY, float delta) {
         int x = node.getX() - cameraX;
         int y = node.getY() - cameraY;
@@ -2060,7 +2073,8 @@ public class NodeGraph {
         // Use screen coordinates (with camera offset) for this check
         boolean isOverSidebar = isNodeOverSidebarForRender(node, x, width);
 
-        boolean simpleStyle = node.usesMinimalNodePresentation();
+        NodeStyle nodeStyle = getNodeStyle(node);
+        boolean simpleStyle = nodeStyle == NodeStyle.MINIMAL;
         boolean isStopControl = node.isStopControlNode();
 
         // Node background
@@ -2068,15 +2082,20 @@ public class NodeGraph {
         if (isOverSidebar) {
             bgColor = UITheme.NODE_DIMMED_BG; // Grey when over sidebar for deletion
         }
+        context.fill(x, y, x + width, y + height, bgColor);
         if (simpleStyle) {
+            int tabColor;
             if (isStopControl) {
-                bgColor = isOverSidebar ? toGrayscale(UITheme.NODE_STOP_BG, 0.7f) : UITheme.NODE_STOP_BG;
+                tabColor = isOverSidebar ? toGrayscale(UITheme.NODE_STOP_BG, 0.7f) : UITheme.NODE_STOP_BG;
             } else {
                 int baseColor = node.getType().getColor();
-                bgColor = isOverSidebar ? toGrayscale(baseColor, 0.7f) : baseColor;
+                tabColor = isOverSidebar ? toGrayscale(baseColor, 0.7f) : baseColor;
+            }
+            int tabRight = Math.min(x + MINIMAL_NODE_TAB_WIDTH, x + width - 1);
+            if (tabRight > x + 1) {
+                context.fill(x + 1, y + 1, tabRight, y + height - 1, tabColor);
             }
         }
-        context.fill(x, y, x + width, y + height, bgColor);
         
         // Node border - use light blue for selection, grey for dragging, darker node type color for START/events, node type color otherwise
         int borderColor;
@@ -2107,8 +2126,7 @@ public class NodeGraph {
 
         // Node header (only for non-START/event function nodes)
         if (simpleStyle) {
-            String label = node.getType().getDisplayName().toUpperCase(java.util.Locale.ROOT);
-            int textWidth = textRenderer.getWidth(label);
+            String label = node.getType().getDisplayName().toUpperCase(Locale.ROOT);
             int titleColor = isOverSidebar ? UITheme.TEXT_LABEL : UITheme.TEXT_PRIMARY;
             int textX;
             int textY;
@@ -2116,8 +2134,13 @@ public class NodeGraph {
                 textX = x + 4;
                 textY = y + 4;
             } else {
-                textX = x + Math.max(4, (width - textWidth) / 2);
+                int contentLeft = x + MINIMAL_NODE_TAB_WIDTH;
+                int contentWidth = Math.max(0, width - MINIMAL_NODE_TAB_WIDTH);
+                String displayLabel = trimTextToWidth(label, textRenderer, Math.max(0, contentWidth - 8));
+                int textWidth = textRenderer.getWidth(displayLabel);
+                textX = contentLeft + Math.max(4, (contentWidth - textWidth) / 2);
                 textY = y + (height - textRenderer.fontHeight) / 2;
+                label = displayLabel;
             }
             drawNodeText(context, textRenderer, label, textX, textY, titleColor);
         } else if (node.getType() != NodeType.START
@@ -4887,23 +4910,8 @@ public class NodeGraph {
         if (renderer.getWidth(text) <= maxWidth) {
             return text;
         }
-
-        String ellipsis = "...";
-        int ellipsisWidth = renderer.getWidth(ellipsis);
-        if (ellipsisWidth >= maxWidth) {
-            return ellipsis;
-        }
-
-        String baseText = text;
-        if (baseText.endsWith(ellipsis)) {
-            baseText = baseText.substring(0, baseText.length() - ellipsis.length());
-        }
-
-        StringBuilder builder = new StringBuilder(baseText);
-        while (builder.length() > 0 && renderer.getWidth(builder.toString() + ellipsis) > maxWidth) {
-            builder.setLength(builder.length() - 1);
-        }
-        return builder.append(ellipsis).toString();
+        int safeMaxWidth = Math.max(0, maxWidth);
+        return renderer.trimToWidth(text, safeMaxWidth);
     }
 
     private void renderSocket(DrawContext context, int x, int y, boolean isInput, int color) {

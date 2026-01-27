@@ -483,11 +483,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void renderZoomControls(DrawContext context, int mouseX, int mouseY, boolean disabled) {
         int buttonY = getZoomButtonY();
-        NodeGraph.ZoomLevel level = nodeGraph.getZoomLevel();
-        boolean minusActive = level != NodeGraph.ZoomLevel.FOCUSED;
-        boolean plusActive = level == NodeGraph.ZoomLevel.FOCUSED;
-        drawZoomButton(context, getZoomMinusButtonX(), buttonY, mouseX, mouseY, disabled, true, minusActive);
-        drawZoomButton(context, getZoomPlusButtonX(), buttonY, mouseX, mouseY, disabled, false, plusActive);
+        boolean canZoomOut = nodeGraph.canZoomOut();
+        boolean canZoomIn = nodeGraph.canZoomIn();
+        boolean minusDisabled = disabled || !canZoomOut;
+        boolean plusDisabled = disabled || !canZoomIn;
+        drawZoomButton(context, getZoomMinusButtonX(), buttonY, mouseX, mouseY, minusDisabled, true, false);
+        drawZoomButton(context, getZoomPlusButtonX(), buttonY, mouseX, mouseY, plusDisabled, false, false);
     }
 
     private void drawZoomButton(DrawContext context, int x, int y, int mouseX, int mouseY, boolean disabled, boolean isMinus, boolean active) {
@@ -507,8 +508,8 @@ public class PathmindVisualEditorScreen extends Screen {
             UITheme.TOOLBAR_BG_ACTIVE,
             UITheme.TOOLBAR_BG_HOVER,
             UITheme.TOOLBAR_BG_DISABLED,
-            UITheme.BORDER_DEFAULT,
-            getAccentColor()
+            UITheme.BUTTON_DEFAULT_BORDER,
+            UITheme.BUTTON_HOVER_OUTLINE
         );
 
         int iconColor = UITheme.TEXT_PRIMARY;
@@ -1329,6 +1330,15 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT && verticalAmount != 0.0) {
+            if (verticalAmount > 0.0) {
+                nodeGraph.zoomIn(getWorkspaceCenterX(), getWorkspaceCenterY());
+            } else {
+                nodeGraph.zoomOut(getWorkspaceCenterX(), getWorkspaceCenterY());
+            }
+            return true;
+        }
+
         // Handle sidebar scrolling
         if (mouseX >= 0 && mouseX <= sidebar.getWidth()) {
             if (sidebar.mouseScrolled(mouseX, mouseY, verticalAmount)) {
@@ -2120,15 +2130,19 @@ public class PathmindVisualEditorScreen extends Screen {
         float animProgress = AnimationHelper.easeOutQuad(presetDropdownAnimation.getValue());
 
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT);
-        int backgroundColor = (hovered || presetDropdownOpen) ? UITheme.DROPDOWN_BG_HOVER : UITheme.DROPDOWN_BG;
+        int backgroundColor;
         if (disabled && !presetDropdownOpen) {
-            backgroundColor = UITheme.TOOLBAR_BG;
+            backgroundColor = UITheme.TOOLBAR_BG_DISABLED;
+        } else if (hovered) {
+            backgroundColor = presetDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER;
+        } else {
+            backgroundColor = presetDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
         }
         context.fill(dropdownX, dropdownY, dropdownX + PRESET_DROPDOWN_WIDTH, dropdownY + PRESET_DROPDOWN_HEIGHT, backgroundColor);
         boolean highlight = presetDropdownOpen || hovered;
         int borderColor = disabled && !presetDropdownOpen
             ? UITheme.BORDER_SUBTLE
-            : getAnimatedBorderColor("preset-dropdown", highlight, UITheme.BORDER_DEFAULT, getAccentColor());
+            : getAnimatedBorderColor("preset-dropdown", highlight, UITheme.BUTTON_DEFAULT_BORDER, UITheme.BUTTON_HOVER_OUTLINE);
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT, borderColor);
 
         String displayName = activePresetName == null || activePresetName.isEmpty()
@@ -2163,12 +2177,12 @@ public class PathmindVisualEditorScreen extends Screen {
         // Use scissor to clip the dropdown content during animation
         context.enableScissor(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + animatedHeight);
 
-        context.fill(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + fullOptionsHeight, UITheme.BACKGROUND_SECONDARY);
+        context.fill(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + fullOptionsHeight, UITheme.TOOLBAR_BG);
 
         int optionY = optionStartY;
         for (String preset : availablePresets) {
             boolean optionHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-            int optionColor = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+            int optionColor = optionHovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
             context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, optionColor);
             int textColor = preset.equals(activePresetName) ? getAccentColor() : UITheme.TEXT_PRIMARY;
             int textX = dropdownX + PRESET_TEXT_LEFT_PADDING;
@@ -2227,16 +2241,16 @@ public class PathmindVisualEditorScreen extends Screen {
             optionY += PRESET_OPTION_HEIGHT;
         }
 
-        context.drawHorizontalLine(dropdownX + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 2, optionY, UITheme.BORDER_SUBTLE);
+        context.drawHorizontalLine(dropdownX + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 2, optionY, UITheme.BUTTON_DEFAULT_BORDER);
 
         boolean createHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-        int createColor = createHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        int createColor = createHovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
         context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, createColor);
         int createTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
         String createLabel = this.textRenderer.trimToWidth("+ Create new preset", createTextWidth);
         context.drawTextWithShadow(this.textRenderer, Text.literal(createLabel), dropdownX + PRESET_TEXT_LEFT_PADDING, optionY + 5, getAccentColor());
 
-        DrawContextBridge.drawBorder(context, dropdownX, optionStartY, PRESET_DROPDOWN_WIDTH, fullOptionsHeight, UITheme.BORDER_SUBTLE);
+        DrawContextBridge.drawBorder(context, dropdownX, optionStartY, PRESET_DROPDOWN_WIDTH, fullOptionsHeight, UITheme.BUTTON_DEFAULT_BORDER);
 
         context.disableScissor();
     }
@@ -3084,14 +3098,27 @@ public class PathmindVisualEditorScreen extends Screen {
     private void drawSettingsIcon(DrawContext context, int buttonX, int buttonY, int color) {
         int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
         int centerY = buttonY + BOTTOM_BUTTON_SIZE / 2;
-        int tooth = 2;
-        context.fill(centerX - 1, centerY - 6, centerX + 1, centerY - 4, color);
-        context.fill(centerX - 1, centerY + 4, centerX + 1, centerY + 6, color);
-        context.fill(centerX - 6, centerY - 1, centerX - 4, centerY + 1, color);
-        context.fill(centerX + 4, centerY - 1, centerX + 6, centerY + 1, color);
+        int outer = 5;
+        int inner = 3;
+        int tooth = outer + 2;
 
-        context.fill(centerX - 4, centerY - 4, centerX + 4, centerY + 4, color);
-        context.fill(centerX - 3, centerY - 3, centerX + 3, centerY + 3, UITheme.GRID_ORIGIN);
+        // Main gear body (ring).
+        context.fill(centerX - outer, centerY - outer, centerX + outer, centerY + outer, color);
+        context.fill(centerX - inner, centerY - inner, centerX + inner, centerY + inner, UITheme.GRID_ORIGIN);
+
+        // Cardinal teeth.
+        context.fill(centerX - 1, centerY - tooth, centerX + 1, centerY - outer, color);
+        context.fill(centerX - 1, centerY + outer, centerX + 1, centerY + tooth, color);
+        context.fill(centerX - tooth, centerY - 1, centerX - outer, centerY + 1, color);
+        context.fill(centerX + outer, centerY - 1, centerX + tooth, centerY + 1, color);
+
+        // Diagonal teeth.
+        context.fill(centerX - 6, centerY - 6, centerX - 4, centerY - 4, color);
+        context.fill(centerX + 4, centerY - 6, centerX + 6, centerY - 4, color);
+        context.fill(centerX - 6, centerY + 4, centerX - 4, centerY + 6, color);
+        context.fill(centerX + 4, centerY + 4, centerX + 6, centerY + 6, color);
+
+        // Center hub.
         context.fill(centerX - 1, centerY - 1, centerX + 1, centerY + 1, color);
     }
 

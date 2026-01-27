@@ -263,6 +263,16 @@ public class PathmindVisualEditorScreen extends Screen {
             renderDraggingNode(context, mouseX, mouseY);
         }
 
+        boolean controlsDisabled = isPopupObscuringWorkspace();
+        renderZoomControls(context, mouseX, mouseY, controlsDisabled);
+
+        if (shouldShowExecutionControls()) {
+            renderStopButton(context, mouseX, mouseY, controlsDisabled);
+            renderPlayButton(context, mouseX, mouseY, controlsDisabled);
+        }
+        renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
+        renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
+
         // Tick all popup animations
         clearPopupAnimation.tick();
         importExportPopupAnimation.tick();
@@ -1324,6 +1334,15 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleSchematicDropdownScroll(mouseX, mouseY, verticalAmount)) {
+            return true;
+        }
+
+        if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT && verticalAmount != 0.0) {
+            if (verticalAmount > 0.0) {
+                nodeGraph.zoomIn(getWorkspaceCenterX(), getWorkspaceCenterY());
+            } else {
+                nodeGraph.zoomOut(getWorkspaceCenterX(), getWorkspaceCenterY());
+            }
             return true;
         }
 

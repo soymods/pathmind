@@ -1338,6 +1338,15 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT && verticalAmount != 0.0) {
+            if (verticalAmount > 0.0) {
+                nodeGraph.zoomIn(getWorkspaceCenterX(), getWorkspaceCenterY());
+            } else {
+                nodeGraph.zoomOut(getWorkspaceCenterX(), getWorkspaceCenterY());
+            }
+            return true;
+        }
+
         // Handle sidebar scrolling
         if (mouseX >= 0 && mouseX <= sidebar.getWidth()) {
             if (sidebar.mouseScrolled(mouseX, mouseY, verticalAmount)) {

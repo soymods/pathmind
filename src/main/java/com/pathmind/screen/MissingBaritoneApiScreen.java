@@ -1,5 +1,6 @@
 package com.pathmind.screen;
 
+import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneDependencyChecker;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -71,9 +72,9 @@ public class MissingBaritoneApiScreen extends Screen {
         int centerX = this.width / 2;
         int messageY = this.height / 2 - 40;
 
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Optional Baritone API not detected"), centerX, messageY, 0xFFFFFF);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to unlock Baritone nodes"), centerX, messageY + 16, 0xFFD7D7D7);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 32, 0xFF87CEEB);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Optional Baritone API not detected"), centerX, messageY, UITheme.TEXT_HEADER);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to unlock Baritone nodes"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 32, UITheme.LINK_COLOR);
 
         super.render(context, mouseX, mouseY, delta);
     }

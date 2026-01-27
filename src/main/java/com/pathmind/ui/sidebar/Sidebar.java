@@ -47,6 +47,7 @@ public class Sidebar {
     private final Map<NodeCategory, List<NodeGroup>> groupedCategoryNodes;
     private final Map<NodeCategory, Boolean> categoryExpanded;
     private final Map<NodeCategory, AnimatedValue> tabHoverAnimations;
+    private final AnimatedValue categoryOpenAnimation;
     private final boolean baritoneAvailable;
     private NodeType hoveredNodeType = null;
     private NodeCategory hoveredCategory = null;
@@ -55,6 +56,7 @@ public class Sidebar {
     private int maxScroll = 0;
     private int currentSidebarHeight = 400; // Store current sidebar height
     private int currentInnerSidebarWidth = INNER_SIDEBAR_WIDTH;
+    private int currentRenderedWidth = INNER_SIDEBAR_WIDTH;
     
     public Sidebar() {
         this(BaritoneDependencyChecker.isBaritoneApiPresent());
@@ -65,6 +67,7 @@ public class Sidebar {
         this.categoryNodes = new HashMap<>();
         this.groupedCategoryNodes = new HashMap<>();
         this.tabHoverAnimations = new HashMap<>();
+        this.categoryOpenAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
         this.baritoneAvailable = baritoneAvailable;
         
         // Initialize categories as expanded by default
@@ -273,6 +276,9 @@ public class Sidebar {
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, int sidebarStartY, int sidebarHeight) {
         // Store current sidebar height so scroll can be recalculated
         this.currentSidebarHeight = sidebarHeight;
+        categoryOpenAnimation.animateTo(selectedCategory != null ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
+        categoryOpenAnimation.tick();
+        float openProgress = categoryOpenAnimation.getValue();
         
         NodeCategory[] categories = NodeCategory.values();
         int totalVisibleTabs = 0;
@@ -295,7 +301,14 @@ public class Sidebar {
             currentInnerSidebarWidth = INNER_SIDEBAR_WIDTH;
         }
 
-        int totalWidth = getWidth();
+        int totalWidth = currentInnerSidebarWidth
+            + Math.round((OUTER_SIDEBAR_WIDTH - currentInnerSidebarWidth) * openProgress);
+        if (totalWidth < currentInnerSidebarWidth) {
+            totalWidth = currentInnerSidebarWidth;
+        } else if (totalWidth > OUTER_SIDEBAR_WIDTH) {
+            totalWidth = OUTER_SIDEBAR_WIDTH;
+        }
+        currentRenderedWidth = totalWidth;
         int contentTextX = currentInnerSidebarWidth + 8;
         int contentTextRight = totalWidth - SCROLLBAR_MARGIN - SCROLLBAR_WIDTH - 4;
         int maxContentWidth = Math.max(1, contentTextRight - contentTextX);
@@ -395,13 +408,20 @@ public class Sidebar {
         }
         
         // Render category name and nodes for selected category
-        if (selectedCategory != null) {
+        if (selectedCategory != null && openProgress > 0.001f) {
             int contentTop = sidebarStartY + PADDING;
             int contentBottom = sidebarStartY + sidebarHeight - PADDING;
             // Start content area at the very top of the sidebar, right after the title bar
             int contentY = contentTop - scrollOffset;
             int sidebarBottom = sidebarStartY + sidebarHeight;
             int nodeBackgroundLeft = currentInnerSidebarWidth + 1; // Keep divider line visible by offsetting fills
+            int contentClipLeft = nodeBackgroundLeft;
+            int contentClipRight = currentInnerSidebarWidth + Math.round((totalWidth - currentInnerSidebarWidth) * openProgress);
+            if (contentClipRight <= contentClipLeft) {
+                contentClipRight = contentClipLeft + 1;
+            }
+
+            context.enableScissor(contentClipLeft, contentTop, contentClipRight, contentBottom);
             
             // Category header
             int headerTextX = contentTextX;
@@ -513,17 +533,18 @@ public class Sidebar {
             }
 
             renderCategoryScrollbar(context, totalWidth, contentTop, contentBottom);
+            context.disableScissor();
         }
         
         // Reset hover states if mouse is not in sidebar
-        if (mouseX < 0 || mouseX > getWidth()) {
+        if (mouseX < 0 || mouseX > currentRenderedWidth) {
             hoveredNodeType = null;
             hoveredCategory = null;
         }
     }
     
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (mouseX < 0 || mouseX > getWidth()) {
+        if (mouseX < 0 || mouseX > currentRenderedWidth) {
             return false;
         }
         
@@ -553,7 +574,7 @@ public class Sidebar {
     }
     
     public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
-        if (mouseX >= 0 && mouseX <= getWidth()) {
+        if (mouseX >= 0 && mouseX <= currentRenderedWidth) {
             scrollOffset += (int)(-amount * 20); // Scroll speed
             scrollOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
             return true;
@@ -587,6 +608,13 @@ public class Sidebar {
      */
     public static int getCollapsedWidth() {
         return INNER_SIDEBAR_WIDTH;
+    }
+
+    /**
+     * Returns the width currently rendered (including category open animation).
+     */
+    public int getRenderedWidth() {
+        return currentRenderedWidth;
     }
     
     /**

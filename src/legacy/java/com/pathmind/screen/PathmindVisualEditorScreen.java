@@ -114,6 +114,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean presetDropdownOpen = false;
     private final AnimatedValue presetDropdownAnimation = AnimatedValue.forHover();
+    private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
     private List<String> availablePresets = new ArrayList<>();
     private String activePresetName = "";
     private boolean createPresetPopupVisible = false;
@@ -224,9 +225,11 @@ public class PathmindVisualEditorScreen extends Screen {
         
         boolean titleHovered = isTitleHovered(mouseX, mouseY);
         boolean titleActive = titleHovered || infoPopupVisible;
+        titleUnderlineAnimation.animateTo(titleActive ? 1f : 0f, UITheme.HOVER_ANIM_MS);
+        titleUnderlineAnimation.tick();
 
         // Render title bar text
-        drawTitle(context, titleActive);
+        drawTitle(context, titleUnderlineAnimation.getValue());
         
         // Update mouse hover for socket highlighting
         nodeGraph.updateMouseHover(mouseX, mouseY);
@@ -304,7 +307,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Re-render title bar on top of everything to ensure it's always visible
         context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
-        drawTitle(context, titleActive);
+        drawTitle(context, titleUnderlineAnimation.getValue());
 
         // Controls are already rendered before overlays so they appear dimmed underneath
     }
@@ -361,13 +364,13 @@ public class PathmindVisualEditorScreen extends Screen {
         tempNode.setPosition(x, y);
         
         // Render the node with a slight transparency
-        int alpha = 0x80;
+        int alpha = UITheme.DRAG_PREVIEW_HEADER_ALPHA;
         int nodeColor = (draggingNodeType.getColor() & 0x00FFFFFF) | alpha;
         
         // Node background with transparency
-        context.fill(x, y, x + width, y + height, 0x802A2A2A);
+        context.fill(x, y, x + width, y + height, UITheme.DRAG_PREVIEW_BG);
         // Draw grey outline for dragging state
-        DrawContextBridge.drawBorder(context, x, y, width, height, 0xFFAAAAAA);
+        DrawContextBridge.drawBorder(context, x, y, width, height, UITheme.DRAG_PREVIEW_BORDER);
         
         // Node header
         if (draggingNodeType != NodeType.START && draggingNodeType != NodeType.EVENT_FUNCTION) {
@@ -377,7 +380,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 Text.literal(draggingNodeType.getDisplayName()),
                 x + 4,
                 y + 4,
-                0xFFFFFFFF
+                UITheme.TEXT_HEADER
             );
         }
     }
@@ -393,21 +396,28 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawZoomButton(DrawContext context, int x, int y, int mouseX, int mouseY, boolean disabled, boolean isMinus, boolean active) {
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE);
-        int bgColor = active ? 0xFF353535 : 0xFF2A2A2A;
-        if (hovered) {
-            bgColor = active ? 0xFF3F3F3F : 0xFF333333;
-        } else if (disabled) {
-            bgColor = 0xFF1E1E1E;
-        }
-        context.fill(x + 1, y + 1, x + ZOOM_BUTTON_SIZE - 1, y + ZOOM_BUTTON_SIZE - 1, bgColor);
-
         String hoverKey = isMinus ? "zoom-minus-button" : "zoom-plus-button";
-        int borderColor = getAnimatedBorderColor(hoverKey, hovered, UITheme.BORDER_SUBTLE, getAccentColor());
-        DrawContextBridge.drawBorder(context, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE, borderColor);
+        drawToolbarButtonFrame(
+            context,
+            x,
+            y,
+            ZOOM_BUTTON_SIZE,
+            hovered,
+            active,
+            disabled,
+            hoverKey,
+            UITheme.TOOLBAR_BG,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_BG_HOVER,
+            UITheme.TOOLBAR_BG_DISABLED,
+            UITheme.BORDER_DEFAULT,
+            getAccentColor()
+        );
 
         int iconColor = UITheme.TEXT_PRIMARY;
         if (disabled) {
-            iconColor = 0xFF555555;
+            iconColor = UITheme.DROPDOWN_ACTION_DISABLED;
         } else if (hovered) {
             iconColor = getAccentColor();
         }
@@ -463,7 +473,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (screenX < startX || screenX > endX) {
                 continue;
             }
-            context.drawVerticalLine(screenX, startY, endY, 0x40333333);
+            context.drawVerticalLine(screenX, startY, endY, UITheme.GRID_LINE);
         }
 
         int firstHorizontal = topWorld - Math.floorMod(topWorld, gridSize);
@@ -472,7 +482,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (screenY < startY || screenY > endY) {
                 continue;
             }
-            context.drawHorizontalLine(startX, endX, screenY, 0x40333333);
+            context.drawHorizontalLine(startX, endX, screenY, UITheme.GRID_LINE);
         }
     }
 
@@ -1445,8 +1455,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + popupWidth / 2;
         int messageY = popupY + 16;
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone nodes need the Baritone API (optional)"), centerX, messageY, UITheme.TEXT_PRIMARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to enable these nodes"), centerX, messageY + 16, 0xFFD7D7D7);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 30, 0xFF87CEEB);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to enable these nodes"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 30, UITheme.LINK_COLOR);
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -1467,16 +1477,19 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false, "popup-baritone-close");
     }
 
-    private void drawTitle(DrawContext context, boolean underline) {
+    private void drawTitle(DrawContext context, float underlineProgress) {
         int centerX = this.width / 2;
         int textY = (TITLE_BAR_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
         context.drawCenteredTextWithShadow(this.textRenderer, TITLE_TEXT, centerX, textY, UITheme.TEXT_PRIMARY);
 
-        if (underline) {
+        if (underlineProgress > 0.001f) {
             int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
-            int underlineStartX = centerX - textWidth / 2;
-            int underlineY = textY + this.textRenderer.fontHeight;
-            context.fill(underlineStartX, underlineY, underlineStartX + textWidth, underlineY + 1, UITheme.TEXT_PRIMARY);
+            int underlineWidth = Math.round(textWidth * underlineProgress);
+            if (underlineWidth > 0) {
+                int underlineStartX = centerX - underlineWidth / 2;
+                int underlineY = textY + this.textRenderer.fontHeight;
+                context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, UITheme.TEXT_PRIMARY);
+            }
         }
     }
 
@@ -1640,20 +1653,20 @@ public class PathmindVisualEditorScreen extends Screen {
         switch (style) {
             case PRIMARY:
                 bgColor = hovered
-                        ? mixColor(getAccentColor(), 0xFFFFFFFF, 0.18f)
-                        : mixColor(getAccentColor(), 0xFF000000, 0.25f);
+                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.18f)
+                        : mixColor(getAccentColor(), UITheme.BORDER_SOCKET, 0.25f);
                 borderNormal = getAccentColor();
                 borderHover = getAccentColor();
                 break;
             case ACCENT:
                 bgColor = hovered
-                        ? mixColor(getAccentColor(), 0xFFFFFFFF, 0.25f)
+                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.25f)
                         : getAccentColor();
                 borderNormal = getAccentColor();
                 borderHover = getAccentColor();
                 break;
             default:
-                bgColor = hovered ? 0xFF505050 : 0xFF3A3A3A;
+                bgColor = hovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BUTTON_ACTIVE_BG;
                 borderNormal = UITheme.BORDER_HIGHLIGHT;
                 borderHover = UITheme.BUTTON_HOVER_OUTLINE;
                 break;
@@ -1895,24 +1908,31 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
 
-        int bgColor = executing ? 0xFF243224 : 0xFF2A2A2A;
-        if (hovered) {
-            bgColor = executing ? 0xFF2F4531 : 0xFF353535;
-        } else if (disabled && !executing) {
-            bgColor = 0xFF242424;
-        }
-
-        int borderNormal = executing ? UITheme.STATE_SUCCESS : UITheme.BORDER_SUBTLE;
+        int borderNormal = executing ? UITheme.STATE_SUCCESS : UITheme.BORDER_DEFAULT;
         int borderHover = UITheme.STATE_SUCCESS;
-        int borderColor = getAnimatedBorderColor("play-button", hovered, borderNormal, borderHover);
-        context.fill(buttonX + 1, buttonY + 1, buttonX + PLAY_BUTTON_SIZE - 1, buttonY + PLAY_BUTTON_SIZE - 1, bgColor);
-        DrawContextBridge.drawBorder(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, borderColor);
+        drawToolbarButtonFrame(
+            context,
+            buttonX,
+            buttonY,
+            PLAY_BUTTON_SIZE,
+            hovered,
+            executing,
+            disabled && !executing,
+            "play-button",
+            UITheme.TOOLBAR_BG,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_EXECUTE_BG,
+            UITheme.TOOLBAR_EXECUTE_HOVER,
+            UITheme.TOOLBAR_BG_DISABLED,
+            borderNormal,
+            borderHover
+        );
 
-        int iconColor = executing ? UITheme.STATE_SUCCESS : 0xFF4CAF50;
+        int iconColor = executing ? UITheme.STATE_SUCCESS : UITheme.TOOLBAR_EXECUTE_ICON;
         if (hovered) {
-            iconColor = 0xFF8BE97A;
+            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_HOVER;
         } else if (disabled && !executing) {
-            iconColor = 0xFF4A7C4A;
+            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_DISABLED;
         }
         drawPlayIcon(context, buttonX, buttonY, iconColor);
     }
@@ -1938,25 +1958,31 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
 
-        int bgColor = executing ? 0xFF8C1B1B : 0xFF2A2A2A;
+        int borderNormal = executing ? UITheme.TOOLBAR_STOP_BORDER : UITheme.BORDER_DEFAULT;
+        int borderHover = executing ? UITheme.TOOLBAR_STOP_BORDER_HOVER : UITheme.STATE_ERROR;
+        drawToolbarButtonFrame(
+            context,
+            buttonX,
+            buttonY,
+            STOP_BUTTON_SIZE,
+            hovered,
+            executing,
+            disabled && !executing,
+            "stop-button",
+            UITheme.TOOLBAR_BG,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_STOP_BG,
+            UITheme.TOOLBAR_STOP_HOVER,
+            UITheme.TOOLBAR_BG_DISABLED,
+            borderNormal,
+            borderHover
+        );
+
+        int iconColor = executing ? UITheme.TOOLBAR_STOP_ICON : UITheme.TOOLBAR_STOP_ICON_INACTIVE;
         if (hovered) {
-            bgColor = executing ? 0xFFA02525 : 0xFF353535;
+            iconColor = executing ? UITheme.TOOLBAR_STOP_ICON_HOVER : UITheme.STATE_ERROR;
         } else if (disabled && !executing) {
-            bgColor = 0xFF242424;
-        }
-
-        int borderNormal = executing ? 0xFFFF4C4C : UITheme.BORDER_SUBTLE;
-        int borderHover = executing ? 0xFFFF6666 : UITheme.STATE_ERROR;
-        int borderColor = getAnimatedBorderColor("stop-button", hovered, borderNormal, borderHover);
-
-        context.fill(buttonX + 1, buttonY + 1, buttonX + STOP_BUTTON_SIZE - 1, buttonY + STOP_BUTTON_SIZE - 1, bgColor);
-        DrawContextBridge.drawBorder(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, borderColor);
-
-        int iconColor = executing ? 0xFFFF6F6F : 0xFFFFA6A6;
-        if (hovered) {
-            iconColor = executing ? 0xFFFF8A8A : UITheme.STATE_ERROR;
-        } else if (disabled && !executing) {
-            iconColor = 0xFFB35E5E;
+            iconColor = UITheme.TOOLBAR_STOP_ICON_DISABLED;
         }
         drawStopIcon(context, buttonX, buttonY, iconColor);
     }
@@ -1982,15 +2008,15 @@ public class PathmindVisualEditorScreen extends Screen {
         float animProgress = AnimationHelper.easeOutQuad(presetDropdownAnimation.getValue());
 
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT);
-        int backgroundColor = (hovered || presetDropdownOpen) ? 0xFF3A3A3A : 0xFF2F2F2F;
+        int backgroundColor = (hovered || presetDropdownOpen) ? UITheme.DROPDOWN_BG_HOVER : UITheme.DROPDOWN_BG;
         if (disabled && !presetDropdownOpen) {
-            backgroundColor = 0xFF2A2A2A;
+            backgroundColor = UITheme.TOOLBAR_BG;
         }
         context.fill(dropdownX, dropdownY, dropdownX + PRESET_DROPDOWN_WIDTH, dropdownY + PRESET_DROPDOWN_HEIGHT, backgroundColor);
         boolean highlight = presetDropdownOpen || hovered;
         int borderColor = disabled && !presetDropdownOpen
             ? UITheme.BORDER_SUBTLE
-            : getAnimatedBorderColor("preset-dropdown", highlight, UITheme.BORDER_SUBTLE, getAccentColor());
+            : getAnimatedBorderColor("preset-dropdown", highlight, UITheme.BORDER_DEFAULT, getAccentColor());
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT, borderColor);
 
         String displayName = activePresetName == null || activePresetName.isEmpty()
@@ -2030,7 +2056,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int optionY = optionStartY;
         for (String preset : availablePresets) {
             boolean optionHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-            int optionColor = optionHovered ? 0xFF3F3F3F : 0xFF2B2B2B;
+            int optionColor = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
             context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, optionColor);
             int textColor = preset.equals(activePresetName) ? getAccentColor() : UITheme.TEXT_PRIMARY;
             int textX = dropdownX + PRESET_TEXT_LEFT_PADDING;
@@ -2052,12 +2078,12 @@ public class PathmindVisualEditorScreen extends Screen {
                         renameTop - PRESET_RENAME_ICON_HITBOX_PADDING,
                         renameLeft + PRESET_RENAME_ICON_SIZE + PRESET_RENAME_ICON_HITBOX_PADDING,
                         renameTop + PRESET_RENAME_ICON_SIZE + PRESET_RENAME_ICON_HITBOX_PADDING,
-                        0x33555555);
+                        UITheme.DROPDOWN_ICON_HOVER_BG);
             }
 
             int renameColor;
             if (renameDisabled) {
-                renameColor = 0xFF555555;
+                renameColor = UITheme.DROPDOWN_ACTION_DISABLED;
             } else if (renameHovered) {
                 renameColor = getAccentColor();
             } else {
@@ -2074,12 +2100,12 @@ public class PathmindVisualEditorScreen extends Screen {
                         deleteTop - PRESET_DELETE_ICON_HITBOX_PADDING,
                         deleteLeft + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
                         deleteTop + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
-                        0x33555555);
+                        UITheme.DROPDOWN_ICON_HOVER_BG);
             }
 
             int deleteColor;
             if (deleteDisabled) {
-                deleteColor = 0xFF555555;
+                deleteColor = UITheme.DROPDOWN_ACTION_DISABLED;
             } else if (deleteHovered) {
                 deleteColor = getAccentColor();
             } else {
@@ -2092,7 +2118,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(dropdownX + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 2, optionY, UITheme.BORDER_SUBTLE);
 
         boolean createHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-        int createColor = createHovered ? 0xFF3F3F3F : 0xFF2B2B2B;
+        int createColor = createHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
         context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, createColor);
         int createTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
         String createLabel = this.textRenderer.trimToWidth("+ Create new preset", createTextWidth);
@@ -2409,7 +2435,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, 0xFF1F1F1F);
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, UITheme.RENAME_INPUT_BG);
         boolean focused = createPresetField != null && createPresetField.isFocused();
         int borderColor;
         if (focused) {
@@ -2417,7 +2443,7 @@ public class PathmindVisualEditorScreen extends Screen {
         } else if (fieldHovered) {
             borderColor = UITheme.BORDER_HIGHLIGHT;
         } else {
-            borderColor = 0xFF000000;
+            borderColor = UITheme.RENAME_INPUT_BORDER;
         }
         DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
@@ -2493,7 +2519,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, 0xFF1F1F1F);
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, UITheme.RENAME_INPUT_BG);
         boolean focused = renamePresetField != null && renamePresetField.isFocused();
         int borderColor;
         if (focused) {
@@ -2501,7 +2527,7 @@ public class PathmindVisualEditorScreen extends Screen {
         } else if (fieldHovered) {
             borderColor = UITheme.BORDER_HIGHLIGHT;
         } else {
-            borderColor = 0xFF000000;
+            borderColor = UITheme.RENAME_INPUT_BORDER;
         }
         DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
@@ -2879,11 +2905,11 @@ public class PathmindVisualEditorScreen extends Screen {
             y = this.height - boxHeight - 4;
         }
 
-        int backgroundColor = 0xF01A1A1A;
-        int borderColor = 0x80FFFFFF;
+        int backgroundColor = UITheme.TOOLTIP_BG;
+        int borderColor = UITheme.TOOLTIP_BORDER;
         context.fill(x, y, x + boxWidth, y + boxHeight, backgroundColor);
         DrawContextBridge.drawBorder(context, x, y, boxWidth, boxHeight, borderColor);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(text), x + paddingX, y + paddingY, 0xFFE0E0E0);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(text), x + paddingX, y + paddingY, UITheme.TEXT_PRIMARY);
     }
 
     private float getHoverProgress(Object key, boolean hovered) {
@@ -2901,16 +2927,25 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean active = settingsPopupVisible;
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
         boolean highlight = hovered || active;
-        int bgColor = highlight ? 0xFF505050 : 0xFF3A3A3A;
-        context.fill(buttonX + 1, buttonY + 1, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, bgColor);
+        drawToolbarButtonFrame(
+            context,
+            buttonX,
+            buttonY,
+            BOTTOM_BUTTON_SIZE,
+            hovered,
+            active,
+            disabled,
+            "settings-button",
+            UITheme.TOOLBAR_BG,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_BG_HOVER,
+            UITheme.TOOLBAR_BG_DISABLED,
+            UITheme.BORDER_DEFAULT,
+            getAccentColor()
+        );
 
-        int borderColor = getAnimatedBorderColor("settings-button", highlight, UITheme.BORDER_HIGHLIGHT, getAccentColor());
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, borderColor);
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-
-        int iconColor = highlight ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        int iconColor = disabled ? UITheme.DROPDOWN_ACTION_DISABLED : (highlight ? getAccentColor() : UITheme.TEXT_PRIMARY);
         drawSettingsIcon(context, buttonX, buttonY, iconColor);
 
         if (hovered && showWorkspaceTooltips) {
@@ -2928,7 +2963,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(centerX + 4, centerY - 1, centerX + 6, centerY + 1, color);
 
         context.fill(centerX - 4, centerY - 4, centerX + 4, centerY + 4, color);
-        context.fill(centerX - 3, centerY - 3, centerX + 3, centerY + 3, 0xFF2A2A2A);
+        context.fill(centerX - 3, centerY - 3, centerX + 3, centerY + 3, UITheme.GRID_ORIGIN);
         context.fill(centerX - 1, centerY - 1, centerX + 1, centerY + 1, color);
     }
 
@@ -2985,9 +3020,9 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawAccentOption(DrawContext context, int x, int y, AccentOption option, boolean hovered, boolean selected) {
-        int bgColor = selected ? 0xFF3F3F3F : 0xFF2B2B2B;
+        int bgColor = selected ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
         if (hovered) {
-            bgColor = selected ? 0xFF4A4A4A : 0xFF343434;
+            bgColor = selected ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
         }
         context.fill(x, y, x + SETTINGS_OPTION_WIDTH, y + SETTINGS_OPTION_HEIGHT, bgColor);
         int borderNormal = selected ? getAccentColor() : UITheme.BORDER_SUBTLE;
@@ -3019,18 +3054,58 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY, boolean active, Object hoverKey) {
         boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
-        boolean highlight = hovered || active;
-
-        int bgColor = highlight ? 0xFF505050 : 0xFF3A3A3A;
-        context.fill(buttonX + 1, buttonY + 1, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, bgColor);
-
-        int borderColor = getAnimatedBorderColor(hoverKey, highlight, UITheme.BORDER_HIGHLIGHT, getAccentColor());
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, borderColor);
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
+        drawToolbarButtonFrame(
+            context,
+            buttonX,
+            buttonY,
+            BOTTOM_BUTTON_SIZE,
+            hovered,
+            active,
+            false,
+            hoverKey,
+            UITheme.TOOLBAR_BG,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_BG_ACTIVE,
+            UITheme.TOOLBAR_BG_HOVER,
+            UITheme.TOOLBAR_BG_DISABLED,
+            UITheme.BORDER_DEFAULT,
+            getAccentColor()
+        );
 
         return hovered;
+    }
+
+    private void drawToolbarButtonFrame(
+        DrawContext context,
+        int x,
+        int y,
+        int size,
+        boolean hovered,
+        boolean active,
+        boolean disabled,
+        Object hoverKey,
+        int bgDefault,
+        int bgHover,
+        int bgActive,
+        int bgActiveHover,
+        int bgDisabled,
+        int borderNormal,
+        int borderHover
+    ) {
+        int bgColor;
+        if (disabled) {
+            bgColor = bgDisabled;
+        } else if (hovered) {
+            bgColor = active ? bgActiveHover : bgHover;
+        } else {
+            bgColor = active ? bgActive : bgDefault;
+        }
+        context.fill(x + 1, y + 1, x + size - 1, y + size - 1, bgColor);
+
+        int borderColor = disabled
+            ? UITheme.BORDER_SUBTLE
+            : getAnimatedBorderColor(hoverKey, hovered || active, borderNormal, borderHover);
+        DrawContextBridge.drawBorder(context, x, y, size, size, borderColor);
     }
 
     private int getWorkspaceButtonY() {
@@ -3038,7 +3113,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getSidebarVisibleWidth() {
-        return sidebar != null ? sidebar.getWidth() : Sidebar.getCollapsedWidth();
+        return sidebar != null ? sidebar.getRenderedWidth() : Sidebar.getCollapsedWidth();
     }
 
     private int getHomeButtonX() {
@@ -3220,10 +3295,10 @@ public class PathmindVisualEditorScreen extends Screen {
             context.fill(startX, startY, startX + 1, startY + 2, color);
         }
 
-        int tipColor = (color & 0x00FFFFFF) | 0x66000000;
+        int tipColor = (color & 0x00FFFFFF) | UITheme.ICON_DETAIL_SHADE_LOW;
         context.fill(x + size - 3, y, x + size - 1, y + 2, tipColor);
 
-        int eraserColor = (color & 0x00FFFFFF) | 0x88000000;
+        int eraserColor = (color & 0x00FFFFFF) | UITheme.ICON_DETAIL_SHADE_HIGH;
         context.fill(x, y + size - 1, x + 2, y + size, eraserColor);
     }
 
@@ -3235,7 +3310,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(x, y + 1, x + PRESET_DELETE_ICON_SIZE, y + 3, color);
         context.fill(x + 1, y + 3, x + PRESET_DELETE_ICON_SIZE - 1, y + PRESET_DELETE_ICON_SIZE, color);
 
-        int slatColor = (color & 0x00FFFFFF) | 0x66000000;
+        int slatColor = (color & 0x00FFFFFF) | UITheme.ICON_DETAIL_SHADE_LOW;
         context.fill(x + 2, y + 4, x + 3, y + PRESET_DELETE_ICON_SIZE - 1, slatColor);
         context.fill(x + PRESET_DELETE_ICON_SIZE - 3, y + 4, x + PRESET_DELETE_ICON_SIZE - 2, y + PRESET_DELETE_ICON_SIZE - 1, slatColor);
     }

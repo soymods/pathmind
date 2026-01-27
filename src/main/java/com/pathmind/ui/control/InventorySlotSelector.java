@@ -402,16 +402,16 @@ public class InventorySlotSelector {
     }
 
     private enum SlotCategory {
-        PLAYER(0xFF3D6F7A, true),
-        HOTBAR(0xFF4A5F9D, true),
-        ARMOR(0xFFB0804F, true),
-        OFFHAND(0xFF8A63C5, true),
-        CRAFTING(0xFF4D8F52, false),
-        RESULT(0xFFD0862D, false),
-        CONTAINER(0xFF3C5E8A, false),
-        INPUT(0xFF7A4A32, false),
-        OUTPUT(0xFF6A6A6A, false),
-        SPECIAL(0xFFD27A48, false);
+        PLAYER(UITheme.SLOT_PLAYER, true),
+        HOTBAR(UITheme.SLOT_HOTBAR, true),
+        ARMOR(UITheme.SLOT_ARMOR, true),
+        OFFHAND(UITheme.SLOT_OFFHAND, true),
+        CRAFTING(UITheme.SLOT_CRAFTING, false),
+        RESULT(UITheme.SLOT_RESULT, false),
+        CONTAINER(UITheme.SLOT_CONTAINER, false),
+        INPUT(UITheme.SLOT_INPUT, false),
+        OUTPUT(UITheme.SLOT_OUTPUT, false),
+        SPECIAL(UITheme.SLOT_SPECIAL, false);
 
         private final int color;
         private final boolean playerSection;

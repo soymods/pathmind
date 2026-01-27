@@ -1738,7 +1738,7 @@ public class NodeParameterOverlay {
                     mouseY >= rowTop && mouseY <= rowTop + keyHeight;
                 boolean selected = currentValue != null && currentValue.equalsIgnoreCase(key.value);
 
-                int keyBase = selected ? 0xFF2F5E8A : UITheme.BACKGROUND_SECONDARY;
+                int keyBase = selected ? UITheme.KEY_SELECTED_BG : UITheme.BACKGROUND_SECONDARY;
                 if (hovered) {
                     keyBase = adjustColorBrightness(keyBase, 1.2f);
                 }

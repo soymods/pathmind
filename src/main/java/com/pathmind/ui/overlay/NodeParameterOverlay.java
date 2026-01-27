@@ -53,7 +53,7 @@ public class NodeParameterOverlay {
     private static final int FIELD_HEIGHT = 20;
     private static final int SECTION_SPACING = 12;
     private static final int BUTTON_TOP_MARGIN = 8;
-    private static final int BOTTOM_PADDING = 12;
+    private static final int BOTTOM_PADDING = 16;
     private static final int BUTTON_WIDTH = 80;
     private static final int BUTTON_HEIGHT = 20;
     private static final int MIN_POPUP_HEIGHT = 140;
@@ -204,6 +204,7 @@ public class NodeParameterOverlay {
     private String cachedBlockIdForStateOptions = "";
     private boolean blockStateDropdownOpen = false;
     private int blockStateDropdownHoverIndex = -1;
+    private int blockStateDropdownScrollOffset = 0;
     private int blockStateFieldX;
     private int blockStateFieldY;
     private int blockStateFieldWidth;
@@ -802,6 +803,7 @@ public class NodeParameterOverlay {
             blockStateOptions.clear();
             cachedBlockIdForStateOptions = "";
             blockStateDropdownOpen = false;
+            blockStateDropdownScrollOffset = 0;
             return;
         }
 
@@ -819,6 +821,7 @@ public class NodeParameterOverlay {
         cachedBlockIdForStateOptions = normalized;
         blockStateDropdownOpen = false;
         blockStateDropdownHoverIndex = -1;
+        blockStateDropdownScrollOffset = 0;
         blockStateOptions.clear();
         if (!normalized.isEmpty()) {
             List<BlockSelection.StateOption> resolvedOptions = BlockSelection.getStateOptions(normalized);
@@ -984,7 +987,10 @@ public class NodeParameterOverlay {
         int dropdownY = blockStateFieldY + blockStateFieldHeight;
         int dropdownWidth = blockStateFieldWidth;
         int optionCount = blockStateOptions.size();
-        int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
+        int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, optionCount);
+        int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+        int maxScroll = Math.max(0, optionCount - visibleCount);
+        blockStateDropdownScrollOffset = MathHelper.clamp(blockStateDropdownScrollOffset, 0, maxScroll);
 
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
@@ -992,7 +998,7 @@ public class NodeParameterOverlay {
         blockStateDropdownHoverIndex = -1;
         if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
             mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-            int hoverIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+            int hoverIndex = blockStateDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
             if (hoverIndex >= 0 && hoverIndex < optionCount) {
                 blockStateDropdownHoverIndex = hoverIndex;
             }
@@ -1003,8 +1009,10 @@ public class NodeParameterOverlay {
             currentValue = parameterValues.get(blockStateParamIndex);
         }
 
-        for (int i = 0; i < optionCount; i++) {
-            int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
+        int startIndex = blockStateDropdownScrollOffset;
+        int endIndex = Math.min(optionCount, startIndex + visibleCount);
+        for (int i = startIndex; i < endIndex; i++) {
+            int optionTop = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
             BlockSelection.StateOption option = blockStateOptions.get(i);
             boolean isSelected = option.value().equalsIgnoreCase(currentValue);
             boolean isHovered = i == blockStateDropdownHoverIndex;
@@ -1036,6 +1044,7 @@ public class NodeParameterOverlay {
                 modeDropdownHoverIndex = -1;
                 blockStateDropdownOpen = false;
                 blockStateDropdownHoverIndex = -1;
+                blockStateDropdownScrollOffset = 0;
                 return true;
             }
         }
@@ -1079,6 +1088,7 @@ public class NodeParameterOverlay {
                 functionDropdownHoverIndex = -1;
                 blockStateDropdownOpen = false;
                 blockStateDropdownHoverIndex = -1;
+                blockStateDropdownScrollOffset = 0;
                 modeDropdownOpen = !modeDropdownOpen;
                 modeDropdownHoverIndex = -1;
                 return true;
@@ -1091,15 +1101,17 @@ public class NodeParameterOverlay {
             int dropdownX = blockStateFieldX;
             int dropdownY = blockStateFieldY + blockStateFieldHeight;
             int dropdownWidth = blockStateFieldWidth;
-            int dropdownHeight = blockStateOptions.size() * DROPDOWN_OPTION_HEIGHT;
+            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockStateOptions.size());
+            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
             if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                 mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+                int optionIndex = blockStateDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
                 if (optionIndex >= 0 && optionIndex < blockStateOptions.size()) {
                     setParameterValue(blockStateParamIndex, blockStateOptions.get(optionIndex).value());
                 }
                 blockStateDropdownOpen = false;
                 blockStateDropdownHoverIndex = -1;
+                blockStateDropdownScrollOffset = 0;
                 return true;
             }
         }
@@ -1169,6 +1181,9 @@ public class NodeParameterOverlay {
                     if (!blockStateOptions.isEmpty()) {
                         blockStateDropdownOpen = !blockStateDropdownOpen;
                         blockStateDropdownHoverIndex = -1;
+                        if (blockStateDropdownOpen) {
+                            blockStateDropdownScrollOffset = 0;
+                        }
                         functionDropdownOpen = false;
                         functionDropdownHoverIndex = -1;
                         modeDropdownOpen = false;
@@ -1231,7 +1246,8 @@ public class NodeParameterOverlay {
             int dropdownX = blockStateFieldX;
             int dropdownY = blockStateFieldY + blockStateFieldHeight;
             int dropdownWidth = blockStateFieldWidth;
-            int dropdownHeight = blockStateOptions.size() * DROPDOWN_OPTION_HEIGHT;
+            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockStateOptions.size());
+            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
             boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
                                   mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
             boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -1239,6 +1255,7 @@ public class NodeParameterOverlay {
             if (!insideField && !insideDropdown) {
                 blockStateDropdownOpen = false;
                 blockStateDropdownHoverIndex = -1;
+                blockStateDropdownScrollOffset = 0;
             }
         }
 
@@ -1277,6 +1294,33 @@ public class NodeParameterOverlay {
         if (inventorySlotEditorActive && inventorySlotSelector != null) {
             if (inventorySlotSelector.mouseScrolled(mouseX, mouseY, verticalAmount)) {
                 return true;
+            }
+        }
+
+        if (blockStateDropdownOpen && !blockStateOptions.isEmpty()) {
+            int dropdownX = blockStateFieldX;
+            int dropdownY = blockStateFieldY + blockStateFieldHeight;
+            int dropdownWidth = blockStateFieldWidth;
+            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockStateOptions.size());
+            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+            int maxScroll = Math.max(0, blockStateOptions.size() - visibleCount);
+            if (maxScroll > 0) {
+                boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
+                                      mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
+                boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+                boolean insidePopup = mouseX >= popupX && mouseX <= popupX + popupWidth &&
+                                      mouseY >= popupY && mouseY <= popupY + popupHeight;
+                if (insideDropdown || insideField || insidePopup) {
+                    int delta = (int) Math.signum(verticalAmount);
+                    if (delta != 0) {
+                        int nextOffset = MathHelper.clamp(blockStateDropdownScrollOffset - delta, 0, maxScroll);
+                        if (nextOffset != blockStateDropdownScrollOffset) {
+                            blockStateDropdownScrollOffset = nextOffset;
+                        }
+                    }
+                    return true;
+                }
             }
         }
 
@@ -1442,6 +1486,7 @@ public class NodeParameterOverlay {
         functionDropdownHoverIndex = -1;
         blockStateDropdownOpen = false;
         blockStateDropdownHoverIndex = -1;
+        blockStateDropdownScrollOffset = 0;
         focusedFieldIndex = -1;
         if (inventorySlotSelector != null) {
             inventorySlotSelector.closeDropdown();
@@ -1460,6 +1505,7 @@ public class NodeParameterOverlay {
         functionDropdownHoverIndex = -1;
         blockStateDropdownOpen = false;
         blockStateDropdownHoverIndex = -1;
+        blockStateDropdownScrollOffset = 0;
         scrollOffset = 0;
         updateButtonPositions();
     }
@@ -1535,6 +1581,7 @@ public class NodeParameterOverlay {
         if (!blockStateEditorActive) {
             blockStateDropdownOpen = false;
             blockStateDropdownHoverIndex = -1;
+            blockStateDropdownScrollOffset = 0;
             blockStateOptions.clear();
             cachedBlockIdForStateOptions = "";
         }

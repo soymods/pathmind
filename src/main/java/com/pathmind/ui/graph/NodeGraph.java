@@ -160,7 +160,10 @@ public class NodeGraph {
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
     private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
+    private static final float ZOOM_SCROLL_STEP = 1.12f;
+    private static final float ZOOM_EPSILON = 0.0001f;
     private ZoomLevel zoomLevel = ZoomLevel.FOCUSED;
+    private float zoomScale = ZoomLevel.FOCUSED.getScale();
     private ClipboardSnapshot clipboardNodeSnapshot = null;
     private final Deque<NodeGraphData> undoStack = new ArrayDeque<>();
     private final Deque<NodeGraphData> redoStack = new ArrayDeque<>();
@@ -245,7 +248,7 @@ public class NodeGraph {
     }
 
     public boolean isZoomedOut() {
-        return zoomLevel != ZoomLevel.FOCUSED;
+        return zoomScale < (ZoomLevel.FOCUSED.getScale() - ZOOM_EPSILON);
     }
 
     public void setZoomLevel(ZoomLevel newLevel, int anchorScreenX, int anchorScreenY) {
@@ -255,6 +258,7 @@ public class NodeGraph {
         int anchorWorldX = screenToWorldX(anchorScreenX);
         int anchorWorldY = screenToWorldY(anchorScreenY);
         this.zoomLevel = newLevel;
+        this.zoomScale = newLevel.getScale();
         alignCameraToAnchor(anchorWorldX, anchorWorldY, anchorScreenX, anchorScreenY);
     }
 
@@ -268,7 +272,7 @@ public class NodeGraph {
     }
 
     private float getZoomScale() {
-        return zoomLevel.getScale();
+        return zoomScale;
     }
 
     private boolean shouldRenderNodeText() {
@@ -276,31 +280,87 @@ public class NodeGraph {
     }
 
     public boolean canZoomIn() {
-        return zoomLevel.ordinal() > 0;
+        return zoomScale < (ZoomLevel.FOCUSED.getScale() - ZOOM_EPSILON);
     }
 
     public boolean canZoomOut() {
-        return zoomLevel.ordinal() < ZoomLevel.values().length - 1;
+        return zoomScale > (ZoomLevel.DISTANT.getScale() + ZOOM_EPSILON);
     }
 
     public void zoomIn(int anchorScreenX, int anchorScreenY) {
-        if (!canZoomIn()) {
-            return;
+        ZoomLevel target = getNextZoomInLevel();
+        if (target != null) {
+            setZoomLevel(target, anchorScreenX, anchorScreenY);
         }
-        ZoomLevel target = ZoomLevel.values()[zoomLevel.ordinal() - 1];
-        setZoomLevel(target, anchorScreenX, anchorScreenY);
     }
 
     public void zoomOut(int anchorScreenX, int anchorScreenY) {
-        if (!canZoomOut()) {
-            return;
+        ZoomLevel target = getNextZoomOutLevel();
+        if (target != null) {
+            setZoomLevel(target, anchorScreenX, anchorScreenY);
         }
-        ZoomLevel target = ZoomLevel.values()[zoomLevel.ordinal() + 1];
-        setZoomLevel(target, anchorScreenX, anchorScreenY);
     }
 
     public boolean isDefaultZoom() {
-        return zoomLevel == ZoomLevel.FOCUSED;
+        return Math.abs(zoomScale - ZoomLevel.FOCUSED.getScale()) <= ZOOM_EPSILON;
+    }
+
+    private ZoomLevel getNextZoomInLevel() {
+        ZoomLevel target = null;
+        for (ZoomLevel level : ZoomLevel.values()) {
+            if (level.getScale() > zoomScale + ZOOM_EPSILON) {
+                if (target == null || level.getScale() < target.getScale()) {
+                    target = level;
+                }
+            }
+        }
+        return target;
+    }
+
+    private ZoomLevel getNextZoomOutLevel() {
+        ZoomLevel target = null;
+        for (ZoomLevel level : ZoomLevel.values()) {
+            if (level.getScale() < zoomScale - ZOOM_EPSILON) {
+                if (target == null || level.getScale() > target.getScale()) {
+                    target = level;
+                }
+            }
+        }
+        return target;
+    }
+
+    public void zoomByScroll(double scrollAmount, int anchorScreenX, int anchorScreenY) {
+        if (scrollAmount == 0.0) {
+            return;
+        }
+        float scaleFactor = (float) Math.pow(ZOOM_SCROLL_STEP, scrollAmount);
+        setZoomScale(zoomScale * scaleFactor, anchorScreenX, anchorScreenY);
+    }
+
+    private void setZoomScale(float newScale, int anchorScreenX, int anchorScreenY) {
+        float minScale = ZoomLevel.DISTANT.getScale();
+        float maxScale = ZoomLevel.FOCUSED.getScale();
+        float clampedScale = MathHelper.clamp(newScale, minScale, maxScale);
+        if (Math.abs(clampedScale - zoomScale) <= ZOOM_EPSILON) {
+            return;
+        }
+        int anchorWorldX = screenToWorldX(anchorScreenX);
+        int anchorWorldY = screenToWorldY(anchorScreenY);
+        zoomScale = clampedScale;
+        updateZoomLevelFromScale();
+        alignCameraToAnchor(anchorWorldX, anchorWorldY, anchorScreenX, anchorScreenY);
+    }
+
+    private void updateZoomLevelFromScale() {
+        float minScale = ZoomLevel.DISTANT.getScale();
+        float maxScale = ZoomLevel.FOCUSED.getScale();
+        if (zoomScale >= maxScale - ZOOM_EPSILON) {
+            zoomLevel = ZoomLevel.FOCUSED;
+        } else if (zoomScale <= minScale + ZOOM_EPSILON) {
+            zoomLevel = ZoomLevel.DISTANT;
+        } else {
+            zoomLevel = ZoomLevel.OVERVIEW;
+        }
     }
 
     public NodeGraph() {

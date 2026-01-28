@@ -194,8 +194,13 @@ public class PopupAnimationHandler {
      * @return Array of [x, y, width, height] with scale applied from center
      */
     public int[] getScaledPopupBoundsFromTopLeft(int x, int y, int width, int height) {
+        float scale = getPopupScale();
+        int scaledWidth = (int) (width * scale);
+        int scaledHeight = (int) (height * scale);
         int centerX = x + width / 2;
         int centerY = y + height / 2;
-        return getScaledPopupBounds(centerX, centerY, width, height);
+        int scaledX = centerX - scaledWidth / 2;
+        int scaledY = centerY - scaledHeight / 2;
+        return new int[]{scaledX, scaledY, scaledWidth, scaledHeight};
     }
 }

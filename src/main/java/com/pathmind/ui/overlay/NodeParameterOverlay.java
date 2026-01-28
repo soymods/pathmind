@@ -221,6 +221,7 @@ public class NodeParameterOverlay {
     private final List<Integer> selectionAnchors = new ArrayList<>();
     private long caretBlinkLastToggle = 0L;
     private boolean caretVisible = true;
+    private boolean scissorEnabled = false;
     private boolean blockItemDropdownOpen = false;
     private int blockItemDropdownHoverIndex = -1;
     private int blockItemDropdownFieldIndex = -1;
@@ -376,6 +377,7 @@ public class NodeParameterOverlay {
     }
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
+        scissorEnabled = false;
         popupAnimation.tick();
         if (pendingClose && popupAnimation.isFullyHidden()) {
             pendingClose = false;
@@ -394,14 +396,14 @@ public class NodeParameterOverlay {
         }
 
         // Render semi-transparent background overlay
-        context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(),
+        context.fill(0, 0, screenWidth, screenHeight,
             popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         float popupAlpha = popupAnimation.getPopupAlpha();
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         // Get animated popup bounds
-        int[] bounds = popupAnimation.getScaledPopupBounds(context.getScaledWindowWidth(), context.getScaledWindowHeight(), popupWidth, popupHeight);
+        int[] bounds = popupAnimation.getScaledPopupBoundsFromTopLeft(popupX, popupY, popupWidth, popupHeight);
         int scaledX = bounds[0];
         int scaledY = bounds[1];
         int scaledWidth = bounds[2];
@@ -417,7 +419,7 @@ public class NodeParameterOverlay {
         int clipTop = scaledY;
         int clipRight = scaledX + scaledWidth;
         int clipBottom = scaledY + scaledHeight;
-        context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
+        setScissor(context, clipLeft, clipTop, clipRight, clipBottom);
 
         // Render title
         context.drawTextWithShadow(
@@ -439,9 +441,9 @@ public class NodeParameterOverlay {
         int contentClipRight = Math.min(contentRight - 1, clipRight);
         int contentClipBottom = Math.min(contentBottom, clipBottom);
         if (contentClipRight > contentClipLeft && contentClipBottom > contentClipTop) {
-            context.enableScissor(contentClipLeft, contentClipTop, contentClipRight, contentClipBottom);
+            setScissor(context, contentClipLeft, contentClipTop, contentClipRight, contentClipBottom);
         } else {
-            context.enableScissor(0, 0, 0, 0);
+            setScissor(context, 0, 0, 0, 0);
         }
 
         int sectionY = contentTop - scrollOffset;
@@ -675,14 +677,14 @@ public class NodeParameterOverlay {
             sectionY = fieldY + fieldHeight + SECTION_SPACING;
         }
 
-        context.disableScissor();
-        context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
+        clearScissor(context);
+        setScissor(context, clipLeft, clipTop, clipRight, clipBottom);
 
         renderButton(context, textRenderer, saveButton, mouseX, mouseY);
         renderButton(context, textRenderer, cancelButton, mouseX, mouseY);
 
         if (hasModeSelection() && modeDropdownOpen) {
-            context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
+            setScissor(context, clipLeft, clipTop, clipRight, clipBottom);
             int modeButtonX = popupX + 20;
             int modeButtonY = popupY + CONTENT_START_OFFSET + LABEL_TO_FIELD_OFFSET - scrollOffset;
             int modeButtonWidth = popupWidth - 40;
@@ -758,10 +760,10 @@ public class NodeParameterOverlay {
                 dropdownHeight,
                 getPopupAnimatedColor(UITheme.BORDER_DEFAULT)
             );
-            context.disableScissor();
+            clearScissor(context);
         }
 
-        context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
+        setScissor(context, clipLeft, clipTop, clipRight, clipBottom);
         if (functionDropdownOpen) {
             renderFunctionDropdown(context, textRenderer, mouseX, mouseY);
         }
@@ -773,7 +775,7 @@ public class NodeParameterOverlay {
         }
 
         renderScrollbar(context, contentTop, contentBottom);
-        context.disableScissor();
+        clearScissor(context);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -831,6 +833,23 @@ public class NodeParameterOverlay {
 
         context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight,
             getPopupAnimatedColor(UITheme.BORDER_DEFAULT));
+    }
+
+    private void setScissor(DrawContext context, int left, int top, int right, int bottom) {
+        if (scissorEnabled) {
+            context.disableScissor();
+            scissorEnabled = false;
+        }
+        context.enableScissor(left, top, right, bottom);
+        scissorEnabled = true;
+    }
+
+    private void clearScissor(DrawContext context) {
+        if (!scissorEnabled) {
+            return;
+        }
+        context.disableScissor();
+        scissorEnabled = false;
     }
 
     private void persistInventorySlotModeValue() {

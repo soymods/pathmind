@@ -2226,20 +2226,17 @@ public class PathmindVisualEditorScreen extends Screen {
         float animProgress = AnimationHelper.easeOutQuad(presetDropdownAnimation.getValue());
 
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT);
-        int backgroundColor;
-        if (disabled && !presetDropdownOpen) {
-            backgroundColor = UITheme.TOOLBAR_BG_DISABLED;
-        } else if (hovered) {
-            backgroundColor = presetDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER;
-        } else {
-            backgroundColor = presetDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
-        }
-        context.fill(dropdownX, dropdownY, dropdownX + PRESET_DROPDOWN_WIDTH, dropdownY + PRESET_DROPDOWN_HEIGHT, backgroundColor);
-        boolean highlight = presetDropdownOpen || hovered;
-        int borderColor = disabled && !presetDropdownOpen
-            ? UITheme.BORDER_SUBTLE
-            : getAnimatedBorderColor("preset-dropdown", highlight, UITheme.BUTTON_DEFAULT_BORDER, UITheme.BUTTON_HOVER_OUTLINE);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT, borderColor);
+        drawToolbarButtonFrame(
+            context,
+            dropdownX,
+            dropdownY,
+            PRESET_DROPDOWN_WIDTH,
+            PRESET_DROPDOWN_HEIGHT,
+            hovered,
+            presetDropdownOpen,
+            disabled,
+            "preset-dropdown"
+        );
 
         String displayName = activePresetName == null || activePresetName.isEmpty()
                 ? PresetManager.getDefaultPresetName()
@@ -3439,6 +3436,33 @@ public class PathmindVisualEditorScreen extends Screen {
             ? UITheme.BORDER_SUBTLE
             : getAnimatedBorderColor(hoverKey, hovered || active, borderNormal, borderHover);
         DrawContextBridge.drawBorder(context, x, y, size, size, borderColor);
+    }
+
+    private void drawToolbarButtonFrame(
+        DrawContext context,
+        int x,
+        int y,
+        int width,
+        int height,
+        boolean hovered,
+        boolean active,
+        boolean disabled,
+        Object hoverKey
+    ) {
+        int bgColor;
+        if (disabled) {
+            bgColor = UITheme.TOOLBAR_BG_DISABLED;
+        } else if (hovered) {
+            bgColor = active ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER;
+        } else {
+            bgColor = active ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
+        }
+        context.fill(x + 1, y + 1, x + width - 1, y + height - 1, bgColor);
+
+        int borderColor = disabled
+            ? UITheme.BORDER_SUBTLE
+            : getAnimatedBorderColor(hoverKey, hovered || active, UITheme.BORDER_DEFAULT, getAccentColor());
+        DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
     }
 
     private int getWorkspaceButtonY() {

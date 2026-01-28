@@ -293,6 +293,7 @@ public class Node {
     
     private static final Set<String> MOVE_ITEM_SOURCE_KEYS = createParameterKeySet("SourceSlot", "FirstSlot");
     private static final Set<String> MOVE_ITEM_TARGET_KEYS = createParameterKeySet("TargetSlot", "SecondSlot");
+    private static final Set<String> PLACE_POSITION_BLOCK_KEYS = createParameterKeySet("Block", "Blocks", "BlockId");
 
     private static String normalizeParameterKey(String key) {
         if (key == null) {
@@ -1480,10 +1481,8 @@ public class Node {
             && slotIndex == 1
             && parameter.getType() != null) {
             NodeType parameterType = parameter.getType();
-            if (parameterType == NodeType.PARAM_BLOCK
-                || parameterType == NodeType.PARAM_INVENTORY_SLOT
-                || parameterType == NodeType.PARAM_PLACE_TARGET) {
-                // Block-type parameters should always occupy the first slot
+            if (parameterType == NodeType.PARAM_INVENTORY_SLOT) {
+                // Inventory-slot parameters should always occupy the first slot
                 slotIndex = 0;
             }
         }
@@ -1646,6 +1645,10 @@ public class Node {
     }
     
     private Map<String, String> adjustParameterValuesForSlot(Map<String, String> values, int slotIndex) {
+        return adjustParameterValuesForSlot(values, slotIndex, null);
+    }
+
+    private Map<String, String> adjustParameterValuesForSlot(Map<String, String> values, int slotIndex, Node parameterNode) {
         if (values == null || values.isEmpty() || slotIndex < 0) {
             return values;
         }
@@ -1655,6 +1658,15 @@ public class Node {
                     return filterParameterMap(values, MOVE_ITEM_TARGET_KEYS);
                 } else if (slotIndex == 1) {
                     return filterParameterMap(values, MOVE_ITEM_SOURCE_KEYS);
+                }
+                break;
+            case PLACE:
+            case PLACE_HAND:
+                if (slotIndex == 1 && parameterNode != null) {
+                    NodeType parameterType = parameterNode.getType();
+                    if (parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_PLACE_TARGET) {
+                        return filterParameterMap(values, PLACE_POSITION_BLOCK_KEYS);
+                    }
                 }
                 break;
             default:
@@ -1705,7 +1717,7 @@ public class Node {
             }
             Map<String, String> exported = parameter.exportParameterValues();
             if (!exported.isEmpty()) {
-                Map<String, String> adjusted = adjustParameterValuesForSlot(exported, slotIndex);
+                Map<String, String> adjusted = adjustParameterValuesForSlot(exported, slotIndex, parameter);
                 applyParameterValuesFromMap(adjusted);
             }
         }
@@ -3035,7 +3047,7 @@ public class Node {
         }
 
         Map<String, String> exported = parameterNode.exportParameterValues();
-        Map<String, String> adjustedValues = adjustParameterValuesForSlot(exported, slotIndex);
+        Map<String, String> adjustedValues = adjustParameterValuesForSlot(exported, slotIndex, parameterNode);
         if (!exported.isEmpty()) {
             handled = applyParameterValuesFromMap(adjustedValues);
         }

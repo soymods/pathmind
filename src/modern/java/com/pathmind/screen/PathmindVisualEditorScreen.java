@@ -257,13 +257,6 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
         sidebar.render(context, this.textRenderer, mouseX, mouseY, TITLE_BAR_HEIGHT, this.height - TITLE_BAR_HEIGHT, sidebarInteractionsEnabled);
 
-        // Render dragged nodes above sidebar
-                renderNodeGraph(context, mouseX, mouseY, delta, true);
-                // Render dragging node from sidebar
-        if (isDraggingFromSidebar && draggingNodeType != null) {
-            renderDraggingNode(context, mouseX, mouseY);
-        }
-
         // Render title bar above the workspace so nodes never overlap it.
         context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT - 1, UITheme.BORDER_SUBTLE);
@@ -339,6 +332,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         renderPopupScrimOverlay(context);
         // Controls are already rendered before overlays so they appear dimmed underneath
+        DrawContextBridge.startNewRootLayer(context);
+        renderNodeGraph(context, mouseX, mouseY, delta, true);
+        nodeGraph.renderSelectionBox(context);
+        if (isDraggingFromSidebar && draggingNodeType != null) {
+            renderDraggingNode(context, mouseX, mouseY);
+        }
     }
 
     private boolean isPopupObscuringWorkspace() {

@@ -395,10 +395,6 @@ public class NodeParameterOverlay {
             blockItemDropdownOptions.clear();
         }
 
-        // Render semi-transparent background overlay
-        context.fill(0, 0, screenWidth, screenHeight,
-            popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
-
         float popupAlpha = popupAnimation.getPopupAlpha();
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
@@ -1808,6 +1804,14 @@ public class NodeParameterOverlay {
 
     public PopupAnimationHandler getPopupAnimation() {
         return popupAnimation;
+    }
+
+    public int getScrimColor() {
+        return popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+    }
+
+    public int[] getScaledPopupBounds() {
+        return popupAnimation.getScaledPopupBoundsFromTopLeft(popupX, popupY, popupWidth, popupHeight);
     }
     
     private void resetParameterFields() {

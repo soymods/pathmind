@@ -109,6 +109,14 @@ public class BookTextEditorOverlay {
         return popupAnimation;
     }
 
+    public int getScrimColor() {
+        return popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+    }
+
+    public int[] getScaledPopupBounds() {
+        return popupAnimation.getScaledPopupBoundsFromTopLeft(popupX, popupY, POPUP_WIDTH, POPUP_HEIGHT);
+    }
+
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
         popupAnimation.tick();
         if (pendingClose && popupAnimation.isFullyHidden()) {
@@ -119,10 +127,6 @@ public class BookTextEditorOverlay {
             return;
         }
         if (!popupAnimation.isVisible()) return;
-
-        // Render semi-transparent background overlay
-        context.fill(0, 0, screenWidth, screenHeight,
-            popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
         float popupAlpha = popupAnimation.getPopupAlpha();
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);

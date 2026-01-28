@@ -262,9 +262,19 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Render dragged nodes above sidebar
                 renderNodeGraph(context, mouseX, mouseY, delta, true);
-                if (isDraggingFromSidebar && draggingNodeType != null) {
-                        renderDraggingNode(context, mouseX, mouseY);
-                }
+        if (isDraggingFromSidebar && draggingNodeType != null) {
+            renderDraggingNode(context, mouseX, mouseY);
+        }
+
+        // Tick all popup animations early so the scrim uses current values
+        clearPopupAnimation.tick();
+        importExportPopupAnimation.tick();
+        createPresetPopupAnimation.tick();
+        renamePresetPopupAnimation.tick();
+        presetDeletePopupAnimation.tick();
+        infoPopupAnimation.tick();
+        missingBaritonePopupAnimation.tick();
+        settingsPopupAnimation.tick();
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
         renderZoomControls(context, mouseX, mouseY, controlsDisabled);
@@ -275,16 +285,6 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
-
-        // Tick all popup animations
-        clearPopupAnimation.tick();
-        importExportPopupAnimation.tick();
-        createPresetPopupAnimation.tick();
-        renamePresetPopupAnimation.tick();
-        presetDeletePopupAnimation.tick();
-        infoPopupAnimation.tick();
-        missingBaritonePopupAnimation.tick();
-        settingsPopupAnimation.tick();
 
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
@@ -331,6 +331,9 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
         drawTitle(context, titleUnderlineAnimation.getValue());
 
+        if (!isScreenPopupVisible()) {
+            setOverlayCutoutForNodeOverlay();
+        }
 
         renderPopupScrimOverlay(context);
         // Controls are already rendered before overlays so they appear dimmed underneath
@@ -379,7 +382,7 @@ public class PathmindVisualEditorScreen extends Screen {
             || settingsPopupAnimation.isVisible();
     }
 
-    private int getScreenPopupOverlayColor() {
+    private int getActivePopupOverlayColor() {
         if (clearPopupAnimation.isVisible()) {
             return clearPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
         }
@@ -404,14 +407,20 @@ public class PathmindVisualEditorScreen extends Screen {
         if (settingsPopupAnimation.isVisible()) {
             return settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
         }
+        if (parameterOverlay != null && parameterOverlay.isVisible()) {
+            return parameterOverlay.getScrimColor();
+        }
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            return bookTextEditorOverlay.getScrimColor();
+        }
         return UITheme.OVERLAY_BACKGROUND;
     }
 
     private void renderPopupScrimOverlay(DrawContext context) {
-        if (!isScreenPopupVisible()) {
+        if (!isPopupObscuringWorkspace()) {
             return;
         }
-        int color = getScreenPopupOverlayColor();
+        int color = getActivePopupOverlayColor();
         if (!overlayCutoutActive || overlayCutoutWidth <= 0 || overlayCutoutHeight <= 0) {
             DrawContextBridge.fillOverlay(context, 0, 0, this.width, this.height, color);
             return;
@@ -429,6 +438,22 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (cutoutBottom < this.height) {
             DrawContextBridge.fillOverlay(context, 0, cutoutBottom, this.width, this.height, color);
+        }
+    }
+
+    private void setOverlayCutoutForNodeOverlay() {
+        if (parameterOverlay != null && parameterOverlay.isVisible()) {
+            int[] bounds = parameterOverlay.getScaledPopupBounds();
+            if (bounds[2] > 0 && bounds[3] > 0) {
+                setOverlayCutout(bounds[0], bounds[1], bounds[2], bounds[3]);
+            }
+            return;
+        }
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            int[] bounds = bookTextEditorOverlay.getScaledPopupBounds();
+            if (bounds[2] > 0 && bounds[3] > 0) {
+                setOverlayCutout(bounds[0], bounds[1], bounds[2], bounds[3]);
+            }
         }
     }
 
@@ -496,21 +521,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawZoomButton(DrawContext context, int x, int y, int mouseX, int mouseY, boolean disabled, boolean isMinus, boolean active) {
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE);
-        int bgColor = active ? 0xFF353535 : 0xFF2A2A2A;
-        if (hovered) {
-            bgColor = active ? 0xFF3F3F3F : 0xFF333333;
-        } else if (disabled) {
-            bgColor = 0xFF1E1E1E;
-        }
-        context.fill(x + 1, y + 1, x + ZOOM_BUTTON_SIZE - 1, y + ZOOM_BUTTON_SIZE - 1, bgColor);
-
         String hoverKey = isMinus ? "zoom-minus-button" : "zoom-plus-button";
-        int borderColor = getAnimatedBorderColor(hoverKey, hovered, UITheme.BORDER_SUBTLE, getAccentColor());
-        DrawContextBridge.drawBorder(context, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE, borderColor);
+        drawToolbarButtonFrame(context, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE, hovered, active, disabled, hoverKey);
 
         int iconColor = UITheme.TEXT_PRIMARY;
         if (disabled) {
-            iconColor = 0xFF555555;
+            iconColor = UITheme.DROPDOWN_ACTION_DISABLED;
         } else if (hovered) {
             iconColor = getAccentColor();
         }
@@ -1413,7 +1429,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderClearConfirmationPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, clearPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, clearPopupAnimation.getPopupAlpha());
 
         int popupWidth = 280;
@@ -1459,7 +1474,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderImportExportPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, importExportPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, importExportPopupAnimation.getPopupAlpha());
 
         int popupWidth = 360;
@@ -1544,7 +1558,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderInfoPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, infoPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, infoPopupAnimation.getPopupAlpha());
 
         int popupWidth = INFO_POPUP_WIDTH;
@@ -1594,7 +1607,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderMissingBaritonePopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, missingBaritonePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, missingBaritonePopupAnimation.getPopupAlpha());
 
         int popupWidth = MISSING_BARITONE_POPUP_WIDTH;
@@ -2159,22 +2171,17 @@ public class PathmindVisualEditorScreen extends Screen {
         float animProgress = AnimationHelper.easeOutQuad(presetDropdownAnimation.getValue());
 
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT);
-        int backgroundColor = (hovered || presetDropdownOpen) ? 0xFF3A3A3A : 0xFF2F2F2F;
-        if (disabled && !presetDropdownOpen) {
-            backgroundColor = 0xFF2A2A2A;
-        }
-        context.fill(dropdownX, dropdownY, dropdownX + PRESET_DROPDOWN_WIDTH, dropdownY + PRESET_DROPDOWN_HEIGHT, backgroundColor);
-        int borderColor;
-        if (presetDropdownOpen) {
-            borderColor = getAccentColor();
-        } else if (disabled) {
-            borderColor = UITheme.BORDER_SUBTLE;
-        } else if (hovered) {
-            borderColor = getAccentColor(); // match other buttons on hover
-        } else {
-            borderColor = UITheme.BORDER_SUBTLE;
-        }
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT, borderColor);
+        drawToolbarButtonFrame(
+            context,
+            dropdownX,
+            dropdownY,
+            PRESET_DROPDOWN_WIDTH,
+            PRESET_DROPDOWN_HEIGHT,
+            hovered,
+            presetDropdownOpen,
+            disabled,
+            "preset-dropdown"
+        );
 
         String displayName = activePresetName == null || activePresetName.isEmpty()
                 ? PresetManager.getDefaultPresetName()
@@ -2594,7 +2601,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderCreatePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, createPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, createPresetPopupAnimation.getPopupAlpha());
 
         int popupWidth = CREATE_PRESET_POPUP_WIDTH;
@@ -2673,7 +2679,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderRenamePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, renamePresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, renamePresetPopupAnimation.getPopupAlpha());
 
         int popupWidth = CREATE_PRESET_POPUP_WIDTH;
@@ -2763,7 +2768,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderPresetDeletePopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, presetDeletePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, presetDeletePopupAnimation.getPopupAlpha());
 
         int popupWidth = PRESET_DELETE_POPUP_WIDTH;
@@ -3046,7 +3050,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getHomeButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, false);
+        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, false, false, "workspace-home");
         int iconColor = hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
         int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
         int centerY = buttonY + BOTTOM_BUTTON_SIZE / 2;
@@ -3062,7 +3066,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean renderClearButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getClearButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, clearPopupAnimation.isVisible());
+        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, clearPopupAnimation.isVisible(), false, "workspace-clear");
         int iconColor = (hovered || clearPopupAnimation.isVisible()) ? getAccentColor() : UITheme.TEXT_PRIMARY;
         int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
         int top = buttonY + 4;
@@ -3080,7 +3084,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean renderImportExportButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getImportExportButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, importExportPopupAnimation.isVisible());
+        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, importExportPopupAnimation.isVisible(), false, "workspace-import-export");
         int iconColor = (hovered || importExportPopupAnimation.isVisible()) ? getAccentColor() : UITheme.TEXT_PRIMARY;
         int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
         int centerY = buttonY + BOTTOM_BUTTON_SIZE / 2;
@@ -3138,18 +3142,10 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getSettingsButtonX();
         int buttonY = getSettingsButtonY();
         boolean active = settingsPopupAnimation.isVisible();
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
-        boolean highlight = hovered || active;
-        int bgColor = highlight ? 0xFF505050 : 0xFF3A3A3A;
-        context.fill(buttonX + 1, buttonY + 1, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, bgColor);
+        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, active, disabled, "settings-button");
 
-        int borderColor = highlight ? getAccentColor() : UITheme.BORDER_HIGHLIGHT;
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, borderColor);
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-
-        int iconColor = highlight ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        int iconColor = disabled ? UITheme.DROPDOWN_ACTION_DISABLED
+                : (hovered || active) ? getAccentColor() : UITheme.TEXT_PRIMARY;
         drawSettingsIcon(context, buttonX, buttonY, iconColor);
 
         if (hovered && showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
@@ -3172,7 +3168,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
 
         int popupWidth = SETTINGS_POPUP_WIDTH;
@@ -3266,20 +3261,29 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupButton(context, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT, hovered, Text.literal(toggleLabel), style);
     }
 
-    private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY, boolean active) {
-        boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
-        boolean highlight = hovered || active;
-
-        int bgColor = highlight ? 0xFF505050 : 0xFF3A3A3A;
-        context.fill(buttonX + 1, buttonY + 1, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, bgColor);
-
-        int borderColor = highlight ? getAccentColor() : UITheme.BORDER_HIGHLIGHT;
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, borderColor);
-        context.drawHorizontalLine(buttonX, buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-        context.drawVerticalLine(buttonX + BOTTOM_BUTTON_SIZE - 1, buttonY, buttonY + BOTTOM_BUTTON_SIZE - 1, borderColor);
-
+    private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY,
+                                           boolean active, boolean disabled, Object hoverKey) {
+        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
+        drawToolbarButtonFrame(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE, hovered, active, disabled, hoverKey);
         return hovered;
+    }
+
+    private void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
+                                        boolean hovered, boolean active, boolean disabled, Object hoverKey) {
+        int bgColor;
+        if (disabled) {
+            bgColor = UITheme.TOOLBAR_BG_DISABLED;
+        } else if (hovered) {
+            bgColor = active ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER;
+        } else {
+            bgColor = active ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
+        }
+        context.fill(x + 1, y + 1, x + width - 1, y + height - 1, bgColor);
+
+        int borderColor = disabled
+            ? UITheme.BORDER_SUBTLE
+            : getAnimatedBorderColor(hoverKey, hovered || active, UITheme.BORDER_DEFAULT, getAccentColor());
+        DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
     }
 
     private int getWorkspaceButtonY() {

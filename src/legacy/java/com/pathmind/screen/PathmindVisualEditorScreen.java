@@ -266,6 +266,16 @@ public class PathmindVisualEditorScreen extends Screen {
             renderDraggingNode(context, mouseX, mouseY);
         }
 
+        // Tick all popup animations early so the scrim uses current values
+        clearPopupAnimation.tick();
+        importExportPopupAnimation.tick();
+        createPresetPopupAnimation.tick();
+        renamePresetPopupAnimation.tick();
+        presetDeletePopupAnimation.tick();
+        infoPopupAnimation.tick();
+        missingBaritonePopupAnimation.tick();
+        settingsPopupAnimation.tick();
+
         boolean controlsDisabled = isPopupObscuringWorkspace();
         renderZoomControls(context, mouseX, mouseY, controlsDisabled);
 
@@ -275,16 +285,6 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
-
-        // Tick all popup animations
-        clearPopupAnimation.tick();
-        importExportPopupAnimation.tick();
-        createPresetPopupAnimation.tick();
-        renamePresetPopupAnimation.tick();
-        presetDeletePopupAnimation.tick();
-        infoPopupAnimation.tick();
-        missingBaritonePopupAnimation.tick();
-        settingsPopupAnimation.tick();
 
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
@@ -330,6 +330,10 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
         drawTitle(context, titleUnderlineAnimation.getValue());
+
+        if (!isScreenPopupVisible()) {
+            setOverlayCutoutForNodeOverlay();
+        }
 
         renderPopupScrimOverlay(context);
 
@@ -379,7 +383,7 @@ public class PathmindVisualEditorScreen extends Screen {
             || settingsPopupAnimation.isVisible();
     }
 
-    private int getScreenPopupOverlayColor() {
+    private int getActivePopupOverlayColor() {
         if (clearPopupAnimation.isVisible()) {
             return clearPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
         }
@@ -404,14 +408,20 @@ public class PathmindVisualEditorScreen extends Screen {
         if (settingsPopupAnimation.isVisible()) {
             return settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
         }
+        if (parameterOverlay != null && parameterOverlay.isVisible()) {
+            return parameterOverlay.getScrimColor();
+        }
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            return bookTextEditorOverlay.getScrimColor();
+        }
         return UITheme.OVERLAY_BACKGROUND;
     }
 
     private void renderPopupScrimOverlay(DrawContext context) {
-        if (!isScreenPopupVisible()) {
+        if (!isPopupObscuringWorkspace()) {
             return;
         }
-        int color = getScreenPopupOverlayColor();
+        int color = getActivePopupOverlayColor();
         if (!overlayCutoutActive || overlayCutoutWidth <= 0 || overlayCutoutHeight <= 0) {
             DrawContextBridge.fillOverlay(context, 0, 0, this.width, this.height, color);
             return;
@@ -429,6 +439,22 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (cutoutBottom < this.height) {
             DrawContextBridge.fillOverlay(context, 0, cutoutBottom, this.width, this.height, color);
+        }
+    }
+
+    private void setOverlayCutoutForNodeOverlay() {
+        if (parameterOverlay != null && parameterOverlay.isVisible()) {
+            int[] bounds = parameterOverlay.getScaledPopupBounds();
+            if (bounds[2] > 0 && bounds[3] > 0) {
+                setOverlayCutout(bounds[0], bounds[1], bounds[2], bounds[3]);
+            }
+            return;
+        }
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            int[] bounds = bookTextEditorOverlay.getScaledPopupBounds();
+            if (bounds[2] > 0 && bounds[3] > 0) {
+                setOverlayCutout(bounds[0], bounds[1], bounds[2], bounds[3]);
+            }
         }
     }
 
@@ -1405,7 +1431,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderClearConfirmationPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, clearPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, clearPopupAnimation.getPopupAlpha());
 
         int popupWidth = 280;
@@ -1456,7 +1481,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderImportExportPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, importExportPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, importExportPopupAnimation.getPopupAlpha());
 
         int popupWidth = 360;
@@ -1546,7 +1570,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderInfoPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, infoPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, infoPopupAnimation.getPopupAlpha());
 
         int popupWidth = INFO_POPUP_WIDTH;
@@ -1602,7 +1625,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderMissingBaritonePopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, missingBaritonePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, missingBaritonePopupAnimation.getPopupAlpha());
 
         int popupWidth = MISSING_BARITONE_POPUP_WIDTH;
@@ -2637,7 +2659,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderCreatePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, createPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, createPresetPopupAnimation.getPopupAlpha());
 
         int popupWidth = CREATE_PRESET_POPUP_WIDTH;
@@ -2724,7 +2745,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderRenamePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, renamePresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, renamePresetPopupAnimation.getPopupAlpha());
 
         int popupWidth = CREATE_PRESET_POPUP_WIDTH;
@@ -2822,7 +2842,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderPresetDeletePopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, presetDeletePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, presetDeletePopupAnimation.getPopupAlpha());
 
         int popupWidth = PRESET_DELETE_POPUP_WIDTH;
@@ -3258,7 +3277,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
-        context.fill(0, 0, this.width, this.height, settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
 
         int popupWidth = SETTINGS_POPUP_WIDTH;

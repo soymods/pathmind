@@ -23,6 +23,7 @@ import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -1441,6 +1442,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -1450,11 +1452,12 @@ public class PathmindVisualEditorScreen extends Screen {
             UITheme.TEXT_PRIMARY
         );
 
-        context.drawTextWithShadow(
-            this.textRenderer,
-            Text.literal("This will remove all nodes from the workspace."),
+        drawPopupTextWithEllipsis(
+            context,
+            "This will remove all nodes from the workspace.",
             popupX + 20,
             popupY + 48,
+            scaledWidth - 40,
             UITheme.TEXT_SECONDARY
         );
 
@@ -1469,6 +1472,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
         drawPopupButton(context, confirmX, buttonY, buttonWidth, buttonHeight, confirmHovered, Text.literal("Clear"), true);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -1486,6 +1490,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -1497,46 +1502,20 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int infoY = popupY + 44;
         String importInfo = "Click Import to load a saved workspace.";
-        context.drawTextWithShadow(
-            this.textRenderer,
-            Text.literal(importInfo),
-            popupX + 20,
-            infoY,
-            UITheme.TEXT_SECONDARY
-        );
+        drawPopupTextWithEllipsis(context, importInfo, popupX + 20, infoY, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 
         String exportInfo = "Click Export to choose where to save the current workspace.";
-        context.drawTextWithShadow(
-            this.textRenderer,
-            Text.literal(exportInfo),
-            popupX + 20,
-            infoY + 14,
-            UITheme.TEXT_SECONDARY
-        );
+        drawPopupTextWithEllipsis(context, exportInfo, popupX + 20, infoY + 14, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 
         Path defaultPath = NodeGraphPersistence.getDefaultSavePath();
         if (defaultPath != null) {
             String defaultLabel = "Default save: " + defaultPath.toString();
-            String trimmedDefault = this.textRenderer.trimToWidth(defaultLabel, scaledWidth - 40);
-            context.drawTextWithShadow(
-                this.textRenderer,
-                Text.literal(trimmedDefault),
-                popupX + 20,
-                infoY + 30,
-                UITheme.TEXT_TERTIARY
-            );
+            drawPopupTextWithEllipsis(context, defaultLabel, popupX + 20, infoY + 30, scaledWidth - 40, UITheme.TEXT_TERTIARY);
         }
 
         if (!importExportStatus.isEmpty()) {
             int textAreaWidth = scaledWidth - 40;
-            String statusText = this.textRenderer.trimToWidth(importExportStatus, textAreaWidth);
-            context.drawTextWithShadow(
-                this.textRenderer,
-                Text.literal(statusText),
-                popupX + 20,
-                popupY + scaledHeight - 56,
-                importExportStatusColor
-            );
+            drawPopupTextWithEllipsis(context, importExportStatus, popupX + 20, popupY + scaledHeight - 56, textAreaWidth, importExportStatusColor);
         }
 
         int buttonWidth = 100;
@@ -1553,6 +1532,7 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered, Text.literal("Import"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered, Text.literal("Export"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Close"), false);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -1570,6 +1550,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -1589,11 +1570,12 @@ public class PathmindVisualEditorScreen extends Screen {
         String buildLine = "Current Build: " + getModVersion();
         String loaderLine = "Fabric Loader: " + getFabricLoaderVersion();
 
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(authorLine), centerX, textStartY, UITheme.TEXT_SECONDARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(targetLine), centerX, textStartY + lineSpacing, UITheme.TEXT_SECONDARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(currentLine), centerX, textStartY + lineSpacing * 2, UITheme.TEXT_SECONDARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(buildLine), centerX, textStartY + lineSpacing * 3, UITheme.TEXT_SECONDARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(loaderLine), centerX, textStartY + lineSpacing * 4, UITheme.TEXT_SECONDARY);
+        int maxCenteredWidth = scaledWidth - 40;
+        drawPopupCenteredTextWithEllipsis(context, authorLine, centerX, textStartY, maxCenteredWidth, UITheme.TEXT_SECONDARY);
+        drawPopupCenteredTextWithEllipsis(context, targetLine, centerX, textStartY + lineSpacing, maxCenteredWidth, UITheme.TEXT_SECONDARY);
+        drawPopupCenteredTextWithEllipsis(context, currentLine, centerX, textStartY + lineSpacing * 2, maxCenteredWidth, UITheme.TEXT_SECONDARY);
+        drawPopupCenteredTextWithEllipsis(context, buildLine, centerX, textStartY + lineSpacing * 3, maxCenteredWidth, UITheme.TEXT_SECONDARY);
+        drawPopupCenteredTextWithEllipsis(context, loaderLine, centerX, textStartY + lineSpacing * 4, maxCenteredWidth, UITheme.TEXT_SECONDARY);
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -1602,6 +1584,7 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
 
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -1619,12 +1602,14 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone nodes need the Baritone API (optional)"), centerX, messageY, UITheme.TEXT_PRIMARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to enable these nodes"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 30, UITheme.LINK_COLOR);
+        int maxCenteredWidth = scaledWidth - 40;
+        drawPopupCenteredTextWithEllipsis(context, "Baritone nodes need the Baritone API (optional)", centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, "Install baritone-api to enable these nodes", centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, UITheme.LINK_COLOR);
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -1643,6 +1628,7 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.literal("Open link"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.literal("Copy link"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -1659,6 +1645,47 @@ public class PathmindVisualEditorScreen extends Screen {
                 int underlineY = textY + this.textRenderer.fontHeight;
                 context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, UITheme.TEXT_PRIMARY);
             }
+        }
+    }
+
+    private void drawPopupTextWithEllipsis(DrawContext context, String text, int x, int y, int maxWidth, int color) {
+        String display = trimWithEllipsis(this.textRenderer, text, maxWidth);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(display), x, y, color);
+    }
+
+    private void drawPopupCenteredTextWithEllipsis(DrawContext context, String text, int centerX, int y, int maxWidth, int color) {
+        String display = trimWithEllipsis(this.textRenderer, text, maxWidth);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(display), centerX, y, color);
+    }
+
+    private String trimWithEllipsis(TextRenderer renderer, String text, int availableWidth) {
+        if (text == null) {
+            return "";
+        }
+        if (availableWidth <= 0) {
+            return "...";
+        }
+        if (renderer.getWidth(text) <= availableWidth) {
+            return text;
+        }
+        int ellipsisWidth = renderer.getWidth("...");
+        if (ellipsisWidth >= availableWidth) {
+            return "...";
+        }
+        int trimmedWidth = Math.max(0, availableWidth - ellipsisWidth);
+        return renderer.trimToWidth(text, trimmedWidth) + "...";
+    }
+
+    private boolean enablePopupScissor(DrawContext context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
+        int width = Math.max(1, scaledWidth);
+        int height = Math.max(1, scaledHeight);
+        context.enableScissor(popupX, popupY, popupX + width, popupY + height);
+        return true;
+    }
+
+    private void disablePopupScissor(DrawContext context, boolean enabled) {
+        if (enabled) {
+            context.disableScissor();
         }
     }
 
@@ -2612,6 +2639,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -2621,11 +2649,12 @@ public class PathmindVisualEditorScreen extends Screen {
             UITheme.TEXT_PRIMARY
         );
 
-        context.drawTextWithShadow(
-            this.textRenderer,
-            Text.literal("Enter a name for the new preset."),
+        drawPopupTextWithEllipsis(
+            context,
+            "Enter a name for the new preset.",
             popupX + 20,
             popupY + 44,
+            scaledWidth - 40,
             UITheme.TEXT_SECONDARY
         );
 
@@ -2658,8 +2687,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (!createPresetStatus.isEmpty()) {
-            String status = this.textRenderer.trimToWidth(createPresetStatus, fieldWidth);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(status), fieldX, fieldY + fieldHeight + 8, createPresetStatusColor);
+            drawPopupTextWithEllipsis(context, createPresetStatus, fieldX, fieldY + fieldHeight + 8, fieldWidth, createPresetStatusColor);
         }
 
         int buttonWidth = 90;
@@ -2673,6 +2701,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
         drawPopupButton(context, createX, buttonY, buttonWidth, buttonHeight, createHovered, Text.literal("Create"), true);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2690,6 +2719,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
                 this.textRenderer,
@@ -2702,21 +2732,8 @@ public class PathmindVisualEditorScreen extends Screen {
         String presetLabel = pendingPresetRenameName == null || pendingPresetRenameName.isEmpty()
                 ? "the selected preset"
                 : "Preset: " + pendingPresetRenameName;
-        String trimmedPreset = this.textRenderer.trimToWidth(presetLabel, scaledWidth - 40);
-        context.drawTextWithShadow(
-                this.textRenderer,
-                Text.literal("Enter a new name."),
-                popupX + 20,
-                popupY + 44,
-                UITheme.TEXT_SECONDARY
-        );
-        context.drawTextWithShadow(
-                this.textRenderer,
-                Text.literal(trimmedPreset),
-                popupX + 20,
-                popupY + 58,
-                UITheme.TEXT_SECONDARY
-        );
+        drawPopupTextWithEllipsis(context, "Enter a new name.", popupX + 20, popupY + 44, scaledWidth - 40, UITheme.TEXT_SECONDARY);
+        drawPopupTextWithEllipsis(context, presetLabel, popupX + 20, popupY + 58, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 
         int fieldX = popupX + 20;
         int fieldY = popupY + 80;
@@ -2747,8 +2764,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (!renamePresetStatus.isEmpty()) {
-            String status = this.textRenderer.trimToWidth(renamePresetStatus, fieldWidth);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(status), fieldX, fieldY + fieldHeight + 8, renamePresetStatusColor);
+            drawPopupTextWithEllipsis(context, renamePresetStatus, fieldX, fieldY + fieldHeight + 8, fieldWidth, renamePresetStatusColor);
         }
 
         int buttonWidth = 90;
@@ -2762,6 +2778,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
         drawPopupButton(context, renameX, buttonY, buttonWidth, buttonHeight, renameHovered, Text.literal("Rename"), true);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2779,6 +2796,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -2793,23 +2811,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 : "this preset";
         String warningLine = "This will permanently remove the preset.";
         String presetLine = "Preset: " + presetLabel;
-        String trimmedWarning = this.textRenderer.trimToWidth(warningLine, scaledWidth - 40);
-        String trimmedPreset = this.textRenderer.trimToWidth(presetLine, scaledWidth - 40);
-
-        context.drawTextWithShadow(
-            this.textRenderer,
-            Text.literal(trimmedWarning),
-            popupX + 20,
-            popupY + 48,
-            UITheme.TEXT_SECONDARY
-        );
-        context.drawTextWithShadow(
-            this.textRenderer,
-            Text.literal(trimmedPreset),
-            popupX + 20,
-            popupY + 64,
-            UITheme.TEXT_SECONDARY
-        );
+        drawPopupTextWithEllipsis(context, warningLine, popupX + 20, popupY + 48, scaledWidth - 40, UITheme.TEXT_SECONDARY);
+        drawPopupTextWithEllipsis(context, presetLine, popupX + 20, popupY + 64, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 
         int buttonWidth = 90;
         int buttonHeight = 20;
@@ -2822,6 +2825,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
         drawPopupButton(context, deleteX, buttonY, buttonWidth, buttonHeight, deleteHovered, Text.literal("Delete"), true);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -3178,6 +3182,7 @@ public class PathmindVisualEditorScreen extends Screen {
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
         context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -3189,7 +3194,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int contentX = popupX + 20;
         int accentLabelY = popupY + 44;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("GUI accent"), contentX, accentLabelY, UITheme.TEXT_SECONDARY);
+        drawPopupTextWithEllipsis(context, "GUI accent", contentX, accentLabelY, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 
         int accentOptionsY = accentLabelY + 12;
         int optionIndex = 0;
@@ -3221,6 +3226,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -3248,10 +3254,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int popupX, int scaledWidth) {
         int labelY = centerY - this.textRenderer.fontHeight / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), labelX, labelY, UITheme.TEXT_SECONDARY);
-
         int toggleX = popupX + scaledWidth - SETTINGS_TOGGLE_WIDTH - 20;
         int toggleY = centerY - SETTINGS_TOGGLE_HEIGHT / 2;
+        int maxLabelWidth = Math.max(0, toggleX - labelX - 8);
+        drawPopupTextWithEllipsis(context, label, labelX, labelY, maxLabelWidth, UITheme.TEXT_SECONDARY);
+
         boolean hovered = isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT);
         PopupButtonStyle style = active ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
         String toggleLabel = active ? "On" : "Off";

@@ -396,16 +396,10 @@ public class NodeGraph {
         int centerX = workspaceStartX + workspaceWidth / 2;
         int centerY = workspaceStartY + workspaceHeight / 2;
         
-        // Position nodes with proper spacing, centered in workspace
-        Node startNode = new Node(NodeType.START, centerX - 100, centerY - 50);
+        // Position the initial start node centered in the workspace.
+        Node startNode = new Node(NodeType.START, centerX, centerY - 50);
         assignNewStartNodeNumber(startNode);
         nodes.add(startNode);
-        
-        Node middleNode = new Node(NodeType.GOTO, centerX, centerY - 50);
-        nodes.add(middleNode);
-        
-        // Connect them
-        connections.add(new NodeConnection(startNode, middleNode, 0, 0));
     }
 
     private void assignNewStartNodeNumber(Node node) {

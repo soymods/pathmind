@@ -10,6 +10,7 @@ import java.lang.reflect.Method;
 public final class DrawContextBridge {
     private static final Method DRAW_BORDER = resolveMethod("drawBorder");
     private static final Method DRAW_STROKED_RECTANGLE = resolveMethod("drawStrokedRectangle");
+    private static final Method CREATE_NEW_ROOT_LAYER = resolveNoArgMethod("createNewRootLayer");
     private static final Object GUI_OVERLAY_LAYER = resolveGuiOverlayLayer();
     private static final Method FILL_LAYER = resolveFillLayerMethod();
 
@@ -50,6 +51,16 @@ public final class DrawContextBridge {
         context.fill(x1, y1, x2, y2, color);
     }
 
+    public static void startNewRootLayer(DrawContext context) {
+        if (context == null || CREATE_NEW_ROOT_LAYER == null) {
+            return;
+        }
+        try {
+            CREATE_NEW_ROOT_LAYER.invoke(context);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+    }
+
     private static boolean invokeBorderMethod(DrawContext context, Method method,
                                               int x, int y, int width, int height, int color) {
         if (method == null) {
@@ -66,6 +77,16 @@ public final class DrawContextBridge {
     private static Method resolveMethod(String name) {
         try {
             Method method = DrawContext.class.getMethod(name, int.class, int.class, int.class, int.class, int.class);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveNoArgMethod(String name) {
+        try {
+            Method method = DrawContext.class.getMethod(name);
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {

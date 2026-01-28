@@ -233,19 +233,12 @@ public class PathmindVisualEditorScreen extends Screen {
         resetOverlayCutout();
         // Fill background with dark grey theme
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
-        
-        // Render title bar at the top
-        context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
-        context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
-        
+
         boolean titleHovered = isTitleHovered(mouseX, mouseY);
         boolean titleActive = titleHovered || infoPopupAnimation.isVisible();
         titleUnderlineAnimation.animateTo(titleActive ? 1f : 0f, UITheme.HOVER_ANIM_MS);
         titleUnderlineAnimation.tick();
 
-        // Render title bar text
-        drawTitle(context, titleUnderlineAnimation.getValue());
-        
         // Update mouse hover for socket highlighting
         nodeGraph.updateMouseHover(mouseX, mouseY);
         nodeGraph.setSidebarWidth(sidebar.getWidth());
@@ -253,6 +246,9 @@ public class PathmindVisualEditorScreen extends Screen {
         
         // Render node graph (stationary nodes only)
         renderNodeGraph(context, mouseX, mouseY, delta, false);
+
+        // Start a new GUI layer so UI chrome always sits above workspace nodes.
+        DrawContextBridge.startNewRootLayer(context);
 
         // Workspace utilities should sit beneath the sidebar when it expands
         renderWorkspaceButtons(context, mouseX, mouseY);
@@ -267,6 +263,11 @@ public class PathmindVisualEditorScreen extends Screen {
         if (isDraggingFromSidebar && draggingNodeType != null) {
             renderDraggingNode(context, mouseX, mouseY);
         }
+
+        // Render title bar above the workspace so nodes never overlap it.
+        context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
+        context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT - 1, UITheme.BORDER_SUBTLE);
+        drawTitle(context, titleUnderlineAnimation.getValue());
 
         // Tick all popup animations early so the scrim uses current values
         clearPopupAnimation.tick();
@@ -287,6 +288,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
+
+        if (controlsDisabled) {
+            DrawContextBridge.startNewRootLayer(context);
+        }
 
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
@@ -2210,18 +2215,19 @@ public class PathmindVisualEditorScreen extends Screen {
         int activeTextX = dropdownX + PRESET_TEXT_LEFT_PADDING;
         int activeTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
         String trimmedName = this.textRenderer.trimToWidth(displayName, activeTextWidth);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(trimmedName), activeTextX, dropdownY + 5, UITheme.TEXT_PRIMARY);
+        int labelColor = (hovered || presetDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(trimmedName), activeTextX, dropdownY + 5, labelColor);
 
         int arrowCenterX = dropdownX + PRESET_DROPDOWN_WIDTH - 10;
         int arrowCenterY = dropdownY + PRESET_DROPDOWN_HEIGHT / 2;
         if (presetDropdownOpen) {
-            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY - 2, UITheme.TEXT_PRIMARY);
-            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY - 1, UITheme.TEXT_PRIMARY);
-            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY, UITheme.TEXT_PRIMARY);
+            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY - 2, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY - 1, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY, labelColor);
         } else {
-            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY + 1, UITheme.TEXT_PRIMARY);
-            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY, UITheme.TEXT_PRIMARY);
-            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY - 1, UITheme.TEXT_PRIMARY);
+            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY + 1, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY - 1, labelColor);
         }
 
         // Don't render options if animation is fully closed

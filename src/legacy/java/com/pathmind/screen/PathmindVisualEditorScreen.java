@@ -19,6 +19,7 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -291,6 +292,14 @@ public class PathmindVisualEditorScreen extends Screen {
             DrawContextBridge.startNewRootLayer(context);
         }
 
+        boolean popupLayerPushed = false;
+        Object popupMatrices = context.getMatrices();
+        if (controlsDisabled) {
+            popupLayerPushed = true;
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 500.0f);
+        }
+
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
             parameterOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
@@ -338,6 +347,10 @@ public class PathmindVisualEditorScreen extends Screen {
         renderPopupScrimOverlay(context);
 
         // Controls are already rendered before overlays so they appear dimmed underneath
+
+        if (popupLayerPushed) {
+            MatrixStackBridge.pop(popupMatrices);
+        }
     }
 
     private boolean isPopupObscuringWorkspace() {

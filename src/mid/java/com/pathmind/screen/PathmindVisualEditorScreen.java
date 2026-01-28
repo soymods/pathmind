@@ -327,11 +327,6 @@ public class PathmindVisualEditorScreen extends Screen {
             renderSettingsPopup(context, mouseX, mouseY);
         }
 
-        // Re-render title bar on top of everything to ensure it's always visible
-        context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
-        context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT, UITheme.BORDER_SUBTLE);
-        drawTitle(context, titleUnderlineAnimation.getValue());
-
         if (!isScreenPopupVisible()) {
             setOverlayCutoutForNodeOverlay();
         }

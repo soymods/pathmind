@@ -12,6 +12,7 @@ import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
+import com.pathmind.util.DropdownLayoutHelper;
 import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -23,6 +24,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.SpawnReason;
+import com.pathmind.util.RenderStateBridge;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -173,6 +175,7 @@ public class NodeParameterOverlay {
     private final Consumer<Node> onSave;
     private final Supplier<List<String>> functionNameSupplier;
     private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
+    private boolean pendingClose = false;
     private int focusedFieldIndex = -1;
     
     // Mode selection fields
@@ -180,12 +183,14 @@ public class NodeParameterOverlay {
     private final List<NodeMode> availableModes;
     private boolean modeDropdownOpen = false;
     private int modeDropdownHoverIndex = -1;
+    private int modeDropdownScrollOffset = 0;
     
     // Function selection dropdown (Call Function node)
     private final List<String> functionNameOptions;
     private int functionDropdownParamIndex = -1;
     private boolean functionDropdownOpen = false;
     private int functionDropdownHoverIndex = -1;
+    private int functionDropdownScrollOffset = 0;
     private int functionDropdownFieldX = 0;
     private int functionDropdownFieldY = 0;
     private int functionDropdownFieldWidth = 0;
@@ -372,6 +377,13 @@ public class NodeParameterOverlay {
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
         popupAnimation.tick();
+        if (pendingClose && popupAnimation.isFullyHidden()) {
+            pendingClose = false;
+            if (onClose != null) {
+                onClose.run();
+            }
+            return;
+        }
         if (!popupAnimation.isVisible()) return;
         updateBlockStateOptions(false);
         if (focusedFieldIndex < 0 || !isBlockOrItemParameter(focusedFieldIndex) || isBlockItemDropdownSuppressed(focusedFieldIndex)) {
@@ -385,6 +397,9 @@ public class NodeParameterOverlay {
         context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(),
             popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
 
+        float popupAlpha = popupAnimation.getPopupAlpha();
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
+
         // Get animated popup bounds
         int[] bounds = popupAnimation.getScaledPopupBounds(context.getScaledWindowWidth(), context.getScaledWindowHeight(), popupWidth, popupHeight);
         int scaledX = bounds[0];
@@ -393,8 +408,16 @@ public class NodeParameterOverlay {
         int scaledHeight = bounds[3];
 
         // Render popup background
-        context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight, UITheme.BORDER_HIGHLIGHT); // Grey outline
+        context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight,
+            popupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY));
+        DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight,
+            popupAnimation.getAnimatedPopupColor(UITheme.BORDER_HIGHLIGHT)); // Grey outline
+
+        int clipLeft = scaledX;
+        int clipTop = scaledY;
+        int clipRight = scaledX + scaledWidth;
+        int clipBottom = scaledY + scaledHeight;
+        context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
 
         // Render title
         context.drawTextWithShadow(
@@ -402,7 +425,7 @@ public class NodeParameterOverlay {
             Text.literal("Edit Parameters: " + node.getType().getDisplayName()),
             popupX + 20,
             popupY + 15,
-            UITheme.TEXT_PRIMARY
+            getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
         );
 
         updateButtonPositions();
@@ -411,7 +434,15 @@ public class NodeParameterOverlay {
         int contentBottom = getScrollAreaBottom();
         int contentRight = popupX + popupWidth;
 
-        context.enableScissor(popupX + 1, contentTop, contentRight - 1, contentBottom);
+        int contentClipLeft = Math.max(popupX + 1, clipLeft);
+        int contentClipTop = Math.max(contentTop, clipTop);
+        int contentClipRight = Math.min(contentRight - 1, clipRight);
+        int contentClipBottom = Math.min(contentBottom, clipBottom);
+        if (contentClipRight > contentClipLeft && contentClipBottom > contentClipTop) {
+            context.enableScissor(contentClipLeft, contentClipTop, contentClipRight, contentClipBottom);
+        } else {
+            context.enableScissor(0, 0, 0, 0);
+        }
 
         int sectionY = contentTop - scrollOffset;
         if (hasModeSelection()) {
@@ -433,6 +464,8 @@ public class NodeParameterOverlay {
 
             int modeBgColor = modeButtonHovered ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.1f) : UITheme.BACKGROUND_SIDEBAR;
             int modeBorderColor = modeButtonHovered ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_HIGHLIGHT;
+            modeBgColor = getPopupAnimatedColor(modeBgColor);
+            modeBorderColor = getPopupAnimatedColor(modeBorderColor);
 
             context.fill(modeButtonX, modeButtonY, modeButtonX + modeButtonWidth, modeButtonY + modeButtonHeight, modeBgColor);
             DrawContextBridge.drawBorder(context, modeButtonX, modeButtonY, modeButtonWidth, modeButtonHeight, modeBorderColor);
@@ -443,7 +476,7 @@ public class NodeParameterOverlay {
                 Text.literal(modeText),
                 modeButtonX + 4,
                 modeButtonY + 6,
-                UITheme.TEXT_PRIMARY
+                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
             );
 
             context.drawTextWithShadow(
@@ -451,7 +484,7 @@ public class NodeParameterOverlay {
                 Text.literal("▼"),
                 modeButtonX + modeButtonWidth - 16,
                 modeButtonY + 6,
-                UITheme.TEXT_PRIMARY
+                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
             );
 
             sectionY = modeButtonY + modeButtonHeight + SECTION_SPACING;
@@ -468,7 +501,7 @@ public class NodeParameterOverlay {
                 Text.literal(param.getName() + " (" + param.getType().getDisplayName() + "):"),
                 popupX + 20,
                 sectionY + 4,
-                UITheme.TEXT_PRIMARY
+                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
             );
 
             int fieldX = popupX + 20;
@@ -517,8 +550,8 @@ public class NodeParameterOverlay {
                 borderColor = UITheme.BORDER_HIGHLIGHT;
             }
 
-            context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
-            DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+            context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, getPopupAnimatedColor(bgColor));
+            DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, getPopupAnimatedColor(borderColor));
 
             String text = parameterValues.get(i);
             if (isDropdownField) {
@@ -538,14 +571,14 @@ public class NodeParameterOverlay {
                     Text.literal(displayText),
                     fieldX + 4,
                     fieldY + 6,
-                    textColor
+                    getPopupAnimatedColor(textColor)
                 );
                 context.drawTextWithShadow(
                     textRenderer,
                     Text.literal("▼"),
                     fieldX + fieldWidth - 14,
                     fieldY + 6,
-                    functionDropdownEnabled ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY
+                    getPopupAnimatedColor(functionDropdownEnabled ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY)
                 );
             } else {
                 String baseValue = text != null ? text : "";
@@ -582,7 +615,8 @@ public class NodeParameterOverlay {
                     selectionStartX = MathHelper.clamp(selectionStartX, fieldX + 2, fieldX + fieldWidth - 2);
                     selectionEndX = MathHelper.clamp(selectionEndX, fieldX + 2, fieldX + fieldWidth - 2);
                     if (selectionEndX != selectionStartX) {
-                        context.fill(selectionStartX, fieldY + 4, selectionEndX, fieldY + fieldHeight - 4, 0x80426AD5);
+                        context.fill(selectionStartX, fieldY + 4, selectionEndX, fieldY + fieldHeight - 4,
+                            getPopupAnimatedColor(0x80426AD5));
                     }
                 }
 
@@ -595,7 +629,7 @@ public class NodeParameterOverlay {
                             Text.literal(displayText),
                             textX,
                             textY,
-                            textColor
+                            getPopupAnimatedColor(textColor)
                         );
                     }
                 }
@@ -606,7 +640,8 @@ public class NodeParameterOverlay {
                         int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
                         int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
                         caretX = Math.min(caretX, fieldX + fieldWidth - 2);
-                        context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4, UITheme.TEXT_PRIMARY);
+                        context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4,
+                            getPopupAnimatedColor(UITheme.TEXT_PRIMARY));
                     }
                 }
             }
@@ -641,34 +676,48 @@ public class NodeParameterOverlay {
         }
 
         context.disableScissor();
+        context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
 
         renderButton(context, textRenderer, saveButton, mouseX, mouseY);
         renderButton(context, textRenderer, cancelButton, mouseX, mouseY);
 
         if (hasModeSelection() && modeDropdownOpen) {
+            context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
             int modeButtonX = popupX + 20;
             int modeButtonY = popupY + CONTENT_START_OFFSET + LABEL_TO_FIELD_OFFSET - scrollOffset;
             int modeButtonWidth = popupWidth - 40;
             int modeButtonHeight = FIELD_HEIGHT;
 
             int dropdownY = modeButtonY + modeButtonHeight;
-            int dropdownHeight = availableModes.size() * DROPDOWN_OPTION_HEIGHT;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                availableModes.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                availableModes.size(),
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
+            modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
 
             modeDropdownHoverIndex = -1;
             if (mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
                 mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                int hoverIndex = (mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT;
+                int hoverIndex = modeDropdownScrollOffset + (mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT;
                 if (hoverIndex >= 0 && hoverIndex < availableModes.size()) {
                     modeDropdownHoverIndex = hoverIndex;
                 }
             }
 
-            context.fill(modeButtonX, dropdownY, modeButtonX + modeButtonWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
-            DrawContextBridge.drawBorder(context, modeButtonX, dropdownY, modeButtonWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
+            context.fill(modeButtonX, dropdownY, modeButtonX + modeButtonWidth, dropdownY + dropdownHeight,
+                getPopupAnimatedColor(UITheme.BACKGROUND_SIDEBAR));
+            DrawContextBridge.drawBorder(context, modeButtonX, dropdownY, modeButtonWidth, dropdownHeight,
+                getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT));
 
-            for (int i = 0; i < availableModes.size(); i++) {
+            int startIndex = modeDropdownScrollOffset;
+            int endIndex = Math.min(availableModes.size(), startIndex + layout.visibleCount);
+            for (int i = startIndex; i < endIndex; i++) {
                 NodeMode mode = availableModes.get(i);
-                int optionY = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
+                int optionY = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
 
                 boolean isSelected = selectedMode == mode;
                 boolean isHovered = i == modeDropdownHoverIndex;
@@ -676,18 +725,43 @@ public class NodeParameterOverlay {
                 if (isHovered) {
                     optionColor = adjustColorBrightness(optionColor, 1.2f);
                 }
-                context.fill(modeButtonX, optionY, modeButtonX + modeButtonWidth, optionY + DROPDOWN_OPTION_HEIGHT, optionColor);
+                context.fill(modeButtonX, optionY, modeButtonX + modeButtonWidth, optionY + DROPDOWN_OPTION_HEIGHT,
+                    getPopupAnimatedColor(optionColor));
 
                 context.drawTextWithShadow(
                     textRenderer,
                     Text.literal(mode.getDisplayName()),
                     modeButtonX + 4,
                     optionY + 6,
-                    UITheme.TEXT_PRIMARY
+                    getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
                 );
             }
+
+            DropdownLayoutHelper.drawScrollBar(
+                context,
+                modeButtonX,
+                dropdownY,
+                modeButtonWidth,
+                dropdownHeight,
+                availableModes.size(),
+                layout.visibleCount,
+                modeDropdownScrollOffset,
+                layout.maxScrollOffset,
+                getPopupAnimatedColor(UITheme.BORDER_DEFAULT),
+                getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT)
+            );
+            DropdownLayoutHelper.drawOutline(
+                context,
+                modeButtonX,
+                dropdownY,
+                modeButtonWidth,
+                dropdownHeight,
+                getPopupAnimatedColor(UITheme.BORDER_DEFAULT)
+            );
+            context.disableScissor();
         }
 
+        context.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
         if (functionDropdownOpen) {
             renderFunctionDropdown(context, textRenderer, mouseX, mouseY);
         }
@@ -699,6 +773,8 @@ public class NodeParameterOverlay {
         }
 
         renderScrollbar(context, contentTop, contentBottom);
+        context.disableScissor();
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
     private void renderButton(DrawContext context, TextRenderer textRenderer, ButtonWidget button, int mouseX, int mouseY) {
@@ -710,14 +786,16 @@ public class NodeParameterOverlay {
                          mouseY >= button.getY() && mouseY <= button.getY() + button.getHeight();
 
         int bgColor = hovered ? UITheme.BUTTON_DEFAULT_HOVER : UITheme.BUTTON_DEFAULT_BG;
-        context.fill(button.getX(), button.getY(), button.getX() + button.getWidth(), button.getY() + button.getHeight(), bgColor);
+        context.fill(button.getX(), button.getY(), button.getX() + button.getWidth(), button.getY() + button.getHeight(),
+            getPopupAnimatedColor(bgColor));
         float hoverProgress = HoverAnimator.getProgress(button, hovered);
         int borderColor = AnimationHelper.lerpColor(
             UITheme.BORDER_HIGHLIGHT,
             UITheme.BUTTON_HOVER_OUTLINE,
             hoverProgress
         );
-        DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(), borderColor);
+        DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(),
+            getPopupAnimatedColor(borderColor));
 
         // Render button text
         context.drawCenteredTextWithShadow(
@@ -725,7 +803,7 @@ public class NodeParameterOverlay {
             button.getMessage(),
             button.getX() + button.getWidth() / 2,
             button.getY() + 6,
-            UITheme.TEXT_PRIMARY
+            getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
         );
     }
 
@@ -740,8 +818,9 @@ public class NodeParameterOverlay {
         int trackBottom = contentBottom;
         int trackHeight = Math.max(1, trackBottom - trackTop);
 
-        context.fill(trackLeft, trackTop, trackRight, trackBottom, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight, UITheme.BORDER_DEFAULT);
+        context.fill(trackLeft, trackTop, trackRight, trackBottom, getPopupAnimatedColor(UITheme.BACKGROUND_SIDEBAR));
+        DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight,
+            getPopupAnimatedColor(UITheme.BORDER_DEFAULT));
 
         int visibleScrollableHeight = Math.max(1, contentBottom - contentTop);
         int totalScrollableHeight = Math.max(visibleScrollableHeight, visibleScrollableHeight + maxScroll);
@@ -750,7 +829,8 @@ public class NodeParameterOverlay {
         int knobOffset = maxKnobTravel <= 0 ? 0 : (int) ((float) scrollOffset / (float) maxScroll * maxKnobTravel);
         int knobTop = trackTop + knobOffset;
 
-        context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight, UITheme.BORDER_DEFAULT);
+        context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight,
+            getPopupAnimatedColor(UITheme.BORDER_DEFAULT));
     }
 
     private void persistInventorySlotModeValue() {
@@ -769,6 +849,10 @@ public class NodeParameterOverlay {
         );
     }
 
+    private int getPopupAnimatedColor(int baseColor) {
+        return popupAnimation.getAnimatedPopupColor(baseColor);
+    }
+
     private void setParameterValue(int index, String value) {
         if (index < 0 || index >= parameterValues.size()) {
             return;
@@ -785,6 +869,7 @@ public class NodeParameterOverlay {
         if (blockStateEditorActive && index == blockParameterIndex) {
             updateBlockStateOptions(true);
         }
+
     }
 
     private boolean shouldDisplayParameter(int index) {
@@ -863,13 +948,22 @@ public class NodeParameterOverlay {
         int dropdownWidth = functionDropdownFieldWidth;
         List<String> options = functionNameOptions;
         int optionCount = Math.max(1, options.isEmpty() ? 1 : options.size());
-        int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            DROPDOWN_OPTION_HEIGHT,
+            optionCount,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        functionDropdownScrollOffset = MathHelper.clamp(functionDropdownScrollOffset, 0, layout.maxScrollOffset);
+        int dropdownHeight = layout.height;
 
         boolean hoverInside = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                               mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
         functionDropdownHoverIndex = -1;
         if (hoverInside && !options.isEmpty()) {
-            int hoverIndex = (mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT;
+            int hoverIndex = functionDropdownScrollOffset + (mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT;
             if (hoverIndex >= 0 && hoverIndex < options.size()) {
                 functionDropdownHoverIndex = hoverIndex;
             }
@@ -887,6 +981,14 @@ public class NodeParameterOverlay {
                 textY,
                 UITheme.TEXT_SECONDARY
             );
+            DropdownLayoutHelper.drawOutline(
+                context,
+                dropdownX,
+                dropdownY,
+                dropdownWidth,
+                dropdownHeight,
+                UITheme.BORDER_DEFAULT
+            );
             return;
         }
 
@@ -894,8 +996,10 @@ public class NodeParameterOverlay {
             ? parameterValues.get(functionDropdownParamIndex)
             : null;
 
-        for (int i = 0; i < options.size(); i++) {
-            int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
+        int startIndex = functionDropdownScrollOffset;
+        int endIndex = Math.min(options.size(), startIndex + visibleCount);
+        for (int i = startIndex; i < endIndex; i++) {
+            int optionTop = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
             boolean isHovered = i == functionDropdownHoverIndex;
             boolean isSelected = currentValue != null && currentValue.equals(options.get(i));
 
@@ -904,16 +1008,39 @@ public class NodeParameterOverlay {
                 optionColor = adjustColorBrightness(optionColor, 1.2f);
             }
 
-            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT, optionColor);
+            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT,
+                getPopupAnimatedColor(optionColor));
             String display = trimDisplayString(textRenderer, options.get(i), dropdownWidth - 8);
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(display),
                 dropdownX + 4,
                 optionTop + 6,
-                UITheme.TEXT_PRIMARY
+                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
             );
         }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            optionCount,
+            visibleCount,
+            functionDropdownScrollOffset,
+            layout.maxScrollOffset,
+            getPopupAnimatedColor(UITheme.BORDER_DEFAULT),
+            getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT)
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            getPopupAnimatedColor(UITheme.BORDER_DEFAULT)
+        );
     }
 
     private void renderBlockStateField(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth, int fieldHeight, int mouseX, int mouseY) {
@@ -939,8 +1066,8 @@ public class NodeParameterOverlay {
             borderColor = UITheme.BORDER_HIGHLIGHT;
         }
 
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
-        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, getPopupAnimatedColor(bgColor));
+        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, getPopupAnimatedColor(borderColor));
 
         String display = getBlockStateDisplayText(hasOptions);
         int textColor = hasOptions ? UITheme.TEXT_PRIMARY : UITheme.BORDER_DEFAULT;
@@ -949,7 +1076,7 @@ public class NodeParameterOverlay {
             Text.literal(display),
             fieldX + 4,
             fieldY + 6,
-            textColor
+            getPopupAnimatedColor(textColor)
         );
 
         int arrowColor = hasOptions ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
@@ -958,7 +1085,7 @@ public class NodeParameterOverlay {
             Text.literal("▼"),
             fieldX + fieldWidth - 14,
             fieldY + 6,
-            arrowColor
+            getPopupAnimatedColor(arrowColor)
         );
     }
 
@@ -987,13 +1114,21 @@ public class NodeParameterOverlay {
         int dropdownY = blockStateFieldY + blockStateFieldHeight;
         int dropdownWidth = blockStateFieldWidth;
         int optionCount = blockStateOptions.size();
-        int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, optionCount);
-        int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
-        int maxScroll = Math.max(0, optionCount - visibleCount);
-        blockStateDropdownScrollOffset = MathHelper.clamp(blockStateDropdownScrollOffset, 0, maxScroll);
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            DROPDOWN_OPTION_HEIGHT,
+            SUGGESTION_MAX_OPTIONS,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        int dropdownHeight = layout.height;
+        blockStateDropdownScrollOffset = MathHelper.clamp(blockStateDropdownScrollOffset, 0, layout.maxScrollOffset);
 
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight,
+            getPopupAnimatedColor(UITheme.BACKGROUND_SIDEBAR));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight,
+            getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT));
 
         blockStateDropdownHoverIndex = -1;
         if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -1020,15 +1155,38 @@ public class NodeParameterOverlay {
             if (isHovered) {
                 optionColor = adjustColorBrightness(optionColor, 1.2f);
             }
-            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT, optionColor);
+            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT,
+                getPopupAnimatedColor(optionColor));
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(option.displayText()),
                 dropdownX + 4,
                 optionTop + 6,
-                UITheme.TEXT_PRIMARY
+                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
             );
         }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            optionCount,
+            visibleCount,
+            blockStateDropdownScrollOffset,
+            layout.maxScrollOffset,
+            getPopupAnimatedColor(UITheme.BORDER_DEFAULT),
+            getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT)
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            getPopupAnimatedColor(UITheme.BORDER_DEFAULT)
+        );
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -1040,8 +1198,10 @@ public class NodeParameterOverlay {
             if (inventorySlotSelector.mouseClicked(mouseX, mouseY)) {
                 functionDropdownOpen = false;
                 functionDropdownHoverIndex = -1;
+                functionDropdownScrollOffset = 0;
                 modeDropdownOpen = false;
                 modeDropdownHoverIndex = -1;
+                modeDropdownScrollOffset = 0;
                 blockStateDropdownOpen = false;
                 blockStateDropdownHoverIndex = -1;
                 blockStateDropdownScrollOffset = 0;
@@ -1063,11 +1223,19 @@ public class NodeParameterOverlay {
 
             if (modeDropdownOpen) {
                 int dropdownY = modeButtonY + modeButtonHeight;
-                int dropdownHeight = availableModes.size() * DROPDOWN_OPTION_HEIGHT;
+                DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                    availableModes.size(),
+                    DROPDOWN_OPTION_HEIGHT,
+                    availableModes.size(),
+                    dropdownY,
+                    screenHeight
+                );
+                int dropdownHeight = layout.height;
+                modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
 
                 if (mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
                     mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                    int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+                    int optionIndex = modeDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
                     if (optionIndex >= 0 && optionIndex < availableModes.size()) {
                         selectedMode = availableModes.get(optionIndex);
                         node.setMode(selectedMode);
@@ -1091,6 +1259,9 @@ public class NodeParameterOverlay {
                 blockStateDropdownScrollOffset = 0;
                 modeDropdownOpen = !modeDropdownOpen;
                 modeDropdownHoverIndex = -1;
+                if (modeDropdownOpen) {
+                    modeDropdownScrollOffset = 0;
+                }
                 return true;
             }
 
@@ -1101,8 +1272,15 @@ public class NodeParameterOverlay {
             int dropdownX = blockStateFieldX;
             int dropdownY = blockStateFieldY + blockStateFieldHeight;
             int dropdownWidth = blockStateFieldWidth;
-            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockStateOptions.size());
-            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                blockStateOptions.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                SUGGESTION_MAX_OPTIONS,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
+            blockStateDropdownScrollOffset = MathHelper.clamp(blockStateDropdownScrollOffset, 0, layout.maxScrollOffset);
             if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                 mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
                 int optionIndex = blockStateDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
@@ -1120,10 +1298,15 @@ public class NodeParameterOverlay {
             int dropdownX = blockItemDropdownFieldX;
             int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
             int dropdownWidth = blockItemDropdownFieldWidth;
-            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockItemDropdownOptions.size());
-            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
-            int maxScroll = Math.max(0, blockItemDropdownOptions.size() - visibleCount);
-            blockItemDropdownScrollOffset = MathHelper.clamp(blockItemDropdownScrollOffset, 0, maxScroll);
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                blockItemDropdownOptions.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                SUGGESTION_MAX_OPTIONS,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
+            blockItemDropdownScrollOffset = MathHelper.clamp(blockItemDropdownScrollOffset, 0, layout.maxScrollOffset);
             if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                 mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
                 int optionIndex = blockItemDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
@@ -1216,7 +1399,14 @@ public class NodeParameterOverlay {
             int modeButtonWidth = popupWidth - 40;
             int modeButtonHeight = FIELD_HEIGHT;
             int dropdownY = modeButtonY + modeButtonHeight;
-            int dropdownHeight = availableModes.size() * DROPDOWN_OPTION_HEIGHT;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                availableModes.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                availableModes.size(),
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
 
             // Check if click is outside dropdown area
             if (!(mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
@@ -1231,7 +1421,14 @@ public class NodeParameterOverlay {
             int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
             int dropdownWidth = functionDropdownFieldWidth;
             int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
-            int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                optionCount,
+                DROPDOWN_OPTION_HEIGHT,
+                optionCount,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
             boolean insideField = mouseX >= functionDropdownFieldX && mouseX <= functionDropdownFieldX + functionDropdownFieldWidth &&
                                   mouseY >= functionDropdownFieldY && mouseY <= functionDropdownFieldY + functionDropdownFieldHeight;
             boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -1246,8 +1443,14 @@ public class NodeParameterOverlay {
             int dropdownX = blockStateFieldX;
             int dropdownY = blockStateFieldY + blockStateFieldHeight;
             int dropdownWidth = blockStateFieldWidth;
-            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockStateOptions.size());
-            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                blockStateOptions.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                SUGGESTION_MAX_OPTIONS,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
             boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
                                   mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
             boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -1263,8 +1466,14 @@ public class NodeParameterOverlay {
             int dropdownX = blockItemDropdownFieldX;
             int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
             int dropdownWidth = blockItemDropdownFieldWidth;
-            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockItemDropdownOptions.size());
-            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                blockItemDropdownOptions.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                SUGGESTION_MAX_OPTIONS,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
             boolean insideField = mouseX >= blockItemDropdownFieldX && mouseX <= blockItemDropdownFieldX + blockItemDropdownFieldWidth &&
                                   mouseY >= blockItemDropdownFieldY && mouseY <= blockItemDropdownFieldY + blockItemDropdownFieldHeight;
             boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
@@ -1297,13 +1506,72 @@ public class NodeParameterOverlay {
             }
         }
 
+        if (hasModeSelection() && modeDropdownOpen) {
+            int modeButtonX = popupX + 20;
+            int modeButtonY = popupY + CONTENT_START_OFFSET + LABEL_TO_FIELD_OFFSET - scrollOffset;
+            int modeButtonWidth = popupWidth - 40;
+            int modeButtonHeight = FIELD_HEIGHT;
+            int dropdownY = modeButtonY + modeButtonHeight;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                availableModes.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                availableModes.size(),
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
+            if (layout.maxScrollOffset > 0) {
+                boolean insideDropdown = mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
+                                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+                if (insideDropdown) {
+                    int delta = (int) Math.signum(verticalAmount);
+                    if (delta != 0) {
+                        modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
+                    }
+                    return true;
+                }
+            }
+        }
+
+        if (functionDropdownOpen) {
+            int dropdownX = functionDropdownFieldX;
+            int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
+            int dropdownWidth = functionDropdownFieldWidth;
+            int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                optionCount,
+                DROPDOWN_OPTION_HEIGHT,
+                optionCount,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
+            if (layout.maxScrollOffset > 0) {
+                boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+                if (insideDropdown) {
+                    int delta = (int) Math.signum(verticalAmount);
+                    if (delta != 0) {
+                        functionDropdownScrollOffset = MathHelper.clamp(functionDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
+                    }
+                    return true;
+                }
+            }
+        }
+
         if (blockStateDropdownOpen && !blockStateOptions.isEmpty()) {
             int dropdownX = blockStateFieldX;
             int dropdownY = blockStateFieldY + blockStateFieldHeight;
             int dropdownWidth = blockStateFieldWidth;
-            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockStateOptions.size());
-            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
-            int maxScroll = Math.max(0, blockStateOptions.size() - visibleCount);
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                blockStateOptions.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                SUGGESTION_MAX_OPTIONS,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
+            int maxScroll = layout.maxScrollOffset;
             if (maxScroll > 0) {
                 boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
                                       mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
@@ -1328,11 +1596,17 @@ public class NodeParameterOverlay {
             int dropdownX = blockItemDropdownFieldX;
             int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
             int dropdownWidth = blockItemDropdownFieldWidth;
-            int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockItemDropdownOptions.size());
-            int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+                blockItemDropdownOptions.size(),
+                DROPDOWN_OPTION_HEIGHT,
+                SUGGESTION_MAX_OPTIONS,
+                dropdownY,
+                screenHeight
+            );
+            int dropdownHeight = layout.height;
             if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                 mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                int maxScroll = Math.max(0, blockItemDropdownOptions.size() - visibleCount);
+                int maxScroll = layout.maxScrollOffset;
                 int delta = (int) Math.signum(verticalAmount);
                 if (delta != 0) {
                     int nextOffset = MathHelper.clamp(blockItemDropdownScrollOffset - delta, 0, maxScroll);
@@ -1480,6 +1754,7 @@ public class NodeParameterOverlay {
 
     public void close() {
         popupAnimation.hide();
+        pendingClose = true;
         modeDropdownOpen = false;
         modeDropdownHoverIndex = -1;
         functionDropdownOpen = false;
@@ -1491,13 +1766,11 @@ public class NodeParameterOverlay {
         if (inventorySlotSelector != null) {
             inventorySlotSelector.closeDropdown();
         }
-        if (onClose != null) {
-            onClose.run();
-        }
     }
 
     public void show() {
         popupAnimation.show();
+        pendingClose = false;
         focusedFieldIndex = -1;
         modeDropdownOpen = false;
         modeDropdownHoverIndex = -1;
@@ -1868,9 +2141,11 @@ public class NodeParameterOverlay {
         }
         modeDropdownOpen = false;
         modeDropdownHoverIndex = -1;
+        modeDropdownScrollOffset = 0;
         refreshFunctionNameOptions();
         functionDropdownOpen = true;
         functionDropdownHoverIndex = -1;
+        functionDropdownScrollOffset = 0;
         focusedFieldIndex = -1;
     }
 
@@ -2263,15 +2538,23 @@ public class NodeParameterOverlay {
         int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
         int dropdownWidth = functionDropdownFieldWidth;
         int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
-        int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            DROPDOWN_OPTION_HEIGHT,
+            optionCount,
+            dropdownY,
+            screenHeight
+        );
+        int dropdownHeight = layout.height;
+        functionDropdownScrollOffset = MathHelper.clamp(functionDropdownScrollOffset, 0, layout.maxScrollOffset);
 
         if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
             mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
             if (!functionNameOptions.isEmpty()) {
-                int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-                    if (optionIndex >= 0 && optionIndex < functionNameOptions.size()) {
-                        setParameterValue(functionDropdownParamIndex, functionNameOptions.get(optionIndex));
-                    }
+                int optionIndex = functionDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+                if (optionIndex >= 0 && optionIndex < functionNameOptions.size()) {
+                    setParameterValue(functionDropdownParamIndex, functionNameOptions.get(optionIndex));
+                }
             }
             functionDropdownOpen = false;
             functionDropdownHoverIndex = -1;
@@ -2300,6 +2583,7 @@ public class NodeParameterOverlay {
         if (!functionDropdownEnabled) {
             functionDropdownOpen = false;
             functionDropdownHoverIndex = -1;
+            functionDropdownScrollOffset = 0;
         }
     }
 
@@ -2321,7 +2605,14 @@ public class NodeParameterOverlay {
         int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
         int dropdownWidth = functionDropdownFieldWidth;
         int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
-        int dropdownHeight = optionCount * DROPDOWN_OPTION_HEIGHT;
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            DROPDOWN_OPTION_HEIGHT,
+            optionCount,
+            dropdownY,
+            screenHeight
+        );
+        int dropdownHeight = layout.height;
         return mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
     }
@@ -2370,10 +2661,16 @@ public class NodeParameterOverlay {
         int dropdownX = blockItemDropdownFieldX;
         int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
         int dropdownWidth = blockItemDropdownFieldWidth;
-        int visibleCount = Math.min(SUGGESTION_MAX_OPTIONS, blockItemDropdownOptions.size());
-        int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
-        int maxScroll = Math.max(0, blockItemDropdownOptions.size() - visibleCount);
-        blockItemDropdownScrollOffset = MathHelper.clamp(blockItemDropdownScrollOffset, 0, maxScroll);
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            blockItemDropdownOptions.size(),
+            DROPDOWN_OPTION_HEIGHT,
+            SUGGESTION_MAX_OPTIONS,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        int dropdownHeight = layout.height;
+        blockItemDropdownScrollOffset = MathHelper.clamp(blockItemDropdownScrollOffset, 0, layout.maxScrollOffset);
 
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
@@ -2422,6 +2719,28 @@ public class NodeParameterOverlay {
                 UITheme.TEXT_PRIMARY
             );
         }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            blockItemDropdownOptions.size(),
+            visibleCount,
+            blockItemDropdownScrollOffset,
+            layout.maxScrollOffset,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_HIGHLIGHT
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            UITheme.BORDER_DEFAULT
+        );
     }
 
     private boolean renderEntityOptionIcon(DrawContext context, RegistryOption option, int x, int y, int size) {

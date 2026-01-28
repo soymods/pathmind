@@ -9,6 +9,7 @@ import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import com.pathmind.util.RenderStateBridge;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
@@ -47,6 +48,7 @@ public class BookTextEditorOverlay {
     private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
     private ButtonWidget saveButton;
     private ButtonWidget cancelButton;
+    private boolean pendingClose = false;
 
     private long caretBlinkLastToggle = 0L;
     private boolean caretVisible = true;
@@ -91,10 +93,12 @@ public class BookTextEditorOverlay {
 
     public void show() {
         popupAnimation.show();
+        pendingClose = false;
     }
 
     public void hide() {
         popupAnimation.hide();
+        pendingClose = true;
     }
 
     public boolean isVisible() {
@@ -107,11 +111,21 @@ public class BookTextEditorOverlay {
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
         popupAnimation.tick();
+        if (pendingClose && popupAnimation.isFullyHidden()) {
+            pendingClose = false;
+            if (onClose != null) {
+                onClose.run();
+            }
+            return;
+        }
         if (!popupAnimation.isVisible()) return;
 
         // Render semi-transparent background overlay
         context.fill(0, 0, screenWidth, screenHeight,
             popupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
+
+        float popupAlpha = popupAnimation.getPopupAlpha();
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         // Get animated popup bounds
         int[] bounds = popupAnimation.getScaledPopupBounds(screenWidth, screenHeight, POPUP_WIDTH, POPUP_HEIGHT);
@@ -121,8 +135,10 @@ public class BookTextEditorOverlay {
         int scaledHeight = bounds[3];
 
         // Render popup background
-        context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight, UITheme.BORDER_HIGHLIGHT);
+        context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight,
+            popupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY));
+        DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight,
+            popupAnimation.getAnimatedPopupColor(UITheme.BORDER_HIGHLIGHT));
 
         // Render title
         String title = "Edit Book Text";
@@ -180,6 +196,7 @@ public class BookTextEditorOverlay {
         // Render buttons
         renderButton(context, textRenderer, saveButton, mouseX, mouseY);
         renderButton(context, textRenderer, cancelButton, mouseX, mouseY);
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
     private void renderWrappedText(DrawContext context, TextRenderer textRenderer, String text,
@@ -485,9 +502,6 @@ public class BookTextEditorOverlay {
 
     private void closeInternal() {
         hide();
-        if (onClose != null) {
-            onClose.run();
-        }
     }
 
     private void closeWithoutSave() {

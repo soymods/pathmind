@@ -2,6 +2,8 @@ package com.pathmind.ui.control;
 
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.DropdownLayoutHelper;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
@@ -229,13 +231,17 @@ public class InventorySlotSelector {
         int dropdownY = buttonY + buttonHeight;
         int dropdownWidth = buttonWidth;
         int totalOptions = InventoryGuiMode.values().length;
-        int visibleCount = Math.min(DROPDOWN_MAX_VISIBLE, totalOptions);
-        if (totalOptions <= visibleCount) {
-            dropdownScrollIndex = 0;
-        } else {
-            dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, totalOptions - visibleCount));
-        }
-        int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            totalOptions,
+            DROPDOWN_OPTION_HEIGHT,
+            DROPDOWN_MAX_VISIBLE,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, layout.maxScrollOffset));
+        int dropdownHeight = layout.height;
 
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_DEFAULT);
@@ -267,15 +273,27 @@ public class InventorySlotSelector {
             );
         }
 
-        if (totalOptions > visibleCount) {
-            int indicatorColor = UITheme.BORDER_HIGHLIGHT;
-            if (dropdownScrollIndex > 0) {
-                context.drawTextWithShadow(textRenderer, Text.literal("▲"), dropdownX + dropdownWidth - 12, dropdownY + 2, indicatorColor);
-            }
-            if (dropdownScrollIndex + visibleCount < totalOptions) {
-                context.drawTextWithShadow(textRenderer, Text.literal("▼"), dropdownX + dropdownWidth - 12, dropdownY + dropdownHeight - 14, indicatorColor);
-            }
-        }
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            totalOptions,
+            layout.visibleCount,
+            dropdownScrollIndex,
+            layout.maxScrollOffset,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_HIGHLIGHT
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            UITheme.BORDER_DEFAULT
+        );
     }
 
     public boolean mouseClicked(double mouseX, double mouseY) {
@@ -314,8 +332,17 @@ public class InventorySlotSelector {
         int dropdownX = buttonX;
         int dropdownY = buttonY + buttonHeight;
         int dropdownWidth = buttonWidth;
-        int visibleCount = Math.min(DROPDOWN_MAX_VISIBLE, InventoryGuiMode.values().length);
-        int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+        int totalOptions = InventoryGuiMode.values().length;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            totalOptions,
+            DROPDOWN_OPTION_HEIGHT,
+            DROPDOWN_MAX_VISIBLE,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        int dropdownHeight = layout.height;
 
         boolean inside = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                          mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
@@ -356,14 +383,23 @@ public class InventorySlotSelector {
         int dropdownX = buttonX;
         int dropdownY = buttonY + buttonHeight;
         int dropdownWidth = buttonWidth;
-        int visibleCount = Math.min(DROPDOWN_MAX_VISIBLE, InventoryGuiMode.values().length);
-        int dropdownHeight = visibleCount * DROPDOWN_OPTION_HEIGHT;
+        int totalOptions = InventoryGuiMode.values().length;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            totalOptions,
+            DROPDOWN_OPTION_HEIGHT,
+            DROPDOWN_MAX_VISIBLE,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        int dropdownHeight = layout.height;
         boolean inside = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                          mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
         if (!inside) {
             return false;
         }
-        int maxIndex = Math.max(0, InventoryGuiMode.values().length - visibleCount);
+        int maxIndex = layout.maxScrollOffset;
         if (maxIndex == 0) {
             return false;
         }

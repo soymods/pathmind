@@ -6,11 +6,14 @@ package com.pathmind.ui.animation;
  */
 public class PopupAnimationHandler {
 
-    private static final int ANIMATION_DURATION_MS = 250;
+    private static final int OPEN_DURATION_MS = 220;
+    private static final int BACKGROUND_CLOSE_DURATION_MS = 90;
+    private static final int POPUP_CLOSE_DURATION_MS = 60;
 
     private final AnimatedValue backgroundAlpha;
     private final AnimatedValue popupScale;
     private boolean isVisible;
+    private boolean targetVisible;
 
     /**
      * Creates a new popup animation handler.
@@ -19,6 +22,7 @@ public class PopupAnimationHandler {
         this.backgroundAlpha = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
         this.popupScale = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
         this.isVisible = false;
+        this.targetVisible = false;
     }
 
     /**
@@ -26,9 +30,10 @@ public class PopupAnimationHandler {
      * Call this when the popup is shown.
      */
     public void show() {
+        targetVisible = true;
         isVisible = true;
-        backgroundAlpha.animateTo(1f, ANIMATION_DURATION_MS);
-        popupScale.animateTo(1f, ANIMATION_DURATION_MS);
+        backgroundAlpha.animateTo(1f, OPEN_DURATION_MS);
+        popupScale.animateTo(1f, OPEN_DURATION_MS);
     }
 
     /**
@@ -36,15 +41,16 @@ public class PopupAnimationHandler {
      * Call this when the popup is hidden.
      */
     public void hide() {
-        isVisible = false;
-        backgroundAlpha.animateTo(0f, ANIMATION_DURATION_MS);
-        popupScale.animateTo(0f, ANIMATION_DURATION_MS);
+        targetVisible = false;
+        backgroundAlpha.animateTo(0f, BACKGROUND_CLOSE_DURATION_MS);
+        popupScale.animateTo(0f, POPUP_CLOSE_DURATION_MS);
     }
 
     /**
      * Immediately shows the popup without animation.
      */
     public void showInstant() {
+        targetVisible = true;
         isVisible = true;
         backgroundAlpha.setValue(1f);
         popupScale.setValue(1f);
@@ -54,6 +60,7 @@ public class PopupAnimationHandler {
      * Immediately hides the popup without animation.
      */
     public void hideInstant() {
+        targetVisible = false;
         isVisible = false;
         backgroundAlpha.setValue(0f);
         popupScale.setValue(0f);
@@ -65,6 +72,9 @@ public class PopupAnimationHandler {
     public void tick() {
         backgroundAlpha.tick();
         popupScale.tick();
+        if (!targetVisible && !isAnimating() && backgroundAlpha.isAtTarget() && popupScale.isAtTarget()) {
+            isVisible = false;
+        }
     }
 
     /**
@@ -77,11 +87,10 @@ public class PopupAnimationHandler {
 
     /**
      * Gets the current popup scale (0.0 to 1.0).
-     * Interpolates from 0.8 to 1.0 for a smooth scale-in effect.
+     * Returns 1.0 to avoid scaling during popup transitions.
      */
     public float getPopupScale() {
-        float progress = popupScale.getValue();
-        return AnimationHelper.lerp(0.8f, 1.0f, progress);
+        return targetVisible ? popupScale.getValue() : 1.0f;
     }
 
     /**
@@ -89,7 +98,7 @@ public class PopupAnimationHandler {
      * Use this to fade in popup content.
      */
     public float getPopupAlpha() {
-        return popupScale.getValue();
+        return targetVisible ? 1.0f : popupScale.getValue();
     }
 
     /**
@@ -137,6 +146,21 @@ public class PopupAnimationHandler {
         int animatedAlpha = (int) (originalAlpha * animationProgress);
 
         // Combine the animated alpha with the RGB values
+        return (animatedAlpha << 24) | (baseColor & 0x00FFFFFF);
+    }
+
+    /**
+     * Applies the popup alpha to a base color.
+     * Use this for popup surfaces so their fade ensure sync with the overlay.
+     *
+     * @param baseColor The base popup color (ARGB format)
+     * @return The popup color with animated alpha applied
+     */
+    public int getAnimatedPopupColor(int baseColor) {
+        float animationProgress = getPopupAlpha();
+
+        int originalAlpha = (baseColor >>> 24) & 0xFF;
+        int animatedAlpha = (int) (originalAlpha * animationProgress);
         return (animatedAlpha << 24) | (baseColor & 0x00FFFFFF);
     }
 

@@ -12,6 +12,7 @@ import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.MatrixStackBridge;
+import com.pathmind.util.DropdownLayoutHelper;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -3207,12 +3208,19 @@ public class NodeGraph {
 
         List<String> options = schematicDropdownOptions;
         int optionCount = options.isEmpty() ? 1 : options.size();
-        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, optionCount);
-        int maxOffset = Math.max(0, optionCount - visibleCount);
-        schematicDropdownScrollOffset = MathHelper.clamp(schematicDropdownScrollOffset, 0, maxOffset);
-
         int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
-        int listHeight = visibleCount * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            SCHEMATIC_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        schematicDropdownScrollOffset = MathHelper.clamp(schematicDropdownScrollOffset, 0, layout.maxScrollOffset);
+
+        int listHeight = layout.height;
         int listBottom = listTop + listHeight;
         int listLeft = node.getSchematicFieldLeft() - cameraX;
         int listRight = listLeft + node.getSchematicFieldWidth();
@@ -3245,6 +3253,28 @@ public class NodeGraph {
             String rowText = trimTextToWidth(optionLabel, textRenderer, node.getSchematicFieldWidth() - 6);
             drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + 3, rowTop + 4, textColor);
         }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            listLeft,
+            listTop,
+            node.getSchematicFieldWidth(),
+            listHeight,
+            optionCount,
+            layout.visibleCount,
+            schematicDropdownScrollOffset,
+            layout.maxScrollOffset,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_HIGHLIGHT
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            listLeft,
+            listTop,
+            node.getSchematicFieldWidth(),
+            listHeight,
+            UITheme.BORDER_DEFAULT
+        );
     }
 
     public boolean isEditingCoordinateField() {
@@ -4766,13 +4796,20 @@ public class NodeGraph {
         if (!isPointInsideSchematicDropdownList(schematicDropdownNode, (int) screenX, (int) screenY)) {
             return false;
         }
-        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, schematicDropdownOptions.size());
-        int maxOffset = Math.max(0, schematicDropdownOptions.size() - visibleCount);
-        if (maxOffset <= 0) {
+        int listTop = schematicDropdownNode.getSchematicFieldInputTop() + schematicDropdownNode.getSchematicFieldHeight() + 2 - cameraY;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            schematicDropdownOptions.size(),
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            SCHEMATIC_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        if (layout.maxScrollOffset <= 0) {
             return true;
         }
         int delta = amount > 0 ? -1 : 1;
-        schematicDropdownScrollOffset = MathHelper.clamp(schematicDropdownScrollOffset + delta, 0, maxOffset);
+        schematicDropdownScrollOffset = MathHelper.clamp(schematicDropdownScrollOffset + delta, 0, layout.maxScrollOffset);
         return true;
     }
 
@@ -4797,16 +4834,24 @@ public class NodeGraph {
             return false;
         }
         int optionCount = Math.max(1, schematicDropdownOptions.size());
-        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, optionCount);
-        int listHeight = visibleCount * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            SCHEMATIC_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        int listHeight = layout.height;
 
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
         int listLeft = node.getSchematicFieldLeft();
-        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
+        int worldListTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
 
         return worldX >= listLeft && worldX <= listLeft + node.getSchematicFieldWidth()
-            && worldY >= listTop && worldY <= listTop + listHeight;
+            && worldY >= worldListTop && worldY <= worldListTop + listHeight;
     }
 
     private int getSchematicDropdownIndexAt(Node node, int screenX, int screenY) {
@@ -4814,13 +4859,22 @@ public class NodeGraph {
             return -1;
         }
         int worldY = screenToWorldY(screenY);
-        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
-        int row = (worldY - listTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        int worldListTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
+        int row = (worldY - worldListTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
         if (row < 0) {
             return -1;
         }
         int optionCount = schematicDropdownOptions.size();
-        int visibleCount = Math.min(SCHEMATIC_DROPDOWN_MAX_ROWS, optionCount);
+        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            SCHEMATIC_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
         if (row >= visibleCount) {
             return -1;
         }

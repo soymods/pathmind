@@ -1664,7 +1664,7 @@ public class NodeGraph {
                 for (Node member : multiDragStartPositions.keySet()) {
                     if (member != null) {
                         member.setDragging(false);
-                        member.setSocketsHidden(false);
+                        member.setSocketsHidden(shouldHideSocketsWhenAttached(member));
                     }
                 }
                 rootToPromote = getRootNode(node);
@@ -1692,7 +1692,7 @@ public class NodeGraph {
                 rootToPromote = getRootNode(target);
             } else {
                 node.setDragging(false);
-                node.setSocketsHidden(false);
+                node.setSocketsHidden(shouldHideSocketsWhenAttached(node));
                 rootToPromote = getRootNode(node);
             }
         }
@@ -1714,6 +1714,15 @@ public class NodeGraph {
             multiDragStartPositions.clear();
         }
         selectionDeletionPreviewActive = false;
+    }
+
+    private boolean shouldHideSocketsWhenAttached(Node node) {
+        if (node == null) {
+            return false;
+        }
+        return node.isAttachedToControl()
+            || node.isAttachedToActionControl()
+            || node.getParentParameterHost() != null;
     }
 
     private void detachDraggingNodeFromParents() {
@@ -1872,6 +1881,8 @@ public class NodeGraph {
     public void resetCamera() {
         cameraX = 0;
         cameraY = 0;
+        zoomLevel = ZoomLevel.FOCUSED;
+        zoomScale = ZoomLevel.FOCUSED.getScale();
     }
     
     // Convert screen coordinates to world coordinates
@@ -2206,6 +2217,8 @@ public class NodeGraph {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_START_BORDER, 0.75f) : UITheme.NODE_START_BORDER; // Darker green for START
         } else if (node.getType() == NodeType.EVENT_FUNCTION) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_BORDER, 0.75f) : UITheme.NODE_EVENT_BORDER; // Darker pink for event functions
+        } else if (node.getType() == NodeType.EVENT_CALL) {
+            borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_BG, 0.75f) : UITheme.NODE_EVENT_CALL_BG;
         } else if (node.getType() == NodeType.VARIABLE) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_BORDER, 0.75f) : UITheme.NODE_VARIABLE_BORDER; // Darker orange for variables
         } else if (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT) {
@@ -2473,7 +2486,7 @@ public class NodeGraph {
                 operatorColor
             );
         } else if (node.getType() == NodeType.EVENT_CALL) {
-            int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_BG, 0.7f) : UITheme.NODE_EVENT_CALL_BG;
+            int baseColor = isOverSidebar ? toGrayscale(node.getType().getColor(), 0.7f) : node.getType().getColor();
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
             int titleColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TITLE, 0.9f) : UITheme.NODE_EVENT_TITLE;
@@ -3304,9 +3317,11 @@ public class NodeGraph {
         int buttonWidth = node.getBookTextButtonWidth();
         int buttonHeight = node.getBookTextButtonHeight();
 
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
         boolean buttonHovered = !isOverSidebar &&
-            mouseX >= buttonLeft && mouseX <= buttonLeft + buttonWidth &&
-            mouseY >= buttonTop && mouseY <= buttonTop + buttonHeight;
+            worldMouseX >= node.getBookTextButtonLeft() && worldMouseX <= node.getBookTextButtonLeft() + buttonWidth &&
+            worldMouseY >= node.getBookTextButtonTop() && worldMouseY <= node.getBookTextButtonTop() + buttonHeight;
 
         int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG;
         int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
@@ -3355,9 +3370,11 @@ public class NodeGraph {
         int buttonWidth = node.getPopupEditButtonWidth();
         int buttonHeight = node.getPopupEditButtonHeight();
 
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
         boolean buttonHovered = !isOverSidebar &&
-            mouseX >= buttonLeft && mouseX <= buttonLeft + buttonWidth &&
-            mouseY >= buttonTop && mouseY <= buttonTop + buttonHeight;
+            worldMouseX >= node.getPopupEditButtonLeft() && worldMouseX <= node.getPopupEditButtonLeft() + buttonWidth &&
+            worldMouseY >= node.getPopupEditButtonTop() && worldMouseY <= node.getPopupEditButtonTop() + buttonHeight;
 
         int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG;
         int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;

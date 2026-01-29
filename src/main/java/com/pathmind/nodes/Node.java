@@ -1411,9 +1411,6 @@ public class Node {
         int slotY = getParameterSlotTop(slotIndex) + PARAMETER_SLOT_INNER_PADDING;
         int availableWidth = getParameterSlotWidth(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
         int availableHeight = getParameterSlotHeight(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
-        if (parameter.width < availableWidth) {
-            parameter.width = availableWidth;
-        }
         int parameterX = slotX + Math.max(0, (availableWidth - parameter.getWidth()) / 2);
         int parameterY = slotY + Math.max(0, (availableHeight - parameter.getHeight()) / 2);
         parameter.setPositionSilently(parameterX, parameterY);

@@ -189,6 +189,14 @@ public class Node {
     private static final int BOOK_TEXT_PAGE_FIELD_HEIGHT = 16;
     private static final int BOOK_TEXT_FIELD_SPACING = 6;
     private static final int BOOK_TEXT_BOTTOM_MARGIN = 6;
+    private static final int POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL = 6;
+    private static final int POPUP_EDIT_BUTTON_TOP_MARGIN = 4;
+    private static final int POPUP_EDIT_BUTTON_HEIGHT = 16;
+    private static final int POPUP_EDIT_BUTTON_MIN_WIDTH = 70;
+    private static final int POPUP_EDIT_BUTTON_BOTTOM_MARGIN = 6;
+    private static final int EVENT_NAME_FIELD_MARGIN_HORIZONTAL = 6;
+    private static final int EVENT_NAME_FIELD_TOP_MARGIN = 6;
+    private static final int EVENT_NAME_FIELD_HEIGHT = 16;
     private static final int BOOK_PAGE_MAX_CHARS = 256;
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
     private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
@@ -930,12 +938,15 @@ public class Node {
     private int getSlotAreaStartY() {
         int top = y + HEADER_HEIGHT;
         if (isParameterNode()) {
-            if (hasParameters()) {
+            if ((hasParameters() || supportsModeSelection()) && type != NodeType.PARAM_BOOLEAN) {
                 int lineCount = parameters.size();
                 if (supportsModeSelection()) {
                     lineCount++;
                 }
                 top += PARAM_PADDING_TOP + lineCount * PARAM_LINE_HEIGHT + PARAM_PADDING_BOTTOM;
+                if (hasPopupEditButton()) {
+                    top += getPopupEditButtonDisplayHeight();
+                }
             } else {
                 top += BODY_PADDING_NO_PARAMS;
             }
@@ -2302,6 +2313,9 @@ public class Node {
             return "";
         }
         String name = parameter.getName();
+        if (type == NodeType.PARAM_BOOLEAN && "Toggle".equalsIgnoreCase(name)) {
+            return "";
+        }
         if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
             name = "Message";
         }
@@ -2527,6 +2541,7 @@ public class Node {
 
     public boolean hasBooleanToggle() {
         switch (type) {
+            case PARAM_BOOLEAN:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -2541,14 +2556,36 @@ public class Node {
     }
 
     public boolean getBooleanToggleValue() {
+        if (type == NodeType.PARAM_BOOLEAN) {
+            NodeParameter parameter = getParameter("Toggle");
+            if (parameter == null) {
+                return true;
+            }
+            String rawValue = parameter.getStringValue();
+            if (rawValue == null || rawValue.isEmpty()) {
+                rawValue = parameter.getDefaultValue();
+            }
+            return Boolean.parseBoolean(rawValue);
+        }
         return booleanToggleValue;
     }
 
     public void setBooleanToggleValue(boolean value) {
+        if (type == NodeType.PARAM_BOOLEAN) {
+            NodeParameter parameter = getParameter("Toggle");
+            if (parameter != null) {
+                parameter.setStringValueFromUser(String.valueOf(value));
+            }
+            return;
+        }
         this.booleanToggleValue = value;
     }
 
     public void toggleBooleanToggleValue() {
+        if (type == NodeType.PARAM_BOOLEAN) {
+            setBooleanToggleValue(!getBooleanToggleValue());
+            return;
+        }
         this.booleanToggleValue = !this.booleanToggleValue;
     }
 
@@ -2557,6 +2594,9 @@ public class Node {
     }
 
     public int getBooleanToggleTop() {
+        if (type == NodeType.PARAM_BOOLEAN) {
+            return y + HEADER_HEIGHT + getParameterDisplayHeight() + BOOLEAN_TOGGLE_TOP_MARGIN;
+        }
         return y + HEADER_HEIGHT + BOOLEAN_TOGGLE_TOP_MARGIN;
     }
 
@@ -2767,6 +2807,55 @@ public class Node {
         return BOOK_TEXT_PAGE_FIELD_HEIGHT;
     }
 
+    public boolean hasPopupEditButton() {
+        if (!isParameterNode() || type == NodeType.PARAM_SCHEMATIC || type == NodeType.PARAM_BOOLEAN) {
+            return false;
+        }
+        return hasParameters() || supportsModeSelection();
+    }
+
+    public int getPopupEditButtonLeft() {
+        return x + POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL;
+    }
+
+    public int getPopupEditButtonTop() {
+        if (isParameterNode()) {
+            return y + HEADER_HEIGHT + getParameterDisplayHeight() + POPUP_EDIT_BUTTON_TOP_MARGIN;
+        }
+        return y + HEADER_HEIGHT;
+    }
+
+    public int getPopupEditButtonWidth() {
+        return Math.max(POPUP_EDIT_BUTTON_MIN_WIDTH, width - 2 * POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL);
+    }
+
+    public int getPopupEditButtonHeight() {
+        return POPUP_EDIT_BUTTON_HEIGHT;
+    }
+
+    public int getPopupEditButtonDisplayHeight() {
+        if (!hasPopupEditButton()) {
+            return 0;
+        }
+        return POPUP_EDIT_BUTTON_TOP_MARGIN + POPUP_EDIT_BUTTON_HEIGHT + POPUP_EDIT_BUTTON_BOTTOM_MARGIN;
+    }
+
+    public int getEventNameFieldLeft() {
+        return x + EVENT_NAME_FIELD_MARGIN_HORIZONTAL;
+    }
+
+    public int getEventNameFieldTop() {
+        return y + HEADER_HEIGHT + EVENT_NAME_FIELD_TOP_MARGIN;
+    }
+
+    public int getEventNameFieldWidth() {
+        return width - 2 * EVENT_NAME_FIELD_MARGIN_HORIZONTAL;
+    }
+
+    public int getEventNameFieldHeight() {
+        return EVENT_NAME_FIELD_HEIGHT;
+    }
+
     /**
      * Recalculate node dimensions based on current content
      */
@@ -2853,6 +2942,10 @@ public class Node {
             int bookTextWidth = BOOK_TEXT_BUTTON_MIN_WIDTH + 2 * BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, bookTextWidth);
         }
+        if (hasPopupEditButton()) {
+            int editButtonWidth = POPUP_EDIT_BUTTON_MIN_WIDTH + 2 * POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL;
+            computedWidth = Math.max(computedWidth, editButtonWidth);
+        }
         int minWidth = usesMinimalNodePresentation() ? 70 : MIN_WIDTH;
         this.width = Math.max(minWidth, computedWidth);
 
@@ -2860,21 +2953,31 @@ public class Node {
         boolean hasSlots = hasSensorSlot() || hasActionSlot();
 
         if (isParameterNode()) {
-            int parameterLineCount = parameters.size();
+            int parameterLineCount = type == NodeType.PARAM_BOOLEAN ? 0 : parameters.size();
             if (supportsModeSelection()) {
                 parameterLineCount++;
             }
 
             if (parameterLineCount > 0) {
                 contentHeight += PARAM_PADDING_TOP + (parameterLineCount * PARAM_LINE_HEIGHT) + PARAM_PADDING_BOTTOM;
+                if (hasPopupEditButton()) {
+                    contentHeight += getPopupEditButtonDisplayHeight();
+                }
+                if (hasBooleanToggle()) {
+                    contentHeight += getBooleanToggleAreaHeight();
+                }
                 if (hasSlots) {
                     contentHeight += SLOT_AREA_PADDING_TOP;
                 }
             } else if (hasSlots) {
                 contentHeight += SLOT_AREA_PADDING_TOP;
+            } else if (type == NodeType.PARAM_BOOLEAN) {
+                contentHeight += getBooleanToggleAreaHeight();
             } else {
                 contentHeight += BODY_PADDING_NO_PARAMS;
             }
+        } else if (type == NodeType.EVENT_FUNCTION || type == NodeType.EVENT_CALL) {
+            contentHeight += EVENT_NAME_FIELD_TOP_MARGIN + EVENT_NAME_FIELD_HEIGHT;
         } else if (hasParameterSlot()) {
             if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
                 int leftHeight = getParameterSlotHeight(0);
@@ -2964,6 +3067,9 @@ public class Node {
      */
     public int getParameterDisplayHeight() {
         if (!hasParameters() && !supportsModeSelection()) {
+            return 0;
+        }
+        if (type == NodeType.PARAM_BOOLEAN) {
             return 0;
         }
         int parameterLineCount = parameters.size();

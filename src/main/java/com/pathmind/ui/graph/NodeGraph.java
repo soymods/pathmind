@@ -2298,10 +2298,11 @@ public class NodeGraph {
                 titleColor
             );
 
-            int boxLeft = x + 6;
-            int boxRight = x + width - 6;
-            int boxHeight = 16;
-            int boxTop = y + height / 2 - boxHeight / 2 + 4;
+            int boxLeft = node.getEventNameFieldLeft() - cameraX;
+            int boxTop = node.getEventNameFieldTop() - cameraY;
+            int boxWidth = node.getEventNameFieldWidth();
+            int boxHeight = node.getEventNameFieldHeight();
+            int boxRight = boxLeft + boxWidth;
             int boxBottom = boxTop + boxHeight;
             int inputBackground = isOverSidebar ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_INPUT;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
@@ -2322,6 +2323,7 @@ public class NodeGraph {
                 textY,
                 textColor
             );
+            renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else if (node.getType() == NodeType.VARIABLE) {
             int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_BG, 0.7f) : UITheme.NODE_VARIABLE_BG;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
@@ -2412,10 +2414,11 @@ public class NodeGraph {
                 titleColor
             );
 
-            int boxLeft = x + 6;
-            int boxRight = x + width - 6;
-            int boxHeight = 16;
-            int boxTop = y + height / 2 - boxHeight / 2 + 2;
+            int boxLeft = node.getEventNameFieldLeft() - cameraX;
+            int boxTop = node.getEventNameFieldTop() - cameraY;
+            int boxWidth = node.getEventNameFieldWidth();
+            int boxHeight = node.getEventNameFieldHeight();
+            int boxRight = boxLeft + boxWidth;
             int boxBottom = boxTop + boxHeight;
             int inputBackground = isOverSidebar ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_INPUT;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
@@ -2436,6 +2439,7 @@ public class NodeGraph {
                 textY,
                 textColor
             );
+            renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else {
             if (node.isParameterNode()) {
                 if (shouldShowParameters(node)) {
@@ -2477,6 +2481,9 @@ public class NodeGraph {
                             paramTextColor
                         );
                         paramY += 10;
+                    }
+                    if (node.hasPopupEditButton()) {
+                        renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     }
                 }
             } else {
@@ -3058,6 +3065,36 @@ public class NodeGraph {
         drawNodeText(context, textRenderer, Text.literal(pageValue), buttonLeft + 4, fieldTop + (fieldHeight - textRenderer.fontHeight) / 2, pageTextColor);
     }
 
+    private void renderPopupEditButton(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        if (node == null || !node.hasPopupEditButton()) {
+            return;
+        }
+        int buttonLeft = node.getPopupEditButtonLeft() - cameraX;
+        int buttonTop = node.getPopupEditButtonTop() - cameraY;
+        int buttonWidth = node.getPopupEditButtonWidth();
+        int buttonHeight = node.getPopupEditButtonHeight();
+
+        boolean buttonHovered = !isOverSidebar &&
+            mouseX >= buttonLeft && mouseX <= buttonLeft + buttonWidth &&
+            mouseY >= buttonTop && mouseY <= buttonTop + buttonHeight;
+
+        int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG;
+        int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
+        if (buttonHovered) {
+            buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
+            buttonBorder = UITheme.ACCENT_DEFAULT;
+        }
+
+        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
+        DrawContextBridge.drawBorder(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
+
+        String buttonLabel = "Edit";
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int textX = buttonLeft + (buttonWidth - textRenderer.getWidth(buttonLabel)) / 2;
+        int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2;
+        drawNodeText(context, textRenderer, Text.literal(buttonLabel), textX, textY, textColor);
+    }
+
     public boolean isPointInsideBookTextButton(Node node, int mouseX, int mouseY) {
         if (node == null || !node.hasBookTextInput()) {
             return false;
@@ -3068,6 +3105,21 @@ public class NodeGraph {
         int buttonTop = node.getBookTextButtonTop();
         int buttonWidth = node.getBookTextButtonWidth();
         int buttonHeight = node.getBookTextButtonHeight();
+
+        return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth &&
+               worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
+    }
+
+    public boolean isPointInsidePopupEditButton(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasPopupEditButton()) {
+            return false;
+        }
+        int worldX = screenToWorldX(mouseX);
+        int worldY = screenToWorldY(mouseY);
+        int buttonLeft = node.getPopupEditButtonLeft();
+        int buttonTop = node.getPopupEditButtonTop();
+        int buttonWidth = node.getPopupEditButtonWidth();
+        int buttonHeight = node.getPopupEditButtonHeight();
 
         return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth &&
                worldY >= buttonTop && worldY <= buttonTop + buttonHeight;

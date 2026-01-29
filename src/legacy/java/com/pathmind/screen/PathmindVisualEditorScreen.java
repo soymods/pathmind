@@ -905,34 +905,18 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (clickedNode.isParameterNode() && nodeGraph.isPointInsidePopupEditButton(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    openParameterOverlay(clickedNode);
+                    return true;
+                }
+
                 // Check for double-click to open parameter editor
-                boolean shouldOpenOverlay = (clickedNode.isParameterNode()
-                    && clickedNode.getType() != NodeType.PARAM_SCHEMATIC)
-                    || clickedNode.getType() == NodeType.EVENT_CALL
-                    || clickedNode.getType() == NodeType.EVENT_FUNCTION;
+                boolean shouldOpenOverlay = clickedNode.isParameterNode()
+                    && clickedNode.getType() != NodeType.PARAM_SCHEMATIC;
                 if (shouldOpenOverlay &&
                     nodeGraph.handleNodeClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    // Open parameter overlay
-                    nodeGraph.stopCoordinateEditing(true);
-                    nodeGraph.stopAmountEditing(true);
-                    nodeGraph.stopStopTargetEditing(true);
-                    final NodeParameterOverlay[] overlayRef = new NodeParameterOverlay[1];
-                    overlayRef[0] = new NodeParameterOverlay(
-                        clickedNode,
-                        this.width,
-                        this.height,
-                        TITLE_BAR_HEIGHT,
-                        () -> {
-                            if (parameterOverlay == overlayRef[0]) {
-                                parameterOverlay = null;
-                            }
-                        }, // Clear reference on close
-                        nodeGraph::notifyNodeParametersChanged,
-                        () -> nodeGraph.getFunctionNames()
-                    );
-                    parameterOverlay = overlayRef[0];
-                    parameterOverlay.init();
-                    parameterOverlay.show();
+                    openParameterOverlay(clickedNode);
                     return true;
                 }
                 
@@ -2106,6 +2090,33 @@ public class PathmindVisualEditorScreen extends Screen {
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
             parameterOverlay.close();
         }
+    }
+
+    private void openParameterOverlay(Node node) {
+        if (node == null) {
+            return;
+        }
+        nodeGraph.stopCoordinateEditing(true);
+        nodeGraph.stopAmountEditing(true);
+        nodeGraph.stopStopTargetEditing(true);
+        nodeGraph.stopMessageEditing(true);
+        final NodeParameterOverlay[] overlayRef = new NodeParameterOverlay[1];
+        overlayRef[0] = new NodeParameterOverlay(
+            node,
+            this.width,
+            this.height,
+            TITLE_BAR_HEIGHT,
+            () -> {
+                if (parameterOverlay == overlayRef[0]) {
+                    parameterOverlay = null;
+                }
+            }, // Clear reference on close
+            nodeGraph::notifyNodeParametersChanged,
+            () -> nodeGraph.getFunctionNames()
+        );
+        parameterOverlay = overlayRef[0];
+        parameterOverlay.init();
+        parameterOverlay.show();
     }
 
     private void openBookTextEditor(Node node) {

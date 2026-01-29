@@ -805,6 +805,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopStopTargetEditing(true);
                         nodeGraph.stopMessageEditing(true);
                         nodeGraph.stopParameterEditing(true);
+                        nodeGraph.stopEventNameEditing(true);
                         nodeGraph.startDraggingConnection(node, i, false, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -820,6 +821,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopStopTargetEditing(true);
                         nodeGraph.stopMessageEditing(true);
                         nodeGraph.stopParameterEditing(true);
+                        nodeGraph.stopEventNameEditing(true);
                         nodeGraph.startDraggingConnection(node, i, true, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -883,11 +885,17 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleEventNameFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
                 nodeGraph.stopAmountEditing(true);
                 nodeGraph.stopCoordinateEditing(true);
                 nodeGraph.stopStopTargetEditing(true);
                 nodeGraph.stopMessageEditing(true);
                 nodeGraph.stopParameterEditing(true);
+                nodeGraph.stopEventNameEditing(true);
 
                 // Check if clicking on Edit Text button for WRITE_BOOK nodes
                 if (clickedNode.hasBookTextInput() && nodeGraph.isPointInsideBookTextButton(clickedNode, (int)mouseX, (int)mouseY)) {
@@ -932,15 +940,16 @@ public class PathmindVisualEditorScreen extends Screen {
             // Clicked on empty space - deselect and stop dragging
             nodeGraph.selectNode(null);
             nodeGraph.stopDraggingConnection();
-            if (button == 0) {
-                nodeGraph.stopCoordinateEditing(true);
-                nodeGraph.stopAmountEditing(true);
-                nodeGraph.stopStopTargetEditing(true);
-                nodeGraph.stopMessageEditing(true);
-                nodeGraph.stopParameterEditing(true);
-                nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
-            }
-            return true;
+                if (button == 0) {
+                    nodeGraph.stopCoordinateEditing(true);
+                    nodeGraph.stopAmountEditing(true);
+                    nodeGraph.stopStopTargetEditing(true);
+                    nodeGraph.stopMessageEditing(true);
+                    nodeGraph.stopParameterEditing(true);
+                    nodeGraph.stopEventNameEditing(true);
+                    nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
+                }
+                return true;
         }
 
         return false;
@@ -1216,6 +1225,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleEventNameKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
         if (nodeGraph.handleParameterKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -1302,6 +1315,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.textRenderer)) {
+            return true;
+        }
+
+        if (nodeGraph.handleEventNameCharTyped(chr, modifiers)) {
             return true;
         }
 

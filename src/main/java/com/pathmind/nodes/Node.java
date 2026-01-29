@@ -138,6 +138,7 @@ public class Node {
     private static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
     private static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
     private static final int OPERATOR_SLOT_GAP = 8;
+    private static final int PARAMETER_FIELD_PADDING = 12;
     private static final int PLAYER_ARMOR_SLOT_COUNT = 4;
     private static final int PLAYER_OFFHAND_INVENTORY_INDEX = PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
     private static final int PARAMETER_SLOT_BOTTOM_PADDING = 6;
@@ -150,6 +151,7 @@ public class Node {
     private static final int BOOLEAN_TOGGLE_BOTTOM_MARGIN = 8;
     private static final int COORDINATE_FIELD_WIDTH = 44;
     private static final int COORDINATE_FIELD_HEIGHT = 16;
+    private static final int COORDINATE_FIELD_TEXT_PADDING = 3;
     private static final int COORDINATE_FIELD_SPACING = 6;
     private static final int COORDINATE_FIELD_TOP_MARGIN = 6;
     private static final int COORDINATE_FIELD_LABEL_HEIGHT = 10;
@@ -157,6 +159,7 @@ public class Node {
     private static final int AMOUNT_FIELD_TOP_MARGIN = 6;
     private static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
     private static final int AMOUNT_FIELD_HEIGHT = 16;
+    private static final int AMOUNT_FIELD_TEXT_PADDING = 3;
     private static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
     private static final int AMOUNT_TOGGLE_WIDTH = 18;
     private static final int AMOUNT_TOGGLE_HEIGHT = 10;
@@ -168,6 +171,7 @@ public class Node {
     private static final int MESSAGE_FIELD_VERTICAL_GAP = 6;
     private static final int MESSAGE_FIELD_BOTTOM_MARGIN = 6;
     private static final int MESSAGE_FIELD_MIN_CONTENT_WIDTH = 120;
+    private static final int MESSAGE_FIELD_TEXT_PADDING = 3;
     private static final int MESSAGE_BUTTON_SIZE = 10;
     private static final int MESSAGE_BUTTON_PADDING = 4;
     private static final int MESSAGE_BUTTON_SPACING = 4;
@@ -179,6 +183,7 @@ public class Node {
     private static final int STOP_TARGET_FIELD_TOP_MARGIN = 6;
     private static final int STOP_TARGET_FIELD_LABEL_HEIGHT = 0;
     private static final int STOP_TARGET_FIELD_HEIGHT = 16;
+    private static final int STOP_TARGET_FIELD_TEXT_PADDING = 3;
     private static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
     private static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
     private static final int BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL = 6;
@@ -197,6 +202,7 @@ public class Node {
     private static final int EVENT_NAME_FIELD_MARGIN_HORIZONTAL = 6;
     private static final int EVENT_NAME_FIELD_TOP_MARGIN = 6;
     private static final int EVENT_NAME_FIELD_HEIGHT = 16;
+    private static final int EVENT_NAME_FIELD_BOTTOM_MARGIN = 6;
     private static final int BOOK_PAGE_MAX_CHARS = 256;
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
     private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
@@ -234,6 +240,11 @@ public class Node {
     private int startNodeNumber;
     private final List<String> messageLines;
     private String bookText;
+    private int messageFieldContentWidthOverride;
+    private int parameterFieldWidthOverride;
+    private int coordinateFieldWidthOverride;
+    private int amountFieldWidthOverride;
+    private int stopTargetFieldWidthOverride;
 
     public Node(NodeType type, int x, int y) {
         this.id = java.util.UUID.randomUUID().toString();
@@ -257,6 +268,11 @@ public class Node {
             this.messageLines.add("Hello World");
         }
         this.bookText = "";
+        this.messageFieldContentWidthOverride = 0;
+        this.parameterFieldWidthOverride = 0;
+        this.coordinateFieldWidthOverride = 0;
+        this.amountFieldWidthOverride = 0;
+        this.stopTargetFieldWidthOverride = 0;
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -1153,7 +1169,7 @@ public class Node {
     }
 
     public int getCoordinateFieldWidth() {
-        return COORDINATE_FIELD_WIDTH;
+        return Math.max(COORDINATE_FIELD_WIDTH, coordinateFieldWidthOverride);
     }
 
     public int getCoordinateFieldSpacing() {
@@ -1171,7 +1187,7 @@ public class Node {
     }
 
     public int getCoordinateFieldTotalWidth() {
-        return (COORDINATE_FIELD_WIDTH * 3) + (COORDINATE_FIELD_SPACING * 2);
+        return (getCoordinateFieldWidth() * 3) + (COORDINATE_FIELD_SPACING * 2);
     }
 
     public boolean hasAmountInputField() {
@@ -1237,7 +1253,7 @@ public class Node {
         if (hasAmountToggle()) {
             width = Math.max(40, width - (AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING));
         }
-        return width;
+        return Math.max(width, amountFieldWidthOverride);
     }
 
     public int getAmountFieldLeft() {
@@ -1351,7 +1367,7 @@ public class Node {
     }
 
     public int getStopTargetFieldWidth() {
-        return STOP_TARGET_FIELD_MIN_WIDTH;
+        return Math.max(STOP_TARGET_FIELD_MIN_WIDTH, stopTargetFieldWidthOverride);
     }
 
     public int getStopTargetFieldLeft() {
@@ -2668,6 +2684,7 @@ public class Node {
         if (messageLines.isEmpty()) {
             messageLines.add("Hello World");
         }
+        messageFieldContentWidthOverride = 0;
         recalculateDimensions();
     }
 
@@ -2676,6 +2693,7 @@ public class Node {
             return;
         }
         messageLines.add(value == null ? "" : value);
+        messageFieldContentWidthOverride = 0;
         recalculateDimensions();
     }
 
@@ -2690,6 +2708,7 @@ public class Node {
         if (messageLines.isEmpty()) {
             messageLines.add("Hello World");
         }
+        messageFieldContentWidthOverride = 0;
         recalculateDimensions();
         return true;
     }
@@ -2721,6 +2740,45 @@ public class Node {
 
     public int getMessageFieldWidth() {
         return Math.max(MESSAGE_FIELD_MIN_CONTENT_WIDTH, width - 2 * MESSAGE_FIELD_MARGIN_HORIZONTAL);
+    }
+
+    public void setMessageFieldTextWidth(int textWidth) {
+        if (!hasMessageInputFields()) {
+            return;
+        }
+        int paddedWidth = Math.max(MESSAGE_FIELD_MIN_CONTENT_WIDTH, textWidth + (MESSAGE_FIELD_TEXT_PADDING * 2));
+        messageFieldContentWidthOverride = paddedWidth;
+    }
+
+    public void setParameterFieldWidthOverride(int fieldWidth) {
+        if (!isParameterNode()) {
+            return;
+        }
+        parameterFieldWidthOverride = Math.max(0, fieldWidth);
+    }
+
+    public void setCoordinateFieldTextWidth(int textWidth) {
+        if (!hasCoordinateInputFields()) {
+            return;
+        }
+        int paddedWidth = Math.max(COORDINATE_FIELD_WIDTH, textWidth + (COORDINATE_FIELD_TEXT_PADDING * 2));
+        coordinateFieldWidthOverride = paddedWidth;
+    }
+
+    public void setAmountFieldTextWidth(int textWidth) {
+        if (!hasAmountInputField()) {
+            return;
+        }
+        int paddedWidth = Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, textWidth + (AMOUNT_FIELD_TEXT_PADDING * 2));
+        amountFieldWidthOverride = paddedWidth;
+    }
+
+    public void setStopTargetFieldTextWidth(int textWidth) {
+        if (!hasStopTargetInputField()) {
+            return;
+        }
+        int paddedWidth = Math.max(STOP_TARGET_FIELD_MIN_WIDTH, textWidth + (STOP_TARGET_FIELD_TEXT_PADDING * 2));
+        stopTargetFieldWidthOverride = paddedWidth;
     }
 
     public int getMessageFieldLeft() {
@@ -2892,6 +2950,33 @@ public class Node {
         }
 
         int computedWidth = maxTextLength * CHAR_PIXEL_WIDTH + 24; // padding and border allowance
+        if (isParameterNode()) {
+            int maxParameterWidth = 0;
+            for (NodeParameter param : parameters) {
+                if (param == null) {
+                    continue;
+                }
+                String label = getParameterDisplayName(param);
+                String value = param.getDisplayValue();
+                int labelLength = label != null ? label.length() : 0;
+                int valueLength = value != null ? value.length() : 0;
+                int estimatedWidth = (labelLength + valueLength) * CHAR_PIXEL_WIDTH + PARAMETER_FIELD_PADDING;
+                maxParameterWidth = Math.max(maxParameterWidth, estimatedWidth);
+            }
+            if (supportsModeSelection()) {
+                String modeLabel = getModeDisplayLabel();
+                if (!modeLabel.isEmpty()) {
+                    maxParameterWidth = Math.max(maxParameterWidth, modeLabel.length() * CHAR_PIXEL_WIDTH + PARAMETER_FIELD_PADDING);
+                }
+            }
+            int requiredFieldWidth = maxParameterWidth;
+            if (parameterFieldWidthOverride > 0) {
+                requiredFieldWidth = Math.max(requiredFieldWidth, parameterFieldWidthOverride);
+            }
+            if (requiredFieldWidth > 0) {
+                computedWidth = Math.max(computedWidth, requiredFieldWidth + 10);
+            }
+        }
         if (hasParameterSlot()) {
             int parameterContentWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH;
             if (!attachedParameters.isEmpty()) {
@@ -2913,13 +2998,26 @@ public class Node {
                     computedWidth = Math.max(computedWidth, coordinateWidth);
                 }
                 if (hasAmountInputField()) {
-                    int amountWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
-                    if (type == NodeType.SENSOR_ITEM_IN_INVENTORY && hasAmountToggle()) {
-                        amountWidth += AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
+                    int amountContentWidth = Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, amountFieldWidthOverride);
+                    if (hasAmountToggle()) {
+                        amountContentWidth += AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
                     }
+                    int amountWidth = amountContentWidth + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
                     computedWidth = Math.max(computedWidth, amountWidth);
                 }
             }
+        }
+        if (hasCoordinateInputFields()) {
+            int coordinateWidth = getCoordinateFieldTotalWidth() + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            computedWidth = Math.max(computedWidth, coordinateWidth);
+        }
+        if (hasAmountInputField()) {
+            int amountContentWidth = Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, amountFieldWidthOverride);
+            if (hasAmountToggle()) {
+                amountContentWidth += AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
+            }
+            int amountWidth = amountContentWidth + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            computedWidth = Math.max(computedWidth, amountWidth);
         }
         if (hasSensorSlot()) {
             int sensorContentWidth = SENSOR_SLOT_MIN_CONTENT_WIDTH;
@@ -2938,11 +3036,25 @@ public class Node {
             computedWidth = Math.max(computedWidth, requiredWidth);
         }
         if (hasStopTargetInputField()) {
-            int requiredWidth = STOP_TARGET_FIELD_MIN_WIDTH + 2 * STOP_TARGET_FIELD_MARGIN_HORIZONTAL;
+            int requiredWidth = Math.max(STOP_TARGET_FIELD_MIN_WIDTH, stopTargetFieldWidthOverride)
+                + 2 * STOP_TARGET_FIELD_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, requiredWidth);
         }
         if (hasMessageInputFields()) {
-            int messageFieldWidth = MESSAGE_FIELD_MIN_CONTENT_WIDTH + 2 * MESSAGE_FIELD_MARGIN_HORIZONTAL;
+            int maxMessageLength = 0;
+            for (String line : messageLines) {
+                if (line != null) {
+                    maxMessageLength = Math.max(maxMessageLength, line.length());
+                }
+            }
+            int messageContentWidth = Math.max(
+                MESSAGE_FIELD_MIN_CONTENT_WIDTH,
+                maxMessageLength * CHAR_PIXEL_WIDTH + (MESSAGE_FIELD_TEXT_PADDING * 2)
+            );
+            if (messageFieldContentWidthOverride > 0) {
+                messageContentWidth = Math.max(messageContentWidth, messageFieldContentWidthOverride);
+            }
+            int messageFieldWidth = messageContentWidth + 2 * MESSAGE_FIELD_MARGIN_HORIZONTAL;
             int buttonWidth = (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
             computedWidth = Math.max(computedWidth, Math.max(messageFieldWidth, buttonWidth));
         }
@@ -2985,7 +3097,7 @@ public class Node {
                 contentHeight += BODY_PADDING_NO_PARAMS;
             }
         } else if (type == NodeType.EVENT_FUNCTION || type == NodeType.EVENT_CALL) {
-            contentHeight += EVENT_NAME_FIELD_TOP_MARGIN + EVENT_NAME_FIELD_HEIGHT;
+            contentHeight += EVENT_NAME_FIELD_TOP_MARGIN + EVENT_NAME_FIELD_HEIGHT + EVENT_NAME_FIELD_BOTTOM_MARGIN;
         } else if (hasParameterSlot()) {
             if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
                 int leftHeight = getParameterSlotHeight(0);

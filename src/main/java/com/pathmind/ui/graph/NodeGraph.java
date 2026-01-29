@@ -151,6 +151,15 @@ public class NodeGraph {
     private int messageSelectionStart = -1;
     private int messageSelectionEnd = -1;
     private int messageSelectionAnchor = -1;
+    private Node eventNameEditingNode = null;
+    private String eventNameEditBuffer = "";
+    private String eventNameEditOriginalValue = "";
+    private long eventNameCaretLastToggleTime = 0L;
+    private boolean eventNameCaretVisible = true;
+    private int eventNameCaretPosition = 0;
+    private int eventNameSelectionStart = -1;
+    private int eventNameSelectionEnd = -1;
+    private int eventNameSelectionAnchor = -1;
     private Node parameterEditingNode = null;
     private int parameterEditingIndex = -1;
     private String parameterEditBuffer = "";
@@ -1310,6 +1319,7 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopEventNameEditing(true);
         stopParameterEditing(true);
         stopMessageEditing(true);
         isDraggingConnection = true;
@@ -2220,7 +2230,8 @@ public class NodeGraph {
             int textX;
             int textY;
             if (node.hasStopTargetInputField()) {
-                textX = x + 4;
+                int contentLeft = x + MINIMAL_NODE_TAB_WIDTH;
+                textX = contentLeft + 4;
                 textY = y + 4;
             } else {
                 int contentLeft = x + MINIMAL_NODE_TAB_WIDTH;
@@ -2343,20 +2354,47 @@ public class NodeGraph {
             int inputBorder = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_INPUT_BORDER, 0.8f) : UITheme.BORDER_SUBTLE;
             DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
+            boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
+            if (editingEventName) {
+                updateEventNameCaretBlink();
+            }
+
             NodeParameter nameParam = node.getParameter("Name");
-            String value = nameParam != null ? nameParam.getDisplayValue() : "";
-            String display = value.isEmpty() ? "enter name" : value;
-            display = trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
+            String value = editingEventName
+                ? eventNameEditBuffer
+                : (nameParam != null ? nameParam.getStringValue() : "");
+            if (value == null) {
+                value = "";
+            }
+            String display;
+            if (!editingEventName && value.isEmpty()) {
+                display = "enter name";
+            } else {
+                display = value;
+            }
+            display = editingEventName
+                ? display
+                : trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
-            drawNodeText(
-                context,
-                textRenderer,
-                Text.literal(display),
-                boxLeft + 4,
-                textY,
-                textColor
-            );
+            int textX = boxLeft + 4;
+            if (editingEventName && hasEventNameSelection()) {
+                int start = MathHelper.clamp(eventNameSelectionStart, 0, display.length());
+                int end = MathHelper.clamp(eventNameSelectionEnd, 0, display.length());
+                if (start != end) {
+                    int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
+                    int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
+                    context.fill(selectionStartX, boxTop + 2, selectionEndX, boxBottom - 2, UITheme.TEXT_SELECTION_BG);
+                }
+            }
+            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+
+            if (editingEventName && eventNameCaretVisible) {
+                int caretIndex = MathHelper.clamp(eventNameCaretPosition, 0, display.length());
+                int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
+                caretX = Math.min(caretX, boxRight - 2);
+                context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
+            }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else if (node.getType() == NodeType.VARIABLE) {
             int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_BG, 0.7f) : UITheme.NODE_VARIABLE_BG;
@@ -2459,20 +2497,47 @@ public class NodeGraph {
             int inputBorder = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_INPUT_BORDER, 0.8f) : UITheme.BORDER_SUBTLE;
             DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
+            boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
+            if (editingEventName) {
+                updateEventNameCaretBlink();
+            }
+
             NodeParameter nameParam = node.getParameter("Name");
-            String value = nameParam != null ? nameParam.getDisplayValue() : "";
-            String display = value.isEmpty() ? "enter name" : value;
-            display = trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
+            String value = editingEventName
+                ? eventNameEditBuffer
+                : (nameParam != null ? nameParam.getStringValue() : "");
+            if (value == null) {
+                value = "";
+            }
+            String display;
+            if (!editingEventName && value.isEmpty()) {
+                display = "enter name";
+            } else {
+                display = value;
+            }
+            display = editingEventName
+                ? display
+                : trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
-            drawNodeText(
-                context,
-                textRenderer,
-                Text.literal(display),
-                boxLeft + 4,
-                textY,
-                textColor
-            );
+            int textX = boxLeft + 4;
+            if (editingEventName && hasEventNameSelection()) {
+                int start = MathHelper.clamp(eventNameSelectionStart, 0, display.length());
+                int end = MathHelper.clamp(eventNameSelectionEnd, 0, display.length());
+                if (start != end) {
+                    int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
+                    int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
+                    context.fill(selectionStartX, boxTop + 2, selectionEndX, boxBottom - 2, UITheme.TEXT_SELECTION_BG);
+                }
+            }
+            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+
+            if (editingEventName && eventNameCaretVisible) {
+                int caretIndex = MathHelper.clamp(eventNameCaretPosition, 0, display.length());
+                int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
+                caretX = Math.min(caretX, boxRight - 2);
+                context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
+            }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else {
             if (node.isParameterNode()) {
@@ -2541,8 +2606,13 @@ public class NodeGraph {
 
                         int valueStartX = getParameterValueStartX(node, param, textRenderer) - cameraX;
                         int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
-                        String value = editingThis ? parameterEditBuffer : param.getDisplayValue();
-                        String displayValue = trimTextToWidth(value, textRenderer, maxValueWidth);
+                        String value = editingThis ? parameterEditBuffer : param.getStringValue();
+                        if (value == null) {
+                            value = "";
+                        }
+                        String displayValue = editingThis
+                            ? value
+                            : trimTextToWidth(value, textRenderer, maxValueWidth);
                         int valueY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
 
                         if (editingThis && hasParameterSelection()) {
@@ -2924,7 +2994,7 @@ public class NodeGraph {
                 value = coordinateEditBuffer;
             } else {
                 NodeParameter parameter = node.getParameter(axisLabel);
-                value = parameter != null ? parameter.getDisplayValue() : "";
+                value = parameter != null ? parameter.getStringValue() : "";
             }
 
             String display = editingAxis
@@ -2992,7 +3062,7 @@ public class NodeGraph {
             value = amountEditBuffer;
         } else {
             NodeParameter amountParam = node.getParameter("Amount");
-            value = amountParam != null ? amountParam.getDisplayValue() : "";
+            value = amountParam != null ? amountParam.getStringValue() : "";
         }
 
         String display = editing
@@ -3101,6 +3171,93 @@ public class NodeGraph {
                 context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, UITheme.CARET_COLOR);
             }
         }
+    }
+
+    private void updateMessageFieldContentWidth(TextRenderer textRenderer) {
+        if (!isEditingMessageField() || messageEditingNode == null || textRenderer == null) {
+            return;
+        }
+        int maxWidth = 0;
+        int fieldCount = messageEditingNode.getMessageFieldCount();
+        for (int i = 0; i < fieldCount; i++) {
+            String line = i == messageEditingIndex ? messageEditBuffer : messageEditingNode.getMessageLine(i);
+            if (line == null) {
+                line = "";
+            }
+            maxWidth = Math.max(maxWidth, textRenderer.getWidth(line));
+        }
+        messageEditingNode.setMessageFieldTextWidth(maxWidth);
+        messageEditingNode.recalculateDimensions();
+    }
+
+    private void updateCoordinateFieldContentWidth(TextRenderer textRenderer) {
+        if (!isEditingCoordinateField() || coordinateEditingNode == null || textRenderer == null) {
+            return;
+        }
+        int maxWidth = 0;
+        for (int i = 0; i < COORDINATE_AXES.length; i++) {
+            NodeParameter parameter = getCoordinateParameter(coordinateEditingNode, i);
+            String value = i == coordinateEditingAxis ? coordinateEditBuffer : (parameter != null ? parameter.getStringValue() : "");
+            if (value == null) {
+                value = "";
+            }
+            maxWidth = Math.max(maxWidth, textRenderer.getWidth(value));
+        }
+        coordinateEditingNode.setCoordinateFieldTextWidth(maxWidth);
+        coordinateEditingNode.recalculateDimensions();
+    }
+
+    private void updateAmountFieldContentWidth(TextRenderer textRenderer) {
+        if (!isEditingAmountField() || amountEditingNode == null || textRenderer == null) {
+            return;
+        }
+        String value = amountEditBuffer == null ? "" : amountEditBuffer;
+        amountEditingNode.setAmountFieldTextWidth(textRenderer.getWidth(value));
+        amountEditingNode.recalculateDimensions();
+    }
+
+    private void updateStopTargetFieldContentWidth(TextRenderer textRenderer) {
+        if (!isEditingStopTargetField() || stopTargetEditingNode == null || textRenderer == null) {
+            return;
+        }
+        String value = stopTargetEditBuffer == null ? "" : stopTargetEditBuffer;
+        stopTargetEditingNode.setStopTargetFieldTextWidth(textRenderer.getWidth(value));
+        stopTargetEditingNode.recalculateDimensions();
+    }
+
+    private void updateParameterFieldContentWidth(Node node, TextRenderer textRenderer, int editingIndex, String editingValue) {
+        if (node == null || !node.isParameterNode() || textRenderer == null) {
+            return;
+        }
+        int requiredFieldWidth = 0;
+        if (node.supportsModeSelection()) {
+            String modeLabel = node.getModeDisplayLabel();
+            if (modeLabel != null && !modeLabel.isEmpty()) {
+                requiredFieldWidth = Math.max(requiredFieldWidth, textRenderer.getWidth(modeLabel));
+            }
+        }
+        List<NodeParameter> parameters = node.getParameters();
+        for (int i = 0; i < parameters.size(); i++) {
+            NodeParameter param = parameters.get(i);
+            if (param == null) {
+                continue;
+            }
+            String label = node.getParameterDisplayName(param);
+            if (label == null) {
+                label = "";
+            }
+            label = label + ":";
+            String value = i == editingIndex ? editingValue : param.getStringValue();
+            if (value == null) {
+                value = "";
+            }
+            int labelWidth = textRenderer.getWidth(label);
+            int valueWidth = textRenderer.getWidth(value);
+            int fieldWidth = labelWidth + valueWidth + 12;
+            requiredFieldWidth = Math.max(requiredFieldWidth, fieldWidth);
+        }
+        node.setParameterFieldWidthOverride(requiredFieldWidth);
+        node.recalculateDimensions();
     }
 
     private void renderMessageButtons(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
@@ -3285,7 +3442,7 @@ public class NodeGraph {
             value = stopTargetEditBuffer;
         } else {
             NodeParameter targetParam = node.getParameter("StartNumber");
-            value = targetParam != null ? targetParam.getDisplayValue() : "";
+            value = targetParam != null ? targetParam.getStringValue() : "";
         }
 
         String display;
@@ -3502,6 +3659,7 @@ public class NodeGraph {
         stopStopTargetEditing(true);
         stopMessageEditing(true);
         stopParameterEditing(true);
+        stopEventNameEditing(true);
 
         if (isEditingCoordinateField()) {
             if (coordinateEditingNode == node && coordinateEditingAxis == axisIndex) {
@@ -3517,13 +3675,14 @@ public class NodeGraph {
         coordinateEditingAxis = axisIndex;
 
         NodeParameter parameter = getCoordinateParameter(node, axisIndex);
-        coordinateEditBuffer = parameter != null ? parameter.getDisplayValue() : "";
+        coordinateEditBuffer = parameter != null ? parameter.getStringValue() : "";
         coordinateEditOriginalValue = coordinateEditBuffer;
         resetCoordinateCaretBlink();
         coordinateCaretPosition = coordinateEditBuffer.length();
         coordinateSelectionAnchor = -1;
         coordinateSelectionStart = -1;
         coordinateSelectionEnd = -1;
+        updateCoordinateFieldContentWidth(getClientTextRenderer());
     }
 
     public void stopCoordinateEditing(boolean commit) {
@@ -3602,6 +3761,7 @@ public class NodeGraph {
                     coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateCaretPosition - 1)
                         + coordinateEditBuffer.substring(coordinateCaretPosition);
                     setCoordinateCaretPosition(coordinateCaretPosition - 1);
+                    updateCoordinateFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:
@@ -3612,6 +3772,7 @@ public class NodeGraph {
                     coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateCaretPosition)
                         + coordinateEditBuffer.substring(coordinateCaretPosition + 1);
                     setCoordinateCaretPosition(coordinateCaretPosition);
+                    updateCoordinateFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_LEFT:
@@ -3722,16 +3883,18 @@ public class NodeGraph {
         stopStopTargetEditing(true);
         stopMessageEditing(true);
         stopParameterEditing(true);
+        stopEventNameEditing(true);
 
         amountEditingNode = node;
         NodeParameter amountParam = node.getParameter("Amount");
-        amountEditBuffer = amountParam != null ? amountParam.getDisplayValue() : "";
+        amountEditBuffer = amountParam != null ? amountParam.getStringValue() : "";
         amountEditOriginalValue = amountEditBuffer;
         resetAmountCaretBlink();
         amountCaretPosition = amountEditBuffer.length();
         amountSelectionAnchor = -1;
         amountSelectionStart = -1;
         amountSelectionEnd = -1;
+        updateAmountFieldContentWidth(getClientTextRenderer());
     }
 
     public void stopAmountEditing(boolean commit) {
@@ -3804,6 +3967,7 @@ public class NodeGraph {
                     amountEditBuffer = amountEditBuffer.substring(0, amountCaretPosition - 1)
                         + amountEditBuffer.substring(amountCaretPosition);
                     setAmountCaretPosition(amountCaretPosition - 1);
+                    updateAmountFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:
@@ -3814,6 +3978,7 @@ public class NodeGraph {
                     amountEditBuffer = amountEditBuffer.substring(0, amountCaretPosition)
                         + amountEditBuffer.substring(amountCaretPosition + 1);
                     setAmountCaretPosition(amountCaretPosition);
+                    updateAmountFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_LEFT:
@@ -3916,16 +4081,20 @@ public class NodeGraph {
 
         stopCoordinateEditing(true);
         stopAmountEditing(true);
+        stopMessageEditing(true);
+        stopParameterEditing(true);
+        stopEventNameEditing(true);
 
         stopTargetEditingNode = node;
         NodeParameter targetParam = node.getParameter("StartNumber");
-        stopTargetEditBuffer = targetParam != null ? targetParam.getDisplayValue() : "";
+        stopTargetEditBuffer = targetParam != null ? targetParam.getStringValue() : "";
         stopTargetEditOriginalValue = stopTargetEditBuffer;
         resetStopTargetCaretBlink();
         stopTargetCaretPosition = stopTargetEditBuffer.length();
         stopTargetSelectionAnchor = -1;
         stopTargetSelectionStart = -1;
         stopTargetSelectionEnd = -1;
+        updateStopTargetFieldContentWidth(getClientTextRenderer());
     }
 
     public void stopStopTargetEditing(boolean commit) {
@@ -3992,6 +4161,7 @@ public class NodeGraph {
                     stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetCaretPosition - 1)
                         + stopTargetEditBuffer.substring(stopTargetCaretPosition);
                     setStopTargetCaretPosition(stopTargetCaretPosition - 1);
+                    updateStopTargetFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:
@@ -4002,6 +4172,7 @@ public class NodeGraph {
                     stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetCaretPosition)
                         + stopTargetEditBuffer.substring(stopTargetCaretPosition + 1);
                     setStopTargetCaretPosition(stopTargetCaretPosition);
+                    updateStopTargetFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_LEFT:
@@ -4115,6 +4286,7 @@ public class NodeGraph {
         messageSelectionAnchor = -1;
         messageSelectionStart = -1;
         messageSelectionEnd = -1;
+        updateMessageFieldContentWidth(getClientTextRenderer());
     }
 
     public void stopMessageEditing(boolean commit) {
@@ -4142,6 +4314,195 @@ public class NodeGraph {
         messageSelectionAnchor = -1;
         messageSelectionStart = -1;
         messageSelectionEnd = -1;
+    }
+
+    public boolean isEditingEventNameField() {
+        return eventNameEditingNode != null;
+    }
+
+    private void updateEventNameCaretBlink() {
+        long now = System.currentTimeMillis();
+        if (now - eventNameCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
+            eventNameCaretVisible = !eventNameCaretVisible;
+            eventNameCaretLastToggleTime = now;
+        }
+    }
+
+    private void resetEventNameCaretBlink() {
+        eventNameCaretVisible = true;
+        eventNameCaretLastToggleTime = System.currentTimeMillis();
+    }
+
+    public void startEventNameEditing(Node node) {
+        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL)) {
+            stopEventNameEditing(false);
+            return;
+        }
+
+        closeSchematicDropdown();
+        if (isEditingEventNameField()) {
+            if (eventNameEditingNode == node) {
+                return;
+            }
+            boolean changed = applyEventNameEdit();
+            if (changed) {
+                notifyNodeParametersChanged(eventNameEditingNode);
+            }
+        }
+
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+        stopStopTargetEditing(true);
+        stopMessageEditing(true);
+        stopEventNameEditing(true);
+        stopParameterEditing(true);
+
+        eventNameEditingNode = node;
+        NodeParameter nameParam = node.getParameter("Name");
+        eventNameEditBuffer = nameParam != null ? nameParam.getStringValue() : "";
+        eventNameEditOriginalValue = eventNameEditBuffer;
+        resetEventNameCaretBlink();
+        eventNameCaretPosition = eventNameEditBuffer.length();
+        eventNameSelectionAnchor = -1;
+        eventNameSelectionStart = -1;
+        eventNameSelectionEnd = -1;
+    }
+
+    public void stopEventNameEditing(boolean commit) {
+        if (!isEditingEventNameField()) {
+            return;
+        }
+
+        boolean changed = false;
+        if (commit) {
+            changed = applyEventNameEdit();
+        } else {
+            revertEventNameEdit();
+        }
+
+        if (commit && changed) {
+            notifyNodeParametersChanged(eventNameEditingNode);
+        }
+
+        eventNameEditingNode = null;
+        eventNameEditBuffer = "";
+        eventNameEditOriginalValue = "";
+        eventNameCaretVisible = true;
+        eventNameCaretPosition = 0;
+        eventNameSelectionAnchor = -1;
+        eventNameSelectionStart = -1;
+        eventNameSelectionEnd = -1;
+    }
+
+    private boolean applyEventNameEdit() {
+        if (!isEditingEventNameField()) {
+            return false;
+        }
+        String value = eventNameEditBuffer == null ? "" : eventNameEditBuffer;
+        NodeParameter nameParam = eventNameEditingNode.getParameter("Name");
+        String previous = nameParam != null ? nameParam.getStringValue() : "";
+        eventNameEditingNode.setParameterValueAndPropagate("Name", value);
+        eventNameEditingNode.recalculateDimensions();
+        return !Objects.equals(previous, value);
+    }
+
+    private void revertEventNameEdit() {
+        if (!isEditingEventNameField()) {
+            return;
+        }
+        eventNameEditingNode.setParameterValueAndPropagate("Name", eventNameEditOriginalValue);
+        eventNameEditingNode.recalculateDimensions();
+    }
+
+    public boolean handleEventNameKeyPressed(int keyCode, int modifiers) {
+        if (!isEditingEventNameField()) {
+            return false;
+        }
+
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (deleteEventNameSelection()) {
+                    return true;
+                }
+                if (eventNameCaretPosition > 0 && !eventNameEditBuffer.isEmpty()) {
+                    eventNameEditBuffer = eventNameEditBuffer.substring(0, eventNameCaretPosition - 1)
+                        + eventNameEditBuffer.substring(eventNameCaretPosition);
+                    setEventNameCaretPosition(eventNameCaretPosition - 1);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (deleteEventNameSelection()) {
+                    return true;
+                }
+                if (eventNameCaretPosition < eventNameEditBuffer.length()) {
+                    eventNameEditBuffer = eventNameEditBuffer.substring(0, eventNameCaretPosition)
+                        + eventNameEditBuffer.substring(eventNameCaretPosition + 1);
+                    setEventNameCaretPosition(eventNameCaretPosition);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveEventNameCaretTo(eventNameCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveEventNameCaretTo(eventNameCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveEventNameCaretTo(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveEventNameCaretTo(eventNameEditBuffer.length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+                stopEventNameEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_ESCAPE:
+                stopEventNameEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllEventNameText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copyEventNameSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutEventNameSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    TextRenderer textRenderer = getClientTextRenderer();
+                    if (textRenderer != null) {
+                        insertEventNameText(getClipboardText());
+                    }
+                    return true;
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    public boolean handleEventNameCharTyped(char chr, int modifiers) {
+        if (!isEditingEventNameField()) {
+            return false;
+        }
+        if (chr == '\n' || chr == '\r') {
+            return false;
+        }
+        return insertEventNameText(String.valueOf(chr));
     }
 
     private boolean applyMessageEdit() {
@@ -4213,6 +4574,7 @@ public class NodeGraph {
         parameterSelectionAnchor = -1;
         parameterSelectionStart = -1;
         parameterSelectionEnd = -1;
+        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
     }
 
     public void stopParameterEditing(boolean commit) {
@@ -4231,6 +4593,7 @@ public class NodeGraph {
             notifyNodeParametersChanged(parameterEditingNode);
         }
 
+        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), -1, null);
         parameterEditingNode = null;
         parameterEditingIndex = -1;
         parameterEditBuffer = "";
@@ -4293,6 +4656,7 @@ public class NodeGraph {
                     parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition - 1)
                         + parameterEditBuffer.substring(parameterCaretPosition);
                     setParameterCaretPosition(parameterCaretPosition - 1);
+                    updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:
@@ -4303,6 +4667,7 @@ public class NodeGraph {
                     parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition)
                         + parameterEditBuffer.substring(parameterCaretPosition + 1);
                     setParameterCaretPosition(parameterCaretPosition);
+                    updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
                 }
                 return true;
             case GLFW.GLFW_KEY_LEFT:
@@ -4384,6 +4749,7 @@ public class NodeGraph {
                     messageEditBuffer = messageEditBuffer.substring(0, messageCaretPosition - 1)
                         + messageEditBuffer.substring(messageCaretPosition);
                     setMessageCaretPosition(messageCaretPosition - 1);
+                    updateMessageFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:
@@ -4394,6 +4760,7 @@ public class NodeGraph {
                     messageEditBuffer = messageEditBuffer.substring(0, messageCaretPosition)
                         + messageEditBuffer.substring(messageCaretPosition + 1);
                     setMessageCaretPosition(messageCaretPosition);
+                    updateMessageFieldContentWidth(getClientTextRenderer());
                 }
                 return true;
             case GLFW.GLFW_KEY_LEFT:
@@ -4482,6 +4849,12 @@ public class NodeGraph {
             && messageSelectionStart != messageSelectionEnd;
     }
 
+    private boolean hasEventNameSelection() {
+        return eventNameSelectionStart >= 0
+            && eventNameSelectionEnd >= 0
+            && eventNameSelectionStart != eventNameSelectionEnd;
+    }
+
     private boolean hasParameterSelection() {
         return parameterSelectionStart >= 0
             && parameterSelectionEnd >= 0
@@ -4506,6 +4879,11 @@ public class NodeGraph {
     private void resetMessageSelectionRange() {
         messageSelectionStart = -1;
         messageSelectionEnd = -1;
+    }
+
+    private void resetEventNameSelectionRange() {
+        eventNameSelectionStart = -1;
+        eventNameSelectionEnd = -1;
     }
 
     private void resetParameterSelectionRange() {
@@ -4578,6 +4956,7 @@ public class NodeGraph {
         coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateSelectionStart)
             + coordinateEditBuffer.substring(coordinateSelectionEnd);
         setCoordinateCaretPosition(coordinateSelectionStart);
+        updateCoordinateFieldContentWidth(getClientTextRenderer());
         return true;
     }
 
@@ -4643,18 +5022,11 @@ public class NodeGraph {
         }
 
         boolean inserted = false;
-        int widthLimit = coordinateEditingNode != null
-            ? coordinateEditingNode.getCoordinateFieldWidth() - 6
-            : Integer.MAX_VALUE;
-
         for (int i = 0; i < filtered.length(); i++) {
             char c = filtered.charAt(i);
             String candidate = working.substring(0, caret) + c + working.substring(caret);
             if (!isValidCoordinateValue(candidate)) {
                 continue;
-            }
-            if (textRenderer.getWidth(candidate) > widthLimit) {
-                break;
             }
             working = candidate;
             caret++;
@@ -4664,6 +5036,7 @@ public class NodeGraph {
         if (inserted) {
             coordinateEditBuffer = working;
             setCoordinateCaretPosition(caret);
+            updateCoordinateFieldContentWidth(textRenderer);
             return true;
         }
 
@@ -4762,6 +5135,13 @@ public class NodeGraph {
         resetMessageCaretBlink();
     }
 
+    private void setEventNameCaretPosition(int position) {
+        eventNameCaretPosition = MathHelper.clamp(position, 0, eventNameEditBuffer.length());
+        eventNameSelectionAnchor = -1;
+        resetEventNameSelectionRange();
+        resetEventNameCaretBlink();
+    }
+
     private void moveMessageCaretTo(int position, boolean extendSelection) {
         position = MathHelper.clamp(position, 0, messageEditBuffer.length());
         if (extendSelection) {
@@ -4784,6 +5164,28 @@ public class NodeGraph {
         resetMessageCaretBlink();
     }
 
+    private void moveEventNameCaretTo(int position, boolean extendSelection) {
+        position = MathHelper.clamp(position, 0, eventNameEditBuffer.length());
+        if (extendSelection) {
+            if (eventNameSelectionAnchor == -1) {
+                eventNameSelectionAnchor = eventNameCaretPosition;
+            }
+            int start = Math.min(eventNameSelectionAnchor, position);
+            int end = Math.max(eventNameSelectionAnchor, position);
+            if (start == end) {
+                resetEventNameSelectionRange();
+            } else {
+                eventNameSelectionStart = start;
+                eventNameSelectionEnd = end;
+            }
+        } else {
+            eventNameSelectionAnchor = -1;
+            resetEventNameSelectionRange();
+        }
+        eventNameCaretPosition = position;
+        resetEventNameCaretBlink();
+    }
+
     private boolean deleteAmountSelection() {
         if (!hasAmountSelection()) {
             return false;
@@ -4791,6 +5193,7 @@ public class NodeGraph {
         amountEditBuffer = amountEditBuffer.substring(0, amountSelectionStart)
             + amountEditBuffer.substring(amountSelectionEnd);
         setAmountCaretPosition(amountSelectionStart);
+        updateAmountFieldContentWidth(getClientTextRenderer());
         return true;
     }
 
@@ -4801,6 +5204,7 @@ public class NodeGraph {
         stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetSelectionStart)
             + stopTargetEditBuffer.substring(stopTargetSelectionEnd);
         setStopTargetCaretPosition(stopTargetSelectionStart);
+        updateStopTargetFieldContentWidth(getClientTextRenderer());
         return true;
     }
 
@@ -4871,6 +5275,17 @@ public class NodeGraph {
         messageEditBuffer = messageEditBuffer.substring(0, messageSelectionStart)
             + messageEditBuffer.substring(messageSelectionEnd);
         setMessageCaretPosition(messageSelectionStart);
+        updateMessageFieldContentWidth(getClientTextRenderer());
+        return true;
+    }
+
+    private boolean deleteEventNameSelection() {
+        if (!hasEventNameSelection()) {
+            return false;
+        }
+        eventNameEditBuffer = eventNameEditBuffer.substring(0, eventNameSelectionStart)
+            + eventNameEditBuffer.substring(eventNameSelectionEnd);
+        setEventNameCaretPosition(eventNameSelectionStart);
         return true;
     }
 
@@ -4881,6 +5296,7 @@ public class NodeGraph {
         parameterEditBuffer = parameterEditBuffer.substring(0, parameterSelectionStart)
             + parameterEditBuffer.substring(parameterSelectionEnd);
         setParameterCaretPosition(parameterSelectionStart);
+        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
         return true;
     }
 
@@ -4897,6 +5313,21 @@ public class NodeGraph {
         }
         messageCaretPosition = messageEditBuffer.length();
         resetMessageCaretBlink();
+    }
+
+    private void selectAllEventNameText() {
+        if (!isEditingEventNameField()) {
+            return;
+        }
+        eventNameSelectionAnchor = 0;
+        if (eventNameEditBuffer.isEmpty()) {
+            resetEventNameSelectionRange();
+        } else {
+            eventNameSelectionStart = 0;
+            eventNameSelectionEnd = eventNameEditBuffer.length();
+        }
+        eventNameCaretPosition = eventNameEditBuffer.length();
+        resetEventNameCaretBlink();
     }
 
     private void selectAllParameterText() {
@@ -4921,6 +5352,13 @@ public class NodeGraph {
         setClipboardText(messageEditBuffer.substring(messageSelectionStart, messageSelectionEnd));
     }
 
+    private void copyEventNameSelection() {
+        if (!hasEventNameSelection()) {
+            return;
+        }
+        setClipboardText(eventNameEditBuffer.substring(eventNameSelectionStart, eventNameSelectionEnd));
+    }
+
     private void copyParameterSelection() {
         if (!hasParameterSelection()) {
             return;
@@ -4934,6 +5372,14 @@ public class NodeGraph {
         }
         copyMessageSelection();
         deleteMessageSelection();
+    }
+
+    private void cutEventNameSelection() {
+        if (!hasEventNameSelection()) {
+            return;
+        }
+        copyEventNameSelection();
+        deleteEventNameSelection();
     }
 
     private void cutParameterSelection() {
@@ -4976,16 +5422,9 @@ public class NodeGraph {
         }
 
         boolean inserted = false;
-        int widthLimit = amountEditingNode != null
-            ? amountEditingNode.getAmountFieldWidth() - 6
-            : Integer.MAX_VALUE;
-
         for (int i = 0; i < filtered.length(); i++) {
             char c = filtered.charAt(i);
             String candidate = working.substring(0, caret) + c + working.substring(caret);
-            if (textRenderer.getWidth(candidate) > widthLimit) {
-                break;
-            }
             working = candidate;
             caret++;
             inserted = true;
@@ -4994,6 +5433,7 @@ public class NodeGraph {
         if (inserted) {
             amountEditBuffer = working;
             setAmountCaretPosition(caret);
+            updateAmountFieldContentWidth(textRenderer);
             return true;
         }
 
@@ -5037,16 +5477,9 @@ public class NodeGraph {
         }
 
         boolean inserted = false;
-        int widthLimit = stopTargetEditingNode != null
-            ? stopTargetEditingNode.getStopTargetFieldWidth() - 6
-            : Integer.MAX_VALUE;
-
         for (int i = 0; i < filtered.length(); i++) {
             char c = filtered.charAt(i);
             String candidate = working.substring(0, caret) + c + working.substring(caret);
-            if (textRenderer.getWidth(candidate) > widthLimit) {
-                break;
-            }
             working = candidate;
             caret++;
             inserted = true;
@@ -5055,6 +5488,7 @@ public class NodeGraph {
         if (inserted) {
             stopTargetEditBuffer = working;
             setStopTargetCaretPosition(caret);
+            updateStopTargetFieldContentWidth(textRenderer);
             return true;
         }
 
@@ -5063,6 +5497,53 @@ public class NodeGraph {
         stopTargetSelectionStart = originalSelectionStart;
         stopTargetSelectionEnd = originalSelectionEnd;
         stopTargetSelectionAnchor = originalSelectionAnchor;
+        return false;
+    }
+
+    private boolean insertEventNameText(String text) {
+        if (!isEditingEventNameField() || text == null || text.isEmpty()) {
+            return false;
+        }
+        String filtered = text.replace("\r", "").replace("\n", "");
+        if (filtered.isEmpty()) {
+            return false;
+        }
+
+        String originalBuffer = eventNameEditBuffer;
+        int originalCaret = eventNameCaretPosition;
+        int originalSelectionStart = eventNameSelectionStart;
+        int originalSelectionEnd = eventNameSelectionEnd;
+        int originalSelectionAnchor = eventNameSelectionAnchor;
+
+        String working = eventNameEditBuffer;
+        int caret = eventNameCaretPosition;
+
+        if (hasEventNameSelection()) {
+            int start = eventNameSelectionStart;
+            int end = eventNameSelectionEnd;
+            working = working.substring(0, start) + working.substring(end);
+            caret = start;
+        }
+
+        boolean inserted = false;
+        for (int i = 0; i < filtered.length(); i++) {
+            char c = filtered.charAt(i);
+            working = working.substring(0, caret) + c + working.substring(caret);
+            caret++;
+            inserted = true;
+        }
+
+        if (inserted) {
+            eventNameEditBuffer = working;
+            setEventNameCaretPosition(caret);
+            return true;
+        }
+
+        eventNameEditBuffer = originalBuffer;
+        eventNameCaretPosition = originalCaret;
+        eventNameSelectionStart = originalSelectionStart;
+        eventNameSelectionEnd = originalSelectionEnd;
+        eventNameSelectionAnchor = originalSelectionAnchor;
         return false;
     }
 
@@ -5093,16 +5574,9 @@ public class NodeGraph {
         }
 
         boolean inserted = false;
-        int widthLimit = messageEditingNode != null
-            ? messageEditingNode.getMessageFieldWidth() - 6
-            : Integer.MAX_VALUE;
-
         for (int i = 0; i < filtered.length(); i++) {
             char c = filtered.charAt(i);
             String candidate = working.substring(0, caret) + c + working.substring(caret);
-            if (textRenderer.getWidth(candidate) > widthLimit) {
-                break;
-            }
             working = candidate;
             caret++;
             inserted = true;
@@ -5111,6 +5585,7 @@ public class NodeGraph {
         if (inserted) {
             messageEditBuffer = working;
             setMessageCaretPosition(caret);
+            updateMessageFieldContentWidth(textRenderer);
             return true;
         }
 
@@ -5149,23 +5624,10 @@ public class NodeGraph {
         }
 
         boolean inserted = false;
-        int widthLimit = Integer.MAX_VALUE;
-        if (parameterEditingNode != null
-            && parameterEditingIndex >= 0
-            && parameterEditingIndex < parameterEditingNode.getParameters().size()) {
-            NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
-            int fieldWidth = getParameterFieldWidth(parameterEditingNode);
-            int valueStartX = getParameterValueStartX(parameterEditingNode, parameter, textRenderer);
-            int fieldLeft = getParameterFieldLeft(parameterEditingNode);
-            widthLimit = Math.max(20, fieldWidth - (valueStartX - fieldLeft) - 4);
-        }
 
         for (int i = 0; i < filtered.length(); i++) {
             char c = filtered.charAt(i);
             String candidate = working.substring(0, caret) + c + working.substring(caret);
-            if (textRenderer.getWidth(candidate) > widthLimit) {
-                break;
-            }
             working = candidate;
             caret++;
             inserted = true;
@@ -5174,6 +5636,7 @@ public class NodeGraph {
         if (inserted) {
             parameterEditBuffer = working;
             setParameterCaretPosition(caret);
+            updateParameterFieldContentWidth(parameterEditingNode, textRenderer, parameterEditingIndex, parameterEditBuffer);
             return true;
         }
 
@@ -5379,6 +5842,7 @@ public class NodeGraph {
         String replacement = segment.leadingWhitespace + option;
         parameterEditBuffer = prefix + replacement + suffix;
         setParameterCaretPosition(prefix.length() + replacement.length());
+        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
         closeParameterDropdown();
         return true;
     }
@@ -5703,6 +6167,30 @@ public class NodeGraph {
 
         return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    public boolean isPointInsideEventNameField(Node node, int screenX, int screenY) {
+        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL)) {
+            return false;
+        }
+
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = node.getEventNameFieldLeft();
+        int fieldTop = node.getEventNameFieldTop();
+        int fieldWidth = node.getEventNameFieldWidth();
+        int fieldHeight = node.getEventNameFieldHeight();
+
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    public boolean handleEventNameFieldClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideEventNameField(node, mouseX, mouseY)) {
+            return false;
+        }
+        startEventNameEditing(node);
+        return true;
     }
 
     public int getMessageFieldIndexAt(Node node, int screenX, int screenY) {

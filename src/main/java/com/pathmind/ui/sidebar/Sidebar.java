@@ -141,7 +141,8 @@ public class Sidebar {
         groups.add(new NodeGroup(
             "Input",
             baritoneAvailable,
-            NodeType.PARAM_KEY
+            NodeType.PARAM_KEY,
+            NodeType.PARAM_MESSAGE
         ));
         groups.add(new NodeGroup(
             "Utility Data",
@@ -167,7 +168,8 @@ public class Sidebar {
         groups.add(new NodeGroup(
             "Input",
             baritoneAvailable,
-            NodeType.SENSOR_KEY_PRESSED
+            NodeType.SENSOR_KEY_PRESSED,
+            NodeType.SENSOR_CHAT_MESSAGE
         ));
         groups.add(new NodeGroup(
             "Position & Blocks",

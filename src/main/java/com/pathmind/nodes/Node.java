@@ -22,6 +22,7 @@ import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
+import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.InventorySlotModeHelper;
 import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.RecipeCompatibilityBridge;
@@ -509,6 +510,7 @@ public class Node {
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
+            case SENSOR_CHAT_MESSAGE:
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
                 return true;
@@ -606,6 +608,9 @@ public class Node {
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             return slotIndex == 0 || slotIndex == 1;
         }
+        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
         if (type == NodeType.PLACE) {
             if (slotIndex == 0) {
                 return false;
@@ -700,6 +705,13 @@ public class Node {
                 return parameterType == NodeType.VARIABLE;
             }
             return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.PARAM_PLAYER;
+            }
+            return parameterType == NodeType.PARAM_MESSAGE;
         }
         if (!isParameterCompatibleWithSlot(parameter, slotIndex)) {
             return false;
@@ -994,6 +1006,9 @@ public class Node {
         if (type == NodeType.WALK) {
             return 2;
         }
+        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
+            return 2;
+        }
         return 1;
     }
 
@@ -1050,6 +1065,9 @@ public class Node {
         }
         if (type == NodeType.WALK) {
             return slotIndex == 0 ? "Direction" : "Duration/Distance";
+        }
+        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
+            return slotIndex == 0 ? "User" : "Message";
         }
         return "Parameter";
     }
@@ -1155,6 +1173,9 @@ public class Node {
         if (type == NodeType.SENSOR_ITEM_IN_INVENTORY) {
             return true;
         }
+        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
+            return true;
+        }
         return false;
     }
 
@@ -1187,6 +1208,13 @@ public class Node {
 
     public int getAmountFieldLabelHeight() {
         return AMOUNT_FIELD_LABEL_HEIGHT;
+    }
+
+    public String getAmountFieldLabel() {
+        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
+            return "Seconds";
+        }
+        return "Amount";
     }
 
     public int getAmountFieldHeight() {
@@ -2125,6 +2153,9 @@ public class Node {
             case SENSOR_IS_RENDERED:
                 parameters.add(new NodeParameter("Resource", ParameterType.STRING, "stone"));
                 break;
+            case SENSOR_CHAT_MESSAGE:
+                parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
+                break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "64"));
@@ -2142,6 +2173,9 @@ public class Node {
                 break;
             case PARAM_PLAYER:
                 parameters.add(new NodeParameter("Player", ParameterType.STRING, "PlayerName"));
+                break;
+            case PARAM_MESSAGE:
+                parameters.add(new NodeParameter("Text", ParameterType.STRING, "message"));
                 break;
             case PARAM_WAYPOINT:
                 parameters.add(new NodeParameter("Waypoint", ParameterType.STRING, "home"));
@@ -2267,7 +2301,14 @@ public class Node {
         if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
             return "";
         }
-        String text = parameter.getName() + ": " + parameter.getDisplayValue();
+        String name = parameter.getName();
+        if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
+            name = "Message";
+        }
+        if (type == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
+            name = "User";
+        }
+        String text = name + ": " + parameter.getDisplayValue();
         if (text.length() <= MAX_PARAMETER_LABEL_LENGTH) {
             return text;
         }
@@ -4114,6 +4155,7 @@ public class Node {
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
+            case SENSOR_CHAT_MESSAGE:
                 completeSensorEvaluation(future);
                 break;
             
@@ -6885,6 +6927,8 @@ public class Node {
                     default:
                         return false;
                 }
+            case SENSOR_CHAT_MESSAGE:
+                return parameterType == NodeType.PARAM_PLAYER || parameterType == NodeType.PARAM_MESSAGE;
             default:
                 return false;
         }
@@ -10431,6 +10475,40 @@ public class Node {
                 result = isResourceRendered(resourceId);
                 break;
             }
+            case SENSOR_CHAT_MESSAGE: {
+                Node playerNode = getAttachedParameter(0);
+                Node messageNode = getAttachedParameter(1);
+                if (playerNode == null || messageNode == null) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null) {
+                        sendNodeErrorMessage(client, type.getDisplayName() + " requires a user and message parameter.");
+                    }
+                    result = false;
+                    break;
+                }
+                if (playerNode.getType() != NodeType.PARAM_PLAYER) {
+                    sendIncompatibleParameterMessage(playerNode);
+                    result = false;
+                    break;
+                }
+                if (messageNode.getType() != NodeType.PARAM_MESSAGE) {
+                    sendIncompatibleParameterMessage(messageNode);
+                    result = false;
+                    break;
+                }
+                String playerName = getParameterString(playerNode, "Player");
+                String messageText = getParameterString(messageNode, "Text");
+                if (messageText == null || messageText.isEmpty()) {
+                    messageText = getParameterString(messageNode, "Message");
+                }
+                if (playerName == null || playerName.trim().isEmpty() || messageText == null || messageText.trim().isEmpty()) {
+                    result = false;
+                    break;
+                }
+                double seconds = Math.max(0.0, getDoubleParameter("Amount", 10.0));
+                result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds);
+                break;
+            }
             default:
                 result = false;
                 break;
@@ -10459,7 +10537,8 @@ public class Node {
                  SENSOR_BLOCK_AHEAD,
                  SENSOR_BLOCK_BELOW,
                  SENSOR_ENTITY_NEARBY,
-                 SENSOR_ITEM_IN_INVENTORY -> true;
+                 SENSOR_ITEM_IN_INVENTORY,
+                 SENSOR_CHAT_MESSAGE -> true;
             default -> false;
         };
     }

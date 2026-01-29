@@ -95,6 +95,7 @@ public enum NodeType {
     SENSOR_IS_FALLING("Is Falling", 0xFF64B5F6, "Detect if the player is currently falling"),
     SENSOR_IS_RENDERED("Is Rendered", 0xFF64B5F6, "Detect if a specified block or item is currently visible to the player"),
     SENSOR_KEY_PRESSED("Key Pressed", 0xFF64B5F6, "Detect if a specific keyboard key is currently held"),
+    SENSOR_CHAT_MESSAGE("Chat Message", 0xFF64B5F6, "Detect if a player sent a chat message within a time window"),
 
     // Utility Commands
     SCREEN_CONTROL("Screen Control", 0xFF9E9E9E, "Open or close in-game screens"),
@@ -108,11 +109,11 @@ public enum NodeType {
     PARAM_BLOCK("Block", 0xFF8BC34A, "Represents a single block type"),
     PARAM_ITEM("Item", 0xFF8BC34A, "Represents an item and quantity"),
     PARAM_ENTITY("Entity", 0xFF8BC34A, "Represents an entity"),
-    PARAM_PLAYER("Player", 0xFF8BC34A, "Represents a specific player target"),
+    PARAM_PLAYER("User", 0xFF8BC34A, "Represents a specific player target"),
     PARAM_WAYPOINT("Waypoint", 0xFF8BC34A, "Represents a waypoint name and optional range"),
     PARAM_SCHEMATIC("Schematic", 0xFF8BC34A, "Represents schematic placement data"),
     PARAM_INVENTORY_SLOT("Inventory Slot", 0xFF8BC34A, "Represents an inventory slot reference"),
-    PARAM_MESSAGE("Text", 0xFF8BC34A, "Represents reusable chat or sign text"),
+    PARAM_MESSAGE("Message", 0xFF8BC34A, "Represents reusable chat or sign text"),
     PARAM_DURATION("Duration", 0xFF8BC34A, "Represents a duration or interval"),
     PARAM_AMOUNT("Amount", 0xFF8BC34A, "Represents a generic numeric amount"),
     PARAM_BOOLEAN("Toggle", 0xFF8BC34A, "Represents a boolean toggle value"),
@@ -209,6 +210,7 @@ public enum NodeType {
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
+            case SENSOR_CHAT_MESSAGE:
                 return NodeCategory.SENSORS;
             case GOTO:
             case GOAL:
@@ -271,6 +273,7 @@ public enum NodeType {
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
+            case PARAM_MESSAGE:
                 return NodeCategory.PARAMETERS;
             default:
                 return NodeCategory.UTILITY;
@@ -323,6 +326,7 @@ public enum NodeType {
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case SENSOR_CHAT_MESSAGE:
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
             case PARAM_ITEM:
@@ -341,6 +345,7 @@ public enum NodeType {
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
+            case PARAM_MESSAGE:
             case VARIABLE:
                 return true;
             default:

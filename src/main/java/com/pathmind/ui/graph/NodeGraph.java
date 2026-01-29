@@ -2845,7 +2845,7 @@ public class NodeGraph {
         int fieldWidth = node.getAmountFieldWidth();
 
         int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
-        drawNodeText(context, textRenderer, Text.literal("Amount"), fieldLeft + 2, labelY, baseLabelColor);
+        drawNodeText(context, textRenderer, Text.literal(node.getAmountFieldLabel()), fieldLeft + 2, labelY, baseLabelColor);
 
         int fieldBottom = fieldTop + fieldHeight;
         int disabledBg = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.BUTTON_DEFAULT_BG;

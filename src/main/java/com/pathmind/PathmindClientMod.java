@@ -7,9 +7,11 @@ import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.BaritoneDependencyChecker;
+import com.pathmind.util.ChatMessageTracker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -54,14 +56,25 @@ public class PathmindClientMod implements ClientModInitializer {
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             worldShutdownHandled = false;
+            ChatMessageTracker.clear();
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             handleClientShutdown("play disconnect", false);
+            ChatMessageTracker.clear();
         });
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             handleClientShutdown("client stopping", true);
+            ChatMessageTracker.clear();
+        });
+
+        ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
+            if (sender == null || message == null) {
+                return;
+            }
+            long timestamp = receptionTimestamp != null ? receptionTimestamp.toEpochMilli() : System.currentTimeMillis();
+            ChatMessageTracker.record(sender.name(), message.getString(), timestamp);
         });
         
         // Register HUD render callback for the active node overlay

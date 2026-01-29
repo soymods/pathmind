@@ -496,7 +496,7 @@ public class NodeParameterOverlay {
             NodeParameter param = node.getParameters().get(i);
             context.drawTextWithShadow(
                 textRenderer,
-                Text.literal(param.getName() + " (" + param.getType().getDisplayName() + "):"),
+                Text.literal(getParameterDisplayName(param) + " (" + param.getType().getDisplayName() + "):"),
                 popupX + 20,
                 sectionY + 4,
                 getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
@@ -1721,7 +1721,7 @@ public class NodeParameterOverlay {
             String value = parameterValues.get(i);
             boolean empty = value == null || value.trim().isEmpty();
             if (empty && !isPlaceholderActive(i)) {
-                emptyParameterNames.add(param.getName());
+                emptyParameterNames.add(getParameterDisplayName(param));
             }
         }
         if (!emptyParameterNames.isEmpty()) {
@@ -1853,6 +1853,20 @@ public class NodeParameterOverlay {
         return Objects.equals(placeholder, value);
     }
 
+    private String getParameterDisplayName(NodeParameter parameter) {
+        if (parameter == null) {
+            return "";
+        }
+        String name = parameter.getName();
+        if (node.getType() == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
+            return "User";
+        }
+        if (node.getType() == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
+            return "Message";
+        }
+        return name;
+    }
+
     private void refreshBlockStateIndices() {
         int tempBlockIndex = -1;
         int tempBlockStateIndex = -1;
@@ -1897,7 +1911,7 @@ public class NodeParameterOverlay {
                 continue;
             }
             NodeParameter param = node.getParameters().get(i);
-            String label = param.getName() + " (" + param.getType().getDisplayName() + "):";
+            String label = getParameterDisplayName(param) + " (" + param.getType().getDisplayName() + "):";
             longestLineLength = Math.max(longestLineLength, label.length());
             String value = param.getStringValue();
             if (value != null) {

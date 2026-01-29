@@ -18,8 +18,14 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.item.SpawnEggItem;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.registry.Registries;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -113,6 +119,8 @@ public class NodeGraph {
 
     private static final long COORDINATE_CARET_BLINK_INTERVAL_MS = 500;
     private static final String[] COORDINATE_AXES = {"X", "Y", "Z"};
+    private static final int PARAMETER_INPUT_HEIGHT = 16;
+    private static final int PARAMETER_INPUT_GAP = 4;
 
     private Node coordinateEditingNode = null;
     private int coordinateEditingAxis = -1;
@@ -143,6 +151,16 @@ public class NodeGraph {
     private int messageSelectionStart = -1;
     private int messageSelectionEnd = -1;
     private int messageSelectionAnchor = -1;
+    private Node parameterEditingNode = null;
+    private int parameterEditingIndex = -1;
+    private String parameterEditBuffer = "";
+    private String parameterEditOriginalValue = "";
+    private long parameterCaretLastToggleTime = 0L;
+    private boolean parameterCaretVisible = true;
+    private int parameterCaretPosition = 0;
+    private int parameterSelectionStart = -1;
+    private int parameterSelectionEnd = -1;
+    private int parameterSelectionAnchor = -1;
     private Node stopTargetEditingNode = null;
     private String stopTargetEditBuffer = "";
     private String stopTargetEditOriginalValue = "";
@@ -159,6 +177,19 @@ public class NodeGraph {
     private int schematicDropdownHoverIndex = -1;
     private static final int SCHEMATIC_DROPDOWN_MAX_ROWS = 8;
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
+    private Node parameterDropdownNode = null;
+    private int parameterDropdownIndex = -1;
+    private boolean parameterDropdownOpen = false;
+    private int parameterDropdownHoverIndex = -1;
+    private int parameterDropdownScrollOffset = 0;
+    private int parameterDropdownFieldX = 0;
+    private int parameterDropdownFieldY = 0;
+    private int parameterDropdownFieldWidth = 0;
+    private int parameterDropdownFieldHeight = 0;
+    private String parameterDropdownQuery = "";
+    private final java.util.List<String> parameterDropdownOptions = new java.util.ArrayList<>();
+    private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
+    private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
     private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
     private static final float ZOOM_SCROLL_STEP = 1.12f;
@@ -1228,6 +1259,8 @@ public class NodeGraph {
     public void startDragging(Node node, int mouseX, int mouseY) {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
+        stopMessageEditing(true);
+        stopParameterEditing(true);
         stopStopTargetEditing(true);
         stopMessageEditing(true);
         resetDropTargets();
@@ -1277,6 +1310,7 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopParameterEditing(true);
         stopMessageEditing(true);
         isDraggingConnection = true;
         connectionSourceNode = node;
@@ -2449,6 +2483,9 @@ public class NodeGraph {
                     // Render parameters
                     int paramY = y + 18;
                     List<NodeParameter> parameters = node.getParameters();
+                    if (isEditingParameterField() && parameterEditingNode == node) {
+                        updateParameterCaretBlink();
+                    }
 
                     if (node.supportsModeSelection()) {
                         String modeLabel = trimTextToWidth(node.getModeDisplayLabel(), textRenderer, width - 10);
@@ -2461,29 +2498,83 @@ public class NodeGraph {
                             paramY,
                             paramTextColor
                         );
-                        paramY += 10;
+                        paramY += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
                     }
 
-                    for (NodeParameter param : parameters) {
-                        String displayText = node.getParameterLabel(param);
-                        if (displayText == null || displayText.isEmpty()) {
+                    for (int i = 0; i < parameters.size(); i++) {
+                        NodeParameter param = parameters.get(i);
+                        String displayLabel = node.getParameterLabel(param);
+                        if (displayLabel == null || displayLabel.isEmpty()) {
                             continue;
                         }
-                        displayText = trimTextToWidth(displayText, textRenderer, width - 10);
 
-                        int paramTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY; // Grey text when over sidebar
-                        drawNodeText(
-                            context,
-                            textRenderer,
-                            displayText,
-                            x + 5,
-                            paramY,
-                            paramTextColor
-                        );
-                        paramY += 10;
+                        boolean editingThis = isEditingParameterField()
+                            && parameterEditingNode == node
+                            && parameterEditingIndex == i;
+
+                        int fieldLeft = getParameterFieldLeft(node) - cameraX;
+                        int fieldTop = paramY;
+                        int fieldWidth = getParameterFieldWidth(node);
+                        int fieldHeight = getParameterFieldHeight();
+                        int fieldRight = fieldLeft + fieldWidth;
+
+                        int fieldBackground = isOverSidebar
+                            ? UITheme.BACKGROUND_SECONDARY
+                            : UITheme.BACKGROUND_SIDEBAR;
+                        int fieldBorder = isOverSidebar
+                            ? UITheme.BORDER_SUBTLE
+                            : UITheme.BORDER_HIGHLIGHT;
+
+                        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
+                        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+
+                        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+                        int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+
+                        int maxLabelWidth = Math.max(0, fieldWidth - 40);
+                        String labelText = getParameterLabelText(node, param, textRenderer, maxLabelWidth);
+                        int labelX = fieldLeft + 4;
+                        int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
+                        if (!labelText.isEmpty()) {
+                            drawNodeText(context, textRenderer, Text.literal(labelText), labelX, labelY, labelColor);
+                        }
+
+                        int valueStartX = getParameterValueStartX(node, param, textRenderer) - cameraX;
+                        int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
+                        String value = editingThis ? parameterEditBuffer : param.getDisplayValue();
+                        String displayValue = trimTextToWidth(value, textRenderer, maxValueWidth);
+                        int valueY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
+
+                        if (editingThis && hasParameterSelection()) {
+                            int start = MathHelper.clamp(parameterSelectionStart, 0, displayValue.length());
+                            int end = MathHelper.clamp(parameterSelectionEnd, 0, displayValue.length());
+                            if (start != end) {
+                                int selectionStartX = valueStartX + textRenderer.getWidth(displayValue.substring(0, start));
+                                int selectionEndX = valueStartX + textRenderer.getWidth(displayValue.substring(0, end));
+                                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldTop + fieldHeight - 2, UITheme.TEXT_SELECTION_BG);
+                            }
+                        }
+
+                        drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, valueY, valueColor);
+
+                        if (editingThis && parameterCaretVisible) {
+                            int caretIndex = MathHelper.clamp(parameterCaretPosition, 0, displayValue.length());
+                            int caretX = valueStartX + textRenderer.getWidth(displayValue.substring(0, caretIndex));
+                            caretX = Math.min(caretX, fieldRight - 2);
+                            context.fill(caretX, fieldTop + 2, caretX + 1, fieldTop + fieldHeight - 2, UITheme.CARET_COLOR);
+                        }
+
+                        if (editingThis && isBlockItemParameter(node, i)) {
+                            updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
+                        }
+
+                        paramY += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
                     }
                     if (node.hasPopupEditButton()) {
                         renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    }
+                    if (parameterDropdownOpen && parameterDropdownNode == node) {
+                        renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
                     }
                 }
             } else {
@@ -2527,6 +2618,39 @@ public class NodeGraph {
                 renderActionSlot(context, textRenderer, node, isOverSidebar);
             }
         }
+    }
+
+    private int getParameterFieldLeft(Node node) {
+        return node.getX() + 5;
+    }
+
+    private int getParameterFieldWidth(Node node) {
+        return Math.max(20, node.getWidth() - 10);
+    }
+
+    private int getParameterFieldHeight() {
+        return PARAMETER_INPUT_HEIGHT;
+    }
+
+    private String getParameterLabelText(Node node, NodeParameter parameter, TextRenderer textRenderer, int maxWidth) {
+        String displayName = node.getParameterDisplayName(parameter);
+        if (displayName == null || displayName.isEmpty()) {
+            return "";
+        }
+        String label = displayName + ":";
+        if (textRenderer == null || maxWidth <= 0) {
+            return label;
+        }
+        return trimTextToWidth(label, textRenderer, maxWidth);
+    }
+
+    private int getParameterValueStartX(Node node, NodeParameter parameter, TextRenderer textRenderer) {
+        int fieldLeft = getParameterFieldLeft(node);
+        int fieldWidth = getParameterFieldWidth(node);
+        int maxLabelWidth = Math.max(0, fieldWidth - 40);
+        String label = getParameterLabelText(node, parameter, textRenderer, maxLabelWidth);
+        int labelWidth = textRenderer != null ? textRenderer.getWidth(label) : 0;
+        return fieldLeft + 4 + labelWidth + 4;
     }
 
     private void renderStartNodeNumber(DrawContext context, TextRenderer textRenderer, Node node, int x, int y, boolean isOverSidebar) {
@@ -3376,6 +3500,8 @@ public class NodeGraph {
         closeSchematicDropdown();
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopMessageEditing(true);
+        stopParameterEditing(true);
 
         if (isEditingCoordinateField()) {
             if (coordinateEditingNode == node && coordinateEditingAxis == axisIndex) {
@@ -3594,6 +3720,8 @@ public class NodeGraph {
 
         stopCoordinateEditing(true);
         stopStopTargetEditing(true);
+        stopMessageEditing(true);
+        stopParameterEditing(true);
 
         amountEditingNode = node;
         NodeParameter amountParam = node.getParameter("Amount");
@@ -4035,6 +4163,210 @@ public class NodeGraph {
         messageEditingNode.recalculateDimensions();
     }
 
+    public boolean isEditingParameterField() {
+        return parameterEditingNode != null && parameterEditingIndex >= 0;
+    }
+
+    private void updateParameterCaretBlink() {
+        long now = System.currentTimeMillis();
+        if (now - parameterCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
+            parameterCaretVisible = !parameterCaretVisible;
+            parameterCaretLastToggleTime = now;
+        }
+    }
+
+    private void resetParameterCaretBlink() {
+        parameterCaretVisible = true;
+        parameterCaretLastToggleTime = System.currentTimeMillis();
+    }
+
+    public void startParameterEditing(Node node, int index) {
+        if (node == null || !node.isParameterNode() || node.hasPopupEditButton()
+            || index < 0 || index >= node.getParameters().size()) {
+            stopParameterEditing(false);
+            return;
+        }
+
+        closeSchematicDropdown();
+        if (isEditingParameterField()) {
+            if (parameterEditingNode == node && parameterEditingIndex == index) {
+                return;
+            }
+            boolean changed = applyParameterEdit();
+            if (changed) {
+                notifyNodeParametersChanged(parameterEditingNode);
+            }
+        }
+
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+        stopStopTargetEditing(true);
+        stopMessageEditing(true);
+
+        parameterEditingNode = node;
+        parameterEditingIndex = index;
+        NodeParameter parameter = node.getParameters().get(index);
+        parameterEditBuffer = parameter != null ? parameter.getStringValue() : "";
+        parameterEditOriginalValue = parameterEditBuffer;
+        resetParameterCaretBlink();
+        parameterCaretPosition = parameterEditBuffer.length();
+        parameterSelectionAnchor = -1;
+        parameterSelectionStart = -1;
+        parameterSelectionEnd = -1;
+    }
+
+    public void stopParameterEditing(boolean commit) {
+        if (!isEditingParameterField()) {
+            return;
+        }
+
+        boolean changed = false;
+        if (commit) {
+            changed = applyParameterEdit();
+        } else {
+            revertParameterEdit();
+        }
+
+        if (commit && changed) {
+            notifyNodeParametersChanged(parameterEditingNode);
+        }
+
+        parameterEditingNode = null;
+        parameterEditingIndex = -1;
+        parameterEditBuffer = "";
+        parameterEditOriginalValue = "";
+        parameterCaretVisible = true;
+        parameterCaretPosition = 0;
+        parameterSelectionAnchor = -1;
+        parameterSelectionStart = -1;
+        parameterSelectionEnd = -1;
+        closeParameterDropdown();
+    }
+
+    private boolean applyParameterEdit() {
+        if (!isEditingParameterField()) {
+            return false;
+        }
+        if (parameterEditingIndex < 0 || parameterEditingIndex >= parameterEditingNode.getParameters().size()) {
+            return false;
+        }
+        NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
+        String value = parameterEditBuffer == null ? "" : parameterEditBuffer;
+        String previous = parameter != null ? parameter.getStringValue() : "";
+        if (parameter != null) {
+            parameter.setStringValueFromUser(value);
+            parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+        }
+        parameterEditingNode.recalculateDimensions();
+        return !Objects.equals(previous, value);
+    }
+
+    private void revertParameterEdit() {
+        if (!isEditingParameterField()) {
+            return;
+        }
+        if (parameterEditingIndex < 0 || parameterEditingIndex >= parameterEditingNode.getParameters().size()) {
+            return;
+        }
+        NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
+        if (parameter != null) {
+            parameter.setStringValue(parameterEditOriginalValue);
+            parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), parameterEditOriginalValue);
+        }
+        parameterEditingNode.recalculateDimensions();
+    }
+
+    public boolean handleParameterKeyPressed(int keyCode, int modifiers) {
+        if (!isEditingParameterField()) {
+            return false;
+        }
+
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (deleteParameterSelection()) {
+                    return true;
+                }
+                if (parameterCaretPosition > 0 && !parameterEditBuffer.isEmpty()) {
+                    parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition - 1)
+                        + parameterEditBuffer.substring(parameterCaretPosition);
+                    setParameterCaretPosition(parameterCaretPosition - 1);
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (deleteParameterSelection()) {
+                    return true;
+                }
+                if (parameterCaretPosition < parameterEditBuffer.length()) {
+                    parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition)
+                        + parameterEditBuffer.substring(parameterCaretPosition + 1);
+                    setParameterCaretPosition(parameterCaretPosition);
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveParameterCaretTo(parameterCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveParameterCaretTo(parameterCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveParameterCaretTo(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveParameterCaretTo(parameterEditBuffer.length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+                stopParameterEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_ESCAPE:
+                stopParameterEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllParameterText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copyParameterSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutParameterSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    TextRenderer textRenderer = getClientTextRenderer();
+                    if (textRenderer != null) {
+                        insertParameterText(getClipboardText(), textRenderer);
+                    }
+                    return true;
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    public boolean handleParameterCharTyped(char chr, int modifiers, TextRenderer textRenderer) {
+        if (!isEditingParameterField()) {
+            return false;
+        }
+        if (chr == '\n' || chr == '\r') {
+            return false;
+        }
+        return insertParameterText(String.valueOf(chr), textRenderer);
+    }
+
     public boolean handleMessageKeyPressed(int keyCode, int modifiers) {
         if (!isEditingMessageField()) {
             return false;
@@ -4150,6 +4482,12 @@ public class NodeGraph {
             && messageSelectionStart != messageSelectionEnd;
     }
 
+    private boolean hasParameterSelection() {
+        return parameterSelectionStart >= 0
+            && parameterSelectionEnd >= 0
+            && parameterSelectionStart != parameterSelectionEnd;
+    }
+
     private void resetCoordinateSelectionRange() {
         coordinateSelectionStart = -1;
         coordinateSelectionEnd = -1;
@@ -4168,6 +4506,11 @@ public class NodeGraph {
     private void resetMessageSelectionRange() {
         messageSelectionStart = -1;
         messageSelectionEnd = -1;
+    }
+
+    private void resetParameterSelectionRange() {
+        parameterSelectionStart = -1;
+        parameterSelectionEnd = -1;
     }
 
     private void setCoordinateCaretPosition(int position) {
@@ -4197,6 +4540,35 @@ public class NodeGraph {
         }
         coordinateCaretPosition = position;
         resetCoordinateCaretBlink();
+    }
+
+    private void setParameterCaretPosition(int position) {
+        parameterCaretPosition = MathHelper.clamp(position, 0, parameterEditBuffer.length());
+        parameterSelectionAnchor = -1;
+        resetParameterSelectionRange();
+        resetParameterCaretBlink();
+    }
+
+    private void moveParameterCaretTo(int position, boolean extendSelection) {
+        position = MathHelper.clamp(position, 0, parameterEditBuffer.length());
+        if (extendSelection) {
+            if (parameterSelectionAnchor == -1) {
+                parameterSelectionAnchor = parameterCaretPosition;
+            }
+            int start = Math.min(parameterSelectionAnchor, position);
+            int end = Math.max(parameterSelectionAnchor, position);
+            if (start == end) {
+                resetParameterSelectionRange();
+            } else {
+                parameterSelectionStart = start;
+                parameterSelectionEnd = end;
+            }
+        } else {
+            parameterSelectionAnchor = -1;
+            resetParameterSelectionRange();
+        }
+        parameterCaretPosition = position;
+        resetParameterCaretBlink();
     }
 
     private boolean deleteCoordinateSelection() {
@@ -4502,6 +4874,16 @@ public class NodeGraph {
         return true;
     }
 
+    private boolean deleteParameterSelection() {
+        if (!hasParameterSelection()) {
+            return false;
+        }
+        parameterEditBuffer = parameterEditBuffer.substring(0, parameterSelectionStart)
+            + parameterEditBuffer.substring(parameterSelectionEnd);
+        setParameterCaretPosition(parameterSelectionStart);
+        return true;
+    }
+
     private void selectAllMessageText() {
         if (!isEditingMessageField()) {
             return;
@@ -4517,11 +4899,33 @@ public class NodeGraph {
         resetMessageCaretBlink();
     }
 
+    private void selectAllParameterText() {
+        if (!isEditingParameterField()) {
+            return;
+        }
+        parameterSelectionAnchor = 0;
+        if (parameterEditBuffer.isEmpty()) {
+            resetParameterSelectionRange();
+        } else {
+            parameterSelectionStart = 0;
+            parameterSelectionEnd = parameterEditBuffer.length();
+        }
+        parameterCaretPosition = parameterEditBuffer.length();
+        resetParameterCaretBlink();
+    }
+
     private void copyMessageSelection() {
         if (!hasMessageSelection()) {
             return;
         }
         setClipboardText(messageEditBuffer.substring(messageSelectionStart, messageSelectionEnd));
+    }
+
+    private void copyParameterSelection() {
+        if (!hasParameterSelection()) {
+            return;
+        }
+        setClipboardText(parameterEditBuffer.substring(parameterSelectionStart, parameterSelectionEnd));
     }
 
     private void cutMessageSelection() {
@@ -4530,6 +4934,14 @@ public class NodeGraph {
         }
         copyMessageSelection();
         deleteMessageSelection();
+    }
+
+    private void cutParameterSelection() {
+        if (!hasParameterSelection()) {
+            return;
+        }
+        copyParameterSelection();
+        deleteParameterSelection();
     }
 
     private boolean insertAmountText(String text, TextRenderer textRenderer) {
@@ -4710,6 +5122,510 @@ public class NodeGraph {
         return false;
     }
 
+    private boolean insertParameterText(String text, TextRenderer textRenderer) {
+        if (!isEditingParameterField() || textRenderer == null || text == null || text.isEmpty()) {
+            return false;
+        }
+
+        String filtered = text.replace("\r", "").replace("\n", "");
+        if (filtered.isEmpty()) {
+            return false;
+        }
+
+        String originalBuffer = parameterEditBuffer;
+        int originalCaret = parameterCaretPosition;
+        int originalSelectionStart = parameterSelectionStart;
+        int originalSelectionEnd = parameterSelectionEnd;
+        int originalSelectionAnchor = parameterSelectionAnchor;
+
+        String working = parameterEditBuffer;
+        int caret = parameterCaretPosition;
+
+        if (hasParameterSelection()) {
+            int start = parameterSelectionStart;
+            int end = parameterSelectionEnd;
+            working = working.substring(0, start) + working.substring(end);
+            caret = start;
+        }
+
+        boolean inserted = false;
+        int widthLimit = Integer.MAX_VALUE;
+        if (parameterEditingNode != null
+            && parameterEditingIndex >= 0
+            && parameterEditingIndex < parameterEditingNode.getParameters().size()) {
+            NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
+            int fieldWidth = getParameterFieldWidth(parameterEditingNode);
+            int valueStartX = getParameterValueStartX(parameterEditingNode, parameter, textRenderer);
+            int fieldLeft = getParameterFieldLeft(parameterEditingNode);
+            widthLimit = Math.max(20, fieldWidth - (valueStartX - fieldLeft) - 4);
+        }
+
+        for (int i = 0; i < filtered.length(); i++) {
+            char c = filtered.charAt(i);
+            String candidate = working.substring(0, caret) + c + working.substring(caret);
+            if (textRenderer.getWidth(candidate) > widthLimit) {
+                break;
+            }
+            working = candidate;
+            caret++;
+            inserted = true;
+        }
+
+        if (inserted) {
+            parameterEditBuffer = working;
+            setParameterCaretPosition(caret);
+            return true;
+        }
+
+        parameterEditBuffer = originalBuffer;
+        parameterCaretPosition = originalCaret;
+        parameterSelectionStart = originalSelectionStart;
+        parameterSelectionEnd = originalSelectionEnd;
+        parameterSelectionAnchor = originalSelectionAnchor;
+        return false;
+    }
+
+    private boolean isBlockItemParameter(Node node, int index) {
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        if (param.getType() == ParameterType.BLOCK_TYPE) {
+            return true;
+        }
+        String name = param.getName();
+        return "Block".equalsIgnoreCase(name)
+            || "Blocks".equalsIgnoreCase(name)
+            || "Item".equalsIgnoreCase(name)
+            || "Entity".equalsIgnoreCase(name);
+    }
+
+    private boolean isBlockParameter(Node node, int index) {
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        if (param.getType() == ParameterType.BLOCK_TYPE) {
+            return true;
+        }
+        String name = param.getName();
+        return "Block".equalsIgnoreCase(name) || "Blocks".equalsIgnoreCase(name);
+    }
+
+    private boolean isItemParameter(Node node, int index) {
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "Item".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isEntityParameter(Node node, int index) {
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "Entity".equalsIgnoreCase(param.getName());
+    }
+
+    private static int findSegmentStart(String value, int caret) {
+        int idx = value.lastIndexOf(',', Math.max(0, caret - 1));
+        return idx == -1 ? 0 : idx + 1;
+    }
+
+    private static int findSegmentEnd(String value, int caret) {
+        int idx = value.indexOf(',', Math.max(0, caret));
+        return idx == -1 ? value.length() : idx;
+    }
+
+    private static final class ParameterSegment {
+        private final int start;
+        private final int end;
+        private final String leadingWhitespace;
+        private final String trimmedSegment;
+
+        private ParameterSegment(int start, int end, String leadingWhitespace, String trimmedSegment) {
+            this.start = start;
+            this.end = end;
+            this.leadingWhitespace = leadingWhitespace;
+            this.trimmedSegment = trimmedSegment;
+        }
+    }
+
+    private ParameterSegment getParameterSegment(String value, int caret) {
+        String working = value != null ? value : "";
+        int clamped = MathHelper.clamp(caret, 0, working.length());
+        int start = findSegmentStart(working, clamped);
+        int end = findSegmentEnd(working, clamped);
+        String segment = working.substring(start, end);
+        int leadingEnd = 0;
+        while (leadingEnd < segment.length() && Character.isWhitespace(segment.charAt(leadingEnd))) {
+            leadingEnd++;
+        }
+        String leading = segment.substring(0, leadingEnd);
+        String trimmed = segment.substring(leadingEnd);
+        return new ParameterSegment(start, end, leading, trimmed);
+    }
+
+    private List<String> getParameterDropdownOptions(Node node, int index, String query) {
+        String lowered = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        List<String> source;
+        if (isBlockParameter(node, index)) {
+            source = RegistryStringCache.BLOCK_IDS;
+        } else if (isItemParameter(node, index)) {
+            source = RegistryStringCache.ITEM_IDS;
+        } else if (isEntityParameter(node, index)) {
+            source = RegistryStringCache.ENTITY_IDS;
+        } else {
+            return Collections.emptyList();
+        }
+
+        if (lowered.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> starts = new ArrayList<>();
+        List<String> contains = new ArrayList<>();
+        for (String option : source) {
+            String lower = option.toLowerCase(Locale.ROOT);
+            if (!lower.contains(lowered)) {
+                continue;
+            }
+            if (lower.startsWith(lowered)) {
+                starts.add(option);
+            } else {
+                contains.add(option);
+            }
+            if (starts.size() + contains.size() >= 64) {
+                break;
+            }
+        }
+        List<String> result = new ArrayList<>(Math.min(64, starts.size() + contains.size()));
+        result.addAll(starts);
+        result.addAll(contains);
+        return result;
+    }
+
+    private void updateParameterDropdown(Node node, int index, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth, int fieldHeight) {
+        if (!isEditingParameterField() || parameterEditingNode != node || parameterEditingIndex != index) {
+            return;
+        }
+        if (!isBlockItemParameter(node, index)) {
+            closeParameterDropdown();
+            return;
+        }
+        ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
+        String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
+        if (query.isEmpty()) {
+            closeParameterDropdown();
+            return;
+        }
+
+        List<String> options = getParameterDropdownOptions(node, index, query);
+        boolean changed = node != parameterDropdownNode
+            || index != parameterDropdownIndex
+            || !Objects.equals(parameterDropdownQuery, query);
+
+        if (changed) {
+            parameterDropdownScrollOffset = 0;
+            parameterDropdownHoverIndex = -1;
+        }
+
+        parameterDropdownNode = node;
+        parameterDropdownIndex = index;
+        parameterDropdownFieldX = fieldX;
+        parameterDropdownFieldY = fieldY;
+        parameterDropdownFieldWidth = fieldWidth;
+        parameterDropdownFieldHeight = fieldHeight;
+        parameterDropdownQuery = query;
+        parameterDropdownOptions.clear();
+        parameterDropdownOptions.addAll(options);
+        parameterDropdownOpen = true;
+    }
+
+    private void closeParameterDropdown() {
+        parameterDropdownOpen = false;
+        parameterDropdownNode = null;
+        parameterDropdownIndex = -1;
+        parameterDropdownHoverIndex = -1;
+        parameterDropdownScrollOffset = 0;
+        parameterDropdownQuery = "";
+        parameterDropdownOptions.clear();
+    }
+
+    private boolean applyParameterDropdownSelection(int optionIndex) {
+        if (!isEditingParameterField() || !parameterDropdownOpen || parameterDropdownOptions.isEmpty()) {
+            return false;
+        }
+        if (optionIndex < 0 || optionIndex >= parameterDropdownOptions.size()) {
+            return false;
+        }
+        String option = parameterDropdownOptions.get(optionIndex);
+        ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
+        String prefix = parameterEditBuffer.substring(0, segment.start);
+        String suffix = parameterEditBuffer.substring(segment.end);
+        String replacement = segment.leadingWhitespace + option;
+        parameterEditBuffer = prefix + replacement + suffix;
+        setParameterCaretPosition(prefix.length() + replacement.length());
+        closeParameterDropdown();
+        return true;
+    }
+
+    private int getParameterDropdownListTop() {
+        return parameterDropdownFieldY + parameterDropdownFieldHeight;
+    }
+
+    private DropdownLayoutHelper.Layout getParameterDropdownLayout() {
+        int optionCount = Math.max(1, parameterDropdownOptions.size());
+        int listTop = getParameterDropdownListTop();
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        return DropdownLayoutHelper.calculate(
+            optionCount,
+            PARAMETER_DROPDOWN_ROW_HEIGHT,
+            PARAMETER_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+    }
+
+    private boolean isPointInsideParameterDropdownList(int screenX, int screenY) {
+        if (!parameterDropdownOpen) {
+            return false;
+        }
+        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
+        int listTop = getParameterDropdownListTop();
+        int listLeft = parameterDropdownFieldX;
+        return screenX >= listLeft && screenX <= listLeft + parameterDropdownFieldWidth
+            && screenY >= listTop && screenY <= listTop + layout.height;
+    }
+
+    private int getParameterDropdownIndexAt(int screenX, int screenY) {
+        if (!parameterDropdownOpen) {
+            return -1;
+        }
+        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
+        int listTop = getParameterDropdownListTop();
+        int row = (screenY - listTop) / PARAMETER_DROPDOWN_ROW_HEIGHT;
+        if (row < 0 || row >= layout.visibleCount) {
+            return -1;
+        }
+        int index = parameterDropdownScrollOffset + row;
+        if (parameterDropdownOptions.isEmpty()) {
+            return -1;
+        }
+        return index;
+    }
+
+    public boolean handleParameterDropdownClick(double screenX, double screenY) {
+        if (!parameterDropdownOpen) {
+            return false;
+        }
+        int x = (int) screenX;
+        int y = (int) screenY;
+        if (isPointInsideParameterDropdownList(x, y)) {
+            int index = getParameterDropdownIndexAt(x, y);
+            if (index >= 0) {
+                applyParameterDropdownSelection(index);
+            }
+            return true;
+        }
+        int fieldLeft = parameterDropdownFieldX;
+        int fieldTop = parameterDropdownFieldY;
+        if (x >= fieldLeft && x <= fieldLeft + parameterDropdownFieldWidth
+            && y >= fieldTop && y <= fieldTop + parameterDropdownFieldHeight) {
+            return true;
+        }
+        closeParameterDropdown();
+        return false;
+    }
+
+    public boolean handleParameterDropdownScroll(double screenX, double screenY, double verticalAmount) {
+        if (!parameterDropdownOpen) {
+            return false;
+        }
+        if (!isPointInsideParameterDropdownList((int) screenX, (int) screenY)) {
+            return false;
+        }
+        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
+        if (layout.maxScrollOffset <= 0) {
+            return false;
+        }
+        int delta = (int) Math.signum(verticalAmount);
+        if (delta == 0) {
+            return false;
+        }
+        parameterDropdownScrollOffset = MathHelper.clamp(parameterDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
+        return true;
+    }
+
+    private void renderParameterDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!parameterDropdownOpen) {
+            return;
+        }
+        List<String> options = parameterDropdownOptions;
+        int optionCount = Math.max(1, options.size());
+        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
+        int listTop = getParameterDropdownListTop();
+        int listLeft = parameterDropdownFieldX;
+        int listRight = listLeft + parameterDropdownFieldWidth;
+        int listHeight = layout.height;
+        int listBottom = listTop + listHeight;
+
+        context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, listLeft, listTop, parameterDropdownFieldWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
+
+        parameterDropdownScrollOffset = MathHelper.clamp(parameterDropdownScrollOffset, 0, layout.maxScrollOffset);
+        parameterDropdownHoverIndex = -1;
+        if (mouseX >= listLeft && mouseX <= listRight && mouseY >= listTop && mouseY <= listBottom) {
+            int row = (mouseY - listTop) / PARAMETER_DROPDOWN_ROW_HEIGHT;
+            if (row >= 0 && row < layout.visibleCount) {
+                parameterDropdownHoverIndex = parameterDropdownScrollOffset + row;
+            }
+        }
+
+        int visibleCount = layout.visibleCount;
+        for (int row = 0; row < visibleCount; row++) {
+            int optionIndex = parameterDropdownScrollOffset + row;
+            String optionLabel = options.isEmpty() ? "No matches" : options.get(optionIndex);
+            int rowTop = listTop + row * PARAMETER_DROPDOWN_ROW_HEIGHT;
+            int rowBottom = rowTop + PARAMETER_DROPDOWN_ROW_HEIGHT;
+            boolean hovered = options.isEmpty() ? row == 0 && parameterDropdownHoverIndex >= 0 : optionIndex == parameterDropdownHoverIndex;
+            if (hovered) {
+                context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.BACKGROUND_TERTIARY);
+            }
+            int iconX = listLeft + 4;
+            int iconY = rowTop + (PARAMETER_DROPDOWN_ROW_HEIGHT - 16) / 2;
+            ItemStack icon = resolveParameterDropdownIcon(parameterDropdownNode, parameterDropdownIndex, optionLabel);
+            if (!icon.isEmpty()) {
+                context.drawItem(icon, iconX, iconY);
+            }
+            int textX = listLeft + 3;
+            if (!icon.isEmpty()) {
+                textX = iconX + 16 + 4;
+            }
+            int maxTextWidth = parameterDropdownFieldWidth - (textX - listLeft) - 3;
+            String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
+            drawNodeText(context, textRenderer, Text.literal(rowText), textX, rowTop + 4, UITheme.TEXT_PRIMARY);
+        }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            listLeft,
+            listTop,
+            parameterDropdownFieldWidth,
+            listHeight,
+            optionCount,
+            layout.visibleCount,
+            parameterDropdownScrollOffset,
+            layout.maxScrollOffset,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_HIGHLIGHT
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            listLeft,
+            listTop,
+            parameterDropdownFieldWidth,
+            listHeight,
+            UITheme.BORDER_DEFAULT
+        );
+    }
+
+    private ItemStack resolveParameterDropdownIcon(Node node, int index, String optionLabel) {
+        if (node == null || optionLabel == null || optionLabel.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        String fullId = optionLabel.contains(":") ? optionLabel : "minecraft:" + optionLabel;
+        Identifier id = Identifier.tryParse(fullId);
+        if (id == null) {
+            return ItemStack.EMPTY;
+        }
+        if (isBlockParameter(node, index)) {
+            var block = Registries.BLOCK.get(id);
+            if (block == null) {
+                return ItemStack.EMPTY;
+            }
+            Item item = block.asItem();
+            if (item == null || item == Items.AIR) {
+                return ItemStack.EMPTY;
+            }
+            return new ItemStack(item);
+        }
+        if (isItemParameter(node, index)) {
+            Item item = Registries.ITEM.get(id);
+            if (item == null || item == Items.AIR) {
+                return ItemStack.EMPTY;
+            }
+            return new ItemStack(item);
+        }
+        if (isEntityParameter(node, index)) {
+            var entityType = Registries.ENTITY_TYPE.get(id);
+            if (entityType == null) {
+                return ItemStack.EMPTY;
+            }
+            Item spawnEgg = SpawnEggItem.forEntity(entityType);
+            if (spawnEgg == null || spawnEgg == Items.AIR) {
+                return ItemStack.EMPTY;
+            }
+            return new ItemStack(spawnEgg);
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private static final class RegistryStringCache {
+        private static final List<String> BLOCK_IDS = buildBlockIds();
+        private static final List<String> ITEM_IDS = buildItemIds();
+        private static final List<String> ENTITY_IDS = buildEntityIds();
+
+        private static List<String> buildBlockIds() {
+            List<String> options = new ArrayList<>();
+            for (Identifier id : Registries.BLOCK.getIds()) {
+                if (id == null) {
+                    continue;
+                }
+                options.add(id.getPath());
+            }
+            options.sort(String::compareToIgnoreCase);
+            return options;
+        }
+
+        private static List<String> buildItemIds() {
+            List<String> options = new ArrayList<>();
+            for (Identifier id : Registries.ITEM.getIds()) {
+                if (id == null) {
+                    continue;
+                }
+                options.add(id.getPath());
+            }
+            options.sort(String::compareToIgnoreCase);
+            return options;
+        }
+
+        private static List<String> buildEntityIds() {
+            List<String> options = new ArrayList<>();
+            for (Identifier id : Registries.ENTITY_TYPE.getIds()) {
+                if (id == null) {
+                    continue;
+                }
+                options.add(id.getPath());
+            }
+            options.sort(String::compareToIgnoreCase);
+            return options;
+        }
+    }
+
     private TextRenderer getClientTextRenderer() {
         MinecraftClient client = MinecraftClient.getInstance();
         return client != null ? client.textRenderer : null;
@@ -4805,6 +5721,36 @@ public class NodeGraph {
                 && worldY >= fieldTop && worldY <= fieldTop + fieldHeight) {
                 return i;
             }
+        }
+        return -1;
+    }
+
+    public int getParameterFieldIndexAt(Node node, int screenX, int screenY) {
+        if (node == null || !node.isParameterNode() || node.hasPopupEditButton()) {
+            return -1;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = getParameterFieldLeft(node);
+        int fieldWidth = getParameterFieldWidth(node);
+        int fieldHeight = getParameterFieldHeight();
+        int fieldTop = node.getY() + 18;
+
+        if (node.supportsModeSelection()) {
+            fieldTop += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
+        }
+
+        List<NodeParameter> parameters = node.getParameters();
+        for (int i = 0; i < parameters.size(); i++) {
+            NodeParameter parameter = parameters.get(i);
+            if (node.getParameterLabel(parameter).isEmpty()) {
+                continue;
+            }
+            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + fieldHeight) {
+                return i;
+            }
+            fieldTop += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
         }
         return -1;
     }

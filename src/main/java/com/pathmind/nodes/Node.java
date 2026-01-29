@@ -115,7 +115,7 @@ public class Node {
     private static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
     private static final int CHAR_PIXEL_WIDTH = 6;
     private static final int HEADER_HEIGHT = 18;
-    private static final int PARAM_LINE_HEIGHT = 10;
+    private static final int PARAM_LINE_HEIGHT = 20;
     private static final int PARAM_PADDING_TOP = 2;
     private static final int PARAM_PADDING_BOTTOM = 4;
     private static final int MAX_PARAMETER_LABEL_LENGTH = 20;
@@ -2305,6 +2305,20 @@ public class Node {
         return !BlockSelection.getStateOptions(normalized).isEmpty();
     }
 
+    public String getParameterDisplayName(NodeParameter parameter) {
+        if (parameter == null) {
+            return "";
+        }
+        String name = parameter.getName();
+        if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
+            return "Message";
+        }
+        if (type == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
+            return "User";
+        }
+        return name;
+    }
+
     public String getParameterLabel(NodeParameter parameter) {
         if (parameter == null) {
             return "";
@@ -2312,15 +2326,9 @@ public class Node {
         if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
             return "";
         }
-        String name = parameter.getName();
+        String name = getParameterDisplayName(parameter);
         if (type == NodeType.PARAM_BOOLEAN && "Toggle".equalsIgnoreCase(name)) {
             return "";
-        }
-        if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
-            name = "Message";
-        }
-        if (type == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
-            name = "User";
         }
         String text = name + ": " + parameter.getDisplayValue();
         if (text.length() <= MAX_PARAMETER_LABEL_LENGTH) {
@@ -2811,7 +2819,7 @@ public class Node {
         if (!isParameterNode() || type == NodeType.PARAM_SCHEMATIC || type == NodeType.PARAM_BOOLEAN) {
             return false;
         }
-        return hasParameters() || supportsModeSelection();
+        return type == NodeType.PARAM_INVENTORY_SLOT || type == NodeType.PARAM_KEY;
     }
 
     public int getPopupEditButtonLeft() {

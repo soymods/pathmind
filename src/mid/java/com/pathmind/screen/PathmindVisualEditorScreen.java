@@ -725,6 +725,10 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
+        if (nodeGraph.handleParameterDropdownClick(mouseX, mouseY)) {
+            return true;
+        }
+
         // Check if clicking home button
         if (isHomeButtonClicked((int)mouseX, (int)mouseY, button)) {
             nodeGraph.resetCamera();
@@ -802,6 +806,8 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopAmountEditing(true);
                         nodeGraph.stopStopTargetEditing(true);
                         nodeGraph.stopMessageEditing(true);
+
+                        nodeGraph.stopParameterEditing(true);
                         nodeGraph.startDraggingConnection(node, i, false, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -816,6 +822,8 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopAmountEditing(true);
                         nodeGraph.stopStopTargetEditing(true);
                         nodeGraph.stopMessageEditing(true);
+
+                        nodeGraph.stopParameterEditing(true);
                         nodeGraph.startDraggingConnection(node, i, true, (int)mouseX, (int)mouseY);
                         return true;
                     }
@@ -872,10 +880,19 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                int parameterIndex = nodeGraph.getParameterFieldIndexAt(clickedNode, (int)mouseX, (int)mouseY);
+                if (parameterIndex != -1) {
+                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.startParameterEditing(clickedNode, parameterIndex);
+                    return true;
+                }
+
                 nodeGraph.stopAmountEditing(true);
                 nodeGraph.stopCoordinateEditing(true);
                 nodeGraph.stopStopTargetEditing(true);
                 nodeGraph.stopMessageEditing(true);
+
+                nodeGraph.stopParameterEditing(true);
 
                 // Check if clicking on Edit Text button for WRITE_BOOK nodes
                 if (clickedNode.hasBookTextInput() && nodeGraph.isPointInsideBookTextButton(clickedNode, (int)mouseX, (int)mouseY)) {
@@ -890,8 +907,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 // Check for double-click to open parameter editor
-                boolean shouldOpenOverlay = clickedNode.isParameterNode()
-                    && clickedNode.getType() != NodeType.PARAM_SCHEMATIC;
+                boolean shouldOpenOverlay = clickedNode.getType() == NodeType.PARAM_INVENTORY_SLOT
+                    || clickedNode.getType() == NodeType.PARAM_KEY;
                 if (shouldOpenOverlay &&
                     nodeGraph.handleNodeClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     openParameterOverlay(clickedNode);
@@ -925,6 +942,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopAmountEditing(true);
                 nodeGraph.stopStopTargetEditing(true);
                 nodeGraph.stopMessageEditing(true);
+
+                nodeGraph.stopParameterEditing(true);
                 nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
             }
             return true;
@@ -1203,6 +1222,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleParameterKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
         if (nodeGraph.handleMessageKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -1288,6 +1311,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleParameterCharTyped(chr, modifiers, this.textRenderer)) {
+            return true;
+        }
+
         if (nodeGraph.handleMessageCharTyped(chr, modifiers, this.textRenderer)) {
             return true;
         }
@@ -1363,6 +1390,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleParameterDropdownScroll(mouseX, mouseY, verticalAmount)) {
+            return true;
+        }
+
         if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT && verticalAmount != 0.0) {
             nodeGraph.zoomByScroll(verticalAmount, getWorkspaceCenterX(), getWorkspaceCenterY());
             return true;
@@ -1391,6 +1422,8 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopAmountEditing(true);
         nodeGraph.stopStopTargetEditing(true);
         nodeGraph.stopMessageEditing(true);
+
+        nodeGraph.stopParameterEditing(true);
 
         if (nodeGraph.save()) {
             System.out.println("Node graph auto-saved successfully");
@@ -2048,6 +2081,8 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopAmountEditing(true);
         nodeGraph.stopStopTargetEditing(true);
         nodeGraph.stopMessageEditing(true);
+
+        nodeGraph.stopParameterEditing(true);
         final NodeParameterOverlay[] overlayRef = new NodeParameterOverlay[1];
         overlayRef[0] = new NodeParameterOverlay(
             node,

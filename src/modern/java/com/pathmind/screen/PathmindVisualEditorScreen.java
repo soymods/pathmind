@@ -19,6 +19,7 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -475,29 +476,41 @@ public class PathmindVisualEditorScreen extends Screen {
     
     private void renderDraggingNode(DrawContext context, int mouseX, int mouseY) {
         if (draggingNodeType == null) return;
-        
+
+        float scale = nodeGraph.getZoomScale();
+        if (scale <= 0.0f) {
+            scale = 1.0f;
+        }
+
         // Create a temporary node for rendering
         Node tempNode = new Node(draggingNodeType, 0, 0);
         tempNode.setDragging(true);
-        
-        // Calculate proper centering based on node dimensions
+
         int width = tempNode.getWidth();
         int height = tempNode.getHeight();
-        int x = mouseX - width / 2;
-        int y = mouseY - height / 2;
-        
+
+        var matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.scale(matrices, scale, scale);
+
+        // Convert screen space mouse to scaled space so preview matches workspace zoom.
+        int scaledMouseX = Math.round(mouseX / scale);
+        int scaledMouseY = Math.round(mouseY / scale);
+        int x = scaledMouseX - width / 2;
+        int y = scaledMouseY - height / 2;
+
         // Update temp node position for rendering
         tempNode.setPosition(x, y);
-        
+
         // Render the node with a slight transparency
         int alpha = 0x80;
         int nodeColor = (draggingNodeType.getColor() & 0x00FFFFFF) | alpha;
-        
+
         // Node background with transparency
         context.fill(x, y, x + width, y + height, UITheme.DRAG_PREVIEW_BG);
         // Draw grey outline for dragging state
         DrawContextBridge.drawBorder(context, x, y, width, height, UITheme.DRAG_PREVIEW_BORDER);
-        
+
         // Node header
         if (draggingNodeType != NodeType.START && draggingNodeType != NodeType.EVENT_FUNCTION) {
             context.fill(x + 1, y + 1, x + width - 1, y + 14, nodeColor);
@@ -509,6 +522,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 UITheme.TEXT_HEADER
             );
         }
+
+        MatrixStackBridge.pop(matrices);
     }
 
     private void renderZoomControls(DrawContext context, int mouseX, int mouseY, boolean disabled) {

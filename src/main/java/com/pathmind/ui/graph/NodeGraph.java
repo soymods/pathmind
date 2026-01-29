@@ -312,7 +312,7 @@ public class NodeGraph {
         cameraY = Math.round(anchorWorldY - anchorScreenY / scale);
     }
 
-    private float getZoomScale() {
+    public float getZoomScale() {
         return zoomScale;
     }
 

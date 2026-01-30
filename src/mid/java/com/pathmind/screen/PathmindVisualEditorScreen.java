@@ -3,6 +3,8 @@ package com.pathmind.screen;
 import com.pathmind.PathmindMod;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
+import com.pathmind.data.SettingsManager;
+import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
@@ -27,6 +29,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.resource.language.LanguageManager;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.input.CharInput;
@@ -92,7 +95,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int MISSING_BARITONE_POPUP_WIDTH = 360;
     private static final int MISSING_BARITONE_POPUP_HEIGHT = 175;
     private static final int SETTINGS_POPUP_WIDTH = 360;
-    private static final int SETTINGS_POPUP_HEIGHT = 220;
+    private static final int SETTINGS_POPUP_HEIGHT = 280;
     private static final int SETTINGS_OPTION_WIDTH = 90;
     private static final int SETTINGS_OPTION_HEIGHT = 16;
     private static final int SETTINGS_OPTION_GAP = 6;
@@ -102,7 +105,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final String INFO_POPUP_AUTHOR = "ryduzz";
     private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
-    private static final Text TITLE_TEXT = Text.literal("Pathmind Node Editor");
+    private static final Text TITLE_TEXT = Text.translatable("pathmind.title");
 
     private NodeGraph nodeGraph;
     private Sidebar sidebar;
@@ -141,6 +144,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private String pendingPresetDeletionName = "";
     private final PopupAnimationHandler missingBaritonePopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler settingsPopupAnimation = new PopupAnimationHandler();
+    private Settings currentSettings;
+    private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
+    private boolean languageDropdownOpen = false;
+    private final AnimatedValue languageDropdownAnimation = AnimatedValue.forHover();
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
     private AccentOption accentOption = AccentOption.SKY;
@@ -172,6 +179,30 @@ public class PathmindVisualEditorScreen extends Screen {
         refreshAvailablePresets();
         this.nodeGraph.setActivePreset(activePresetName);
         updateImportExportPathFromPreset();
+
+        // Load settings
+        this.currentSettings = SettingsManager.load();
+
+        // Apply loaded settings
+        this.accentOption = getAccentOptionFromString(currentSettings.accentColor);
+        this.showGrid = currentSettings.showGrid;
+        this.showWorkspaceTooltips = currentSettings.showTooltips;
+    }
+
+    private AccentOption getAccentOptionFromString(String color) {
+        switch (color.toLowerCase()) {
+            case "mint": return AccentOption.MINT;
+            case "amber": return AccentOption.AMBER;
+            default: return AccentOption.SKY;
+        }
+    }
+
+    private String getAccentOptionString(AccentOption option) {
+        switch (option) {
+            case MINT: return "mint";
+            case AMBER: return "amber";
+            default: return "sky";
+        }
     }
 
     @Override
@@ -182,7 +213,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.setActivePreset(activePresetName);
 
         if (createPresetField == null) {
-            createPresetField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.literal("Preset Name"));
+            createPresetField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.presetName"));
             createPresetField.setMaxLength(64);
             createPresetField.setDrawsBackground(false);
             createPresetField.setVisible(false);
@@ -194,7 +225,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (renamePresetField == null) {
-            renamePresetField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.literal("New Preset Name"));
+            renamePresetField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
             renamePresetField.setMaxLength(64);
             renamePresetField.setDrawsBackground(false);
             renamePresetField.setVisible(false);
@@ -1515,8 +1546,8 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean confirmHovered = isPointInRect(mouseX, mouseY, confirmX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
-        drawPopupButton(context, confirmX, buttonY, buttonWidth, buttonHeight, confirmHovered, Text.literal("Clear"), true);
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.cancel"), false);
+        drawPopupButton(context, confirmX, buttonY, buttonWidth, buttonHeight, confirmHovered, Text.translatable("pathmind.button.clear"), true);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -1572,9 +1603,9 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean exportHovered = isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered, Text.literal("Import"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered, Text.literal("Export"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Close"), false);
+        drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered, Text.translatable("pathmind.button.import"), PopupButtonStyle.PRIMARY);
+        drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered, Text.translatable("pathmind.button.export"), PopupButtonStyle.PRIMARY);
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.close"), false);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -1624,7 +1655,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
+        drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -1664,9 +1695,9 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
         boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.literal("Open link"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.literal("Copy link"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
+        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY);
+        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY);
+        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2756,8 +2787,8 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean createHovered = isPointInRect(mouseX, mouseY, createX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
-        drawPopupButton(context, createX, buttonY, buttonWidth, buttonHeight, createHovered, Text.literal("Create"), true);
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.cancel"), false);
+        drawPopupButton(context, createX, buttonY, buttonWidth, buttonHeight, createHovered, Text.translatable("pathmind.button.create"), true);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2831,8 +2862,8 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean renameHovered = isPointInRect(mouseX, mouseY, renameX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
-        drawPopupButton(context, renameX, buttonY, buttonWidth, buttonHeight, renameHovered, Text.literal("Rename"), true);
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.cancel"), false);
+        drawPopupButton(context, renameX, buttonY, buttonWidth, buttonHeight, renameHovered, Text.translatable("pathmind.button.rename"), true);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2876,8 +2907,8 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean deleteHovered = isPointInRect(mouseX, mouseY, deleteX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.literal("Cancel"), false);
-        drawPopupButton(context, deleteX, buttonY, buttonWidth, buttonHeight, deleteHovered, Text.literal("Delete"), true);
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.cancel"), false);
+        drawPopupButton(context, deleteX, buttonY, buttonWidth, buttonHeight, deleteHovered, Text.translatable("pathmind.button.delete"), true);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -3238,7 +3269,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
-            Text.literal("Settings"),
+            Text.translatable("pathmind.settings.title"),
             popupX + scaledWidth / 2,
             popupY + 14,
             UITheme.TEXT_PRIMARY
@@ -3277,7 +3308,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = popupX + scaledWidth - buttonWidth - 20;
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
-        drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.literal("Close"), false);
+        drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -3579,6 +3610,91 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean isPointInRect(int mouseX, int mouseY, int x, int y, int width, int height) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+    }
+
+    private void drawLanguageDropdown(DrawContext context, int x, int y, int width, String currentLang, boolean hovered, int mouseX, int mouseY) {
+        // Update dropdown animation
+        languageDropdownAnimation.animateTo(languageDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
+        languageDropdownAnimation.tick();
+        float animProgress = AnimationHelper.easeOutQuad(languageDropdownAnimation.getValue());
+
+        // Draw dropdown button background
+        int bgColor = hovered ? UITheme.BUTTON_HOVER : UITheme.BUTTON_BACKGROUND;
+        context.fill(x, y, x + width, y + 20, bgColor);
+
+        // Draw dropdown text
+        int labelColor = (hovered || languageDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(currentLang), x + 4, y + 6, labelColor);
+
+        // Draw animated arrow
+        int arrowCenterX = x + width - 10;
+        int arrowCenterY = y + 10;
+        if (languageDropdownOpen) {
+            // Arrow pointing up
+            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY - 2, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY - 1, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY, labelColor);
+        } else {
+            // Arrow pointing down
+            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY + 1, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY, labelColor);
+            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY - 1, labelColor);
+        }
+
+        // Don't render options if animation is fully closed
+        if (animProgress <= 0.001f) {
+            return;
+        }
+
+        int dropdownY = y + 22;
+        int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
+        int animatedHeight = (int) (fullOptionsHeight * animProgress);
+
+        // Use scissor to clip the dropdown content during animation
+        context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
+
+        // Draw background for all options
+        context.fill(x, dropdownY, x + width, dropdownY + fullOptionsHeight, UITheme.POPUP_BACKGROUND);
+
+        // Draw each language option
+        for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
+            String lang = SUPPORTED_LANGUAGES[i];
+            String langName = getLanguageDisplayName(lang);
+            int optionY = dropdownY + (i * 20);
+
+            // Only allow hover detection when animation is complete
+            boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
+            int optionBg = optionHovered ? UITheme.BUTTON_HOVER : UITheme.POPUP_BACKGROUND;
+            context.fill(x, optionY, x + width, optionY + 20, optionBg);
+
+            // Highlight current language with accent color
+            String currentLanguage = this.client.getLanguageManager().getLanguage();
+            int textColor = lang.equals(currentLanguage) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+            context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
+        }
+
+        // Disable scissor
+        context.disableScissor();
+    }
+
+    private String getLanguageDisplayName(String languageCode) {
+        return Text.translatable("pathmind.language." + languageCode).getString();
+    }
+
+    private void onLanguageSelected(String languageCode) {
+        // Save to settings first
+        currentSettings.language = languageCode;
+        SettingsManager.save(currentSettings);
+
+        // Update Minecraft's language and reload resources
+        this.client.options.language = languageCode;
+        this.client.getLanguageManager().setLanguage(languageCode);
+        this.client.options.write();
+        this.client.reloadResources();
+
+        // Reload the screen to update all text
+        this.client.setScreen(null);
+        this.client.setScreen(new PathmindVisualEditorScreen());
     }
 
 }

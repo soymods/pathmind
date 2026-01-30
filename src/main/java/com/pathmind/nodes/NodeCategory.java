@@ -1,34 +1,36 @@
 package com.pathmind.nodes;
 
+import net.minecraft.text.Text;
+
 /**
  * Enum representing different categories of nodes for sidebar organization.
  */
 public enum NodeCategory {
-    EVENTS("Events", 0xFFE91E63, "Event entry points and triggers", "★"),
-    LOGIC("Logic", 0xFFFFC107, "Flow control and condition checks", "🧠"),
-    MOVEMENT("Movement", 0xFF00BCD4, "Pathfinding and player movement actions", "⇄"),
-    INTERACTION("Interaction", 0xFF7E57C2, "Combat and interaction commands", "✋"),
-    GUI("GUI", 0xFF8D6E63, "Screen and interface management", "🖥"),
-    SENSORS("Sensors", 0xFF64B5F6, "Environment and state checks", "📡"),
-    OPERATORS("Operators", 0xFF00C853, "Logical operators and comparisons", "="),
-    VARIABLES("Variables", 0xFFFF9800, "Runtime variable storage and assignment", "V"),
-    PARAMETERS("Parameters", 0xFF8BC34A, "Reusable parameter data nodes", "🧩"),
-    UTILITY("Utility", 0xFF9E9E9E, "Utility and messaging tools", "⚙");
+    EVENTS("pathmind.node.category.events", 0xFFE91E63, "pathmind.node.category.events.desc", "★"),
+    LOGIC("pathmind.node.category.logic", 0xFFFFC107, "pathmind.node.category.logic.desc", "🧠"),
+    MOVEMENT("pathmind.node.category.movement", 0xFF00BCD4, "pathmind.node.category.movement.desc", "⇄"),
+    INTERACTION("pathmind.node.category.interaction", 0xFF7E57C2, "pathmind.node.category.interaction.desc", "✋"),
+    GUI("pathmind.node.category.gui", 0xFF8D6E63, "pathmind.node.category.gui.desc", "🖥"),
+    SENSORS("pathmind.node.category.sensors", 0xFF64B5F6, "pathmind.node.category.sensors.desc", "📡"),
+    OPERATORS("pathmind.node.category.operators", 0xFF00C853, "pathmind.node.category.operators.desc", "="),
+    VARIABLES("pathmind.node.category.variables", 0xFFFF9800, "pathmind.node.category.variables.desc", "V"),
+    PARAMETERS("pathmind.node.category.parameters", 0xFF8BC34A, "pathmind.node.category.parameters.desc", "🧩"),
+    UTILITY("pathmind.node.category.utility", 0xFF9E9E9E, "pathmind.node.category.utility.desc", "⚙");
 
-    private final String displayName;
+    private final String translationKey;
     private final int color;
-    private final String description;
+    private final String descriptionKey;
     private final String icon;
 
-    NodeCategory(String displayName, int color, String description, String icon) {
-        this.displayName = displayName;
+    NodeCategory(String translationKey, int color, String descriptionKey, String icon) {
+        this.translationKey = translationKey;
         this.color = color;
-        this.description = description;
+        this.descriptionKey = descriptionKey;
         this.icon = icon;
     }
 
     public String getDisplayName() {
-        return displayName;
+        return Text.translatable(translationKey).getString();
     }
 
     public int getColor() {
@@ -36,7 +38,7 @@ public enum NodeCategory {
     }
 
     public String getDescription() {
-        return description;
+        return Text.translatable(descriptionKey).getString();
     }
 
     public String getIcon() {

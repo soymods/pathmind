@@ -1,143 +1,145 @@
 package com.pathmind.nodes;
 
+import net.minecraft.text.Text;
+
 /**
  * Enum representing different types of nodes in the Pathmind visual editor.
  * Similar to Blender's shader nodes, each type has specific properties and behaviors.
  */
 public enum NodeType {
     // Event nodes
-    START("Start", 0xFF4CAF50, "Begins the automation sequence"),
-    START_CHAIN("Activate", 0xFF4CAF50, "Activates a node tree by its START number"),
-    EVENT_FUNCTION("Function", 0xFFE91E63, "Runs a named function body when triggered"),
-    EVENT_CALL("Call Function", 0xFFE91E63, "Triggers the execution of a named function"),
+    START("pathmind.node.type.start", 0xFF4CAF50, "pathmind.node.type.start.desc"),
+    START_CHAIN("pathmind.node.type.startChain", 0xFF4CAF50, "pathmind.node.type.startChain.desc"),
+    EVENT_FUNCTION("pathmind.node.type.eventFunction", 0xFFE91E63, "pathmind.node.type.eventFunction.desc"),
+    EVENT_CALL("pathmind.node.type.eventCall", 0xFFE91E63, "pathmind.node.type.eventCall.desc"),
 
     // Variable nodes
-    VARIABLE("Variable", 0xFFFF9800, "Represents a named runtime variable"),
-    SET_VARIABLE("Set Variable", 0xFFFF9800, "Assigns a parameter value to a variable at runtime"),
+    VARIABLE("pathmind.node.type.variable", 0xFFFF9800, "pathmind.node.type.variable.desc"),
+    SET_VARIABLE("pathmind.node.type.setVariable", 0xFFFF9800, "pathmind.node.type.setVariable.desc"),
 
     // Operator nodes
-    OPERATOR_EQUALS("Equals", 0xFF00C853, "Checks if a variable equals a parameter value"),
-    OPERATOR_NOT("Not", 0xFF00C853, "Checks if a variable does not equal a parameter value"),
-    
+    OPERATOR_EQUALS("pathmind.node.type.operatorEquals", 0xFF00C853, "pathmind.node.type.operatorEquals.desc"),
+    OPERATOR_NOT("pathmind.node.type.operatorNot", 0xFF00C853, "pathmind.node.type.operatorNot.desc"),
+
     // Navigation Commands
-    GOTO("Goto", 0xFF00BCD4, "Moves to specified coordinates"),
-    GOAL("Goal", 0xFF2196F3, "Sets a goal at specified coordinates"),
-    PATH("Path", 0xFF03DAC6, "Initiates pathfinding to the set goal"),
-    INVERT("Invert", 0xFFFF5722, "Inverts the current goal and path"),
-    COME("Come", 0xFF9C27B0, "Moves towards the camera's direction"),
-    SURFACE("Surface", 0xFF4CAF50, "Moves to the nearest surface"),
-    
+    GOTO("pathmind.node.type.goto", 0xFF00BCD4, "pathmind.node.type.goto.desc"),
+    GOAL("pathmind.node.type.goal", 0xFF2196F3, "pathmind.node.type.goal.desc"),
+    PATH("pathmind.node.type.path", 0xFF03DAC6, "pathmind.node.type.path.desc"),
+    INVERT("pathmind.node.type.invert", 0xFFFF5722, "pathmind.node.type.invert.desc"),
+    COME("pathmind.node.type.come", 0xFF9C27B0, "pathmind.node.type.come.desc"),
+    SURFACE("pathmind.node.type.surface", 0xFF4CAF50, "pathmind.node.type.surface.desc"),
+
     // Resource collection and Building Commands
-    COLLECT("Mine", 0xFF2196F3, "Configures mining-related options"),
-    BUILD("Build", 0xFFFF9800, "Constructs structures from schematic files"),
-    TUNNEL("Tunnel", 0xFF795548, "Digs a 2x3 tunnel forward automatically"),
-    FARM("Farm", 0xFF4CAF50, "Automates harvesting and replanting crops"),
-    PLACE("Place", 0xFF9C27B0, "Places blocks at specified coordinates"),
-    CRAFT("Craft", 0xFFFF9800, "Crafts items using available materials"),
-    
+    COLLECT("pathmind.node.type.collect", 0xFF2196F3, "pathmind.node.type.collect.desc"),
+    BUILD("pathmind.node.type.build", 0xFFFF9800, "pathmind.node.type.build.desc"),
+    TUNNEL("pathmind.node.type.tunnel", 0xFF795548, "pathmind.node.type.tunnel.desc"),
+    FARM("pathmind.node.type.farm", 0xFF4CAF50, "pathmind.node.type.farm.desc"),
+    PLACE("pathmind.node.type.place", 0xFF9C27B0, "pathmind.node.type.place.desc"),
+    CRAFT("pathmind.node.type.craft", 0xFFFF9800, "pathmind.node.type.craft.desc"),
+
     // Exploration Commands
-    EXPLORE("Explore", 0xFF673AB7, "Explores the world from origin coordinates"),
-    FOLLOW("Follow", 0xFF3F51B5, "Follows a specified player"),
-    
+    EXPLORE("pathmind.node.type.explore", 0xFF673AB7, "pathmind.node.type.explore.desc"),
+    FOLLOW("pathmind.node.type.follow", 0xFF3F51B5, "pathmind.node.type.follow.desc"),
+
     // Control flow Commands
-    CONTROL_REPEAT("Repeat", 0xFFFFC107, "Repeat enclosed nodes a set number of times"),
-    CONTROL_REPEAT_UNTIL("Repeat Until", 0xFFFFC107, "Repeat until a condition becomes true"),
-    CONTROL_FOREVER("Forever", 0xFFFFC107, "Loop enclosed nodes indefinitely"),
-    CONTROL_IF("If", 0xFFFFC107, "Run the next branch only when a condition is true"),
-    CONTROL_IF_ELSE("If Else", 0xFFFFC107, "Run one of two branches depending on a condition"),
+    CONTROL_REPEAT("pathmind.node.type.controlRepeat", 0xFFFFC107, "pathmind.node.type.controlRepeat.desc"),
+    CONTROL_REPEAT_UNTIL("pathmind.node.type.controlRepeatUntil", 0xFFFFC107, "pathmind.node.type.controlRepeatUntil.desc"),
+    CONTROL_FOREVER("pathmind.node.type.controlForever", 0xFFFFC107, "pathmind.node.type.controlForever.desc"),
+    CONTROL_IF("pathmind.node.type.controlIf", 0xFFFFC107, "pathmind.node.type.controlIf.desc"),
+    CONTROL_IF_ELSE("pathmind.node.type.controlIfElse", 0xFFFFC107, "pathmind.node.type.controlIfElse.desc"),
 
     // Player movement commands
-    LOOK("Look", 0xFF03A9F4, "Adjusts the player's view direction"),
-    WALK("Walk", 0xFF26C6DA, "Walks forward with optional rotation"),
-    JUMP("Jump", 0xFF009688, "Makes the player jump"),
-    CROUCH("Crouch", 0xFF607D8B, "Toggles crouching"),
-    SPRINT("Sprint", 0xFFFFEB3B, "Toggles sprinting"),
-    STOP("Stop", 0xFFF44336, "Stops the current pathfinding task"),
-    
+    LOOK("pathmind.node.type.look", 0xFF03A9F4, "pathmind.node.type.look.desc"),
+    WALK("pathmind.node.type.walk", 0xFF26C6DA, "pathmind.node.type.walk.desc"),
+    JUMP("pathmind.node.type.jump", 0xFF009688, "pathmind.node.type.jump.desc"),
+    CROUCH("pathmind.node.type.crouch", 0xFF607D8B, "pathmind.node.type.crouch.desc"),
+    SPRINT("pathmind.node.type.sprint", 0xFFFFEB3B, "pathmind.node.type.sprint.desc"),
+    STOP("pathmind.node.type.stop", 0xFFF44336, "pathmind.node.type.stop.desc"),
+
     // Player combat commands
-    SWING("Swing", 0xFFFF7043, "Performs a hand swing and attacks if targeting an entity"),
-    
+    SWING("pathmind.node.type.swing", 0xFFFF7043, "pathmind.node.type.swing.desc"),
+
     // Player interaction commands
-    USE("Use", 0xFF8BC34A, "Uses the selected hand with fine-grained control"),
-    INTERACT("Interact", 0xFF4DB6AC, "Interacts with the targeted block or entity"),
-    PLACE_HAND("Place", 0xFFBA68C8, "Places a block from the selected hand"),
-    TRADE("Trade", 0xFF7E57C2, "Trades with a villager when merchant screen is open"),
+    USE("pathmind.node.type.use", 0xFF8BC34A, "pathmind.node.type.use.desc"),
+    INTERACT("pathmind.node.type.interact", 0xFF4DB6AC, "pathmind.node.type.interact.desc"),
+    PLACE_HAND("pathmind.node.type.placeHand", 0xFFBA68C8, "pathmind.node.type.placeHand.desc"),
+    TRADE("pathmind.node.type.trade", 0xFF7E57C2, "pathmind.node.type.trade.desc"),
 
     // GUI Commands
-    HOTBAR("Hotbar Slot", 0xFFCDDC39, "Selects a hotbar slot"),
-    DROP_ITEM("Drop Item", 0xFFFFAB91, "Drops the currently selected item"),
-    DROP_SLOT("Drop Slot", 0xFFFF7043, "Drops items from a specific slot"),
-    MOVE_ITEM("Move Item", 0xFFFFB74D, "Moves items between inventory slots"),
-    OPEN_INVENTORY("Open Inventory", 0xFFB0BEC5, "Opens the player's inventory screen"),
-    CLOSE_GUI("Close GUI", 0xFFB0BEC5, "Closes the currently open GUI"),
-    WRITE_BOOK("Write Book", 0xFFB0BEC5, "Writes text to an open book and quill"),
+    HOTBAR("pathmind.node.type.hotbar", 0xFFCDDC39, "pathmind.node.type.hotbar.desc"),
+    DROP_ITEM("pathmind.node.type.dropItem", 0xFFFFAB91, "pathmind.node.type.dropItem.desc"),
+    DROP_SLOT("pathmind.node.type.dropSlot", 0xFFFF7043, "pathmind.node.type.dropSlot.desc"),
+    MOVE_ITEM("pathmind.node.type.moveItem", 0xFFFFB74D, "pathmind.node.type.moveItem.desc"),
+    OPEN_INVENTORY("pathmind.node.type.openInventory", 0xFFB0BEC5, "pathmind.node.type.openInventory.desc"),
+    CLOSE_GUI("pathmind.node.type.closeGui", 0xFFB0BEC5, "pathmind.node.type.closeGui.desc"),
+    WRITE_BOOK("pathmind.node.type.writeBook", 0xFFB0BEC5, "pathmind.node.type.writeBook.desc"),
 
     // Equipment Commands
-    EQUIP_ARMOR("Equip Armor", 0xFF7E57C2, "Equips armor from an inventory slot"),
-    EQUIP_HAND("Equip Hand", 0xFF5C6BC0, "Moves an inventory item into a hand"),
-    
+    EQUIP_ARMOR("pathmind.node.type.equipArmor", 0xFF7E57C2, "pathmind.node.type.equipArmor.desc"),
+    EQUIP_HAND("pathmind.node.type.equipHand", 0xFF5C6BC0, "pathmind.node.type.equipHand.desc"),
+
     // Sensor commands
-    SENSOR_TOUCHING_BLOCK("Touching Block", 0xFF64B5F6, "Detect if player is touching a specific block"),
-    SENSOR_TOUCHING_ENTITY("Touching Entity", 0xFF64B5F6, "Detect if player is touching an entity"),
-    SENSOR_AT_COORDINATES("At Coordinates", 0xFF64B5F6, "Detect if player is at specific coordinates"),
-    SENSOR_BLOCK_AHEAD("Block Ahead", 0xFF64B5F6, "Detect if a specific block is directly in front of the player"),
-    SENSOR_BLOCK_BELOW("Block Below", 0xFF64B5F6, "Detect if a specific block is beneath the player"),
-    SENSOR_LIGHT_LEVEL_BELOW("Light Below", 0xFF64B5F6, "Detect if the ambient light level is below a threshold"),
-    SENSOR_IS_DAYTIME("Is Daytime", 0xFF64B5F6, "Detect if it is currently daytime"),
-    SENSOR_IS_RAINING("Is Raining", 0xFF64B5F6, "Detect if it is raining or snowing"),
-    SENSOR_HEALTH_BELOW("Health Below", 0xFF64B5F6, "Detect if player health is below a threshold"),
-    SENSOR_HUNGER_BELOW("Hunger Below", 0xFF64B5F6, "Detect if player hunger is below a threshold"),
-    SENSOR_ENTITY_NEARBY("Entity Nearby", 0xFF64B5F6, "Detect if an entity type is within range"),
-    SENSOR_ITEM_IN_INVENTORY("Has Item", 0xFF64B5F6, "Detect if the player has a specific item"),
-    SENSOR_IS_SWIMMING("Is Swimming", 0xFF64B5F6, "Detect if the player is swimming"),
-    SENSOR_IS_IN_LAVA("In Lava", 0xFF64B5F6, "Detect if the player is touching lava"),
-    SENSOR_IS_UNDERWATER("Underwater", 0xFF64B5F6, "Detect if the player is fully submerged"),
-    SENSOR_IS_ON_GROUND("Is On Ground", 0xFF64B5F6, "Detect if the player is touching the ground"),
-    SENSOR_IS_FALLING("Is Falling", 0xFF64B5F6, "Detect if the player is currently falling"),
-    SENSOR_IS_RENDERED("Is Rendered", 0xFF64B5F6, "Detect if a specified block or item is currently visible to the player"),
-    SENSOR_KEY_PRESSED("Key Pressed", 0xFF64B5F6, "Detect if a specific keyboard key is currently held"),
-    SENSOR_CHAT_MESSAGE("Chat Message", 0xFF64B5F6, "Detect if a player sent a chat message within a time window"),
+    SENSOR_TOUCHING_BLOCK("pathmind.node.type.sensorTouchingBlock", 0xFF64B5F6, "pathmind.node.type.sensorTouchingBlock.desc"),
+    SENSOR_TOUCHING_ENTITY("pathmind.node.type.sensorTouchingEntity", 0xFF64B5F6, "pathmind.node.type.sensorTouchingEntity.desc"),
+    SENSOR_AT_COORDINATES("pathmind.node.type.sensorAtCoordinates", 0xFF64B5F6, "pathmind.node.type.sensorAtCoordinates.desc"),
+    SENSOR_BLOCK_AHEAD("pathmind.node.type.sensorBlockAhead", 0xFF64B5F6, "pathmind.node.type.sensorBlockAhead.desc"),
+    SENSOR_BLOCK_BELOW("pathmind.node.type.sensorBlockBelow", 0xFF64B5F6, "pathmind.node.type.sensorBlockBelow.desc"),
+    SENSOR_LIGHT_LEVEL_BELOW("pathmind.node.type.sensorLightLevelBelow", 0xFF64B5F6, "pathmind.node.type.sensorLightLevelBelow.desc"),
+    SENSOR_IS_DAYTIME("pathmind.node.type.sensorIsDaytime", 0xFF64B5F6, "pathmind.node.type.sensorIsDaytime.desc"),
+    SENSOR_IS_RAINING("pathmind.node.type.sensorIsRaining", 0xFF64B5F6, "pathmind.node.type.sensorIsRaining.desc"),
+    SENSOR_HEALTH_BELOW("pathmind.node.type.sensorHealthBelow", 0xFF64B5F6, "pathmind.node.type.sensorHealthBelow.desc"),
+    SENSOR_HUNGER_BELOW("pathmind.node.type.sensorHungerBelow", 0xFF64B5F6, "pathmind.node.type.sensorHungerBelow.desc"),
+    SENSOR_ENTITY_NEARBY("pathmind.node.type.sensorEntityNearby", 0xFF64B5F6, "pathmind.node.type.sensorEntityNearby.desc"),
+    SENSOR_ITEM_IN_INVENTORY("pathmind.node.type.sensorItemInInventory", 0xFF64B5F6, "pathmind.node.type.sensorItemInInventory.desc"),
+    SENSOR_IS_SWIMMING("pathmind.node.type.sensorIsSwimming", 0xFF64B5F6, "pathmind.node.type.sensorIsSwimming.desc"),
+    SENSOR_IS_IN_LAVA("pathmind.node.type.sensorIsInLava", 0xFF64B5F6, "pathmind.node.type.sensorIsInLava.desc"),
+    SENSOR_IS_UNDERWATER("pathmind.node.type.sensorIsUnderwater", 0xFF64B5F6, "pathmind.node.type.sensorIsUnderwater.desc"),
+    SENSOR_IS_ON_GROUND("pathmind.node.type.sensorIsOnGround", 0xFF64B5F6, "pathmind.node.type.sensorIsOnGround.desc"),
+    SENSOR_IS_FALLING("pathmind.node.type.sensorIsFalling", 0xFF64B5F6, "pathmind.node.type.sensorIsFalling.desc"),
+    SENSOR_IS_RENDERED("pathmind.node.type.sensorIsRendered", 0xFF64B5F6, "pathmind.node.type.sensorIsRendered.desc"),
+    SENSOR_KEY_PRESSED("pathmind.node.type.sensorKeyPressed", 0xFF64B5F6, "pathmind.node.type.sensorKeyPressed.desc"),
+    SENSOR_CHAT_MESSAGE("pathmind.node.type.sensorChatMessage", 0xFF64B5F6, "pathmind.node.type.sensorChatMessage.desc"),
 
     // Utility Commands
-    SCREEN_CONTROL("Screen Control", 0xFF9E9E9E, "Open or close in-game screens"),
-    WAIT("Wait", 0xFF607D8B, "Waits for specified duration"),
-    MESSAGE("Message", 0xFF9E9E9E, "Sends a chat message"),
-    STOP_CHAIN("Stop", 0xFFE53935, "Stops the current node tree"),
-    STOP_ALL("Stop All", 0xFFE53935, "Stops all running node trees"),
+    SCREEN_CONTROL("pathmind.node.type.screenControl", 0xFF9E9E9E, "pathmind.node.type.screenControl.desc"),
+    WAIT("pathmind.node.type.wait", 0xFF607D8B, "pathmind.node.type.wait.desc"),
+    MESSAGE("pathmind.node.type.message", 0xFF9E9E9E, "pathmind.node.type.message.desc"),
+    STOP_CHAIN("pathmind.node.type.stopChain", 0xFFE53935, "pathmind.node.type.stopChain.desc"),
+    STOP_ALL("pathmind.node.type.stopAll", 0xFFE53935, "pathmind.node.type.stopAll.desc"),
 
     // Parameter nodes
-    PARAM_COORDINATE("Coordinate", 0xFF8BC34A, "Reusable XYZ coordinate data"),
-    PARAM_BLOCK("Block", 0xFF8BC34A, "Represents a single block type"),
-    PARAM_ITEM("Item", 0xFF8BC34A, "Represents an item and quantity"),
-    PARAM_ENTITY("Entity", 0xFF8BC34A, "Represents an entity"),
-    PARAM_PLAYER("User", 0xFF8BC34A, "Represents a specific player target"),
-    PARAM_WAYPOINT("Waypoint", 0xFF8BC34A, "Represents a waypoint name and optional range"),
-    PARAM_SCHEMATIC("Schematic", 0xFF8BC34A, "Represents schematic placement data"),
-    PARAM_INVENTORY_SLOT("Inventory Slot", 0xFF8BC34A, "Represents an inventory slot reference"),
-    PARAM_MESSAGE("Message", 0xFF8BC34A, "Represents reusable chat or sign text"),
-    PARAM_DURATION("Duration", 0xFF8BC34A, "Represents a duration or interval"),
-    PARAM_AMOUNT("Amount", 0xFF8BC34A, "Represents a generic numeric amount"),
-    PARAM_BOOLEAN("Toggle", 0xFF8BC34A, "Represents a boolean toggle value"),
-    PARAM_HAND("Hand", 0xFF8BC34A, "Represents a preferred hand selection"),
-    PARAM_KEY("Key", 0xFF8BC34A, "Represents a keyboard key binding"),
-    PARAM_RANGE("Range", 0xFF8BC34A, "Represents a generic radius or range"),
-    PARAM_DISTANCE("Distance", 0xFF8BC34A, "Represents a linear distance value"),
-    PARAM_ROTATION("Direction", 0xFF8BC34A, "Represents yaw and pitch direction with optional distance"),
-    PARAM_PLACE_TARGET("Place", 0xFF8BC34A, "Represents a block placement with coordinates"),
-    PARAM_CLOSEST("Closest", 0xFF8BC34A, "Represents the nearest open block location");
+    PARAM_COORDINATE("pathmind.node.type.paramCoordinate", 0xFF8BC34A, "pathmind.node.type.paramCoordinate.desc"),
+    PARAM_BLOCK("pathmind.node.type.paramBlock", 0xFF8BC34A, "pathmind.node.type.paramBlock.desc"),
+    PARAM_ITEM("pathmind.node.type.paramItem", 0xFF8BC34A, "pathmind.node.type.paramItem.desc"),
+    PARAM_ENTITY("pathmind.node.type.paramEntity", 0xFF8BC34A, "pathmind.node.type.paramEntity.desc"),
+    PARAM_PLAYER("pathmind.node.type.paramPlayer", 0xFF8BC34A, "pathmind.node.type.paramPlayer.desc"),
+    PARAM_WAYPOINT("pathmind.node.type.paramWaypoint", 0xFF8BC34A, "pathmind.node.type.paramWaypoint.desc"),
+    PARAM_SCHEMATIC("pathmind.node.type.paramSchematic", 0xFF8BC34A, "pathmind.node.type.paramSchematic.desc"),
+    PARAM_INVENTORY_SLOT("pathmind.node.type.paramInventorySlot", 0xFF8BC34A, "pathmind.node.type.paramInventorySlot.desc"),
+    PARAM_MESSAGE("pathmind.node.type.paramMessage", 0xFF8BC34A, "pathmind.node.type.paramMessage.desc"),
+    PARAM_DURATION("pathmind.node.type.paramDuration", 0xFF8BC34A, "pathmind.node.type.paramDuration.desc"),
+    PARAM_AMOUNT("pathmind.node.type.paramAmount", 0xFF8BC34A, "pathmind.node.type.paramAmount.desc"),
+    PARAM_BOOLEAN("pathmind.node.type.paramBoolean", 0xFF8BC34A, "pathmind.node.type.paramBoolean.desc"),
+    PARAM_HAND("pathmind.node.type.paramHand", 0xFF8BC34A, "pathmind.node.type.paramHand.desc"),
+    PARAM_KEY("pathmind.node.type.paramKey", 0xFF8BC34A, "pathmind.node.type.paramKey.desc"),
+    PARAM_RANGE("pathmind.node.type.paramRange", 0xFF8BC34A, "pathmind.node.type.paramRange.desc"),
+    PARAM_DISTANCE("pathmind.node.type.paramDistance", 0xFF8BC34A, "pathmind.node.type.paramDistance.desc"),
+    PARAM_ROTATION("pathmind.node.type.paramRotation", 0xFF8BC34A, "pathmind.node.type.paramRotation.desc"),
+    PARAM_PLACE_TARGET("pathmind.node.type.paramPlaceTarget", 0xFF8BC34A, "pathmind.node.type.paramPlaceTarget.desc"),
+    PARAM_CLOSEST("pathmind.node.type.paramClosest", 0xFF8BC34A, "pathmind.node.type.paramClosest.desc");
 
-    private final String displayName;
+    private final String translationKey;
     private final int baseColor;
-    private final String description;
+    private final String descriptionKey;
 
-    NodeType(String displayName, int color, String description) {
-        this.displayName = displayName;
+    NodeType(String translationKey, int color, String descriptionKey) {
+        this.translationKey = translationKey;
         this.baseColor = color;
-        this.description = description;
+        this.descriptionKey = descriptionKey;
     }
 
     public String getDisplayName() {
-        return displayName;
+        return Text.translatable(translationKey).getString();
     }
 
     public int getColor() {
@@ -152,7 +154,7 @@ public enum NodeType {
     }
 
     public String getDescription() {
-        return description;
+        return Text.translatable(descriptionKey).getString();
     }
 
     public boolean isInputNode() {

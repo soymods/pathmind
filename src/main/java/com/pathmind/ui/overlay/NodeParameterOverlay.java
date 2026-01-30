@@ -298,9 +298,9 @@ public class NodeParameterOverlay {
 
         // Render popup background
         context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight,
-            popupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY));
+            UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight,
-            popupAnimation.getAnimatedPopupColor(UITheme.BORDER_HIGHLIGHT)); // Grey outline
+            UITheme.BORDER_HIGHLIGHT); // Grey outline
 
         int clipLeft = scaledX;
         int clipTop = scaledY;
@@ -314,7 +314,7 @@ public class NodeParameterOverlay {
             Text.literal("Edit Parameters: " + node.getType().getDisplayName()),
             popupX + 20,
             popupY + 15,
-            getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
+            UITheme.TEXT_PRIMARY
         );
 
         updateButtonPositions();
@@ -346,7 +346,7 @@ public class NodeParameterOverlay {
                 Text.literal(getParameterDisplayName(param) + " (" + param.getType().getDisplayName() + "):"),
                 popupX + 20,
                 sectionY + 4,
-                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
+                UITheme.TEXT_PRIMARY
             );
 
             int fieldX = popupX + 20;
@@ -376,8 +376,8 @@ public class NodeParameterOverlay {
                 borderColor = UITheme.BORDER_HIGHLIGHT;
             }
 
-            context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, getPopupAnimatedColor(bgColor));
-            DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, getPopupAnimatedColor(borderColor));
+            context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
+            DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
 
             String text = parameterValues.get(i);
             String baseValue = text != null ? text : "";
@@ -415,7 +415,7 @@ public class NodeParameterOverlay {
                     selectionEndX = MathHelper.clamp(selectionEndX, fieldX + 2, fieldX + fieldWidth - 2);
                     if (selectionEndX != selectionStartX) {
                         context.fill(selectionStartX, fieldY + 4, selectionEndX, fieldY + fieldHeight - 4,
-                            getPopupAnimatedColor(0x80426AD5));
+                            0x80426AD5);
                     }
                 }
 
@@ -425,7 +425,7 @@ public class NodeParameterOverlay {
                     Text.literal(displayText),
                     textX,
                     textY,
-                    getPopupAnimatedColor(textColor)
+                    textColor
                 );
             }
 
@@ -436,7 +436,7 @@ public class NodeParameterOverlay {
                     int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
                     caretX = Math.min(caretX, fieldX + fieldWidth - 2);
                     context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4,
-                        getPopupAnimatedColor(UITheme.TEXT_PRIMARY));
+                        UITheme.TEXT_PRIMARY);
                 }
             }
 
@@ -466,7 +466,7 @@ public class NodeParameterOverlay {
 
         int bgColor = hovered ? UITheme.BUTTON_DEFAULT_HOVER : UITheme.BUTTON_DEFAULT_BG;
         context.fill(button.getX(), button.getY(), button.getX() + button.getWidth(), button.getY() + button.getHeight(),
-            getPopupAnimatedColor(bgColor));
+            bgColor);
         float hoverProgress = HoverAnimator.getProgress(button, hovered);
         int borderColor = AnimationHelper.lerpColor(
             UITheme.BORDER_HIGHLIGHT,
@@ -474,7 +474,7 @@ public class NodeParameterOverlay {
             hoverProgress
         );
         DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(),
-            getPopupAnimatedColor(borderColor));
+            borderColor);
 
         // Render button text
         context.drawCenteredTextWithShadow(
@@ -482,7 +482,7 @@ public class NodeParameterOverlay {
             button.getMessage(),
             button.getX() + button.getWidth() / 2,
             button.getY() + 6,
-            getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
+            UITheme.TEXT_PRIMARY
         );
     }
 
@@ -497,9 +497,9 @@ public class NodeParameterOverlay {
         int trackBottom = contentBottom;
         int trackHeight = Math.max(1, trackBottom - trackTop);
 
-        context.fill(trackLeft, trackTop, trackRight, trackBottom, getPopupAnimatedColor(UITheme.BACKGROUND_SIDEBAR));
+        context.fill(trackLeft, trackTop, trackRight, trackBottom, UITheme.BACKGROUND_SIDEBAR);
         DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight,
-            getPopupAnimatedColor(UITheme.BORDER_DEFAULT));
+            UITheme.BORDER_DEFAULT);
 
         int visibleScrollableHeight = Math.max(1, contentBottom - contentTop);
         int totalScrollableHeight = Math.max(visibleScrollableHeight, visibleScrollableHeight + maxScroll);
@@ -509,7 +509,7 @@ public class NodeParameterOverlay {
         int knobTop = trackTop + knobOffset;
 
         context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight,
-            getPopupAnimatedColor(UITheme.BORDER_DEFAULT));
+            UITheme.BORDER_DEFAULT);
     }
 
     private void setScissor(DrawContext context, int left, int top, int right, int bottom) {
@@ -545,6 +545,16 @@ public class NodeParameterOverlay {
         );
     }
 
+    /**
+     * Applies popup animation alpha to a base color.
+     *
+     * NOTE: When shader alpha is properly set via RenderStateBridge.setShaderColor(),
+     * you should use raw colors instead of this method to avoid dual alpha application.
+     * This method is only needed when rendering elements that bypass the shader alpha.
+     *
+     * @deprecated Prefer using shader-level alpha for consistent fade animations
+     */
+    @Deprecated
     private int getPopupAnimatedColor(int baseColor) {
         return popupAnimation.getAnimatedPopupColor(baseColor);
     }

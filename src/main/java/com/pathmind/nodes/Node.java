@@ -510,6 +510,10 @@ public class Node {
         return type.getCategory() == NodeCategory.PARAMETERS || type == NodeType.VARIABLE;
     }
 
+    public boolean shouldRenderInlineParameters() {
+        return type == NodeType.UI_UTILS;
+    }
+
     public static boolean isSensorType(NodeType nodeType) {
         if (nodeType == null) {
             return false;
@@ -571,6 +575,9 @@ public class Node {
         }
         if (type == NodeType.WRITE_BOOK) {
             // Write Book handles its own text/page UI and shouldn't expose a parameter slot
+            return false;
+        }
+        if (type == NodeType.UI_UTILS) {
             return false;
         }
         if (type == NodeType.MESSAGE) {
@@ -2036,6 +2043,29 @@ public class Node {
                 case STOP_FORCE:
                     // No parameters needed
                     break;
+                // UI Utils modes
+                case UI_UTILS_SET_SEND_PACKETS:
+                case UI_UTILS_SET_DELAY_PACKETS:
+                case UI_UTILS_SET_ENABLED:
+                case UI_UTILS_SET_BYPASS_RESOURCE_PACK:
+                case UI_UTILS_SET_FORCE_DENY_RESOURCE_PACK:
+                    parameters.add(new NodeParameter("Enabled", ParameterType.BOOLEAN, "true"));
+                    break;
+                case UI_UTILS_FABRICATE_CLICK_SLOT:
+                    parameters.add(new NodeParameter("SyncId", ParameterType.INTEGER, "-1"));
+                    parameters.add(new NodeParameter("Revision", ParameterType.INTEGER, "-1"));
+                    parameters.add(new NodeParameter("Slot", ParameterType.INTEGER, "0"));
+                    parameters.add(new NodeParameter("Button", ParameterType.INTEGER, "0"));
+                    parameters.add(new NodeParameter("Action", ParameterType.STRING, "PICKUP"));
+                    parameters.add(new NodeParameter("TimesToSend", ParameterType.INTEGER, "1"));
+                    parameters.add(new NodeParameter("Delay", ParameterType.BOOLEAN, "false"));
+                    break;
+                case UI_UTILS_FABRICATE_BUTTON_CLICK:
+                    parameters.add(new NodeParameter("SyncId", ParameterType.INTEGER, "-1"));
+                    parameters.add(new NodeParameter("ButtonId", ParameterType.INTEGER, "0"));
+                    parameters.add(new NodeParameter("TimesToSend", ParameterType.INTEGER, "1"));
+                    parameters.add(new NodeParameter("Delay", ParameterType.BOOLEAN, "false"));
+                    break;
 
                 default:
                     // No parameters needed
@@ -2965,7 +2995,7 @@ public class Node {
         }
 
         int maxTextLength = Math.max(type.getDisplayName().length(), 1);
-        if (isParameterNode()) {
+        if (isParameterNode() || shouldRenderInlineParameters()) {
             for (NodeParameter param : parameters) {
                 String paramText = getParameterLabel(param);
                 if (paramText.length() > maxTextLength) {
@@ -2982,7 +3012,7 @@ public class Node {
         }
 
         int computedWidth = maxTextLength * CHAR_PIXEL_WIDTH + 24; // padding and border allowance
-        if (isParameterNode()) {
+        if (isParameterNode() || shouldRenderInlineParameters()) {
             int maxParameterWidth = 0;
             for (NodeParameter param : parameters) {
                 if (param == null) {
@@ -3122,6 +3152,13 @@ public class Node {
                 contentHeight += SLOT_AREA_PADDING_TOP;
             } else if (type == NodeType.PARAM_BOOLEAN) {
                 contentHeight += getBooleanToggleAreaHeight();
+            } else {
+                contentHeight += BODY_PADDING_NO_PARAMS;
+            }
+        } else if (shouldRenderInlineParameters()) {
+            int parameterLineCount = getVisibleParameterLineCount();
+            if (parameterLineCount > 0) {
+                contentHeight += PARAM_PADDING_TOP + (parameterLineCount * PARAM_LINE_HEIGHT) + PARAM_PADDING_BOTTOM;
             } else {
                 contentHeight += BODY_PADDING_NO_PARAMS;
             }
@@ -3995,6 +4032,14 @@ public class Node {
         }
     }
 
+    private static boolean parseNodeBoolean(Node node, String name, boolean defaultValue) {
+        String value = getParameterString(node, name);
+        if (value == null || value.isEmpty()) {
+            return defaultValue;
+        }
+        return Boolean.parseBoolean(value.trim());
+    }
+
     private static Float parseNodeFloat(Node node, String name) {
         String value = getParameterString(node, name);
         if (value == null || value.isEmpty()) {
@@ -4343,6 +4388,9 @@ public class Node {
                 break;
             case WRITE_BOOK:
                 executeWriteBookCommand(future);
+                break;
+            case UI_UTILS:
+                executeUiUtilsCommand(future);
                 break;
             case SCREEN_CONTROL:
                 executeScreenControlCommand(future);
@@ -5230,6 +5278,378 @@ public class Node {
         } catch (RuntimeException e) {
             sendNodeErrorMessage(client, e.getMessage());
             future.complete(null);
+        }
+    }
+
+    private void executeUiUtilsCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        NodeMode uiMode = mode != null ? mode : NodeMode.UI_UTILS_CLOSE_WITHOUT_PACKET;
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+
+        if (client == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        if (!com.pathmind.util.UiUtilsProxy.isAvailable()) {
+            sendNodeErrorMessage(client, "UI Utils is not installed.");
+            future.complete(null);
+            return;
+        }
+
+        try {
+            runOnClientThread(client, () -> {
+                boolean modernBackend = com.pathmind.util.UiUtilsProxy.isModernBackend();
+                switch (uiMode) {
+                    case UI_UTILS_CLOSE_WITHOUT_PACKET:
+                        if (modernBackend) {
+                            executeUiUtilsCommandOrThrow("close");
+                        } else {
+                            client.setScreen(null);
+                        }
+                        break;
+                    case UI_UTILS_CLOSE_SIGN_WITHOUT_PACKET:
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support close sign without packet.");
+                        }
+                        com.pathmind.util.UiUtilsProxy.setShouldEditSign(false);
+                        client.setScreen(null);
+                        break;
+                    case UI_UTILS_DESYNC:
+                        if (modernBackend) {
+                            executeUiUtilsCommandOrThrow("desync");
+                            break;
+                        }
+                        if (client.getNetworkHandler() == null || client.player == null) {
+                            throw new RuntimeException("Cannot de-sync without a connected player.");
+                        }
+                        client.getNetworkHandler().sendPacket(
+                            new net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket(
+                                client.player.currentScreenHandler.syncId
+                            )
+                        );
+                        break;
+                    case UI_UTILS_SET_SEND_PACKETS: {
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support send packet toggles.");
+                        }
+                        boolean enabled = parseNodeBoolean(this, "Enabled", true);
+                        if (!com.pathmind.util.UiUtilsProxy.setSendPackets(enabled)) {
+                            throw new RuntimeException("Failed to update UI Utils send packets setting.");
+                        }
+                        break;
+                    }
+                    case UI_UTILS_SET_DELAY_PACKETS: {
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support delayed packets.");
+                        }
+                        boolean enabled = parseNodeBoolean(this, "Enabled", true);
+                        Boolean wasEnabled = com.pathmind.util.UiUtilsProxy.getDelayPackets();
+                        if (!com.pathmind.util.UiUtilsProxy.setDelayPackets(enabled)) {
+                            throw new RuntimeException("Failed to update UI Utils delay packets setting.");
+                        }
+                        if (!enabled && Boolean.TRUE.equals(wasEnabled)) {
+                            flushUiUtilsDelayedPackets(client, true);
+                        }
+                        break;
+                    }
+                    case UI_UTILS_FLUSH_DELAYED_PACKETS:
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support delayed packets.");
+                        }
+                        flushUiUtilsDelayedPackets(client, true);
+                        break;
+                    case UI_UTILS_SAVE_GUI:
+                        if (modernBackend) {
+                            executeUiUtilsCommandOrThrow("screen save default");
+                            break;
+                        }
+                        if (client.player == null) {
+                            throw new RuntimeException("Cannot save GUI without an active player.");
+                        }
+                        if (!com.pathmind.util.UiUtilsProxy.setStoredScreen(client.currentScreen, client.player.currentScreenHandler)) {
+                            throw new RuntimeException("Failed to save GUI.");
+                        }
+                        break;
+                    case UI_UTILS_RESTORE_GUI: {
+                        if (modernBackend) {
+                            executeUiUtilsCommandOrThrow("screen load default");
+                            break;
+                        }
+                        if (client.player == null) {
+                            throw new RuntimeException("Cannot restore GUI without an active player.");
+                        }
+                        net.minecraft.client.gui.screen.Screen storedScreen = com.pathmind.util.UiUtilsProxy.getStoredScreen();
+                        net.minecraft.screen.ScreenHandler storedHandler = com.pathmind.util.UiUtilsProxy.getStoredScreenHandler();
+                        if (storedScreen == null || storedHandler == null) {
+                            throw new RuntimeException("No saved GUI is available.");
+                        }
+                        client.setScreen(storedScreen);
+                        client.player.currentScreenHandler = storedHandler;
+                        break;
+                    }
+                    case UI_UTILS_DISCONNECT:
+                        if (modernBackend) {
+                            executeUiUtilsCommandOrThrow("disconnect");
+                            break;
+                        }
+                        if (client.getNetworkHandler() == null) {
+                            throw new RuntimeException("Cannot disconnect without a network handler.");
+                        }
+                        client.getNetworkHandler().getConnection().disconnect(Text.of("Disconnecting (UI-UTILS)"));
+                        break;
+                    case UI_UTILS_DISCONNECT_AND_SEND:
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support disconnect-and-send.");
+                        }
+                        if (client.getNetworkHandler() == null) {
+                            throw new RuntimeException("Cannot disconnect without a network handler.");
+                        }
+                        com.pathmind.util.UiUtilsProxy.setDelayPackets(false);
+                        flushUiUtilsDelayedPackets(client, false);
+                        client.getNetworkHandler().getConnection().disconnect(Text.of("Disconnecting (UI-UTILS)"));
+                        break;
+                    case UI_UTILS_COPY_TITLE_JSON:
+                        if (client.currentScreen == null) {
+                            throw new RuntimeException("No GUI is open to copy.");
+                        }
+                        copyGuiTitleJson(client);
+                        break;
+                    case UI_UTILS_FABRICATE_CLICK_SLOT:
+                        if (modernBackend) {
+                            executeUiUtilsCommandOrThrow(buildModernClickCommand());
+                            break;
+                        }
+                        fabricateClickSlotPacket(client);
+                        break;
+                    case UI_UTILS_FABRICATE_BUTTON_CLICK:
+                        if (modernBackend) {
+                            executeUiUtilsCommandOrThrow(buildModernButtonCommand());
+                            break;
+                        }
+                        fabricateButtonClickPacket(client);
+                        break;
+                    case UI_UTILS_SET_ENABLED: {
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support enable toggles.");
+                        }
+                        boolean enabled = parseNodeBoolean(this, "Enabled", true);
+                        if (!com.pathmind.util.UiUtilsProxy.setEnabled(enabled)) {
+                            throw new RuntimeException("Failed to update UI Utils enabled state.");
+                        }
+                        break;
+                    }
+                    case UI_UTILS_SET_BYPASS_RESOURCE_PACK: {
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support bypass resource pack toggles.");
+                        }
+                        boolean enabled = parseNodeBoolean(this, "Enabled", true);
+                        if (!com.pathmind.util.UiUtilsProxy.setBypassResourcePack(enabled)) {
+                            throw new RuntimeException("Failed to update UI Utils resource pack bypass.");
+                        }
+                        break;
+                    }
+                    case UI_UTILS_SET_FORCE_DENY_RESOURCE_PACK: {
+                        if (modernBackend) {
+                            throw new RuntimeException("UI Utils version does not support force-deny toggles.");
+                        }
+                        boolean enabled = parseNodeBoolean(this, "Enabled", true);
+                        if (!com.pathmind.util.UiUtilsProxy.setResourcePackForceDeny(enabled)) {
+                            throw new RuntimeException("Failed to update UI Utils force deny setting.");
+                        }
+                        break;
+                    }
+                    default:
+                        throw new IllegalStateException("Unknown UI Utils mode: " + uiMode);
+                }
+            });
+            future.complete(null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.completeExceptionally(e);
+        } catch (RuntimeException e) {
+            sendNodeErrorMessage(client, e.getMessage());
+            future.complete(null);
+        }
+    }
+
+    private void executeUiUtilsCommandOrThrow(String command) {
+        if (command == null || command.isBlank()) {
+            throw new RuntimeException("UI Utils command is empty.");
+        }
+        if (!com.pathmind.util.UiUtilsProxy.executeCommand(command)) {
+            throw new RuntimeException("UI Utils command failed: " + command);
+        }
+    }
+
+    private String buildModernClickCommand() {
+        int syncId = parseNodeInt(this, "SyncId", -1);
+        int revision = parseNodeInt(this, "Revision", -1);
+        int slot = parseNodeInt(this, "Slot", 0);
+        int button = parseNodeInt(this, "Button", 0);
+        String actionLabel = getParameterString(this, "Action");
+        int timesToSend = Math.max(1, parseNodeInt(this, "TimesToSend", 1));
+
+        SlotActionType action = parseSlotActionType(actionLabel);
+        if (action == null) {
+            throw new RuntimeException("Invalid slot action type.");
+        }
+
+        StringBuilder command = new StringBuilder();
+        command.append("click ")
+            .append(slot)
+            .append(' ')
+            .append(button)
+            .append(' ')
+            .append(action.name());
+
+        if (syncId >= 0) {
+            command.append(" --syncId ").append(syncId);
+        }
+        if (revision >= 0) {
+            command.append(" --revision ").append(revision);
+        }
+        if (timesToSend > 1) {
+            command.append(" --times ").append(timesToSend);
+        }
+        return command.toString();
+    }
+
+    private String buildModernButtonCommand() {
+        int syncId = parseNodeInt(this, "SyncId", -1);
+        int buttonId = parseNodeInt(this, "ButtonId", 0);
+        int timesToSend = Math.max(1, parseNodeInt(this, "TimesToSend", 1));
+
+        StringBuilder command = new StringBuilder();
+        command.append("button ").append(buttonId);
+        if (syncId >= 0) {
+            command.append(" --syncId ").append(syncId);
+        }
+        if (timesToSend > 1) {
+            command.append(" --times ").append(timesToSend);
+        }
+        return command.toString();
+    }
+
+    private void flushUiUtilsDelayedPackets(net.minecraft.client.MinecraftClient client, boolean notifyPlayer) {
+        if (client == null || client.getNetworkHandler() == null) {
+            throw new RuntimeException("Minecraft network handler not available.");
+        }
+        java.util.List<?> packets = com.pathmind.util.UiUtilsProxy.getDelayedPackets();
+        int count = packets != null ? packets.size() : 0;
+        if (!com.pathmind.util.UiUtilsProxy.flushDelayedPackets(client)) {
+            throw new RuntimeException("Failed to send delayed packets.");
+        }
+        if (notifyPlayer && count > 0 && client.player != null) {
+            client.player.sendMessage(Text.of("Sent " + count + " packets."), false);
+        }
+    }
+
+    private void copyGuiTitleJson(net.minecraft.client.MinecraftClient client) {
+        String json = new com.google.gson.Gson().toJson(
+            net.minecraft.text.TextCodecs.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, client.currentScreen.getTitle()).getOrThrow()
+        );
+        client.keyboard.setClipboard(json);
+    }
+
+    private void fabricateClickSlotPacket(net.minecraft.client.MinecraftClient client) {
+        if (client == null || client.getNetworkHandler() == null) {
+            throw new RuntimeException("Cannot send packets without a network handler.");
+        }
+        int syncId = parseNodeInt(this, "SyncId", -1);
+        int revision = parseNodeInt(this, "Revision", -1);
+        int slot = parseNodeInt(this, "Slot", 0);
+        int button = parseNodeInt(this, "Button", 0);
+        String actionLabel = getParameterString(this, "Action");
+        int timesToSend = Math.max(1, parseNodeInt(this, "TimesToSend", 1));
+        boolean delay = parseNodeBoolean(this, "Delay", false);
+
+        if (client.player == null || client.player.currentScreenHandler == null) {
+            throw new RuntimeException("No active screen handler for fabricated packet.");
+        }
+        if (syncId < 0) {
+            syncId = client.player.currentScreenHandler.syncId;
+        }
+        if (revision < 0) {
+            revision = client.player.currentScreenHandler.getRevision();
+        }
+
+        SlotActionType action = parseSlotActionType(actionLabel);
+        if (action == null) {
+            throw new RuntimeException("Invalid slot action type.");
+        }
+
+        net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket packet =
+            new net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket(
+                syncId,
+                revision,
+                (short) slot,
+                (byte) button,
+                action,
+                new it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap<>(),
+                net.minecraft.screen.sync.ItemStackHash.EMPTY
+            );
+
+        sendFabricatedPacket(client, packet, delay, timesToSend);
+    }
+
+    private void fabricateButtonClickPacket(net.minecraft.client.MinecraftClient client) {
+        if (client == null || client.getNetworkHandler() == null) {
+            throw new RuntimeException("Cannot send packets without a network handler.");
+        }
+        int syncId = parseNodeInt(this, "SyncId", -1);
+        int buttonId = parseNodeInt(this, "ButtonId", 0);
+        int timesToSend = Math.max(1, parseNodeInt(this, "TimesToSend", 1));
+        boolean delay = parseNodeBoolean(this, "Delay", false);
+
+        if (client.player == null || client.player.currentScreenHandler == null) {
+            throw new RuntimeException("No active screen handler for fabricated packet.");
+        }
+        if (syncId < 0) {
+            syncId = client.player.currentScreenHandler.syncId;
+        }
+
+        net.minecraft.network.packet.c2s.play.ButtonClickC2SPacket packet =
+            new net.minecraft.network.packet.c2s.play.ButtonClickC2SPacket(syncId, buttonId);
+
+        sendFabricatedPacket(client, packet, delay, timesToSend);
+    }
+
+    private void sendFabricatedPacket(net.minecraft.client.MinecraftClient client, net.minecraft.network.packet.Packet<?> packet, boolean delay, int timesToSend) {
+        if (client == null || client.getNetworkHandler() == null) {
+            throw new RuntimeException("Cannot send packets without a network handler.");
+        }
+        for (int i = 0; i < timesToSend; i++) {
+            client.getNetworkHandler().sendPacket(packet);
+            if (!delay) {
+                com.pathmind.util.UiUtilsProxy.tryWriteAndFlush(client.getNetworkHandler().getConnection(), packet);
+            }
+        }
+    }
+
+    private SlotActionType parseSlotActionType(String value) {
+        if (value == null || value.isBlank()) {
+            return SlotActionType.PICKUP;
+        }
+        switch (value.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "PICKUP":
+                return SlotActionType.PICKUP;
+            case "QUICK_MOVE":
+                return SlotActionType.QUICK_MOVE;
+            case "SWAP":
+                return SlotActionType.SWAP;
+            case "CLONE":
+                return SlotActionType.CLONE;
+            case "THROW":
+                return SlotActionType.THROW;
+            case "QUICK_CRAFT":
+                return SlotActionType.QUICK_CRAFT;
+            case "PICKUP_ALL":
+                return SlotActionType.PICKUP_ALL;
+            default:
+                return null;
         }
     }
 

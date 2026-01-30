@@ -8,6 +8,7 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.util.BaritoneDependencyChecker;
+import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -51,6 +52,7 @@ public class Sidebar {
     private final Map<NodeCategory, AnimatedValue> tabHoverAnimations;
     private final AnimatedValue categoryOpenAnimation;
     private final boolean baritoneAvailable;
+    private final boolean uiUtilsAvailable;
     private NodeType hoveredNodeType = null;
     private NodeCategory hoveredCategory = null;
     private NodeCategory selectedCategory = null;
@@ -61,16 +63,17 @@ public class Sidebar {
     private int currentRenderedWidth = INNER_SIDEBAR_WIDTH;
     
     public Sidebar() {
-        this(BaritoneDependencyChecker.isBaritoneApiPresent());
+        this(BaritoneDependencyChecker.isBaritoneApiPresent(), UiUtilsDependencyChecker.isUiUtilsPresent());
     }
 
-    public Sidebar(boolean baritoneAvailable) {
+    public Sidebar(boolean baritoneAvailable, boolean uiUtilsAvailable) {
         this.categoryExpanded = new HashMap<>();
         this.categoryNodes = new HashMap<>();
         this.groupedCategoryNodes = new HashMap<>();
         this.tabHoverAnimations = new HashMap<>();
         this.categoryOpenAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
         this.baritoneAvailable = baritoneAvailable;
+        this.uiUtilsAvailable = uiUtilsAvailable;
         
         // Initialize categories as expanded by default
         for (NodeCategory category : NodeCategory.values()) {
@@ -211,6 +214,9 @@ public class Sidebar {
 
     private boolean shouldIncludeNode(NodeType nodeType) {
         if (nodeType == null || !nodeType.isDraggableFromSidebar()) {
+            return false;
+        }
+        if (!uiUtilsAvailable && nodeType.requiresUiUtils()) {
             return false;
         }
         if (baritoneAvailable) {

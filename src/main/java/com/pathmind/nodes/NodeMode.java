@@ -49,6 +49,24 @@ public enum NodeMode {
     SCREEN_OPEN_CHAT("Open Chat", "Open the chat screen for typing"),
     SCREEN_CLOSE_CURRENT("Close Screen", "Close the currently open screen"),
 
+    // UI Utils modes
+    UI_UTILS_CLOSE_WITHOUT_PACKET("Close Without Packet", "Close the current GUI without sending a close packet"),
+    UI_UTILS_CLOSE_SIGN_WITHOUT_PACKET("Close Sign Without Packet", "Close the sign editor without sending its update packet"),
+    UI_UTILS_DESYNC("De-sync GUI", "Close the GUI server-side while keeping it open client-side"),
+    UI_UTILS_SET_SEND_PACKETS("Set Send Packets", "Enable or disable sending UI packets"),
+    UI_UTILS_SET_DELAY_PACKETS("Set Delay Packets", "Enable or disable delaying UI packets"),
+    UI_UTILS_FLUSH_DELAYED_PACKETS("Flush Delayed Packets", "Send all delayed UI packets now"),
+    UI_UTILS_SAVE_GUI("Save GUI", "Save the current GUI for later restore"),
+    UI_UTILS_RESTORE_GUI("Restore Saved GUI", "Restore the last saved GUI"),
+    UI_UTILS_DISCONNECT("Disconnect", "Disconnect from the current server"),
+    UI_UTILS_DISCONNECT_AND_SEND("Disconnect and Send Packets", "Send delayed UI packets before disconnecting"),
+    UI_UTILS_COPY_TITLE_JSON("Copy GUI Title JSON", "Copy the current GUI title as JSON"),
+    UI_UTILS_FABRICATE_CLICK_SLOT("Fabricate Click Slot Packet", "Send a fabricated ClickSlot packet"),
+    UI_UTILS_FABRICATE_BUTTON_CLICK("Fabricate Button Click Packet", "Send a fabricated ButtonClick packet"),
+    UI_UTILS_SET_ENABLED("Set UI Utils Enabled", "Enable or disable UI Utils features"),
+    UI_UTILS_SET_BYPASS_RESOURCE_PACK("Set Bypass Resource Pack", "Enable or disable resource pack bypass"),
+    UI_UTILS_SET_FORCE_DENY_RESOURCE_PACK("Set Force Deny Resource Pack", "Enable or disable forced resource pack denial"),
+
     // FARM modes
     FARM_RANGE("Farm in Range", "Farm within specified range"),
     FARM_WAYPOINT("Farm at Waypoint", "Farm around specified waypoint"),
@@ -111,6 +129,25 @@ public enum NodeMode {
                 return new NodeMode[]{
                     SCREEN_OPEN_CHAT, SCREEN_CLOSE_CURRENT
                 };
+            case UI_UTILS:
+                return new NodeMode[]{
+                    UI_UTILS_CLOSE_WITHOUT_PACKET,
+                    UI_UTILS_CLOSE_SIGN_WITHOUT_PACKET,
+                    UI_UTILS_DESYNC,
+                    UI_UTILS_SET_SEND_PACKETS,
+                    UI_UTILS_SET_DELAY_PACKETS,
+                    UI_UTILS_FLUSH_DELAYED_PACKETS,
+                    UI_UTILS_SAVE_GUI,
+                    UI_UTILS_RESTORE_GUI,
+                    UI_UTILS_DISCONNECT,
+                    UI_UTILS_DISCONNECT_AND_SEND,
+                    UI_UTILS_COPY_TITLE_JSON,
+                    UI_UTILS_FABRICATE_CLICK_SLOT,
+                    UI_UTILS_FABRICATE_BUTTON_CLICK,
+                    UI_UTILS_SET_ENABLED,
+                    UI_UTILS_SET_BYPASS_RESOURCE_PACK,
+                    UI_UTILS_SET_FORCE_DENY_RESOURCE_PACK
+                };
             case FARM:
                 return new NodeMode[]{
                     FARM_RANGE, FARM_WAYPOINT
@@ -149,6 +186,8 @@ public enum NodeMode {
                 return PLAYER_GUI_CLOSE;
             case SCREEN_CONTROL:
                 return SCREEN_OPEN_CHAT;
+            case UI_UTILS:
+                return UI_UTILS_CLOSE_WITHOUT_PACKET;
             case FARM:
                 return FARM_RANGE;
             case STOP:

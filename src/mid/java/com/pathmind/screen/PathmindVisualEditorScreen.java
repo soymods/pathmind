@@ -21,6 +21,7 @@ import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.BaritoneDependencyChecker;
+import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.VersionSupport;
@@ -95,6 +96,9 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PRESET_DELETE_POPUP_HEIGHT = 160;
     private static final int MISSING_BARITONE_POPUP_WIDTH = 360;
     private static final int MISSING_BARITONE_POPUP_HEIGHT = 175;
+    private static final int MISSING_UI_UTILS_POPUP_WIDTH = 360;
+    private static final int MISSING_UI_UTILS_POPUP_HEIGHT = 175;
+    private static final String UI_UTILS_DOWNLOAD_URL = "https://ui-utils.com";
     private static final int SETTINGS_POPUP_WIDTH = 360;
     private static final int SETTINGS_POPUP_HEIGHT = 280;
     private static final int SETTINGS_OPTION_WIDTH = 90;
@@ -113,6 +117,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private NodeParameterOverlay parameterOverlay;
     private BookTextEditorOverlay bookTextEditorOverlay;
     private final boolean baritoneAvailable;
+    private final boolean uiUtilsAvailable;
 
     // Drag and drop state
     private boolean isDraggingFromSidebar = false;
@@ -144,6 +149,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private final PopupAnimationHandler presetDeletePopupAnimation = new PopupAnimationHandler();
     private String pendingPresetDeletionName = "";
     private final PopupAnimationHandler missingBaritonePopupAnimation = new PopupAnimationHandler();
+    private final PopupAnimationHandler missingUiUtilsPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler settingsPopupAnimation = new PopupAnimationHandler();
     private Settings currentSettings;
     private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
@@ -175,8 +181,9 @@ public class PathmindVisualEditorScreen extends Screen {
     public PathmindVisualEditorScreen() {
         super(Text.translatable("screen.pathmind.visual_editor.title"));
         this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
+        this.uiUtilsAvailable = UiUtilsDependencyChecker.isUiUtilsPresent();
         this.nodeGraph = new NodeGraph();
-        this.sidebar = new Sidebar(baritoneAvailable);
+        this.sidebar = new Sidebar(baritoneAvailable, uiUtilsAvailable);
         refreshAvailablePresets();
         this.nodeGraph.setActivePreset(activePresetName);
         updateImportExportPathFromPreset();
@@ -245,6 +252,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (nodeGraph.load()) {
                 System.out.println("Successfully loaded saved node graph");
                 refreshMissingBaritonePopup();
+        refreshMissingUiUtilsPopup();
                 return; // Don't initialize default nodes if we loaded a saved graph
             } else {
                 System.out.println("Failed to load saved node graph, using default");
@@ -254,6 +262,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Initialize node graph with proper centering based on screen dimensions
         nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
         refreshMissingBaritonePopup();
+        refreshMissingUiUtilsPopup();
     }
 
     @Override
@@ -312,6 +321,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDeletePopupAnimation.tick();
         infoPopupAnimation.tick();
         missingBaritonePopupAnimation.tick();
+        missingUiUtilsPopupAnimation.tick();
         settingsPopupAnimation.tick();
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
@@ -364,6 +374,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingBaritonePopupAnimation.isVisible()) {
             renderMissingBaritonePopup(context, mouseX, mouseY);
         }
+        if (missingUiUtilsPopupAnimation.isVisible()) {
+            renderMissingUiUtilsPopup(context, mouseX, mouseY);
+        }
         if (settingsPopupAnimation.isVisible()) {
             renderSettingsPopup(context, mouseX, mouseY);
         }
@@ -394,6 +407,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 || presetDeletePopupAnimation.isVisible()
                 || infoPopupAnimation.isVisible()
                 || missingBaritonePopupAnimation.isVisible()
+                || missingUiUtilsPopupAnimation.isVisible()
                 || settingsPopupAnimation.isVisible();
     }
     
@@ -422,6 +436,7 @@ public class PathmindVisualEditorScreen extends Screen {
             || presetDeletePopupAnimation.isVisible()
             || infoPopupAnimation.isVisible()
             || missingBaritonePopupAnimation.isVisible()
+            || missingUiUtilsPopupAnimation.isVisible()
             || settingsPopupAnimation.isVisible();
     }
 
@@ -446,6 +461,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (missingBaritonePopupAnimation.isVisible()) {
             return missingBaritonePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (missingUiUtilsPopupAnimation.isVisible()) {
+            return missingUiUtilsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
         }
         if (settingsPopupAnimation.isVisible()) {
             return settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
@@ -513,6 +531,21 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void refreshMissingBaritonePopup() {
         if (!baritoneAvailable && nodeGraph.containsBaritoneNodes()) { missingBaritonePopupAnimation.show(); } else { missingBaritonePopupAnimation.hide(); }
+    }
+
+    private boolean shouldBlockUiUtilsNode(NodeType nodeType) {
+        if (nodeType == null || !nodeType.requiresUiUtils()) {
+            return false;
+        }
+        if (uiUtilsAvailable) {
+            return false;
+        }
+        missingUiUtilsPopupAnimation.show();
+        return true;
+    }
+
+    private void refreshMissingUiUtilsPopup() {
+        if (!uiUtilsAvailable && nodeGraph.containsUiUtilsNodes()) { missingUiUtilsPopupAnimation.show(); } else { missingUiUtilsPopupAnimation.hide(); }
     }
     
     private void renderDraggingNode(DrawContext context, int mouseX, int mouseY) {
@@ -660,6 +693,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingBaritonePopupAnimation.isVisible()) {
             return handleMissingBaritonePopupClick(mouseX, mouseY, button);
         }
+        if (missingUiUtilsPopupAnimation.isVisible()) {
+            return handleMissingUiUtilsPopupClick(mouseX, mouseY, button);
+        }
         if (settingsPopupAnimation.isVisible()) {
             if (handleSettingsPopupClick(mouseX, mouseY, button)) {
                 return true;
@@ -784,6 +820,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.handleParameterDropdownClick(mouseX, mouseY)) {
             return true;
         }
+        if (nodeGraph.handleModeDropdownClick(mouseX, mouseY)) {
+            return true;
+        }
 
         // Check if clicking home button
         if (isHomeButtonClicked((int)mouseX, (int)mouseY, button)) {
@@ -808,6 +847,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (sidebar.isHoveringNode()) {
                     NodeType hoveredType = sidebar.getHoveredNodeType();
                     if (shouldBlockBaritoneNode(hoveredType)) {
+                        return true;
+                    }
+                    if (shouldBlockUiUtilsNode(hoveredType)) {
                         return true;
                     }
                     isDraggingFromSidebar = true;
@@ -936,6 +978,11 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleModeFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
                 int parameterIndex = nodeGraph.getParameterFieldIndexAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (parameterIndex != -1) {
                     nodeGraph.selectNode(clickedNode);
@@ -1021,6 +1068,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingBaritonePopupAnimation.isVisible()) {
             return true;
         }
+        if (missingUiUtilsPopupAnimation.isVisible()) {
+            return true;
+        }
         if (settingsPopupAnimation.isVisible()) {
             return true;
         }
@@ -1075,6 +1125,9 @@ public class PathmindVisualEditorScreen extends Screen {
         double mouseY = click.y();
         int button = click.button();
         if (missingBaritonePopupAnimation.isVisible()) {
+            return true;
+        }
+        if (missingUiUtilsPopupAnimation.isVisible()) {
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
@@ -1170,6 +1223,18 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingBaritonePopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 missingBaritonePopupAnimation.hide();
+            }
+            return true;
+        }
+        if (missingUiUtilsPopupAnimation.isVisible()) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                missingUiUtilsPopupAnimation.hide();
+            }
+            return true;
+        }
+        if (nodeGraph.isModeDropdownOpen()) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                nodeGraph.closeModeDropdown();
             }
             return true;
         }
@@ -1462,6 +1527,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.handleParameterDropdownScroll(mouseX, mouseY, verticalAmount)) {
             return true;
         }
+        if (nodeGraph.handleModeDropdownScroll(mouseX, mouseY, verticalAmount)) {
+            return true;
+        }
 
         if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT && verticalAmount != 0.0) {
             nodeGraph.zoomByScroll(verticalAmount, getWorkspaceCenterX(), getWorkspaceCenterY());
@@ -1711,6 +1779,48 @@ public class PathmindVisualEditorScreen extends Screen {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
+    private void renderMissingUiUtilsPopup(DrawContext context, int mouseX, int mouseY) {
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, missingUiUtilsPopupAnimation.getPopupAlpha());
+
+        int popupWidth = MISSING_UI_UTILS_POPUP_WIDTH;
+        int popupHeight = MISSING_UI_UTILS_POPUP_HEIGHT;
+        int[] bounds = missingUiUtilsPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
+
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+
+        int centerX = popupX + scaledWidth / 2;
+        int messageY = popupY + 16;
+        int maxCenteredWidth = scaledWidth - 40;
+        drawPopupCenteredTextWithEllipsis(context, "UI Utils nodes need the UI-Utils mod (optional)", centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, "Install UI-Utils to enable these nodes", centerX, messageY + 16, maxCenteredWidth, 0xFFD7D7D7);
+        drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, 0xFF87CEEB);
+
+        int buttonWidth = 100;
+        int buttonHeight = 20;
+        int buttonGap = 8;
+        int buttonY = popupY + scaledHeight - buttonHeight - 10;
+        int totalButtonsWidth = buttonWidth * 3 + buttonGap * 2;
+        int buttonsStartX = popupX + (scaledWidth - totalButtonsWidth) / 2;
+        int openX = buttonsStartX;
+        int copyX = openX + buttonWidth + buttonGap;
+        int closeX = copyX + buttonWidth + buttonGap;
+
+        boolean openHovered = isPointInRect(mouseX, mouseY, openX, buttonY, buttonWidth, buttonHeight);
+        boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
+        boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
+
+        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY);
+        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY);
+        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+    }
+
     private void drawTitle(DrawContext context, float underlineProgress) {
         int centerX = this.width / 2;
         int textY = (TITLE_BAR_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
@@ -1863,6 +1973,46 @@ public class PathmindVisualEditorScreen extends Screen {
         return true;
     }
 
+    private boolean handleMissingUiUtilsPopupClick(double mouseX, double mouseY, int button) {
+        if (button != 0) {
+            return true;
+        }
+
+        int popupWidth = MISSING_UI_UTILS_POPUP_WIDTH;
+        int popupHeight = MISSING_UI_UTILS_POPUP_HEIGHT;
+        int popupX = (this.width - popupWidth) / 2;
+        int popupY = (this.height - popupHeight) / 2;
+        int buttonWidth = 100;
+        int buttonHeight = 20;
+        int buttonGap = 8;
+        int buttonY = popupY + popupHeight - buttonHeight - 10;
+        int totalButtonsWidth = buttonWidth * 3 + buttonGap * 2;
+        int buttonsStartX = popupX + (popupWidth - totalButtonsWidth) / 2;
+        int openX = buttonsStartX;
+        int copyX = openX + buttonWidth + buttonGap;
+        int closeX = copyX + buttonWidth + buttonGap;
+
+        int mouseXi = (int) mouseX;
+        int mouseYi = (int) mouseY;
+
+        if (isPointInRect(mouseXi, mouseYi, openX, buttonY, buttonWidth, buttonHeight)) {
+            openUiUtilsDownloadLink();
+            return true;
+        }
+
+        if (isPointInRect(mouseXi, mouseYi, copyX, buttonY, buttonWidth, buttonHeight)) {
+            copyUiUtilsDownloadLink();
+            return true;
+        }
+
+        if (isPointInRect(mouseXi, mouseYi, closeX, buttonY, buttonWidth, buttonHeight)) {
+            missingUiUtilsPopupAnimation.hide();
+            return true;
+        }
+
+        return true;
+    }
+
     private void openBaritoneDownloadLink() {
         Util.getOperatingSystem().open(BaritoneDependencyChecker.DOWNLOAD_URL);
     }
@@ -1870,6 +2020,16 @@ public class PathmindVisualEditorScreen extends Screen {
     private void copyBaritoneDownloadLink() {
         if (this.client != null && this.client.keyboard != null) {
             this.client.keyboard.setClipboard(BaritoneDependencyChecker.DOWNLOAD_URL);
+        }
+    }
+
+    private void openUiUtilsDownloadLink() {
+        Util.getOperatingSystem().open(UI_UTILS_DOWNLOAD_URL);
+    }
+
+    private void copyUiUtilsDownloadLink() {
+        if (this.client != null && this.client.keyboard != null) {
+            this.client.keyboard.setClipboard(UI_UTILS_DOWNLOAD_URL);
         }
     }
 
@@ -2027,6 +2187,7 @@ public class PathmindVisualEditorScreen extends Screen {
             boolean success = nodeGraph.importFromPath(path);
             if (success) {
                 refreshMissingBaritonePopup();
+        refreshMissingUiUtilsPopup();
                 lastImportExportPath = path;
                 Path fileName = path.getFileName();
                 String fileLabel = fileName != null ? fileName.toString() : path.toString();
@@ -3044,6 +3205,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
             }
             refreshMissingBaritonePopup();
+        refreshMissingUiUtilsPopup();
             nodeGraph.resetCamera();
             updateImportExportPathFromPreset();
         }
@@ -3118,6 +3280,7 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
         }
         refreshMissingBaritonePopup();
+        refreshMissingUiUtilsPopup();
         nodeGraph.resetCamera();
         updateImportExportPathFromPreset();
     }

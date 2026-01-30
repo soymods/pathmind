@@ -176,6 +176,8 @@
   "pathmind.node.type.closeGui.desc": "Zamyka aktualnie otwarty interfejs",
   "pathmind.node.type.writeBook": "Napisz książkę",
   "pathmind.node.type.writeBook.desc": "Pisze tekst w otwartej książce z piórem",
+  "pathmind.node.type.uiUtils": "UI Utils",
+  "pathmind.node.type.uiUtils.desc": "Accesses UI-Utils actions like packet toggles and GUI control",
 
   "pathmind.node.type.equipArmor": "Załóż zbroję",
   "pathmind.node.type.equipArmor.desc": "Zakłada zbroję ze slotu ekwipunku",

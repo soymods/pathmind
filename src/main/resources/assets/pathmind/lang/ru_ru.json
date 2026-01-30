@@ -176,6 +176,8 @@
   "pathmind.node.type.closeGui.desc": "Закрывает текущий открытый интерфейс",
   "pathmind.node.type.writeBook": "Написать книгу",
   "pathmind.node.type.writeBook.desc": "Пишет текст в открытую книгу с пером",
+  "pathmind.node.type.uiUtils": "UI Utils",
+  "pathmind.node.type.uiUtils.desc": "Accesses UI-Utils actions like packet toggles and GUI control",
 
   "pathmind.node.type.equipArmor": "Надеть броню",
   "pathmind.node.type.equipArmor.desc": "Надевает броню из слота инвентаря",

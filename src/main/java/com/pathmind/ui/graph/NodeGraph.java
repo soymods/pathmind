@@ -201,6 +201,15 @@ public class NodeGraph {
     private Node parameterDropdownSuppressedNode = null;
     private int parameterDropdownSuppressedIndex = -1;
     private String parameterDropdownSuppressedQuery = "";
+    private Node modeDropdownNode = null;
+    private boolean modeDropdownOpen = false;
+    private int modeDropdownHoverIndex = -1;
+    private int modeDropdownScrollOffset = 0;
+    private int modeDropdownFieldX = 0;
+    private int modeDropdownFieldY = 0;
+    private int modeDropdownFieldWidth = 0;
+    private int modeDropdownFieldHeight = 0;
+    private final java.util.List<ModeDropdownOption> modeDropdownOptions = new java.util.ArrayList<>();
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
     private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
     private boolean workspaceDirty = false;
@@ -2557,7 +2566,7 @@ public class NodeGraph {
             }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else {
-            if (node.isParameterNode()) {
+            if (node.isParameterNode() || node.shouldRenderInlineParameters()) {
                 if (shouldShowParameters(node)) {
                     int paramBgColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR; // Grey when over sidebar
                     context.fill(x + 3, y + 16, x + width - 3, y + height - 3, paramBgColor);
@@ -2570,16 +2579,36 @@ public class NodeGraph {
                     }
 
                     if (node.supportsModeSelection()) {
-                        String modeLabel = trimTextToWidth(node.getModeDisplayLabel(), textRenderer, width - 10);
-                        int paramTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY; // Grey text when over sidebar
-                        drawNodeText(
-                            context,
-                            textRenderer,
-                            Text.literal(modeLabel),
-                            x + 5,
-                            paramY,
-                            paramTextColor
-                        );
+                        int fieldLeft = getParameterFieldLeft(node) - cameraX;
+                        int fieldTop = paramY;
+                        int fieldWidth = getParameterFieldWidth(node);
+                        int fieldHeight = getParameterFieldHeight();
+                        int fieldRight = fieldLeft + fieldWidth;
+
+                        int fieldBackground = isOverSidebar
+                            ? UITheme.BACKGROUND_SECONDARY
+                            : UITheme.BACKGROUND_SIDEBAR;
+                        int fieldBorder = isOverSidebar
+                            ? UITheme.BORDER_SUBTLE
+                            : UITheme.BORDER_HIGHLIGHT;
+
+                        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
+                        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+
+                        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+                        int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+                        String labelText = "Mode:";
+                        int labelX = fieldLeft + 4;
+                        int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
+                        drawNodeText(context, textRenderer, Text.literal(labelText), labelX, labelY, labelColor);
+
+                        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
+                        int valueStartX = labelX + textRenderer.getWidth(labelText) + 6;
+                        int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
+                        String displayValue = trimTextToWidth(modeValue, textRenderer, maxValueWidth);
+                        int valueY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
+                        drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, valueY, valueColor);
+
                         paramY += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
                     }
 
@@ -2662,6 +2691,9 @@ public class NodeGraph {
                     }
                     if (parameterDropdownOpen && parameterDropdownNode == node) {
                         renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
+                    }
+                    if (modeDropdownOpen && modeDropdownNode == node) {
+                        renderModeDropdownList(context, textRenderer, mouseX, mouseY);
                     }
                 }
             } else {
@@ -3245,7 +3277,7 @@ public class NodeGraph {
     }
 
     private void updateParameterFieldContentWidth(Node node, TextRenderer textRenderer, int editingIndex, String editingValue) {
-        if (node == null || !node.isParameterNode() || textRenderer == null) {
+        if (node == null || !(node.isParameterNode() || node.shouldRenderInlineParameters()) || textRenderer == null) {
             return;
         }
         int requiredFieldWidth = 0;
@@ -4572,12 +4604,13 @@ public class NodeGraph {
     }
 
     public void startParameterEditing(Node node, int index) {
-        if (node == null || !node.isParameterNode() || node.hasPopupEditButton()
+        if (node == null || !(node.isParameterNode() || node.shouldRenderInlineParameters()) || node.hasPopupEditButton()
             || index < 0 || index >= node.getParameters().size()) {
             stopParameterEditing(false);
             return;
         }
 
+        closeModeDropdown();
         closeSchematicDropdown();
         if (isEditingParameterField()) {
             if (parameterEditingNode == node && parameterEditingIndex == index) {
@@ -5837,6 +5870,9 @@ public class NodeGraph {
     private record ParameterDropdownOption(String label, String value) {
     }
 
+    private record ModeDropdownOption(String label, com.pathmind.nodes.NodeMode mode) {
+    }
+
     private ParameterSegment getParameterSegment(String value, int caret) {
         String working = value != null ? value : "";
         int clamped = MathHelper.clamp(caret, 0, working.length());
@@ -6235,6 +6271,266 @@ public class NodeGraph {
         );
     }
 
+    public boolean handleModeDropdownClick(double screenX, double screenY) {
+        if (!modeDropdownOpen) {
+            return false;
+        }
+        int x = (int) screenX;
+        int y = (int) screenY;
+        if (isPointInsideModeDropdownList(x, y)) {
+            int index = getModeDropdownIndexAt(x, y);
+            if (index >= 0) {
+                applyModeDropdownSelection(index);
+            }
+            return true;
+        }
+        int fieldLeft = modeDropdownFieldX;
+        int fieldTop = modeDropdownFieldY;
+        if (x >= fieldLeft && x <= fieldLeft + modeDropdownFieldWidth
+            && y >= fieldTop && y <= fieldTop + modeDropdownFieldHeight) {
+            return true;
+        }
+        closeModeDropdown();
+        return false;
+    }
+
+    public boolean handleModeDropdownScroll(double screenX, double screenY, double verticalAmount) {
+        if (!modeDropdownOpen) {
+            return false;
+        }
+        if (!isPointInsideModeDropdownList((int) screenX, (int) screenY)) {
+            return false;
+        }
+        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
+        if (layout.maxScrollOffset <= 0) {
+            return false;
+        }
+        int delta = (int) Math.signum(verticalAmount);
+        if (delta == 0) {
+            return false;
+        }
+        modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
+        return true;
+    }
+
+    public boolean handleModeFieldClick(Node node, int screenX, int screenY) {
+        if (node == null || !node.shouldRenderInlineParameters() || !node.supportsModeSelection()) {
+            return false;
+        }
+        if (!isPointInsideModeField(node, screenX, screenY)) {
+            return false;
+        }
+        stopParameterEditing(true);
+        openModeDropdown(node);
+        return true;
+    }
+
+    public boolean isModeDropdownOpen() {
+        return modeDropdownOpen;
+    }
+
+    public void closeModeDropdown() {
+        modeDropdownOpen = false;
+        modeDropdownNode = null;
+        modeDropdownHoverIndex = -1;
+        modeDropdownScrollOffset = 0;
+        modeDropdownOptions.clear();
+    }
+
+    private void renderModeDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!modeDropdownOpen) {
+            return;
+        }
+        List<ModeDropdownOption> options = modeDropdownOptions;
+        int optionCount = Math.max(1, options.size());
+        float zoom = getZoomScale();
+        int transformedMouseX = Math.round(mouseX / zoom);
+        int transformedMouseY = Math.round(mouseY / zoom);
+
+        int rowHeight = getDropdownRowHeight();
+        int dropdownWidth = getModeDropdownWidth();
+        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
+        int listTop = getModeDropdownListTop();
+        int listLeft = modeDropdownFieldX;
+        int listRight = listLeft + dropdownWidth;
+        int listHeight = layout.height;
+        int listBottom = listTop + listHeight;
+
+        context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
+
+        modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
+        modeDropdownHoverIndex = -1;
+        if (transformedMouseX >= listLeft && transformedMouseX <= listRight && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
+            int row = (transformedMouseY - listTop) / rowHeight;
+            if (row >= 0 && row < layout.visibleCount) {
+                modeDropdownHoverIndex = modeDropdownScrollOffset + row;
+            }
+        }
+
+        int visibleCount = layout.visibleCount;
+        for (int row = 0; row < visibleCount; row++) {
+            int optionIndex = modeDropdownScrollOffset + row;
+            String optionLabel = options.isEmpty() ? "No modes" : options.get(optionIndex).label();
+            int rowTop = listTop + row * rowHeight;
+            int rowBottom = rowTop + rowHeight;
+            boolean hovered = options.isEmpty() ? row == 0 && modeDropdownHoverIndex >= 0 : optionIndex == modeDropdownHoverIndex;
+            if (hovered) {
+                context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.BACKGROUND_TERTIARY);
+            }
+            int textPadding = 5;
+            int maxTextWidth = dropdownWidth - (textPadding * 2);
+            String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
+            int textOffsetY = 4;
+            drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + textPadding, rowTop + textOffsetY, UITheme.TEXT_PRIMARY);
+        }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            listLeft,
+            listTop,
+            dropdownWidth,
+            listHeight,
+            optionCount,
+            layout.visibleCount,
+            modeDropdownScrollOffset,
+            layout.maxScrollOffset,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_HIGHLIGHT
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            listLeft,
+            listTop,
+            dropdownWidth,
+            listHeight,
+            UITheme.BORDER_DEFAULT
+        );
+    }
+
+    private int getModeDropdownListTop() {
+        return modeDropdownFieldY + modeDropdownFieldHeight;
+    }
+
+    private int getModeDropdownWidth() {
+        return Math.max(200, Math.round(modeDropdownFieldWidth * 1.5f));
+    }
+
+    private DropdownLayoutHelper.Layout getModeDropdownLayout() {
+        int optionCount = Math.max(1, modeDropdownOptions.size());
+        int listTop = getModeDropdownListTop();
+        float zoom = Math.max(0.01f, getZoomScale());
+        int transformedScreenHeight = Math.round(MinecraftClient.getInstance().getWindow().getScaledHeight() / zoom);
+        int rowHeight = getDropdownRowHeight();
+        return DropdownLayoutHelper.calculate(
+            optionCount,
+            rowHeight,
+            PARAMETER_DROPDOWN_MAX_ROWS,
+            listTop,
+            transformedScreenHeight
+        );
+    }
+
+    private boolean isPointInsideModeDropdownList(int screenX, int screenY) {
+        if (!modeDropdownOpen) {
+            return false;
+        }
+        float zoom = getZoomScale();
+        int transformedX = Math.round(screenX / zoom);
+        int transformedY = Math.round(screenY / zoom);
+
+        int dropdownWidth = getModeDropdownWidth();
+        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
+        int listTop = getModeDropdownListTop();
+        int listLeft = modeDropdownFieldX;
+        return transformedX >= listLeft && transformedX <= listLeft + dropdownWidth
+            && transformedY >= listTop && transformedY <= listTop + layout.height;
+    }
+
+    private int getModeDropdownIndexAt(int screenX, int screenY) {
+        if (!modeDropdownOpen) {
+            return -1;
+        }
+        float zoom = getZoomScale();
+        int transformedY = Math.round(screenY / zoom);
+
+        int rowHeight = getDropdownRowHeight();
+        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
+        int listTop = getModeDropdownListTop();
+        int row = (transformedY - listTop) / rowHeight;
+        if (row < 0 || row >= layout.visibleCount) {
+            return -1;
+        }
+        int index = modeDropdownScrollOffset + row;
+        if (modeDropdownOptions.isEmpty()) {
+            return -1;
+        }
+        return index;
+    }
+
+    private void openModeDropdown(Node node) {
+        if (node == null || !node.supportsModeSelection()) {
+            return;
+        }
+        closeParameterDropdown();
+        closeSchematicDropdown();
+        modeDropdownNode = node;
+        modeDropdownScrollOffset = 0;
+        modeDropdownHoverIndex = -1;
+        modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
+        modeDropdownFieldY = node.getY() - cameraY + 18;
+        modeDropdownFieldWidth = getParameterFieldWidth(node);
+        modeDropdownFieldHeight = getParameterFieldHeight();
+        modeDropdownOptions.clear();
+        modeDropdownOptions.addAll(getModeDropdownOptions(node));
+        modeDropdownOpen = true;
+    }
+
+    private List<ModeDropdownOption> getModeDropdownOptions(Node node) {
+        if (node == null || !node.supportsModeSelection()) {
+            return Collections.emptyList();
+        }
+        com.pathmind.nodes.NodeMode[] modes = com.pathmind.nodes.NodeMode.getModesForNodeType(node.getType());
+        if (modes == null || modes.length == 0) {
+            return Collections.emptyList();
+        }
+        List<ModeDropdownOption> options = new ArrayList<>(modes.length);
+        for (com.pathmind.nodes.NodeMode mode : modes) {
+            if (mode != null) {
+                options.add(new ModeDropdownOption(mode.getDisplayName(), mode));
+            }
+        }
+        return options;
+    }
+
+    private void applyModeDropdownSelection(int optionIndex) {
+        if (!modeDropdownOpen || modeDropdownNode == null || modeDropdownOptions.isEmpty()) {
+            return;
+        }
+        if (optionIndex < 0 || optionIndex >= modeDropdownOptions.size()) {
+            return;
+        }
+        ModeDropdownOption option = modeDropdownOptions.get(optionIndex);
+        if (option == null || option.mode() == null) {
+            return;
+        }
+        modeDropdownNode.setMode(option.mode());
+        modeDropdownNode.recalculateDimensions();
+        notifyNodeParametersChanged(modeDropdownNode);
+        closeModeDropdown();
+    }
+
+    private boolean isPointInsideModeField(Node node, int screenX, int screenY) {
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = getParameterFieldLeft(node);
+        int fieldWidth = getParameterFieldWidth(node);
+        int fieldHeight = getParameterFieldHeight();
+        int fieldTop = node.getY() + 18;
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
     private ItemStack resolveParameterDropdownIcon(Node node, int index, String optionValue) {
         if (node == null || optionValue == null || optionValue.isEmpty() || isBlockStateParameter(node, index)) {
             return ItemStack.EMPTY;
@@ -6442,7 +6738,7 @@ public class NodeGraph {
     }
 
     public int getParameterFieldIndexAt(Node node, int screenX, int screenY) {
-        if (node == null || !node.isParameterNode() || node.hasPopupEditButton()) {
+        if (node == null || !(node.isParameterNode() || node.shouldRenderInlineParameters()) || node.hasPopupEditButton()) {
             return -1;
         }
         int worldX = screenToWorldX(screenX);
@@ -7133,7 +7429,7 @@ public class NodeGraph {
         if (node == null) {
             return false;
         }
-        if (node.isParameterNode()) {
+        if (node.isParameterNode() || node.shouldRenderInlineParameters()) {
             return node.hasParameters() || node.supportsModeSelection();
         }
         return false;
@@ -7150,6 +7446,15 @@ public class NodeGraph {
     public boolean containsBaritoneNodes() {
         for (Node node : nodes) {
             if (node != null && node.getType() != null && node.getType().requiresBaritone()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean containsUiUtilsNodes() {
+        for (Node node : nodes) {
+            if (node != null && node.getType() != null && node.getType().requiresUiUtils()) {
                 return true;
             }
         }

@@ -8,8 +8,7 @@
 
 A client-side visual node editor for building workflows and automation logic in Minecraft
 
-**Languages supported:**  
-🇺🇸 English · 🇩🇪 German · 🇪🇸 Spanish · 🇫🇷 French · 🇵🇱 Polish · 🇧🇷 Portuguese · 🇷🇺 Russian
+**Languages:** 🇺🇸 English · 🇩🇪 German · 🇪🇸 Spanish · 🇫🇷 French · 🇵🇱 Polish · 🇧🇷 Portuguese · 🇷🇺 Russian
 
 ## Quick Start
 

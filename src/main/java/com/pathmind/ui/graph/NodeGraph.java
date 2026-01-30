@@ -11,6 +11,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.BlockSelection;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.DropdownLayoutHelper;
 import org.lwjgl.glfw.GLFW;
@@ -196,7 +197,10 @@ public class NodeGraph {
     private int parameterDropdownFieldWidth = 0;
     private int parameterDropdownFieldHeight = 0;
     private String parameterDropdownQuery = "";
-    private final java.util.List<String> parameterDropdownOptions = new java.util.ArrayList<>();
+    private final java.util.List<ParameterDropdownOption> parameterDropdownOptions = new java.util.ArrayList<>();
+    private Node parameterDropdownSuppressedNode = null;
+    private int parameterDropdownSuppressedIndex = -1;
+    private String parameterDropdownSuppressedQuery = "";
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
     private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
     private boolean workspaceDirty = false;
@@ -4568,6 +4572,7 @@ public class NodeGraph {
         closeSchematicDropdown();
         if (isEditingParameterField()) {
             if (parameterEditingNode == node && parameterEditingIndex == index) {
+                clearParameterDropdownSuppression();
                 return;
             }
             boolean changed = applyParameterEdit();
@@ -4591,6 +4596,7 @@ public class NodeGraph {
         parameterSelectionAnchor = -1;
         parameterSelectionStart = -1;
         parameterSelectionEnd = -1;
+        clearParameterDropdownSuppression();
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
     }
 
@@ -4621,6 +4627,7 @@ public class NodeGraph {
         parameterSelectionStart = -1;
         parameterSelectionEnd = -1;
         closeParameterDropdown();
+        clearParameterDropdownSuppression();
     }
 
     private boolean applyParameterEdit() {
@@ -4674,6 +4681,7 @@ public class NodeGraph {
                         + parameterEditBuffer.substring(parameterCaretPosition);
                     setParameterCaretPosition(parameterCaretPosition - 1);
                     updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+                    clearParameterDropdownSuppression();
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:
@@ -4685,6 +4693,7 @@ public class NodeGraph {
                         + parameterEditBuffer.substring(parameterCaretPosition + 1);
                     setParameterCaretPosition(parameterCaretPosition);
                     updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+                    clearParameterDropdownSuppression();
                 }
                 return true;
             case GLFW.GLFW_KEY_LEFT:
@@ -4964,6 +4973,7 @@ public class NodeGraph {
         }
         parameterCaretPosition = position;
         resetParameterCaretBlink();
+        clearParameterDropdownSuppression();
     }
 
     private boolean deleteCoordinateSelection() {
@@ -5314,6 +5324,7 @@ public class NodeGraph {
             + parameterEditBuffer.substring(parameterSelectionEnd);
         setParameterCaretPosition(parameterSelectionStart);
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+        clearParameterDropdownSuppression();
         return true;
     }
 
@@ -5654,6 +5665,7 @@ public class NodeGraph {
             parameterEditBuffer = working;
             setParameterCaretPosition(caret);
             updateParameterFieldContentWidth(parameterEditingNode, textRenderer, parameterEditingIndex, parameterEditBuffer);
+            clearParameterDropdownSuppression();
             return true;
         }
 
@@ -5677,10 +5689,53 @@ public class NodeGraph {
             return true;
         }
         String name = param.getName();
-        return "Block".equalsIgnoreCase(name)
+        return isBlockStateParameter(node, index)
+            || "Block".equalsIgnoreCase(name)
             || "Blocks".equalsIgnoreCase(name)
             || "Item".equalsIgnoreCase(name)
             || "Entity".equalsIgnoreCase(name);
+    }
+
+    private boolean isBlockStateParameter(Node node, int index) {
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_BLOCK) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "State".equalsIgnoreCase(param.getName());
+    }
+
+    private String getNormalizedBlockIdForStateOptions(Node node) {
+        if (node == null || node.getType() != NodeType.PARAM_BLOCK) {
+            return "";
+        }
+        NodeParameter blockParam = node.getParameter("Block");
+        if (blockParam == null) {
+            return "";
+        }
+        String raw = blockParam.getStringValue();
+        if (raw == null) {
+            return "";
+        }
+        int comma = raw.indexOf(',');
+        if (comma >= 0) {
+            raw = raw.substring(0, comma);
+        }
+        String stripped = BlockSelection.stripState(raw);
+        if (stripped == null || stripped.isEmpty()) {
+            return "";
+        }
+        String fullId = stripped.contains(":") ? stripped : "minecraft:" + stripped;
+        Identifier id = Identifier.tryParse(fullId);
+        if (id == null) {
+            return "";
+        }
+        return id.toString();
     }
 
     private boolean isBlockParameter(Node node, int index) {
@@ -5744,6 +5799,9 @@ public class NodeGraph {
         }
     }
 
+    private record ParameterDropdownOption(String label, String value) {
+    }
+
     private ParameterSegment getParameterSegment(String value, int caret) {
         String working = value != null ? value : "";
         int clamped = MathHelper.clamp(caret, 0, working.length());
@@ -5759,8 +5817,12 @@ public class NodeGraph {
         return new ParameterSegment(start, end, leading, trimmed);
     }
 
-    private List<String> getParameterDropdownOptions(Node node, int index, String query) {
+    private List<ParameterDropdownOption> getParameterDropdownOptions(Node node, int index, String query) {
         String lowered = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        if (isBlockStateParameter(node, index)) {
+            return getBlockStateDropdownOptions(node, lowered);
+        }
+
         List<String> source;
         if (isBlockParameter(node, index)) {
             source = RegistryStringCache.BLOCK_IDS;
@@ -5776,26 +5838,63 @@ public class NodeGraph {
             return Collections.emptyList();
         }
 
-        List<String> starts = new ArrayList<>();
-        List<String> contains = new ArrayList<>();
+        List<ParameterDropdownOption> starts = new ArrayList<>();
+        List<ParameterDropdownOption> contains = new ArrayList<>();
         for (String option : source) {
             String lower = option.toLowerCase(Locale.ROOT);
             if (!lower.contains(lowered)) {
                 continue;
             }
+            ParameterDropdownOption entry = new ParameterDropdownOption(option, option);
             if (lower.startsWith(lowered)) {
-                starts.add(option);
+                starts.add(entry);
             } else {
-                contains.add(option);
+                contains.add(entry);
             }
             if (starts.size() + contains.size() >= 64) {
                 break;
             }
         }
-        List<String> result = new ArrayList<>(Math.min(64, starts.size() + contains.size()));
+        List<ParameterDropdownOption> result = new ArrayList<>(Math.min(64, starts.size() + contains.size()));
         result.addAll(starts);
         result.addAll(contains);
         return result;
+    }
+
+    private List<ParameterDropdownOption> getBlockStateDropdownOptions(Node node, String loweredQuery) {
+        if (node == null) {
+            return Collections.emptyList();
+        }
+        String blockId = getNormalizedBlockIdForStateOptions(node);
+        if (blockId.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<BlockSelection.StateOption> options = BlockSelection.getStateOptions(blockId);
+        if (options.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ParameterDropdownOption> results = new ArrayList<>();
+        boolean includeAnyState = loweredQuery == null || loweredQuery.isEmpty();
+        if (includeAnyState) {
+            results.add(new ParameterDropdownOption("Any State", ""));
+        }
+        String lowered = loweredQuery == null ? "" : loweredQuery;
+        for (BlockSelection.StateOption option : options) {
+            String value = option.value();
+            String label = option.displayText();
+            if (!lowered.isEmpty()) {
+                String valueLower = value.toLowerCase(Locale.ROOT);
+                String labelLower = label.toLowerCase(Locale.ROOT);
+                if (!valueLower.contains(lowered) && !labelLower.contains(lowered)) {
+                    continue;
+                }
+            }
+            results.add(new ParameterDropdownOption(label, value));
+            if (results.size() >= 64) {
+                break;
+            }
+        }
+        return results;
     }
 
     private void updateParameterDropdown(Node node, int index, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth, int fieldHeight) {
@@ -5808,12 +5907,18 @@ public class NodeGraph {
         }
         ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
-        if (query.isEmpty()) {
+        boolean isStateParameter = isBlockStateParameter(node, index);
+        if (query.isEmpty() && !isStateParameter) {
             closeParameterDropdown();
             return;
         }
 
-        List<String> options = getParameterDropdownOptions(node, index, query);
+        if (isParameterDropdownSuppressed(node, index, query)) {
+            closeParameterDropdown();
+            return;
+        }
+
+        List<ParameterDropdownOption> options = getParameterDropdownOptions(node, index, query);
         boolean changed = node != parameterDropdownNode
             || index != parameterDropdownIndex
             || !Objects.equals(parameterDropdownQuery, query);
@@ -5845,6 +5950,33 @@ public class NodeGraph {
         parameterDropdownOptions.clear();
     }
 
+    private void suppressParameterDropdown(Node node, int index, String query) {
+        parameterDropdownSuppressedNode = node;
+        parameterDropdownSuppressedIndex = index;
+        parameterDropdownSuppressedQuery = query == null ? "" : query;
+    }
+
+    private void clearParameterDropdownSuppression() {
+        parameterDropdownSuppressedNode = null;
+        parameterDropdownSuppressedIndex = -1;
+        parameterDropdownSuppressedQuery = "";
+    }
+
+    private boolean isParameterDropdownSuppressed(Node node, int index, String query) {
+        if (parameterDropdownSuppressedNode == null) {
+            return false;
+        }
+        if (parameterDropdownSuppressedNode != node || parameterDropdownSuppressedIndex != index) {
+            return false;
+        }
+        String normalizedQuery = query == null ? "" : query;
+        if (Objects.equals(parameterDropdownSuppressedQuery, normalizedQuery)) {
+            return true;
+        }
+        clearParameterDropdownSuppression();
+        return false;
+    }
+
     private boolean applyParameterDropdownSelection(int optionIndex) {
         if (!isEditingParameterField() || !parameterDropdownOpen || parameterDropdownOptions.isEmpty()) {
             return false;
@@ -5852,14 +5984,17 @@ public class NodeGraph {
         if (optionIndex < 0 || optionIndex >= parameterDropdownOptions.size()) {
             return false;
         }
-        String option = parameterDropdownOptions.get(optionIndex);
+        ParameterDropdownOption option = parameterDropdownOptions.get(optionIndex);
         ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String prefix = parameterEditBuffer.substring(0, segment.start);
         String suffix = parameterEditBuffer.substring(segment.end);
-        String replacement = segment.leadingWhitespace + option;
+        String replacement = segment.leadingWhitespace + option.value();
         parameterEditBuffer = prefix + replacement + suffix;
         setParameterCaretPosition(prefix.length() + replacement.length());
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+        ParameterSegment updatedSegment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
+        String updatedQuery = updatedSegment.trimmedSegment == null ? "" : updatedSegment.trimmedSegment.trim();
+        suppressParameterDropdown(parameterEditingNode, parameterEditingIndex, updatedQuery);
         closeParameterDropdown();
         return true;
     }
@@ -5868,16 +6003,27 @@ public class NodeGraph {
         return parameterDropdownFieldY + parameterDropdownFieldHeight;
     }
 
+    private int getDropdownWidth() {
+        return Math.max(200, Math.round(parameterDropdownFieldWidth * 1.5f));
+    }
+
+    private int getDropdownRowHeight() {
+        return PARAMETER_DROPDOWN_ROW_HEIGHT;
+    }
+
     private DropdownLayoutHelper.Layout getParameterDropdownLayout() {
         int optionCount = Math.max(1, parameterDropdownOptions.size());
         int listTop = getParameterDropdownListTop();
-        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        // Convert screen height to transformed space since dropdown is rendered in transformed coordinates
+        float zoom = Math.max(0.01f, getZoomScale());
+        int transformedScreenHeight = Math.round(MinecraftClient.getInstance().getWindow().getScaledHeight() / zoom);
+        int rowHeight = getDropdownRowHeight();
         return DropdownLayoutHelper.calculate(
             optionCount,
-            PARAMETER_DROPDOWN_ROW_HEIGHT,
+            rowHeight,
             PARAMETER_DROPDOWN_MAX_ROWS,
             listTop,
-            screenHeight
+            transformedScreenHeight
         );
     }
 
@@ -5885,20 +6031,31 @@ public class NodeGraph {
         if (!parameterDropdownOpen) {
             return false;
         }
+        // Transform mouse coordinates from screen space to transformed space
+        float zoom = getZoomScale();
+        int transformedX = Math.round(screenX / zoom);
+        int transformedY = Math.round(screenY / zoom);
+
+        int dropdownWidth = getDropdownWidth();
         DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
         int listTop = getParameterDropdownListTop();
         int listLeft = parameterDropdownFieldX;
-        return screenX >= listLeft && screenX <= listLeft + parameterDropdownFieldWidth
-            && screenY >= listTop && screenY <= listTop + layout.height;
+        return transformedX >= listLeft && transformedX <= listLeft + dropdownWidth
+            && transformedY >= listTop && transformedY <= listTop + layout.height;
     }
 
     private int getParameterDropdownIndexAt(int screenX, int screenY) {
         if (!parameterDropdownOpen) {
             return -1;
         }
+        // Transform mouse coordinates from screen space to transformed space
+        float zoom = getZoomScale();
+        int transformedY = Math.round(screenY / zoom);
+
+        int rowHeight = getDropdownRowHeight();
         DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
         int listTop = getParameterDropdownListTop();
-        int row = (screenY - listTop) / PARAMETER_DROPDOWN_ROW_HEIGHT;
+        int row = (transformedY - listTop) / rowHeight;
         if (row < 0 || row >= layout.visibleCount) {
             return -1;
         }
@@ -5928,6 +6085,11 @@ public class NodeGraph {
             && y >= fieldTop && y <= fieldTop + parameterDropdownFieldHeight) {
             return true;
         }
+        if (isEditingParameterField()) {
+            ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
+            String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
+            suppressParameterDropdown(parameterEditingNode, parameterEditingIndex, query);
+        }
         closeParameterDropdown();
         return false;
     }
@@ -5955,57 +6117,70 @@ public class NodeGraph {
         if (!parameterDropdownOpen) {
             return;
         }
-        List<String> options = parameterDropdownOptions;
+        List<ParameterDropdownOption> options = parameterDropdownOptions;
         int optionCount = Math.max(1, options.size());
+        // Transform mouse coordinates from screen space to transformed space
+        float zoom = getZoomScale();
+        int transformedMouseX = Math.round(mouseX / zoom);
+        int transformedMouseY = Math.round(mouseY / zoom);
+
+        int rowHeight = getDropdownRowHeight();
+        int dropdownWidth = getDropdownWidth();
         DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
         int listTop = getParameterDropdownListTop();
         int listLeft = parameterDropdownFieldX;
-        int listRight = listLeft + parameterDropdownFieldWidth;
+        int listRight = listLeft + dropdownWidth;
         int listHeight = layout.height;
         int listBottom = listTop + listHeight;
 
         context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, listLeft, listTop, parameterDropdownFieldWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
+        DrawContextBridge.drawBorder(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
 
         parameterDropdownScrollOffset = MathHelper.clamp(parameterDropdownScrollOffset, 0, layout.maxScrollOffset);
         parameterDropdownHoverIndex = -1;
-        if (mouseX >= listLeft && mouseX <= listRight && mouseY >= listTop && mouseY <= listBottom) {
-            int row = (mouseY - listTop) / PARAMETER_DROPDOWN_ROW_HEIGHT;
+        if (transformedMouseX >= listLeft && transformedMouseX <= listRight && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
+            int row = (transformedMouseY - listTop) / rowHeight;
             if (row >= 0 && row < layout.visibleCount) {
                 parameterDropdownHoverIndex = parameterDropdownScrollOffset + row;
             }
         }
 
         int visibleCount = layout.visibleCount;
+        int iconSize = 16;
+        int padding = 4;
+
         for (int row = 0; row < visibleCount; row++) {
             int optionIndex = parameterDropdownScrollOffset + row;
-            String optionLabel = options.isEmpty() ? "No matches" : options.get(optionIndex);
-            int rowTop = listTop + row * PARAMETER_DROPDOWN_ROW_HEIGHT;
-            int rowBottom = rowTop + PARAMETER_DROPDOWN_ROW_HEIGHT;
+            String optionLabel = options.isEmpty() ? "No matches" : options.get(optionIndex).label();
+            int rowTop = listTop + row * rowHeight;
+            int rowBottom = rowTop + rowHeight;
             boolean hovered = options.isEmpty() ? row == 0 && parameterDropdownHoverIndex >= 0 : optionIndex == parameterDropdownHoverIndex;
             if (hovered) {
                 context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.BACKGROUND_TERTIARY);
             }
-            int iconX = listLeft + 4;
-            int iconY = rowTop + (PARAMETER_DROPDOWN_ROW_HEIGHT - 16) / 2;
-            ItemStack icon = resolveParameterDropdownIcon(parameterDropdownNode, parameterDropdownIndex, optionLabel);
+            int iconX = listLeft + padding;
+            int iconY = rowTop + (rowHeight - iconSize) / 2;
+            String optionValue = options.isEmpty() ? "" : options.get(optionIndex).value();
+            ItemStack icon = resolveParameterDropdownIcon(parameterDropdownNode, parameterDropdownIndex, optionValue);
             if (!icon.isEmpty()) {
                 context.drawItem(icon, iconX, iconY);
             }
-            int textX = listLeft + 3;
+            int textPadding = 3;
+            int textX = listLeft + textPadding;
             if (!icon.isEmpty()) {
-                textX = iconX + 16 + 4;
+                textX = iconX + iconSize + padding;
             }
-            int maxTextWidth = parameterDropdownFieldWidth - (textX - listLeft) - 3;
+            int maxTextWidth = dropdownWidth - (textX - listLeft) - textPadding;
             String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
-            drawNodeText(context, textRenderer, Text.literal(rowText), textX, rowTop + 4, UITheme.TEXT_PRIMARY);
+            int textOffsetY = 4;
+            drawNodeText(context, textRenderer, Text.literal(rowText), textX, rowTop + textOffsetY, UITheme.TEXT_PRIMARY);
         }
 
         DropdownLayoutHelper.drawScrollBar(
             context,
             listLeft,
             listTop,
-            parameterDropdownFieldWidth,
+            dropdownWidth,
             listHeight,
             optionCount,
             layout.visibleCount,
@@ -6018,17 +6193,17 @@ public class NodeGraph {
             context,
             listLeft,
             listTop,
-            parameterDropdownFieldWidth,
+            dropdownWidth,
             listHeight,
             UITheme.BORDER_DEFAULT
         );
     }
 
-    private ItemStack resolveParameterDropdownIcon(Node node, int index, String optionLabel) {
-        if (node == null || optionLabel == null || optionLabel.isEmpty()) {
+    private ItemStack resolveParameterDropdownIcon(Node node, int index, String optionValue) {
+        if (node == null || optionValue == null || optionValue.isEmpty() || isBlockStateParameter(node, index)) {
             return ItemStack.EMPTY;
         }
-        String fullId = optionLabel.contains(":") ? optionLabel : "minecraft:" + optionLabel;
+        String fullId = optionValue.contains(":") ? optionValue : "minecraft:" + optionValue;
         Identifier id = Identifier.tryParse(fullId);
         if (id == null) {
             return ItemStack.EMPTY;

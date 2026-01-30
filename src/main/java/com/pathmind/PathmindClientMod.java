@@ -74,7 +74,7 @@ public class PathmindClientMod implements ClientModInitializer {
                 return;
             }
             long timestamp = receptionTimestamp != null ? receptionTimestamp.toEpochMilli() : System.currentTimeMillis();
-            ChatMessageTracker.record(sender.name(), message.getString(), timestamp);
+            ChatMessageTracker.record(com.pathmind.util.GameProfileCompatibilityBridge.getName(sender), message.getString(), timestamp);
         });
         
         // Register HUD render callback for the active node overlay

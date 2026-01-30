@@ -1,7 +1,6 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.nodes.Node;
-import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
@@ -10,37 +9,19 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.BlockSelection;
 import com.pathmind.util.InventorySlotModeHelper;
-import com.pathmind.util.DropdownLayoutHelper;
-import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.SpawnReason;
 import com.pathmind.util.RenderStateBridge;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.item.SpawnEggItem;
-import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
-import net.minecraft.world.World;
 import org.lwjgl.glfw.GLFW;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.ButtonWidgetCompatibilityBridge;
@@ -59,7 +40,6 @@ public class NodeParameterOverlay {
     private static final int BUTTON_WIDTH = 80;
     private static final int BUTTON_HEIGHT = 20;
     private static final int MIN_POPUP_HEIGHT = 140;
-    private static final int DROPDOWN_OPTION_HEIGHT = 20;
     private static final int MIN_POPUP_WIDTH = 300;
     private static final int APPROX_CHAR_WIDTH = 6;
     private static final int POPUP_VERTICAL_MARGIN = 40;
@@ -69,9 +49,6 @@ public class NodeParameterOverlay {
     private static final int KEY_SELECTOR_ROW_GAP = 6;
     private static final int KEY_SELECTOR_KEY_GAP = 4;
     private static final int KEY_SELECTOR_PADDING = 6;
-    private static final int SUGGESTION_MAX_OPTIONS = 8;
-    private static final int SUGGESTION_ICON_SIZE = 16;
-    private static final int SUGGESTION_ICON_TEXT_GAP = 6;
 
     private static final KeySpec[][] KEY_SELECTOR_LAYOUT = new KeySpec[][]{
         new KeySpec[]{
@@ -173,47 +150,15 @@ public class NodeParameterOverlay {
     private ButtonWidget cancelButton;
     private final Runnable onClose;
     private final Consumer<Node> onSave;
-    private final Supplier<List<String>> functionNameSupplier;
     private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
     private boolean pendingClose = false;
     private int focusedFieldIndex = -1;
-    
-    // Mode selection fields
-    private NodeMode selectedMode;
-    private final List<NodeMode> availableModes;
-    private boolean modeDropdownOpen = false;
-    private int modeDropdownHoverIndex = -1;
-    private int modeDropdownScrollOffset = 0;
-    
-    // Function selection dropdown (Call Function node)
-    private final List<String> functionNameOptions;
-    private int functionDropdownParamIndex = -1;
-    private boolean functionDropdownOpen = false;
-    private int functionDropdownHoverIndex = -1;
-    private int functionDropdownScrollOffset = 0;
-    private int functionDropdownFieldX = 0;
-    private int functionDropdownFieldY = 0;
-    private int functionDropdownFieldWidth = 0;
-    private int functionDropdownFieldHeight = 0;
-    private boolean functionDropdownEnabled = false;
     private final boolean inventorySlotEditorActive;
     private final int inventorySlotParamIndex;
     private final int inventoryModeParamIndex;
     private final InventorySlotSelector inventorySlotSelector;
     private Boolean inventorySlotSelectionIsPlayer = null;
     private boolean suppressInventorySelectorCallbacks = false;
-    private boolean blockStateEditorActive;
-    private int blockParameterIndex;
-    private int blockStateParamIndex;
-    private final List<BlockSelection.StateOption> blockStateOptions = new ArrayList<>();
-    private String cachedBlockIdForStateOptions = "";
-    private boolean blockStateDropdownOpen = false;
-    private int blockStateDropdownHoverIndex = -1;
-    private int blockStateDropdownScrollOffset = 0;
-    private int blockStateFieldX;
-    private int blockStateFieldY;
-    private int blockStateFieldWidth;
-    private int blockStateFieldHeight;
     private int textLineHeight = 9;
     private final List<Integer> caretPositions = new ArrayList<>();
     private final List<Integer> selectionStarts = new ArrayList<>();
@@ -222,21 +167,9 @@ public class NodeParameterOverlay {
     private long caretBlinkLastToggle = 0L;
     private boolean caretVisible = true;
     private boolean scissorEnabled = false;
-    private boolean blockItemDropdownOpen = false;
-    private int blockItemDropdownHoverIndex = -1;
-    private int blockItemDropdownFieldIndex = -1;
-    private int blockItemDropdownFieldX = 0;
-    private int blockItemDropdownFieldY = 0;
-    private int blockItemDropdownFieldWidth = 0;
-    private int blockItemDropdownFieldHeight = 0;
-    private int blockItemDropdownScrollOffset = 0;
-    private String blockItemDropdownQuery = "";
-    private final List<RegistryOption> blockItemDropdownOptions = new ArrayList<>();
-    private int blockItemDropdownSuppressedField = -1;
 
     public NodeParameterOverlay(Node node, int screenWidth, int screenHeight, int topBarHeight, Runnable onClose,
-                                Consumer<Node> onSave,
-                                Supplier<List<String>> functionNameSupplier) {
+                                Consumer<Node> onSave) {
         this.node = node;
         this.onClose = onClose;
         this.onSave = onSave;
@@ -244,19 +177,6 @@ public class NodeParameterOverlay {
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.topBarHeight = topBarHeight;
-        this.functionNameSupplier = functionNameSupplier;
-        
-        // Initialize mode selection
-        this.availableModes = new ArrayList<>();
-        this.functionNameOptions = new ArrayList<>();
-        NodeMode[] modes = NodeMode.getModesForNodeType(node.getType());
-        if (modes != null) {
-            for (NodeMode mode : modes) {
-                this.availableModes.add(mode);
-            }
-        }
-        this.selectedMode = node.getMode();
-        this.functionDropdownParamIndex = findFunctionDropdownIndex(node);
 
         int slotIndex = -1;
         int modeIndex = -1;
@@ -314,33 +234,11 @@ public class NodeParameterOverlay {
             this.inventorySlotSelector = null;
         }
 
-        int tempBlockIndex = -1;
-        int tempBlockStateIndex = -1;
-        if (node.getType() == NodeType.PARAM_BLOCK) {
-            List<NodeParameter> params = node.getParameters();
-            for (int i = 0; i < params.size(); i++) {
-                NodeParameter param = params.get(i);
-                if (param == null) {
-                    continue;
-                }
-                String name = param.getName();
-                if ("Block".equalsIgnoreCase(name)) {
-                    tempBlockIndex = i;
-                } else if ("State".equalsIgnoreCase(name)) {
-                    tempBlockStateIndex = i;
-                }
-            }
-        }
-        this.blockParameterIndex = tempBlockIndex;
-        this.blockStateParamIndex = tempBlockStateIndex;
-        this.blockStateEditorActive = tempBlockStateIndex >= 0;
-        
         updatePopupDimensions();
     }
 
     public void init() {
         resetParameterFields();
-        refreshFunctionNameOptions();
         if (inventorySlotEditorActive && inventorySlotSelector != null) {
             Boolean storedSelection = null;
             if (inventoryModeParamIndex >= 0 && inventoryModeParamIndex < parameterValues.size()) {
@@ -387,13 +285,6 @@ public class NodeParameterOverlay {
             return;
         }
         if (!popupAnimation.isVisible()) return;
-        updateBlockStateOptions(false);
-        if (focusedFieldIndex < 0 || !isBlockOrItemParameter(focusedFieldIndex) || isBlockItemDropdownSuppressed(focusedFieldIndex)) {
-            blockItemDropdownOpen = false;
-            blockItemDropdownHoverIndex = -1;
-            blockItemDropdownFieldIndex = -1;
-            blockItemDropdownOptions.clear();
-        }
 
         float popupAlpha = popupAnimation.getPopupAlpha();
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
@@ -443,50 +334,6 @@ public class NodeParameterOverlay {
         }
 
         int sectionY = contentTop - scrollOffset;
-        if (hasModeSelection()) {
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal("Mode:"),
-                popupX + 20,
-                sectionY + 4,
-                UITheme.TEXT_PRIMARY
-            );
-
-            int modeButtonX = popupX + 20;
-            int modeButtonY = sectionY + LABEL_TO_FIELD_OFFSET;
-            int modeButtonWidth = popupWidth - 40;
-            int modeButtonHeight = FIELD_HEIGHT;
-
-            boolean modeButtonHovered = mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
-                                      mouseY >= modeButtonY && mouseY <= modeButtonY + modeButtonHeight;
-
-            int modeBgColor = modeButtonHovered ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.1f) : UITheme.BACKGROUND_SIDEBAR;
-            int modeBorderColor = modeButtonHovered ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_HIGHLIGHT;
-            modeBgColor = getPopupAnimatedColor(modeBgColor);
-            modeBorderColor = getPopupAnimatedColor(modeBorderColor);
-
-            context.fill(modeButtonX, modeButtonY, modeButtonX + modeButtonWidth, modeButtonY + modeButtonHeight, modeBgColor);
-            DrawContextBridge.drawBorder(context, modeButtonX, modeButtonY, modeButtonWidth, modeButtonHeight, modeBorderColor);
-
-            String modeText = selectedMode != null ? selectedMode.getDisplayName() : "Select Mode";
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(modeText),
-                modeButtonX + 4,
-                modeButtonY + 6,
-                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
-            );
-
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal("▼"),
-                modeButtonX + modeButtonWidth - 16,
-                modeButtonY + 6,
-                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
-            );
-
-            sectionY = modeButtonY + modeButtonHeight + SECTION_SPACING;
-        }
 
         this.textLineHeight = textRenderer.fontHeight;
         for (int i = 0; i < node.getParameters().size(); i++) {
@@ -512,35 +359,16 @@ public class NodeParameterOverlay {
                 continue;
             }
 
-            boolean isBlockStateField = blockStateEditorActive && i == blockStateParamIndex && !blockStateOptions.isEmpty();
-            if (isBlockStateField) {
-                renderBlockStateField(context, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight, mouseX, mouseY);
-                sectionY = fieldY + fieldHeight + SECTION_SPACING;
-                continue;
-            }
             if (usesKeySelectorForIndex(i)) {
                 int selectorHeight = renderKeySelector(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, i);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }
 
-            boolean isDropdownField = usesFunctionDropdownForIndex(i);
-            if (isDropdownField) {
-                functionDropdownFieldX = fieldX;
-                functionDropdownFieldY = fieldY;
-                functionDropdownFieldWidth = fieldWidth;
-                functionDropdownFieldHeight = fieldHeight;
-            }
-
-            boolean dropdownActive = isDropdownField && functionDropdownOpen;
-            boolean isFocused = !isDropdownField && i == focusedFieldIndex;
-            boolean isBlockItemField = isBlockOrItemParameter(i);
+            boolean isFocused = i == focusedFieldIndex;
             int bgColor;
             int borderColor;
-            if (dropdownActive) {
-                bgColor = adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.2f);
-                borderColor = UITheme.ACCENT_DEFAULT;
-            } else if (isFocused) {
+            if (isFocused) {
                 bgColor = UITheme.BACKGROUND_SECONDARY;
                 borderColor = UITheme.ACCENT_DEFAULT;
             } else {
@@ -552,50 +380,23 @@ public class NodeParameterOverlay {
             DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, getPopupAnimatedColor(borderColor));
 
             String text = parameterValues.get(i);
-            if (isDropdownField) {
-                String displayValue;
-                int textColor;
-                if (!functionDropdownEnabled) {
-                    displayValue = "";
-                    textColor = UITheme.BORDER_HIGHLIGHT;
-                } else {
-                    displayValue = (text == null || text.isEmpty()) ? "select function" : text;
-                    textColor = (text == null || text.isEmpty()) ? UITheme.TEXT_SECONDARY : UITheme.TEXT_PRIMARY;
-                }
-                int availableWidth = fieldWidth - 24;
-                String displayText = trimDisplayString(textRenderer, displayValue, availableWidth);
-                context.drawTextWithShadow(
-                    textRenderer,
-                    Text.literal(displayText),
-                    fieldX + 4,
-                    fieldY + 6,
-                    getPopupAnimatedColor(textColor)
-                );
-                context.drawTextWithShadow(
-                    textRenderer,
-                    Text.literal("▼"),
-                    fieldX + fieldWidth - 14,
-                    fieldY + 6,
-                    getPopupAnimatedColor(functionDropdownEnabled ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY)
-                );
+            String baseValue = text != null ? text : "";
+            boolean showingPlaceholder = isPlaceholderActive(i);
+            String displayText;
+            int textColor;
+            if (showingPlaceholder) {
+                String placeholder = getPlaceholderText(i);
+                displayText = trimDisplayString(textRenderer, placeholder, fieldWidth - 8);
+                textColor = UITheme.TEXT_TERTIARY;
+            } else if (isFocused) {
+                displayText = baseValue;
+                textColor = UITheme.TEXT_PRIMARY;
             } else {
-                String baseValue = text != null ? text : "";
-                boolean showingPlaceholder = isPlaceholderActive(i);
-                String displayText;
-                int textColor;
-                if (showingPlaceholder) {
-                    String placeholder = getPlaceholderText(i);
-                    displayText = trimDisplayString(textRenderer, placeholder, fieldWidth - 8);
-                    textColor = UITheme.TEXT_TERTIARY;
-                } else if (isFocused) {
-                    displayText = baseValue;
-                    textColor = UITheme.TEXT_PRIMARY;
-                } else {
-                    displayText = trimDisplayString(textRenderer, baseValue, fieldWidth - 8);
-                    textColor = UITheme.TEXT_PRIMARY;
-                }
-                int textX = fieldX + 4;
-                int textY = fieldY + 6;
+                displayText = trimDisplayString(textRenderer, baseValue, fieldWidth - 8);
+                textColor = UITheme.TEXT_PRIMARY;
+            }
+            int textX = fieldX + 4;
+            int textY = fieldY + 6;
 
                 if (!showingPlaceholder && isFocused && hasSelectionForField(i)) {
                     String value = baseValue;
@@ -618,55 +419,24 @@ public class NodeParameterOverlay {
                     }
                 }
 
-                if (!displayText.isEmpty()) {
-                    if (isFocused && isBlockItemField && !showingPlaceholder) {
-                        renderBlockItemSuggestionText(context, textRenderer, baseValue, i, textX, textY, fieldWidth - 8);
-                    } else {
-                        context.drawTextWithShadow(
-                            textRenderer,
-                            Text.literal(displayText),
-                            textX,
-                            textY,
-                            getPopupAnimatedColor(textColor)
-                        );
-                    }
-                }
-
-                if (isFocused) {
-                    updateCaretBlinkState();
-                    if (caretVisible) {
-                        int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
-                        int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
-                        caretX = Math.min(caretX, fieldX + fieldWidth - 2);
-                        context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4,
-                            getPopupAnimatedColor(UITheme.TEXT_PRIMARY));
-                    }
-                }
+            if (!displayText.isEmpty()) {
+                context.drawTextWithShadow(
+                    textRenderer,
+                    Text.literal(displayText),
+                    textX,
+                    textY,
+                    getPopupAnimatedColor(textColor)
+                );
             }
 
-            if (isFocused && isBlockItemField && !isBlockItemDropdownSuppressed(i)) {
-                if (fieldY + fieldHeight >= contentTop && fieldY <= contentBottom) {
-                    List<RegistryOption> options = getBlockItemDropdownOptions(i);
-                    if (!options.isEmpty()) {
-                        SegmentInfo segmentInfo = getBlockItemSegmentInfo(i);
-                        String query = segmentInfo == null ? "" : segmentInfo.trimmed().toLowerCase();
-                        if (blockItemDropdownFieldIndex != i || !Objects.equals(blockItemDropdownQuery, query)) {
-                            blockItemDropdownScrollOffset = 0;
-                            blockItemDropdownQuery = query;
-                        }
-                        blockItemDropdownOpen = true;
-                        blockItemDropdownFieldIndex = i;
-                        blockItemDropdownFieldX = fieldX;
-                        blockItemDropdownFieldY = fieldY;
-                        blockItemDropdownFieldWidth = fieldWidth;
-                        blockItemDropdownFieldHeight = fieldHeight;
-                        blockItemDropdownOptions.clear();
-                        blockItemDropdownOptions.addAll(options);
-                    } else if (blockItemDropdownFieldIndex == i) {
-                        blockItemDropdownOpen = false;
-                        blockItemDropdownHoverIndex = -1;
-                        blockItemDropdownOptions.clear();
-                    }
+            if (isFocused) {
+                updateCaretBlinkState();
+                if (caretVisible) {
+                    int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
+                    int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
+                    caretX = Math.min(caretX, fieldX + fieldWidth - 2);
+                    context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4,
+                        getPopupAnimatedColor(UITheme.TEXT_PRIMARY));
                 }
             }
 
@@ -679,96 +449,7 @@ public class NodeParameterOverlay {
         renderButton(context, textRenderer, saveButton, mouseX, mouseY);
         renderButton(context, textRenderer, cancelButton, mouseX, mouseY);
 
-        if (hasModeSelection() && modeDropdownOpen) {
-            setScissor(context, clipLeft, clipTop, clipRight, clipBottom);
-            int modeButtonX = popupX + 20;
-            int modeButtonY = popupY + CONTENT_START_OFFSET + LABEL_TO_FIELD_OFFSET - scrollOffset;
-            int modeButtonWidth = popupWidth - 40;
-            int modeButtonHeight = FIELD_HEIGHT;
-
-            int dropdownY = modeButtonY + modeButtonHeight;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                availableModes.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                availableModes.size(),
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
-
-            modeDropdownHoverIndex = -1;
-            if (mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
-                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                int hoverIndex = modeDropdownScrollOffset + (mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT;
-                if (hoverIndex >= 0 && hoverIndex < availableModes.size()) {
-                    modeDropdownHoverIndex = hoverIndex;
-                }
-            }
-
-            context.fill(modeButtonX, dropdownY, modeButtonX + modeButtonWidth, dropdownY + dropdownHeight,
-                getPopupAnimatedColor(UITheme.BACKGROUND_SIDEBAR));
-            DrawContextBridge.drawBorder(context, modeButtonX, dropdownY, modeButtonWidth, dropdownHeight,
-                getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT));
-
-            int startIndex = modeDropdownScrollOffset;
-            int endIndex = Math.min(availableModes.size(), startIndex + layout.visibleCount);
-            for (int i = startIndex; i < endIndex; i++) {
-                NodeMode mode = availableModes.get(i);
-                int optionY = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
-
-                boolean isSelected = selectedMode == mode;
-                boolean isHovered = i == modeDropdownHoverIndex;
-                int optionColor = isSelected ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 0.9f) : UITheme.BACKGROUND_SIDEBAR;
-                if (isHovered) {
-                    optionColor = adjustColorBrightness(optionColor, 1.2f);
-                }
-                context.fill(modeButtonX, optionY, modeButtonX + modeButtonWidth, optionY + DROPDOWN_OPTION_HEIGHT,
-                    getPopupAnimatedColor(optionColor));
-
-                context.drawTextWithShadow(
-                    textRenderer,
-                    Text.literal(mode.getDisplayName()),
-                    modeButtonX + 4,
-                    optionY + 6,
-                    getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
-                );
-            }
-
-            DropdownLayoutHelper.drawScrollBar(
-                context,
-                modeButtonX,
-                dropdownY,
-                modeButtonWidth,
-                dropdownHeight,
-                availableModes.size(),
-                layout.visibleCount,
-                modeDropdownScrollOffset,
-                layout.maxScrollOffset,
-                getPopupAnimatedColor(UITheme.BORDER_DEFAULT),
-                getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT)
-            );
-            DropdownLayoutHelper.drawOutline(
-                context,
-                modeButtonX,
-                dropdownY,
-                modeButtonWidth,
-                dropdownHeight,
-                getPopupAnimatedColor(UITheme.BORDER_DEFAULT)
-            );
-            clearScissor(context);
-        }
-
         setScissor(context, clipLeft, clipTop, clipRight, clipBottom);
-        if (functionDropdownOpen) {
-            renderFunctionDropdown(context, textRenderer, mouseX, mouseY);
-        }
-        if (blockStateDropdownOpen) {
-            renderBlockStateDropdown(context, textRenderer, mouseX, mouseY);
-        }
-        if (blockItemDropdownOpen) {
-            renderBlockItemDropdown(context, textRenderer, mouseX, mouseY);
-        }
 
         renderScrollbar(context, contentTop, contentBottom);
         clearScissor(context);
@@ -881,327 +562,13 @@ public class NodeParameterOverlay {
     }
 
     private void handleParameterValueChanged(int index) {
-        if (blockStateEditorActive && index == blockParameterIndex) {
-            updateBlockStateOptions(true);
-        }
-
     }
 
     private boolean shouldDisplayParameter(int index) {
         if (inventorySlotEditorActive && index == inventoryModeParamIndex) {
             return false;
         }
-        if (blockStateEditorActive && index == blockStateParamIndex && blockStateOptions.isEmpty()) {
-            return false;
-        }
         return true;
-    }
-
-    private void updateBlockStateOptions(boolean forceRefresh) {
-        boolean previouslyHadOptions = !blockStateOptions.isEmpty();
-        if (!blockStateEditorActive || blockParameterIndex < 0 || blockParameterIndex >= parameterValues.size()) {
-            blockStateOptions.clear();
-            cachedBlockIdForStateOptions = "";
-            blockStateDropdownOpen = false;
-            blockStateDropdownScrollOffset = 0;
-            return;
-        }
-
-        String rawBlock = parameterValues.get(blockParameterIndex);
-        String normalized = rawBlock != null ? rawBlock.trim() : "";
-        normalized = getFirstMultiValueEntry(normalized);
-        if (!normalized.isEmpty()) {
-            String stripped = BlockSelection.stripState(normalized);
-            normalized = stripped != null ? stripped : normalized;
-        }
-        if (!forceRefresh && Objects.equals(normalized, cachedBlockIdForStateOptions)) {
-            return;
-        }
-
-        cachedBlockIdForStateOptions = normalized;
-        blockStateDropdownOpen = false;
-        blockStateDropdownHoverIndex = -1;
-        blockStateDropdownScrollOffset = 0;
-        blockStateOptions.clear();
-        if (!normalized.isEmpty()) {
-            List<BlockSelection.StateOption> resolvedOptions = BlockSelection.getStateOptions(normalized);
-            if (!resolvedOptions.isEmpty()) {
-                blockStateOptions.add(new BlockSelection.StateOption("", "Any State"));
-                blockStateOptions.addAll(resolvedOptions);
-            }
-        }
-        ensureValidBlockStateSelection();
-        boolean currentlyHasOptions = !blockStateOptions.isEmpty();
-        if (previouslyHadOptions != currentlyHasOptions) {
-            updatePopupDimensions();
-            recreateButtons();
-        }
-    }
-
-    private void ensureValidBlockStateSelection() {
-        if (!blockStateEditorActive || blockStateParamIndex < 0 || blockStateParamIndex >= parameterValues.size()) {
-            return;
-        }
-        String currentValue = parameterValues.get(blockStateParamIndex);
-        boolean valid = blockStateOptions.stream().anyMatch(option -> option.value().equalsIgnoreCase(currentValue));
-        if (!valid) {
-            if (blockStateOptions.isEmpty()) {
-                setParameterValue(blockStateParamIndex, "");
-            } else {
-                setParameterValue(blockStateParamIndex, blockStateOptions.get(0).value());
-            }
-        }
-    }
-
-    private void renderFunctionDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        if (!functionDropdownOpen || functionDropdownParamIndex < 0 || !functionDropdownEnabled) {
-            return;
-        }
-
-        int dropdownX = functionDropdownFieldX;
-        int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
-        int dropdownWidth = functionDropdownFieldWidth;
-        List<String> options = functionNameOptions;
-        int optionCount = Math.max(1, options.isEmpty() ? 1 : options.size());
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            DROPDOWN_OPTION_HEIGHT,
-            optionCount,
-            dropdownY,
-            screenHeight
-        );
-        int visibleCount = layout.visibleCount;
-        functionDropdownScrollOffset = MathHelper.clamp(functionDropdownScrollOffset, 0, layout.maxScrollOffset);
-        int dropdownHeight = layout.height;
-
-        boolean hoverInside = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                              mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-        functionDropdownHoverIndex = -1;
-        if (hoverInside && !options.isEmpty()) {
-            int hoverIndex = functionDropdownScrollOffset + (mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT;
-            if (hoverIndex >= 0 && hoverIndex < options.size()) {
-                functionDropdownHoverIndex = hoverIndex;
-            }
-        }
-
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
-
-        if (options.isEmpty()) {
-            int textY = dropdownY + (DROPDOWN_OPTION_HEIGHT - textRenderer.fontHeight) / 2 + 1;
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal("No functions available"),
-                dropdownX + 4,
-                textY,
-                UITheme.TEXT_SECONDARY
-            );
-            DropdownLayoutHelper.drawOutline(
-                context,
-                dropdownX,
-                dropdownY,
-                dropdownWidth,
-                dropdownHeight,
-                UITheme.BORDER_DEFAULT
-            );
-            return;
-        }
-
-        String currentValue = parameterValues.size() > functionDropdownParamIndex
-            ? parameterValues.get(functionDropdownParamIndex)
-            : null;
-
-        int startIndex = functionDropdownScrollOffset;
-        int endIndex = Math.min(options.size(), startIndex + visibleCount);
-        for (int i = startIndex; i < endIndex; i++) {
-            int optionTop = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
-            boolean isHovered = i == functionDropdownHoverIndex;
-            boolean isSelected = currentValue != null && currentValue.equals(options.get(i));
-
-            int optionColor = isSelected ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 0.9f) : UITheme.BACKGROUND_SIDEBAR;
-            if (isHovered) {
-                optionColor = adjustColorBrightness(optionColor, 1.2f);
-            }
-
-            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT,
-                getPopupAnimatedColor(optionColor));
-            String display = trimDisplayString(textRenderer, options.get(i), dropdownWidth - 8);
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(display),
-                dropdownX + 4,
-                optionTop + 6,
-                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
-            );
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
-            context,
-            dropdownX,
-            dropdownY,
-            dropdownWidth,
-            dropdownHeight,
-            optionCount,
-            visibleCount,
-            functionDropdownScrollOffset,
-            layout.maxScrollOffset,
-            getPopupAnimatedColor(UITheme.BORDER_DEFAULT),
-            getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT)
-        );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            dropdownX,
-            dropdownY,
-            dropdownWidth,
-            dropdownHeight,
-            getPopupAnimatedColor(UITheme.BORDER_DEFAULT)
-        );
-    }
-
-    private void renderBlockStateField(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth, int fieldHeight, int mouseX, int mouseY) {
-        blockStateFieldX = fieldX;
-        blockStateFieldY = fieldY;
-        blockStateFieldWidth = fieldWidth;
-        blockStateFieldHeight = fieldHeight;
-
-        boolean hasOptions = !blockStateOptions.isEmpty();
-        boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
-                          mouseY >= fieldY && mouseY <= fieldY + fieldHeight;
-        boolean dropdownActive = blockStateDropdownOpen;
-        int bgColor;
-        int borderColor;
-        if (dropdownActive) {
-            bgColor = adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.2f);
-            borderColor = UITheme.ACCENT_DEFAULT;
-        } else if (hovered) {
-            bgColor = adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 1.1f);
-            borderColor = UITheme.ACCENT_DEFAULT;
-        } else {
-            bgColor = UITheme.BACKGROUND_SIDEBAR;
-            borderColor = UITheme.BORDER_HIGHLIGHT;
-        }
-
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, getPopupAnimatedColor(bgColor));
-        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, getPopupAnimatedColor(borderColor));
-
-        String display = getBlockStateDisplayText(hasOptions);
-        int textColor = hasOptions ? UITheme.TEXT_PRIMARY : UITheme.BORDER_DEFAULT;
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(display),
-            fieldX + 4,
-            fieldY + 6,
-            getPopupAnimatedColor(textColor)
-        );
-
-        int arrowColor = hasOptions ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal("▼"),
-            fieldX + fieldWidth - 14,
-            fieldY + 6,
-            getPopupAnimatedColor(arrowColor)
-        );
-    }
-
-    private String getBlockStateDisplayText(boolean hasOptions) {
-        String currentValue = "";
-        if (blockStateParamIndex >= 0 && blockStateParamIndex < parameterValues.size()) {
-            currentValue = parameterValues.get(blockStateParamIndex);
-        }
-        for (BlockSelection.StateOption option : blockStateOptions) {
-            if (option.value().equalsIgnoreCase(currentValue)) {
-                return option.displayText();
-            }
-        }
-        if (!hasOptions) {
-            return "no states available";
-        }
-        return "select block state";
-    }
-
-    private void renderBlockStateDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        if (!blockStateDropdownOpen || !blockStateEditorActive || blockStateParamIndex < 0 || blockStateOptions.isEmpty()) {
-            return;
-        }
-
-        int dropdownX = blockStateFieldX;
-        int dropdownY = blockStateFieldY + blockStateFieldHeight;
-        int dropdownWidth = blockStateFieldWidth;
-        int optionCount = blockStateOptions.size();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            DROPDOWN_OPTION_HEIGHT,
-            SUGGESTION_MAX_OPTIONS,
-            dropdownY,
-            screenHeight
-        );
-        int visibleCount = layout.visibleCount;
-        int dropdownHeight = layout.height;
-        blockStateDropdownScrollOffset = MathHelper.clamp(blockStateDropdownScrollOffset, 0, layout.maxScrollOffset);
-
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight,
-            getPopupAnimatedColor(UITheme.BACKGROUND_SIDEBAR));
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight,
-            getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT));
-
-        blockStateDropdownHoverIndex = -1;
-        if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-            mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-            int hoverIndex = blockStateDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-            if (hoverIndex >= 0 && hoverIndex < optionCount) {
-                blockStateDropdownHoverIndex = hoverIndex;
-            }
-        }
-
-        String currentValue = "";
-        if (blockStateParamIndex >= 0 && blockStateParamIndex < parameterValues.size()) {
-            currentValue = parameterValues.get(blockStateParamIndex);
-        }
-
-        int startIndex = blockStateDropdownScrollOffset;
-        int endIndex = Math.min(optionCount, startIndex + visibleCount);
-        for (int i = startIndex; i < endIndex; i++) {
-            int optionTop = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
-            BlockSelection.StateOption option = blockStateOptions.get(i);
-            boolean isSelected = option.value().equalsIgnoreCase(currentValue);
-            boolean isHovered = i == blockStateDropdownHoverIndex;
-            int optionColor = isSelected ? adjustColorBrightness(UITheme.BACKGROUND_SIDEBAR, 0.9f) : UITheme.BACKGROUND_SIDEBAR;
-            if (isHovered) {
-                optionColor = adjustColorBrightness(optionColor, 1.2f);
-            }
-            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT,
-                getPopupAnimatedColor(optionColor));
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(option.displayText()),
-                dropdownX + 4,
-                optionTop + 6,
-                getPopupAnimatedColor(UITheme.TEXT_PRIMARY)
-            );
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
-            context,
-            dropdownX,
-            dropdownY,
-            dropdownWidth,
-            dropdownHeight,
-            optionCount,
-            visibleCount,
-            blockStateDropdownScrollOffset,
-            layout.maxScrollOffset,
-            getPopupAnimatedColor(UITheme.BORDER_DEFAULT),
-            getPopupAnimatedColor(UITheme.BORDER_HIGHLIGHT)
-        );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            dropdownX,
-            dropdownY,
-            dropdownWidth,
-            dropdownHeight,
-            getPopupAnimatedColor(UITheme.BORDER_DEFAULT)
-        );
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -1211,154 +578,23 @@ public class NodeParameterOverlay {
 
         if (inventorySlotEditorActive && inventorySlotSelector != null) {
             if (inventorySlotSelector.mouseClicked(mouseX, mouseY)) {
-                functionDropdownOpen = false;
-                functionDropdownHoverIndex = -1;
-                functionDropdownScrollOffset = 0;
-                modeDropdownOpen = false;
-                modeDropdownHoverIndex = -1;
-                modeDropdownScrollOffset = 0;
-                blockStateDropdownOpen = false;
-                blockStateDropdownHoverIndex = -1;
-                blockStateDropdownScrollOffset = 0;
                 return true;
             }
         }
 
-        // Prepare scrollable bounds for subsequent hit checks
         int contentTop = getScrollAreaTop();
         int contentBottom = getScrollAreaBottom();
         int labelY = contentTop - scrollOffset;
-        if (hasModeSelection()) {
-            int modeButtonX = popupX + 20;
-            int modeButtonY = labelY + LABEL_TO_FIELD_OFFSET;
-            int modeButtonWidth = popupWidth - 40;
-            int modeButtonHeight = FIELD_HEIGHT;
 
-            boolean modeVisible = modeButtonY <= contentBottom && modeButtonY + modeButtonHeight >= contentTop;
-
-            if (modeDropdownOpen) {
-                int dropdownY = modeButtonY + modeButtonHeight;
-                DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                    availableModes.size(),
-                    DROPDOWN_OPTION_HEIGHT,
-                    availableModes.size(),
-                    dropdownY,
-                    screenHeight
-                );
-                int dropdownHeight = layout.height;
-                modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
-
-                if (mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
-                    mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                    int optionIndex = modeDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-                    if (optionIndex >= 0 && optionIndex < availableModes.size()) {
-                        selectedMode = availableModes.get(optionIndex);
-                        node.setMode(selectedMode);
-                        resetParameterFields();
-                        updatePopupDimensions();
-                        recreateButtons();
-                        updateButtonPositions();
-                    }
-                    modeDropdownOpen = false;
-                    modeDropdownHoverIndex = -1;
-                    return true;
-                }
-            }
-
-            if (modeVisible && mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
-                mouseY >= Math.max(modeButtonY, contentTop) && mouseY <= Math.min(modeButtonY + modeButtonHeight, contentBottom)) {
-                functionDropdownOpen = false;
-                functionDropdownHoverIndex = -1;
-                blockStateDropdownOpen = false;
-                blockStateDropdownHoverIndex = -1;
-                blockStateDropdownScrollOffset = 0;
-                modeDropdownOpen = !modeDropdownOpen;
-                modeDropdownHoverIndex = -1;
-                if (modeDropdownOpen) {
-                    modeDropdownScrollOffset = 0;
-                }
-                return true;
-            }
-
-            labelY = modeButtonY + modeButtonHeight + SECTION_SPACING;
-        }
-
-        if (blockStateDropdownOpen && blockStateEditorActive && blockStateParamIndex >= 0 && !blockStateOptions.isEmpty()) {
-            int dropdownX = blockStateFieldX;
-            int dropdownY = blockStateFieldY + blockStateFieldHeight;
-            int dropdownWidth = blockStateFieldWidth;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                blockStateOptions.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                SUGGESTION_MAX_OPTIONS,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            blockStateDropdownScrollOffset = MathHelper.clamp(blockStateDropdownScrollOffset, 0, layout.maxScrollOffset);
-            if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                int optionIndex = blockStateDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-                if (optionIndex >= 0 && optionIndex < blockStateOptions.size()) {
-                    setParameterValue(blockStateParamIndex, blockStateOptions.get(optionIndex).value());
-                }
-                blockStateDropdownOpen = false;
-                blockStateDropdownHoverIndex = -1;
-                blockStateDropdownScrollOffset = 0;
-                return true;
-            }
-        }
-
-        if (blockItemDropdownOpen && blockItemDropdownFieldIndex >= 0 && !blockItemDropdownOptions.isEmpty()) {
-            int dropdownX = blockItemDropdownFieldX;
-            int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
-            int dropdownWidth = blockItemDropdownFieldWidth;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                blockItemDropdownOptions.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                SUGGESTION_MAX_OPTIONS,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            blockItemDropdownScrollOffset = MathHelper.clamp(blockItemDropdownScrollOffset, 0, layout.maxScrollOffset);
-            if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                int optionIndex = blockItemDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-                if (optionIndex >= 0 && optionIndex < blockItemDropdownOptions.size()) {
-                    applySuggestionForField(blockItemDropdownFieldIndex, blockItemDropdownOptions.get(optionIndex), true);
-                }
-                return true;
-            }
-        }
-
-        // Check button clicks after handling dropdown interactions so dropdown selections aren't swallowed by buttons beneath
-        if (saveButton != null && saveButton.isMouseOver(mouseX, mouseY)) {
-            ButtonWidgetCompatibilityBridge.press(saveButton);
-            return true;
-        }
-        if (cancelButton != null && cancelButton.isMouseOver(mouseX, mouseY)) {
-            ButtonWidgetCompatibilityBridge.press(cancelButton);
-            return true;
-        }
-
-        // Check field clicks
         boolean shiftClick = InputCompatibilityBridge.hasShiftDown();
         for (int i = 0; i < node.getParameters().size(); i++) {
             if (!shouldDisplayParameter(i)) {
                 continue;
             }
             int fieldX = popupX + 20;
-            int fieldY = labelY + LABEL_TO_FIELD_OFFSET; // Match the rendering position
+            int fieldY = labelY + LABEL_TO_FIELD_OFFSET;
             int fieldWidth = popupWidth - 40;
             int fieldHeight = FIELD_HEIGHT;
-            boolean isDropdownField = usesFunctionDropdownForIndex(i);
-            if (isDropdownField) {
-                functionDropdownFieldX = fieldX;
-                functionDropdownFieldY = fieldY;
-                functionDropdownFieldWidth = fieldWidth;
-                functionDropdownFieldHeight = fieldHeight;
-            }
 
             if (usesKeySelectorForIndex(i)) {
                 int selectorHeight = getKeySelectorHeight();
@@ -1375,140 +611,30 @@ public class NodeParameterOverlay {
 
             if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
                 mouseY >= Math.max(fieldY, contentTop) && mouseY <= Math.min(fieldY + fieldHeight, contentBottom)) {
-                if (blockStateEditorActive && i == blockStateParamIndex) {
-                    if (!blockStateOptions.isEmpty()) {
-                        blockStateDropdownOpen = !blockStateDropdownOpen;
-                        blockStateDropdownHoverIndex = -1;
-                        if (blockStateDropdownOpen) {
-                            blockStateDropdownScrollOffset = 0;
-                        }
-                        functionDropdownOpen = false;
-                        functionDropdownHoverIndex = -1;
-                        modeDropdownOpen = false;
-                        modeDropdownHoverIndex = -1;
-                    }
-                    return true;
-                }
-                if (isDropdownField) {
-                    if (functionDropdownEnabled) {
-                        toggleFunctionDropdown();
-                    }
-                } else {
-                    focusField(i);
-                    setCaretFromClick(i, mouseX, fieldX, fieldWidth, shiftClick);
-                }
+                focusField(i);
+                setCaretFromClick(i, mouseX, fieldX, fieldWidth, shiftClick);
                 return true;
             }
 
             labelY = fieldY + fieldHeight + SECTION_SPACING;
         }
 
-        if (handleFunctionDropdownClick(mouseX, mouseY)) {
+        if (saveButton != null && saveButton.isMouseOver(mouseX, mouseY)) {
+            ButtonWidgetCompatibilityBridge.press(saveButton);
+            return true;
+        }
+        if (cancelButton != null && cancelButton.isMouseOver(mouseX, mouseY)) {
+            ButtonWidgetCompatibilityBridge.press(cancelButton);
             return true;
         }
 
-        // Close dropdown if clicking outside of it
-        if (hasModeSelection() && modeDropdownOpen) {
-            int modeButtonX = popupX + 20;
-            int modeButtonY = popupY + CONTENT_START_OFFSET + LABEL_TO_FIELD_OFFSET - scrollOffset;
-            int modeButtonWidth = popupWidth - 40;
-            int modeButtonHeight = FIELD_HEIGHT;
-            int dropdownY = modeButtonY + modeButtonHeight;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                availableModes.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                availableModes.size(),
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-
-            // Check if click is outside dropdown area
-            if (!(mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
-                  mouseY >= modeButtonY && mouseY <= dropdownY + dropdownHeight)) {
-                modeDropdownOpen = false; // Close dropdown
-                modeDropdownHoverIndex = -1;
-            }
-        }
-        
-        if (functionDropdownOpen) {
-            int dropdownX = functionDropdownFieldX;
-            int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
-            int dropdownWidth = functionDropdownFieldWidth;
-            int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                optionCount,
-                DROPDOWN_OPTION_HEIGHT,
-                optionCount,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            boolean insideField = mouseX >= functionDropdownFieldX && mouseX <= functionDropdownFieldX + functionDropdownFieldWidth &&
-                                  mouseY >= functionDropdownFieldY && mouseY <= functionDropdownFieldY + functionDropdownFieldHeight;
-            boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                                     mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-            if (!insideField && !insideDropdown) {
-                functionDropdownOpen = false;
-                functionDropdownHoverIndex = -1;
-            }
-        }
-
-        if (blockStateDropdownOpen) {
-            int dropdownX = blockStateFieldX;
-            int dropdownY = blockStateFieldY + blockStateFieldHeight;
-            int dropdownWidth = blockStateFieldWidth;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                blockStateOptions.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                SUGGESTION_MAX_OPTIONS,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
-                                  mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
-            boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                                     mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-            if (!insideField && !insideDropdown) {
-                blockStateDropdownOpen = false;
-                blockStateDropdownHoverIndex = -1;
-                blockStateDropdownScrollOffset = 0;
-            }
-        }
-
-        if (blockItemDropdownOpen) {
-            int dropdownX = blockItemDropdownFieldX;
-            int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
-            int dropdownWidth = blockItemDropdownFieldWidth;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                blockItemDropdownOptions.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                SUGGESTION_MAX_OPTIONS,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            boolean insideField = mouseX >= blockItemDropdownFieldX && mouseX <= blockItemDropdownFieldX + blockItemDropdownFieldWidth &&
-                                  mouseY >= blockItemDropdownFieldY && mouseY <= blockItemDropdownFieldY + blockItemDropdownFieldHeight;
-            boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                                     mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-            if (!insideField && !insideDropdown) {
-                blockItemDropdownOpen = false;
-                blockItemDropdownHoverIndex = -1;
-                blockItemDropdownSuppressedField = blockItemDropdownFieldIndex;
-            }
-        }
-        
-        // Close if clicking outside the popup
         boolean insidePopupBounds = mouseX >= popupX && mouseX <= popupX + popupWidth &&
                                     mouseY >= popupY && mouseY <= popupY + popupHeight;
-        if (!insidePopupBounds && !isPointInFunctionDropdownArea(mouseX, mouseY)) {
+        if (!insidePopupBounds) {
             close();
             return true;
         }
-        
-        // Always consume mouse events when popup is visible to prevent underlying UI interaction
+
         return true;
     }
 
@@ -1517,118 +643,6 @@ public class NodeParameterOverlay {
 
         if (inventorySlotEditorActive && inventorySlotSelector != null) {
             if (inventorySlotSelector.mouseScrolled(mouseX, mouseY, verticalAmount)) {
-                return true;
-            }
-        }
-
-        if (hasModeSelection() && modeDropdownOpen) {
-            int modeButtonX = popupX + 20;
-            int modeButtonY = popupY + CONTENT_START_OFFSET + LABEL_TO_FIELD_OFFSET - scrollOffset;
-            int modeButtonWidth = popupWidth - 40;
-            int modeButtonHeight = FIELD_HEIGHT;
-            int dropdownY = modeButtonY + modeButtonHeight;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                availableModes.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                availableModes.size(),
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            if (layout.maxScrollOffset > 0) {
-                boolean insideDropdown = mouseX >= modeButtonX && mouseX <= modeButtonX + modeButtonWidth &&
-                                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-                if (insideDropdown) {
-                    int delta = (int) Math.signum(verticalAmount);
-                    if (delta != 0) {
-                        modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
-                    }
-                    return true;
-                }
-            }
-        }
-
-        if (functionDropdownOpen) {
-            int dropdownX = functionDropdownFieldX;
-            int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
-            int dropdownWidth = functionDropdownFieldWidth;
-            int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                optionCount,
-                DROPDOWN_OPTION_HEIGHT,
-                optionCount,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            if (layout.maxScrollOffset > 0) {
-                boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-                if (insideDropdown) {
-                    int delta = (int) Math.signum(verticalAmount);
-                    if (delta != 0) {
-                        functionDropdownScrollOffset = MathHelper.clamp(functionDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
-                    }
-                    return true;
-                }
-            }
-        }
-
-        if (blockStateDropdownOpen && !blockStateOptions.isEmpty()) {
-            int dropdownX = blockStateFieldX;
-            int dropdownY = blockStateFieldY + blockStateFieldHeight;
-            int dropdownWidth = blockStateFieldWidth;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                blockStateOptions.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                SUGGESTION_MAX_OPTIONS,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            int maxScroll = layout.maxScrollOffset;
-            if (maxScroll > 0) {
-                boolean insideField = mouseX >= blockStateFieldX && mouseX <= blockStateFieldX + blockStateFieldWidth &&
-                                      mouseY >= blockStateFieldY && mouseY <= blockStateFieldY + blockStateFieldHeight;
-                boolean insideDropdown = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-                boolean insidePopup = mouseX >= popupX && mouseX <= popupX + popupWidth &&
-                                      mouseY >= popupY && mouseY <= popupY + popupHeight;
-                if (insideDropdown || insideField || insidePopup) {
-                    int delta = (int) Math.signum(verticalAmount);
-                    if (delta != 0) {
-                        int nextOffset = MathHelper.clamp(blockStateDropdownScrollOffset - delta, 0, maxScroll);
-                        if (nextOffset != blockStateDropdownScrollOffset) {
-                            blockStateDropdownScrollOffset = nextOffset;
-                        }
-                    }
-                    return true;
-                }
-            }
-        }
-
-        if (blockItemDropdownOpen && !blockItemDropdownOptions.isEmpty()) {
-            int dropdownX = blockItemDropdownFieldX;
-            int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
-            int dropdownWidth = blockItemDropdownFieldWidth;
-            DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-                blockItemDropdownOptions.size(),
-                DROPDOWN_OPTION_HEIGHT,
-                SUGGESTION_MAX_OPTIONS,
-                dropdownY,
-                screenHeight
-            );
-            int dropdownHeight = layout.height;
-            if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-                int maxScroll = layout.maxScrollOffset;
-                int delta = (int) Math.signum(verticalAmount);
-                if (delta != 0) {
-                    int nextOffset = MathHelper.clamp(blockItemDropdownScrollOffset - delta, 0, maxScroll);
-                    if (nextOffset != blockItemDropdownScrollOffset) {
-                        blockItemDropdownScrollOffset = nextOffset;
-                    }
-                }
                 return true;
             }
         }
@@ -1657,8 +671,7 @@ public class NodeParameterOverlay {
 
         boolean handledFieldInput = false;
         if (focusedFieldIndex >= 0
-            && focusedFieldIndex < parameterValues.size()
-            && !usesFunctionDropdownForIndex(focusedFieldIndex)) {
+            && focusedFieldIndex < parameterValues.size()) {
             handledFieldInput = handleFocusedFieldKeyPressed(keyCode, modifiers);
             if (handledFieldInput) {
                 return true;
@@ -1667,9 +680,6 @@ public class NodeParameterOverlay {
 
         if (keyCode == GLFW.GLFW_KEY_TAB) {
             boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-            if (!shiftHeld && tryAcceptBlockItemSuggestion()) {
-                return true;
-            }
             focusAdjacentEditableField(shiftHeld);
             return true;
         }
@@ -1691,8 +701,7 @@ public class NodeParameterOverlay {
         if (!popupAnimation.isVisible()) return false;
         
         if (focusedFieldIndex >= 0
-            && focusedFieldIndex < parameterValues.size()
-            && !usesFunctionDropdownForIndex(focusedFieldIndex)) {
+            && focusedFieldIndex < parameterValues.size()) {
             if (chr >= 32 && chr != 127) {
                 return insertTextForField(focusedFieldIndex, String.valueOf(chr));
             }
@@ -1702,11 +711,6 @@ public class NodeParameterOverlay {
     }
 
     private void saveParameters() {
-        // Update node mode if applicable
-        if (hasModeSelection() && selectedMode != null) {
-            node.setMode(selectedMode);
-        }
-        
         // Update node parameters with field values
         List<NodeParameter> parameters = node.getParameters();
         List<String> emptyParameterNames = new ArrayList<>();
@@ -1770,13 +774,6 @@ public class NodeParameterOverlay {
     public void close() {
         popupAnimation.hide();
         pendingClose = true;
-        modeDropdownOpen = false;
-        modeDropdownHoverIndex = -1;
-        functionDropdownOpen = false;
-        functionDropdownHoverIndex = -1;
-        blockStateDropdownOpen = false;
-        blockStateDropdownHoverIndex = -1;
-        blockStateDropdownScrollOffset = 0;
         focusedFieldIndex = -1;
         if (inventorySlotSelector != null) {
             inventorySlotSelector.closeDropdown();
@@ -1787,13 +784,6 @@ public class NodeParameterOverlay {
         popupAnimation.show();
         pendingClose = false;
         focusedFieldIndex = -1;
-        modeDropdownOpen = false;
-        modeDropdownHoverIndex = -1;
-        functionDropdownOpen = false;
-        functionDropdownHoverIndex = -1;
-        blockStateDropdownOpen = false;
-        blockStateDropdownHoverIndex = -1;
-        blockStateDropdownScrollOffset = 0;
         scrollOffset = 0;
         updateButtonPositions();
     }
@@ -1835,8 +825,6 @@ public class NodeParameterOverlay {
         }
         focusedFieldIndex = -1;
         resetCaretBlink();
-        refreshBlockStateIndices();
-        updateBlockStateOptions(true);
     }
 
     private boolean shouldUsePlaceholder(NodeParameter parameter, String value) {
@@ -1867,44 +855,8 @@ public class NodeParameterOverlay {
         return name;
     }
 
-    private void refreshBlockStateIndices() {
-        int tempBlockIndex = -1;
-        int tempBlockStateIndex = -1;
-        if (node.getType() == NodeType.PARAM_BLOCK) {
-            List<NodeParameter> params = node.getParameters();
-            for (int i = 0; i < params.size(); i++) {
-                NodeParameter param = params.get(i);
-                if (param == null) {
-                    continue;
-                }
-                String name = param.getName();
-                if ("Block".equalsIgnoreCase(name)) {
-                    tempBlockIndex = i;
-                } else if ("State".equalsIgnoreCase(name)) {
-                    tempBlockStateIndex = i;
-                }
-            }
-        }
-        blockParameterIndex = tempBlockIndex;
-        blockStateParamIndex = tempBlockStateIndex;
-        blockStateEditorActive = tempBlockStateIndex >= 0;
-        if (!blockStateEditorActive) {
-            blockStateDropdownOpen = false;
-            blockStateDropdownHoverIndex = -1;
-            blockStateDropdownScrollOffset = 0;
-            blockStateOptions.clear();
-            cachedBlockIdForStateOptions = "";
-        }
-    }
-    
     private void updatePopupDimensions() {
         int longestLineLength = ("Edit Parameters: " + node.getType().getDisplayName()).length();
-
-        if (hasModeSelection()) {
-            longestLineLength = Math.max(longestLineLength, "Mode:".length());
-            String modeText = selectedMode != null ? selectedMode.getDisplayName() : "Select Mode";
-            longestLineLength = Math.max(longestLineLength, modeText.length());
-        }
 
         for (int i = 0; i < node.getParameters().size(); i++) {
             if (!shouldDisplayParameter(i)) {
@@ -1934,12 +886,6 @@ public class NodeParameterOverlay {
         this.popupWidth = Math.min(Math.max(MIN_POPUP_WIDTH, computedWidth), maxAllowedWidth);
 
         int contentHeight = CONTENT_START_OFFSET;
-        if (hasModeSelection()) {
-            contentHeight += LABEL_TO_FIELD_OFFSET + FIELD_HEIGHT;
-            if (!node.getParameters().isEmpty()) {
-                contentHeight += SECTION_SPACING;
-            }
-        }
 
         int paramCount = node.getParameters().size();
         int visibleProcessed = 0;
@@ -1998,9 +944,6 @@ public class NodeParameterOverlay {
         updateButtonPositions();
     }
     
-    private boolean hasModeSelection() {
-        return !availableModes.isEmpty();
-    }
 
     private int computeButtonY() {
         int contentEnd = totalContentHeight - (BUTTON_TOP_MARGIN + BUTTON_HEIGHT + BOTTOM_PADDING);
@@ -2029,20 +972,6 @@ public class NodeParameterOverlay {
         return Math.max(clamped, topLimit);
     }
 
-    private int findFunctionDropdownIndex(Node node) {
-        if (node == null || node.getType() != NodeType.EVENT_CALL) {
-            return -1;
-        }
-        List<NodeParameter> params = node.getParameters();
-        for (int i = 0; i < params.size(); i++) {
-            NodeParameter param = params.get(i);
-            if (param != null && "Name".equals(param.getName())) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     private void focusAdjacentEditableField(boolean backwards) {
         List<NodeParameter> params = node.getParameters();
         int total = params.size();
@@ -2056,16 +985,12 @@ public class NodeParameterOverlay {
         }
         for (int attempts = 0; attempts < total; attempts++) {
             startIndex = (startIndex + (backwards ? -1 : 1) + total) % total;
-            if (!usesFunctionDropdownForIndex(startIndex) && !usesKeySelectorForIndex(startIndex)) {
+            if (!usesKeySelectorForIndex(startIndex)) {
                 focusField(startIndex);
                 return;
             }
         }
         focusedFieldIndex = -1;
-    }
-
-    private boolean usesFunctionDropdownForIndex(int index) {
-        return functionDropdownParamIndex >= 0 && index == functionDropdownParamIndex;
     }
 
     private boolean usesKeySelectorForIndex(int index) {
@@ -2167,27 +1092,9 @@ public class NodeParameterOverlay {
         return new KeySpec(label, value, units);
     }
 
-    private void toggleFunctionDropdown() {
-        if (functionDropdownParamIndex < 0 || !functionDropdownEnabled) {
-            return;
-        }
-        if (functionDropdownOpen) {
-            functionDropdownOpen = false;
-            functionDropdownHoverIndex = -1;
-            return;
-        }
-        modeDropdownOpen = false;
-        modeDropdownHoverIndex = -1;
-        modeDropdownScrollOffset = 0;
-        refreshFunctionNameOptions();
-        functionDropdownOpen = true;
-        functionDropdownHoverIndex = -1;
-        functionDropdownScrollOffset = 0;
-        focusedFieldIndex = -1;
-    }
 
     private void focusField(int index) {
-        if (index < 0 || index >= parameterValues.size() || usesFunctionDropdownForIndex(index)) {
+        if (index < 0 || index >= parameterValues.size()) {
             focusedFieldIndex = -1;
             return;
         }
@@ -2331,7 +1238,6 @@ public class NodeParameterOverlay {
         caretPositions.set(index, start);
         clearSelectionForField(index);
         resetCaretBlink();
-        clearBlockItemDropdownSuppression(index);
         return true;
     }
 
@@ -2348,7 +1254,6 @@ public class NodeParameterOverlay {
         setParameterValue(index, updated);
         caretPositions.set(index, caret - 1);
         resetCaretBlink();
-        clearBlockItemDropdownSuppression(index);
     }
 
     private void deleteCharAfterCaret(int index) {
@@ -2364,7 +1269,6 @@ public class NodeParameterOverlay {
         setParameterValue(index, updated);
         caretPositions.set(index, caret);
         resetCaretBlink();
-        clearBlockItemDropdownSuppression(index);
     }
 
     private void selectAllForField(int index) {
@@ -2445,7 +1349,6 @@ public class NodeParameterOverlay {
             setParameterValue(index, value);
             caretPositions.set(index, caret);
             resetCaretBlink();
-            clearBlockItemDropdownSuppression(index);
         }
         return inserted;
     }
@@ -2567,93 +1470,6 @@ public class NodeParameterOverlay {
         return false;
     }
 
-    private boolean handleFunctionDropdownClick(double mouseX, double mouseY) {
-        if (!functionDropdownOpen || functionDropdownParamIndex < 0 || !functionDropdownEnabled) {
-            return false;
-        }
-        int dropdownX = functionDropdownFieldX;
-        int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
-        int dropdownWidth = functionDropdownFieldWidth;
-        int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            DROPDOWN_OPTION_HEIGHT,
-            optionCount,
-            dropdownY,
-            screenHeight
-        );
-        int dropdownHeight = layout.height;
-        functionDropdownScrollOffset = MathHelper.clamp(functionDropdownScrollOffset, 0, layout.maxScrollOffset);
-
-        if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-            mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-            if (!functionNameOptions.isEmpty()) {
-                int optionIndex = functionDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-                if (optionIndex >= 0 && optionIndex < functionNameOptions.size()) {
-                    setParameterValue(functionDropdownParamIndex, functionNameOptions.get(optionIndex));
-                }
-            }
-            functionDropdownOpen = false;
-            functionDropdownHoverIndex = -1;
-            return true;
-        }
-        return false;
-    }
-
-    private void refreshFunctionNameOptions() {
-        functionNameOptions.clear();
-        if (functionNameSupplier != null) {
-            List<String> supplied = functionNameSupplier.get();
-            if (supplied != null) {
-                for (String name : supplied) {
-                    if (name == null) {
-                        continue;
-                    }
-                    String trimmed = name.trim();
-                    if (!trimmed.isEmpty() && !functionNameOptions.contains(trimmed)) {
-                        functionNameOptions.add(trimmed);
-                    }
-                }
-            }
-        }
-        functionDropdownEnabled = !functionNameOptions.isEmpty();
-        if (!functionDropdownEnabled) {
-            functionDropdownOpen = false;
-            functionDropdownHoverIndex = -1;
-            functionDropdownScrollOffset = 0;
-        }
-    }
-
-    private boolean isPointInFunctionDropdownArea(double mouseX, double mouseY) {
-        if (functionDropdownParamIndex < 0 || !functionDropdownEnabled) {
-            return false;
-        }
-        boolean insideField = mouseX >= functionDropdownFieldX &&
-                              mouseX <= functionDropdownFieldX + functionDropdownFieldWidth &&
-                              mouseY >= functionDropdownFieldY &&
-                              mouseY <= functionDropdownFieldY + functionDropdownFieldHeight;
-        if (insideField) {
-            return true;
-        }
-        if (!functionDropdownOpen) {
-            return false;
-        }
-        int dropdownX = functionDropdownFieldX;
-        int dropdownY = functionDropdownFieldY + functionDropdownFieldHeight;
-        int dropdownWidth = functionDropdownFieldWidth;
-        int optionCount = Math.max(1, functionNameOptions.isEmpty() ? 1 : functionNameOptions.size());
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            DROPDOWN_OPTION_HEIGHT,
-            optionCount,
-            dropdownY,
-            screenHeight
-        );
-        int dropdownHeight = layout.height;
-        return mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-               mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
-    }
-
     private String trimDisplayString(TextRenderer renderer, String text, int availableWidth) {
         if (text == null) {
             return "";
@@ -2690,577 +1506,4 @@ public class NodeParameterOverlay {
         }
         return bottom;
     }
-
-    private void renderBlockItemDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        if (!blockItemDropdownOpen || blockItemDropdownFieldIndex < 0 || blockItemDropdownOptions.isEmpty()) {
-            return;
-        }
-        int dropdownX = blockItemDropdownFieldX;
-        int dropdownY = blockItemDropdownFieldY + blockItemDropdownFieldHeight;
-        int dropdownWidth = blockItemDropdownFieldWidth;
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            blockItemDropdownOptions.size(),
-            DROPDOWN_OPTION_HEIGHT,
-            SUGGESTION_MAX_OPTIONS,
-            dropdownY,
-            screenHeight
-        );
-        int visibleCount = layout.visibleCount;
-        int dropdownHeight = layout.height;
-        blockItemDropdownScrollOffset = MathHelper.clamp(blockItemDropdownScrollOffset, 0, layout.maxScrollOffset);
-
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_HIGHLIGHT);
-
-        blockItemDropdownHoverIndex = -1;
-        if (mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
-            mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight) {
-            int hoverIndex = blockItemDropdownScrollOffset + (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
-            if (hoverIndex >= 0 && hoverIndex < blockItemDropdownOptions.size()) {
-                blockItemDropdownHoverIndex = hoverIndex;
-            }
-        }
-
-        boolean renderEntityIcons = isEntityParameter(blockItemDropdownFieldIndex);
-        int startIndex = blockItemDropdownScrollOffset;
-        int endIndex = Math.min(blockItemDropdownOptions.size(), startIndex + visibleCount);
-        for (int i = startIndex; i < endIndex; i++) {
-            int optionTop = dropdownY + (i - startIndex) * DROPDOWN_OPTION_HEIGHT;
-            boolean isHovered = i == blockItemDropdownHoverIndex;
-            int optionColor = UITheme.BACKGROUND_SIDEBAR;
-            if (isHovered) {
-                optionColor = adjustColorBrightness(optionColor, 1.2f);
-            }
-            context.fill(dropdownX, optionTop, dropdownX + dropdownWidth, optionTop + DROPDOWN_OPTION_HEIGHT, optionColor);
-
-            RegistryOption option = blockItemDropdownOptions.get(i);
-            ItemStack stack = option.stack();
-            int iconX = dropdownX + 4;
-            int iconY = optionTop + (DROPDOWN_OPTION_HEIGHT - SUGGESTION_ICON_SIZE) / 2;
-            boolean iconRendered = false;
-            if (renderEntityIcons) {
-                iconRendered = renderEntityOptionIcon(context, option, iconX, iconY, SUGGESTION_ICON_SIZE);
-            }
-            if (!iconRendered && !stack.isEmpty()) {
-                context.drawItem(stack, iconX, iconY);
-            }
-
-            int textX = iconX + SUGGESTION_ICON_SIZE + SUGGESTION_ICON_TEXT_GAP;
-            int availableTextWidth = dropdownWidth - (textX - dropdownX) - 6;
-            String display = trimDisplayString(textRenderer, option.value(), availableTextWidth);
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(display),
-                textX,
-                optionTop + 6,
-                UITheme.TEXT_PRIMARY
-            );
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
-            context,
-            dropdownX,
-            dropdownY,
-            dropdownWidth,
-            dropdownHeight,
-            blockItemDropdownOptions.size(),
-            visibleCount,
-            blockItemDropdownScrollOffset,
-            layout.maxScrollOffset,
-            UITheme.BORDER_DEFAULT,
-            UITheme.BORDER_HIGHLIGHT
-        );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            dropdownX,
-            dropdownY,
-            dropdownWidth,
-            dropdownHeight,
-            UITheme.BORDER_DEFAULT
-        );
-    }
-
-    private boolean renderEntityOptionIcon(DrawContext context, RegistryOption option, int x, int y, int size) {
-        if (context == null || option == null) {
-            return false;
-        }
-        Identifier entityId = Identifier.tryParse(option.fullId());
-        if (entityId == null) {
-            return false;
-        }
-        LivingEntity entity = createEntityForIcon(entityId);
-        if (entity == null) {
-            return false;
-        }
-        int x2 = x + size;
-        int y2 = y + size;
-        float mouseX = (x + x2) / 2.0f;
-        float mouseY = (y + y2) / 2.0f;
-        InventoryScreen.drawEntity(context, x, y, x2, y2, size, mouseX, mouseY, 0.0f, entity);
-        return true;
-    }
-
-    private static LivingEntity createEntityForIcon(Identifier entityId) {
-        if (entityId == null) {
-            return null;
-        }
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.world == null) {
-            return null;
-        }
-        EntityType<?> entityType = Registries.ENTITY_TYPE.get(entityId);
-        if (entityType == null) {
-            return null;
-        }
-        // Pick a spawn reason that exists in the current runtime; fall back to the first available value.
-        SpawnReason reason = null;
-        for (String candidate : new String[]{"SPAWN_EGG", "SPAWN_ITEM", "DISPENSER", "COMMAND", "NATURAL"}) {
-            try {
-                reason = SpawnReason.valueOf(candidate);
-                break;
-            } catch (IllegalArgumentException ignored) {
-                // Candidate not present in this version; try the next one.
-            }
-        }
-        if (reason == null) {
-            SpawnReason[] reasons = SpawnReason.values();
-            if (reasons.length > 0) {
-                reason = reasons[0];
-            }
-        }
-        if (reason == null) {
-            return null;
-        }
-        try {
-            Entity entity = null;
-            try {
-                Method createWithReason = EntityType.class.getMethod("create", World.class, SpawnReason.class);
-                entity = (Entity) createWithReason.invoke(entityType, client.world, reason);
-            } catch (NoSuchMethodException ignored) {
-                Method createNoReason = EntityType.class.getMethod("create", World.class);
-                entity = (Entity) createNoReason.invoke(entityType, client.world);
-            }
-            if (entity instanceof LivingEntity living) {
-                return living;
-            }
-        } catch (Exception ignored) {
-            // If creation fails for any reason, let caller fall back to icon stack.
-        }
-        return null;
-    }
-
-    private void renderBlockItemSuggestionText(DrawContext context, TextRenderer textRenderer, String baseValue, int index,
-                                               int textX, int textY, int availableWidth) {
-        String value = baseValue == null ? "" : baseValue;
-        String suggestion = getBlockItemAutocomplete(index);
-        if (suggestion == null || suggestion.isEmpty()) {
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(value),
-                textX,
-                textY,
-                UITheme.TEXT_PRIMARY
-            );
-            return;
-        }
-
-        SegmentInfo segmentInfo = getBlockItemSegmentInfo(index);
-        if (segmentInfo == null) {
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(value),
-                textX,
-                textY,
-                UITheme.TEXT_PRIMARY
-            );
-            return;
-        }
-        String fullSuggestion = segmentInfo.prefix() + segmentInfo.leadingWhitespace() + suggestion
-            + segmentInfo.trailingWhitespace() + segmentInfo.suffix();
-        String lowerValue = value.toLowerCase();
-        String lowerSuggestion = fullSuggestion.toLowerCase();
-        if (value.isEmpty() || !lowerSuggestion.startsWith(lowerValue)) {
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(value),
-                textX,
-                textY,
-                UITheme.TEXT_PRIMARY
-            );
-            return;
-        }
-
-        int valueWidth = textRenderer.getWidth(value);
-        if (valueWidth >= availableWidth) {
-            String trimmed = trimDisplayString(textRenderer, value, availableWidth);
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(trimmed),
-                textX,
-                textY,
-                UITheme.TEXT_PRIMARY
-            );
-            return;
-        }
-
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(value),
-            textX,
-            textY,
-            UITheme.TEXT_PRIMARY
-        );
-
-        String remainder = fullSuggestion.substring(value.length());
-        if (!remainder.isEmpty()) {
-            int remainingWidth = Math.max(0, availableWidth - valueWidth);
-            String trimmedRemainder = textRenderer.trimToWidth(remainder, remainingWidth);
-            if (!trimmedRemainder.isEmpty()) {
-                context.drawTextWithShadow(
-                    textRenderer,
-                    Text.literal(trimmedRemainder),
-                    textX + valueWidth,
-                    textY,
-                    UITheme.BORDER_DEFAULT
-                );
-            }
-        }
-    }
-
-    private boolean tryAcceptBlockItemSuggestion() {
-        if (focusedFieldIndex < 0 || !isBlockOrItemParameter(focusedFieldIndex)) {
-            return false;
-        }
-        String suggestion = getBlockItemAutocomplete(focusedFieldIndex);
-        if (suggestion == null || suggestion.isEmpty()) {
-            return false;
-        }
-        applySuggestionForField(focusedFieldIndex, suggestion, false);
-        return true;
-    }
-
-    private void applySuggestionForField(int index, RegistryOption option, boolean suppressDropdown) {
-        if (option == null) {
-            return;
-        }
-        applySuggestionForField(index, option.value(), suppressDropdown);
-    }
-
-    private void applySuggestionForField(int index, String value, boolean suppressDropdown) {
-        if (index < 0 || index >= parameterValues.size()) {
-            return;
-        }
-        if (isBlockOrItemParameter(index)) {
-            SegmentInfo segmentInfo = getBlockItemSegmentInfo(index);
-            if (segmentInfo != null) {
-                String updated = segmentInfo.prefix() + segmentInfo.leadingWhitespace() + value
-                    + segmentInfo.trailingWhitespace() + segmentInfo.suffix();
-                setParameterValue(index, updated);
-            } else {
-                setParameterValue(index, value);
-            }
-        } else {
-            setParameterValue(index, value);
-        }
-        focusField(index);
-        if (suppressDropdown) {
-            blockItemDropdownSuppressedField = index;
-        }
-    }
-
-    private boolean isBlockOrItemParameter(int index) {
-        return isBlockParameter(index) || isItemParameter(index) || isEntityParameter(index);
-    }
-
-    private boolean isBlockItemDropdownSuppressed(int index) {
-        return blockItemDropdownSuppressedField == index;
-    }
-
-    private void clearBlockItemDropdownSuppression(int index) {
-        if (isBlockOrItemParameter(index)) {
-            blockItemDropdownSuppressedField = -1;
-        }
-    }
-
-    private boolean isBlockParameter(int index) {
-        if (index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        if (param.getType() == ParameterType.BLOCK_TYPE) {
-            return true;
-        }
-        String name = param.getName();
-        return "Block".equalsIgnoreCase(name) || "Blocks".equalsIgnoreCase(name);
-    }
-
-    private boolean isItemParameter(int index) {
-        if (index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "Item".equalsIgnoreCase(param.getName());
-    }
-
-    private boolean isEntityParameter(int index) {
-        if (index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "Entity".equalsIgnoreCase(param.getName());
-    }
-
-    private SegmentInfo getBlockItemSegmentInfo(int index) {
-        if (index < 0 || index >= parameterValues.size()) {
-            return null;
-        }
-        ensureCaretEntry(index);
-        String value = getFieldValue(index);
-        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
-        int start = findSegmentStart(value, caret);
-        int end = findSegmentEnd(value, caret);
-        String segment = value.substring(start, end);
-        int leadingEnd = 0;
-        while (leadingEnd < segment.length() && Character.isWhitespace(segment.charAt(leadingEnd))) {
-            leadingEnd++;
-        }
-        int trailingStart = segment.length();
-        while (trailingStart > leadingEnd && Character.isWhitespace(segment.charAt(trailingStart - 1))) {
-            trailingStart--;
-        }
-        String leading = segment.substring(0, leadingEnd);
-        String trimmed = segment.substring(leadingEnd, trailingStart);
-        String trailing = segment.substring(trailingStart);
-        return new SegmentInfo(value.substring(0, start), value.substring(end), leading, trimmed, trailing);
-    }
-
-    private int findSegmentStart(String value, int caret) {
-        int depth = 0;
-        for (int i = caret - 1; i >= 0; i--) {
-            char c = value.charAt(i);
-            if (c == ']') {
-                depth++;
-            } else if (c == '[') {
-                depth = Math.max(0, depth - 1);
-            } else if (depth == 0 && (c == ',' || c == ';')) {
-                return i + 1;
-            }
-        }
-        return 0;
-    }
-
-    private int findSegmentEnd(String value, int caret) {
-        int depth = 0;
-        for (int i = caret; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c == '[') {
-                depth++;
-            } else if (c == ']') {
-                depth = Math.max(0, depth - 1);
-            } else if (depth == 0 && (c == ',' || c == ';')) {
-                return i;
-            }
-        }
-        return value.length();
-    }
-
-    private String getFirstMultiValueEntry(String value) {
-        if (value == null || value.isEmpty()) {
-            return "";
-        }
-        int depth = 0;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c == '[') {
-                depth++;
-            } else if (c == ']') {
-                depth = Math.max(0, depth - 1);
-            } else if (depth == 0 && (c == ',' || c == ';')) {
-                return value.substring(0, i).trim();
-            }
-        }
-        return value.trim();
-    }
-
-    private record SegmentInfo(String prefix, String suffix, String leadingWhitespace, String trimmed, String trailingWhitespace) {
-    }
-
-    private String getBlockItemAutocomplete(int index) {
-        SegmentInfo segmentInfo = getBlockItemSegmentInfo(index);
-        if (segmentInfo == null || segmentInfo.trimmed().isEmpty()) {
-            return "";
-        }
-        List<RegistryOption> options = getBlockItemSuggestions(index, SUGGESTION_MAX_OPTIONS);
-        String lowerCurrent = segmentInfo.trimmed().toLowerCase();
-        for (RegistryOption option : options) {
-            String value = option.value();
-            if (value.toLowerCase().startsWith(lowerCurrent)) {
-                return value;
-            }
-        }
-        return "";
-    }
-
-    private List<RegistryOption> getBlockItemSuggestions(int index, int maxOptions) {
-        List<RegistryOption> matches = getBlockItemDropdownOptions(index);
-        if (matches.isEmpty()) {
-            return List.of();
-        }
-        if (matches.size() <= maxOptions) {
-            return matches;
-        }
-        return new ArrayList<>(matches.subList(0, maxOptions));
-    }
-
-    private List<RegistryOption> getBlockItemDropdownOptions(int index) {
-        if (index < 0 || index >= parameterValues.size()) {
-            return List.of();
-        }
-        List<RegistryOption> source = getRegistryOptions(index);
-        if (source.isEmpty()) {
-            return List.of();
-        }
-        SegmentInfo segmentInfo = getBlockItemSegmentInfo(index);
-        String query = segmentInfo == null ? "" : segmentInfo.trimmed().toLowerCase();
-        if (query.isEmpty()) {
-            return new ArrayList<>(source);
-        }
-
-        List<MatchOption> matches = new ArrayList<>();
-        for (RegistryOption option : source) {
-            int score = Math.max(scoreMatch(query, option.value().toLowerCase()), scoreMatch(query, option.fullId().toLowerCase()));
-            if (score >= 0) {
-                matches.add(new MatchOption(option, score));
-            }
-        }
-        matches.sort((a, b) -> {
-            int scoreCompare = Integer.compare(b.score(), a.score());
-            if (scoreCompare != 0) {
-                return scoreCompare;
-            }
-            return a.option().value().compareToIgnoreCase(b.option().value());
-        });
-
-        List<RegistryOption> results = new ArrayList<>(matches.size());
-        for (int i = 0; i < matches.size(); i++) {
-            results.add(matches.get(i).option());
-        }
-        return results;
-    }
-
-    private static int scoreMatch(String query, String candidate) {
-        if (query.isEmpty()) {
-            return 0;
-        }
-        if (candidate.equals(query)) {
-            return 10000;
-        }
-        if (candidate.startsWith(query)) {
-            return 9000 - Math.max(0, candidate.length() - query.length());
-        }
-        int index = candidate.indexOf(query);
-        if (index >= 0) {
-            return 7000 - index;
-        }
-        return -1;
-    }
-
-    private static boolean isMinecraftNamespace(Identifier id) {
-        return id != null && "minecraft".equals(id.getNamespace());
-    }
-
-    private static List<RegistryOption> getBlockOptions() {
-        return RegistryOptionCache.BLOCK_OPTIONS;
-    }
-
-    private static List<RegistryOption> getItemOptions() {
-        return RegistryOptionCache.ITEM_OPTIONS;
-    }
-
-    private static List<RegistryOption> getEntityOptions() {
-        return RegistryOptionCache.ENTITY_OPTIONS;
-    }
-
-    private List<RegistryOption> getRegistryOptions(int index) {
-        if (isBlockParameter(index)) {
-            return getBlockOptions();
-        }
-        if (isItemParameter(index)) {
-            return getItemOptions();
-        }
-        if (isEntityParameter(index)) {
-            return getEntityOptions();
-        }
-        return List.of();
-    }
-
-    private record RegistryOption(String value, String fullId, ItemStack stack) {
-    }
-
-    private record MatchOption(RegistryOption option, int score) {
-    }
-
-    private static final class RegistryOptionCache {
-        private static final List<RegistryOption> BLOCK_OPTIONS = buildBlockOptions();
-        private static final List<RegistryOption> ITEM_OPTIONS = buildItemOptions();
-        private static final List<RegistryOption> ENTITY_OPTIONS = buildEntityOptions();
-
-        private static List<RegistryOption> buildBlockOptions() {
-            List<RegistryOption> options = new ArrayList<>();
-            for (Identifier id : Registries.BLOCK.getIds()) {
-                String fullId = id.toString();
-                String value = isMinecraftNamespace(id) ? id.getPath() : fullId;
-                Block block = Registries.BLOCK.get(id);
-                Item item = block != null ? block.asItem() : Items.AIR;
-                ItemStack stack = item != null && item != Items.AIR ? new ItemStack(item) : ItemStack.EMPTY;
-                options.add(new RegistryOption(value, fullId, stack));
-            }
-            options.sort((a, b) -> a.value().compareToIgnoreCase(b.value()));
-            return options;
-        }
-
-        private static List<RegistryOption> buildItemOptions() {
-            List<RegistryOption> options = new ArrayList<>();
-            for (Identifier id : Registries.ITEM.getIds()) {
-                Item item = Registries.ITEM.get(id);
-                if (item == null || item == Items.AIR) {
-                    continue;
-                }
-                String fullId = id.toString();
-                String value = isMinecraftNamespace(id) ? id.getPath() : fullId;
-                options.add(new RegistryOption(value, fullId, new ItemStack(item)));
-            }
-            options.sort((a, b) -> a.value().compareToIgnoreCase(b.value()));
-            return options;
-        }
-
-        private static List<RegistryOption> buildEntityOptions() {
-            List<RegistryOption> options = new ArrayList<>();
-            for (Identifier id : Registries.ENTITY_TYPE.getIds()) {
-                EntityType<?> entityType = Registries.ENTITY_TYPE.get(id);
-                String fullId = id.toString();
-                String value = isMinecraftNamespace(id) ? id.getPath() : fullId;
-                ItemStack iconStack = ItemStack.EMPTY;
-                if (entityType != null) {
-                    Item spawnEgg = SpawnEggItem.forEntity(entityType);
-                    if (spawnEgg != null) {
-                        iconStack = new ItemStack(spawnEgg);
-                    }
-                }
-                options.add(new RegistryOption(value, fullId, iconStack));
-            }
-            options.sort((a, b) -> a.value().compareToIgnoreCase(b.value()));
-            return options;
-        }
-    }
-
 }

@@ -744,8 +744,14 @@ public class Node {
         if (type == NodeType.INTERACT && parameterType == NodeType.PARAM_ITEM) {
             return false;
         }
+        if (type == NodeType.INTERACT && parameterType == NodeType.PARAM_ENTITY) {
+            return true;
+        }
         if (type == NodeType.USE) {
             return parameterType == NodeType.PARAM_ITEM || parameterType == NodeType.PARAM_INVENTORY_SLOT;
+        }
+        if (type == NodeType.TRADE) {
+            return parameterType == NodeType.PARAM_ITEM;
         }
         if (type == NodeType.MOVE_ITEM && slotIndex >= 0 && slotIndex <= 1 && parameterType == NodeType.PARAM_ITEM) {
             return true;
@@ -1096,6 +1102,9 @@ public class Node {
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return slotIndex == 0 ? "User" : "Message";
         }
+        if (type == NodeType.TRADE) {
+            return "Item to Buy";
+        }
         return "Parameter";
     }
 
@@ -1201,6 +1210,9 @@ public class Node {
             return true;
         }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
+            return true;
+        }
+        if (type == NodeType.TRADE) {
             return true;
         }
         return false;
@@ -2110,6 +2122,9 @@ public class Node {
                 parameters.add(new NodeParameter("SwingOnPlace", ParameterType.BOOLEAN, "true"));
                 parameters.add(new NodeParameter("RequireBlockHit", ParameterType.BOOLEAN, "true"));
                 parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
+                break;
+            case TRADE:
+                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                 break;
             case LOOK:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
@@ -3350,6 +3365,13 @@ public class Node {
                 return ParameterHandlingResult.COMPLETE;
             }
         }
+        if (!handled && type == NodeType.TRADE && parameterNode.getType() == NodeType.PARAM_ITEM) {
+            List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+            if (!itemIds.isEmpty()) {
+                runtimeParameterData.targetItemId = itemIds.get(0);
+                handled = true;
+            }
+        }
 
         // Special case: block parameters in slot 0 of PLACE/PLACE_HAND nodes are valid
         // even when usages is empty (they provide block type, not position)
@@ -4349,6 +4371,9 @@ public class Node {
                 break;
             case INTERACT:
                 executeInteractCommand(future);
+                break;
+            case TRADE:
+                executeTradeCommand(future);
                 break;
             case SWING:
                 executeSwingCommand(future);
@@ -9969,11 +9994,59 @@ public class Node {
             setParameterValueAndPropagate("Block", configuredBlockId);
         }
 
+        // Check for entity parameter
+        String configuredEntityId = null;
+        if (parameterData != null && parameterData.targetEntityId != null && !parameterData.targetEntityId.isEmpty()) {
+            configuredEntityId = parameterData.targetEntityId;
+        }
+
+        Entity targetEntity = null;
+        if (configuredEntityId != null && !configuredEntityId.isEmpty()) {
+            String sanitizedEntity = sanitizeResourceId(configuredEntityId);
+            String normalizedEntity = normalizeResourceId(sanitizedEntity, "minecraft");
+            Identifier entityIdentifier = Identifier.tryParse(normalizedEntity);
+
+            if (entityIdentifier == null || !Registries.ENTITY_TYPE.containsId(entityIdentifier)) {
+                restoreSneakState.run();
+                sendNodeErrorMessage(client, "Cannot interact with \"" + configuredEntityId + "\": unknown entity identifier.");
+                future.complete(null);
+                return;
+            }
+
+            EntityType<?> entityType = Registries.ENTITY_TYPE.get(entityIdentifier);
+            Optional<Entity> nearestEntity = findNearestEntity(client, entityType, PARAMETER_SEARCH_RADIUS);
+
+            if (!nearestEntity.isPresent()) {
+                restoreSneakState.run();
+                String entityName = configuredEntityId.replace("minecraft:", "").replace("_", " ");
+                sendNodeErrorMessage(client, "No " + entityName + " nearby to interact with.");
+                future.complete(null);
+                return;
+            }
+
+            targetEntity = nearestEntity.get();
+
+            // Check distance
+            if (targetEntity.squaredDistanceTo(client.player.getEyePos()) > DEFAULT_REACH_DISTANCE_SQUARED) {
+                restoreSneakState.run();
+                String entityName = configuredEntityId.replace("minecraft:", "").replace("_", " ");
+                sendNodeErrorMessage(client, entityName + " is too far away to interact with.");
+                future.complete(null);
+                return;
+            }
+        }
+
         HitResult target = client.crosshairTarget;
         ActionResult result = ActionResult.PASS;
         boolean attemptedInteraction = false;
 
-        if (targetBlock != null || parameterTargetPos != null) {
+        // If an entity parameter is specified, interact with it first
+        if (targetEntity != null) {
+            result = client.interactionManager.interactEntity(client.player, targetEntity, hand);
+            attemptedInteraction = true;
+        }
+
+        if (!attemptedInteraction && (targetBlock != null || parameterTargetPos != null)) {
             BlockPos targetPos = parameterTargetPos;
             if (targetPos == null && targetBlock != null) {
                 String selectionSource = configuredBlockSelection != null && !configuredBlockSelection.isEmpty()
@@ -10065,7 +10138,223 @@ public class Node {
         restoreSneakState.run();
         future.complete(null);
     }
-    
+
+    private void executeTradeCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.interactionManager == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        // Check if a merchant screen is open
+        net.minecraft.client.gui.screen.Screen currentScreen = client.currentScreen;
+        if (!(currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen)) {
+            sendNodeErrorMessage(client, "No villager trading screen is open.");
+            future.complete(null);
+            return;
+        }
+
+        net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen =
+            (net.minecraft.client.gui.screen.ingame.MerchantScreen) currentScreen;
+
+        // Get the screen handler from merchant screen
+        net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+        if (screenHandler == null) {
+            sendNodeErrorMessage(client, "Cannot access merchant screen handler.");
+            future.complete(null);
+            return;
+        }
+
+        // Get the trade offers
+        net.minecraft.village.TradeOfferList tradeOffers = screenHandler.getRecipes();
+        if (tradeOffers == null || tradeOffers.isEmpty()) {
+            sendNodeErrorMessage(client, "No trades available from this villager.");
+            future.complete(null);
+            return;
+        }
+
+        // Get the desired item from attached parameter
+        String desiredItemId = null;
+        RuntimeParameterData parameterData = runtimeParameterData;
+        if (parameterData != null && parameterData.targetItemId != null && !parameterData.targetItemId.isEmpty()) {
+            desiredItemId = parameterData.targetItemId;
+        }
+
+        if (desiredItemId == null || desiredItemId.isEmpty()) {
+            sendNodeErrorMessage(client, "No item specified for trading. Attach a PARAM_ITEM to specify what to buy.");
+            future.complete(null);
+            return;
+        }
+
+        // Normalize the item ID
+        String sanitized = sanitizeResourceId(desiredItemId);
+        String normalized = normalizeResourceId(sanitized, "minecraft");
+        net.minecraft.util.Identifier identifier = net.minecraft.util.Identifier.tryParse(normalized);
+
+        if (identifier == null || !net.minecraft.registry.Registries.ITEM.containsId(identifier)) {
+            sendNodeErrorMessage(client, "Unknown item: " + desiredItemId);
+            future.complete(null);
+            return;
+        }
+
+        net.minecraft.item.Item desiredItem = net.minecraft.registry.Registries.ITEM.get(identifier);
+
+        // Find a trade that sells the desired item
+        int tradeIndex = -1;
+        for (int i = 0; i < tradeOffers.size(); i++) {
+            net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
+            if (offer != null && !offer.isDisabled() && offer.getSellItem().getItem() == desiredItem) {
+                // Check if player has the required items
+                if (canAffordTrade(client.player, offer)) {
+                    tradeIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (tradeIndex == -1) {
+            sendNodeErrorMessage(client, "No available trade found for " + desiredItemId + " or missing required items.");
+            future.complete(null);
+            return;
+        }
+
+        // Get the quantity to trade
+        int quantity = Math.max(1, getIntParameter("Amount", 1));
+
+        // Debug: Log the trade quantity
+        System.out.println("[TRADE DEBUG] Trading " + quantity + " times for " + desiredItemId);
+
+        final net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
+        final int finalTradeIndex = tradeIndex;
+
+        // Execute trades with proper server synchronization
+        new Thread(() -> {
+            try {
+                for (int tradeCount = 0; tradeCount < quantity; tradeCount++) {
+                    // Check if we can still afford the trade
+                    if (!canAffordTrade(client.player, selectedOffer)) {
+                        sendNodeErrorMessage(client, "Not enough items to complete the trade.");
+                        break;
+                    }
+
+                    // Check if trade is still available (not disabled/sold out)
+                    if (selectedOffer.isDisabled()) {
+                        sendNodeErrorMessage(client, "Trade is no longer available.");
+                        break;
+                    }
+
+                    // Execute trade on main thread with proper packet sequence
+                    runOnClientThread(client, () -> {
+                        // Select the trade on client
+                        screenHandler.setRecipeIndex(finalTradeIndex);
+                        screenHandler.switchTo(finalTradeIndex);
+
+                        // Send packet to server to select the trade
+                        if (client.player.networkHandler != null) {
+                            client.player.networkHandler.sendPacket(
+                                new net.minecraft.network.packet.c2s.play.SelectMerchantTradeC2SPacket(finalTradeIndex)
+                            );
+                        }
+                    });
+
+                    // Wait for server to process the trade selection
+                    Thread.sleep(50);
+
+                    // Complete the trade by clicking output slot
+                    runOnClientThread(client, () -> {
+                        final int outputSlot = 2;
+                        // Use PICKUP to take exactly one trade's worth (not QUICK_MOVE which does multiple)
+                        client.interactionManager.clickSlot(
+                            screenHandler.syncId,
+                            outputSlot,
+                            0,
+                            net.minecraft.screen.slot.SlotActionType.PICKUP,
+                            client.player
+                        );
+
+                        // If cursor has item, place it in first empty inventory slot
+                        if (!screenHandler.getCursorStack().isEmpty()) {
+                            for (int slot = 3; slot < screenHandler.slots.size(); slot++) {
+                                if (screenHandler.getSlot(slot).getStack().isEmpty()) {
+                                    client.interactionManager.clickSlot(
+                                        screenHandler.syncId,
+                                        slot,
+                                        0,
+                                        net.minecraft.screen.slot.SlotActionType.PICKUP,
+                                        client.player
+                                    );
+                                    break;
+                                }
+                            }
+                        }
+                    });
+
+                    // Delay between trades to allow server synchronization
+                    if (tradeCount < quantity - 1) {
+                        Thread.sleep(250);
+                    }
+                }
+
+                future.complete(null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            }
+        }, "Pathmind-Trade").start();
+    }
+
+    private boolean canAffordTrade(net.minecraft.entity.player.PlayerEntity player, net.minecraft.village.TradeOffer offer) {
+        if (player == null || offer == null) {
+            return false;
+        }
+
+        net.minecraft.entity.player.PlayerInventory inventory = player.getInventory();
+
+        // In Minecraft 1.21+, getFirstBuyItem() returns TradedItem, use itemStack() to get ItemStack
+        net.minecraft.village.TradedItem firstTradedItem = offer.getFirstBuyItem();
+        net.minecraft.item.ItemStack firstBuyItem = firstTradedItem.itemStack();
+
+        // Check first required item
+        if (!firstBuyItem.isEmpty()) {
+            int required = firstBuyItem.getCount();
+            int available = 0;
+            for (int i = 0; i < inventory.size(); i++) {
+                net.minecraft.item.ItemStack stack = inventory.getStack(i);
+                if (net.minecraft.item.ItemStack.areItemsEqual(stack, firstBuyItem)) {
+                    available += stack.getCount();
+                }
+            }
+            if (available < required) {
+                return false;
+            }
+        }
+
+        // Check second required item (if exists)
+        // getSecondBuyItem() returns Optional<TradedItem> in Minecraft 1.21+
+        java.util.Optional<net.minecraft.village.TradedItem> secondBuyItemOpt = offer.getSecondBuyItem();
+        if (secondBuyItemOpt.isPresent()) {
+            net.minecraft.village.TradedItem tradedItem = secondBuyItemOpt.get();
+            net.minecraft.item.ItemStack secondBuyItem = tradedItem.itemStack();
+            int required = secondBuyItem.getCount();
+            int available = 0;
+            for (int i = 0; i < inventory.size(); i++) {
+                net.minecraft.item.ItemStack stack = inventory.getStack(i);
+                if (net.minecraft.item.ItemStack.areItemsEqual(stack, secondBuyItem)) {
+                    available += stack.getCount();
+                }
+            }
+            if (available < required) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private void executeSwingCommand(CompletableFuture<Void> future) {
         if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
             return;

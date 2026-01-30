@@ -61,6 +61,7 @@ public enum NodeType {
     USE("Use", 0xFF8BC34A, "Uses the selected hand with fine-grained control"),
     INTERACT("Interact", 0xFF4DB6AC, "Interacts with the targeted block or entity"),
     PLACE_HAND("Place", 0xFFBA68C8, "Places a block from the selected hand"),
+    TRADE("Trade", 0xFF7E57C2, "Trades with a villager when merchant screen is open"),
 
     // GUI Commands
     HOTBAR("Hotbar Slot", 0xFFCDDC39, "Selects a hotbar slot"),
@@ -237,6 +238,7 @@ public enum NodeType {
             case USE:
             case INTERACT:
             case PLACE_HAND:
+            case TRADE:
                 return NodeCategory.INTERACTION;
             case HOTBAR:
             case DROP_ITEM:
@@ -305,6 +307,7 @@ public enum NodeType {
             case SPRINT:
             case INTERACT:
             case PLACE_HAND:
+            case TRADE:
             case DROP_SLOT:
             case MOVE_ITEM:
             case EQUIP_ARMOR:

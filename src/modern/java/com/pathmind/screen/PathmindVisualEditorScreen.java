@@ -2124,6 +2124,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (node == null) {
             return;
         }
+        if (node.getType() != NodeType.PARAM_INVENTORY_SLOT && node.getType() != NodeType.PARAM_KEY) {
+            return;
+        }
         nodeGraph.stopCoordinateEditing(true);
         nodeGraph.stopAmountEditing(true);
         nodeGraph.stopStopTargetEditing(true);
@@ -2139,8 +2142,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     parameterOverlay = null;
                 }
             }, // Clear reference on close
-            nodeGraph::notifyNodeParametersChanged,
-            () -> nodeGraph.getFunctionNames()
+            nodeGraph::notifyNodeParametersChanged
         );
         parameterOverlay = overlayRef[0];
         parameterOverlay.init();

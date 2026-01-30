@@ -2871,16 +2871,18 @@ public class NodeGraph {
         if (node == null || !node.hasMessageInputFields()) {
             return false;
         }
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
         int size = node.getMessageButtonSize();
-        int top = node.getMessageButtonTop() - cameraY;
-        int addLeft = node.getMessageAddButtonLeft() - cameraX;
-        int removeLeft = node.getMessageRemoveButtonLeft() - cameraX;
+        int top = node.getMessageButtonTop();
+        int addLeft = node.getMessageAddButtonLeft();
+        int removeLeft = node.getMessageRemoveButtonLeft();
         boolean handled = false;
 
-        boolean overAdd = mouseX >= addLeft && mouseX <= addLeft + size
-            && mouseY >= top && mouseY <= top + size;
-        boolean overRemove = mouseX >= removeLeft && mouseX <= removeLeft + size
-            && mouseY >= top && mouseY <= top + size;
+        boolean overAdd = worldMouseX >= addLeft && worldMouseX <= addLeft + size
+            && worldMouseY >= top && worldMouseY <= top + size;
+        boolean overRemove = worldMouseX >= removeLeft && worldMouseX <= removeLeft + size
+            && worldMouseY >= top && worldMouseY <= top + size;
 
         if (overAdd) {
             stopMessageEditing(true);
@@ -3279,13 +3281,20 @@ public class NodeGraph {
 
     private void renderMessageButtons(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
         int size = node.getMessageButtonSize();
-        int top = node.getMessageButtonTop() - cameraY;
-        int addLeft = node.getMessageAddButtonLeft() - cameraX;
-        int removeLeft = node.getMessageRemoveButtonLeft() - cameraX;
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int worldTop = node.getMessageButtonTop();
+        int worldAddLeft = node.getMessageAddButtonLeft();
+        int worldRemoveLeft = node.getMessageRemoveButtonLeft();
+        int top = worldTop - cameraY;
+        int addLeft = worldAddLeft - cameraX;
+        int removeLeft = worldRemoveLeft - cameraX;
 
         boolean canRemove = node.getMessageFieldCount() > 1;
-        boolean addHovered = mouseX >= addLeft && mouseX <= addLeft + size && mouseY >= top && mouseY <= top + size;
-        boolean removeHovered = mouseX >= removeLeft && mouseX <= removeLeft + size && mouseY >= top && mouseY <= top + size && canRemove;
+        boolean addHovered = worldMouseX >= worldAddLeft && worldMouseX <= worldAddLeft + size
+            && worldMouseY >= worldTop && worldMouseY <= worldTop + size;
+        boolean removeHovered = worldMouseX >= worldRemoveLeft && worldMouseX <= worldRemoveLeft + size
+            && worldMouseY >= worldTop && worldMouseY <= worldTop + size && canRemove;
 
         int baseFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
         int baseBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
@@ -4648,6 +4657,28 @@ public class NodeGraph {
         return !Objects.equals(previous, value);
     }
 
+    private void refreshBlockStateParameterPreview() {
+        if (!isEditingParameterField() || parameterEditingNode == null) {
+            return;
+        }
+        if (parameterEditingNode.getType() != NodeType.PARAM_BLOCK) {
+            return;
+        }
+        if (parameterEditingIndex < 0 || parameterEditingIndex >= parameterEditingNode.getParameters().size()) {
+            return;
+        }
+        if (!isBlockParameter(parameterEditingNode, parameterEditingIndex)) {
+            return;
+        }
+        NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
+        if (parameter == null) {
+            return;
+        }
+        String value = parameterEditBuffer == null ? "" : parameterEditBuffer;
+        parameter.setStringValueFromUser(value);
+        parameterEditingNode.recalculateDimensions();
+    }
+
     private void revertParameterEdit() {
         if (!isEditingParameterField()) {
             return;
@@ -4681,6 +4712,7 @@ public class NodeGraph {
                         + parameterEditBuffer.substring(parameterCaretPosition);
                     setParameterCaretPosition(parameterCaretPosition - 1);
                     updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+                    refreshBlockStateParameterPreview();
                     clearParameterDropdownSuppression();
                 }
                 return true;
@@ -4693,6 +4725,7 @@ public class NodeGraph {
                         + parameterEditBuffer.substring(parameterCaretPosition + 1);
                     setParameterCaretPosition(parameterCaretPosition);
                     updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+                    refreshBlockStateParameterPreview();
                     clearParameterDropdownSuppression();
                 }
                 return true;
@@ -5324,6 +5357,7 @@ public class NodeGraph {
             + parameterEditBuffer.substring(parameterSelectionEnd);
         setParameterCaretPosition(parameterSelectionStart);
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+        refreshBlockStateParameterPreview();
         clearParameterDropdownSuppression();
         return true;
     }
@@ -5665,6 +5699,7 @@ public class NodeGraph {
             parameterEditBuffer = working;
             setParameterCaretPosition(caret);
             updateParameterFieldContentWidth(parameterEditingNode, textRenderer, parameterEditingIndex, parameterEditBuffer);
+            refreshBlockStateParameterPreview();
             clearParameterDropdownSuppression();
             return true;
         }
@@ -5992,6 +6027,7 @@ public class NodeGraph {
         parameterEditBuffer = prefix + replacement + suffix;
         setParameterCaretPosition(prefix.length() + replacement.length());
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+        refreshBlockStateParameterPreview();
         ParameterSegment updatedSegment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String updatedQuery = updatedSegment.trimmedSegment == null ? "" : updatedSegment.trimmedSegment.trim();
         suppressParameterDropdown(parameterEditingNode, parameterEditingIndex, updatedQuery);

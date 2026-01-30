@@ -6,8 +6,10 @@ import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
@@ -275,7 +277,8 @@ public class Sidebar {
         maxScroll = Math.max(0, totalHeight - sidebarHeight + 100); // Extra 100px for better scrolling
     }
     
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, int sidebarStartY, int sidebarHeight, boolean interactionsEnabled) {
+    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
+                       int sidebarStartY, int sidebarHeight, boolean interactionsEnabled, boolean showTooltips) {
         int effectiveMouseX = interactionsEnabled ? mouseX : Integer.MIN_VALUE;
         int effectiveMouseY = interactionsEnabled ? mouseY : Integer.MIN_VALUE;
         // Store current sidebar height so scroll can be recalculated
@@ -538,6 +541,18 @@ public class Sidebar {
 
             renderCategoryScrollbar(context, totalWidth, contentTop, contentBottom);
             context.disableScissor();
+        }
+
+        if (interactionsEnabled && showTooltips && hoveredNodeType != null) {
+            TooltipRenderer.render(
+                context,
+                textRenderer,
+                hoveredNodeType.getDescription(),
+                mouseX,
+                mouseY,
+                MinecraftClient.getInstance().getWindow().getScaledWidth(),
+                MinecraftClient.getInstance().getWindow().getScaledHeight()
+            );
         }
         
         // Reset hover states if mouse is not in sidebar

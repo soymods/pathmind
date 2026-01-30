@@ -2366,6 +2366,26 @@ public class Node {
         return text.substring(0, maxContentLength) + "...";
     }
 
+    private int getVisibleParameterLineCount() {
+        if (type == NodeType.PARAM_BOOLEAN) {
+            return 0;
+        }
+        int count = 0;
+        for (NodeParameter param : parameters) {
+            if (param == null) {
+                continue;
+            }
+            String label = getParameterLabel(param);
+            if (label != null && !label.isEmpty()) {
+                count++;
+            }
+        }
+        if (supportsModeSelection()) {
+            count++;
+        }
+        return count;
+    }
+
     public Map<String, String> exportParameterValues() {
         Map<String, String> values = new HashMap<>();
         for (NodeParameter parameter : parameters) {
@@ -3085,10 +3105,7 @@ public class Node {
         boolean hasSlots = hasSensorSlot() || hasActionSlot();
 
         if (isParameterNode()) {
-            int parameterLineCount = type == NodeType.PARAM_BOOLEAN ? 0 : parameters.size();
-            if (supportsModeSelection()) {
-                parameterLineCount++;
-            }
+            int parameterLineCount = getVisibleParameterLineCount();
 
             if (parameterLineCount > 0) {
                 contentHeight += PARAM_PADDING_TOP + (parameterLineCount * PARAM_LINE_HEIGHT) + PARAM_PADDING_BOTTOM;
@@ -3204,11 +3221,11 @@ public class Node {
         if (type == NodeType.PARAM_BOOLEAN) {
             return 0;
         }
-        int parameterLineCount = parameters.size();
-        if (supportsModeSelection()) {
-            parameterLineCount++;
+        int parameterLineCount = getVisibleParameterLineCount();
+        if (parameterLineCount <= 0) {
+            return 0;
         }
-        return PARAM_PADDING_TOP + parameterLineCount * PARAM_LINE_HEIGHT + PARAM_PADDING_BOTTOM;
+        return PARAM_PADDING_TOP + (parameterLineCount * PARAM_LINE_HEIGHT) + PARAM_PADDING_BOTTOM;
     }
 
     public String getModeDisplayLabel() {

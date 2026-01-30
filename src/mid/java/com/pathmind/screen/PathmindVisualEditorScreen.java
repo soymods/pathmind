@@ -17,6 +17,7 @@ import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
 import com.pathmind.ui.overlay.NodeParameterOverlay;
 import com.pathmind.ui.sidebar.Sidebar;
+import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -287,7 +288,16 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Always render sidebar after node graph/buttons so expanded categories sit on top
         boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
-        sidebar.render(context, this.textRenderer, mouseX, mouseY, TITLE_BAR_HEIGHT, this.height - TITLE_BAR_HEIGHT, sidebarInteractionsEnabled);
+        sidebar.render(
+            context,
+            this.textRenderer,
+            mouseX,
+            mouseY,
+            TITLE_BAR_HEIGHT,
+            this.height - TITLE_BAR_HEIGHT,
+            sidebarInteractionsEnabled,
+            showWorkspaceTooltips
+        );
 
         // Render title bar above the workspace so nodes never overlap it.
         context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
@@ -3190,28 +3200,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawWorkspaceTooltip(DrawContext context, String text, int mouseX, int mouseY) {
-        int paddingX = 6;
-        int paddingY = 4;
-        int textWidth = this.textRenderer.getWidth(text);
-        int textHeight = this.textRenderer.fontHeight;
-        int boxWidth = textWidth + paddingX * 2;
-        int boxHeight = textHeight + paddingY * 2;
-
-        int x = mouseX + 12;
-        int y = mouseY + 12;
-
-        if (x + boxWidth > this.width) {
-            x = this.width - boxWidth - 4;
-        }
-        if (y + boxHeight > this.height) {
-            y = this.height - boxHeight - 4;
-        }
-
-        int backgroundColor = 0xF01A1A1A;
-        int borderColor = 0x80FFFFFF;
-        context.fill(x, y, x + boxWidth, y + boxHeight, backgroundColor);
-        DrawContextBridge.drawBorder(context, x, y, boxWidth, boxHeight, borderColor);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(text), x + paddingX, y + paddingY, 0xFFE0E0E0);
+        TooltipRenderer.render(context, this.textRenderer, text, mouseX, mouseY, this.width, this.height);
     }
 
     private float getHoverProgress(Object key, boolean hovered) {
@@ -3616,10 +3605,9 @@ public class PathmindVisualEditorScreen extends Screen {
         // Update dropdown animation
         languageDropdownAnimation.animateTo(languageDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
         languageDropdownAnimation.tick();
-        float animProgress = AnimationHelper.easeOutQuad(languageDropdownAnimation.getValue());
 
         // Draw dropdown button background
-        int bgColor = hovered ? UITheme.BUTTON_HOVER : UITheme.BUTTON_BACKGROUND;
+        int bgColor = hovered ? UITheme.DROPDOWN_BG_HOVER : UITheme.DROPDOWN_BG;
         context.fill(x, y, x + width, y + 20, bgColor);
 
         // Draw dropdown text
@@ -3640,11 +3628,20 @@ public class PathmindVisualEditorScreen extends Screen {
             context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY, labelColor);
             context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY - 1, labelColor);
         }
+    }
+
+    private void drawLanguageDropdownOptions(DrawContext context, int x, int y, int width, int mouseX, int mouseY) {
+        // Get animation progress
+        float animProgress = AnimationHelper.easeOutQuad(languageDropdownAnimation.getValue());
 
         // Don't render options if animation is fully closed
         if (animProgress <= 0.001f) {
             return;
         }
+
+        Object matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translateZ(matrices, 550.0f);
 
         int dropdownY = y + 22;
         int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
@@ -3654,7 +3651,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
 
         // Draw background for all options
-        context.fill(x, dropdownY, x + width, dropdownY + fullOptionsHeight, UITheme.POPUP_BACKGROUND);
+        context.fill(x, dropdownY, x + width, dropdownY + fullOptionsHeight, UITheme.DROPDOWN_BG);
 
         // Draw each language option
         for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
@@ -3664,7 +3661,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
             // Only allow hover detection when animation is complete
             boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
-            int optionBg = optionHovered ? UITheme.BUTTON_HOVER : UITheme.POPUP_BACKGROUND;
+            int optionBg = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
             context.fill(x, optionY, x + width, optionY + 20, optionBg);
 
             // Highlight current language with accent color
@@ -3675,6 +3672,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Disable scissor
         context.disableScissor();
+        MatrixStackBridge.pop(matrices);
     }
 
     private String getLanguageDisplayName(String languageCode) {

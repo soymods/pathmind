@@ -379,9 +379,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Render language dropdown options on top of scrim overlay
         if (settingsPopupAnimation.isVisible()) {
-            RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
-            drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
             RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+            drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
         }
 
         // Controls are already rendered before overlays so they appear dimmed underneath
@@ -3275,7 +3274,8 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
+        float popupAlpha = settingsPopupAnimation.getPopupAlpha();
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         int popupWidth = SETTINGS_POPUP_WIDTH;
         int popupHeight = SETTINGS_POPUP_HEIGHT;
@@ -3316,7 +3316,9 @@ public class PathmindVisualEditorScreen extends Screen {
         String currentLang = this.client.getLanguageManager().getLanguage();
         String langDisplayName = getLanguageDisplayName(currentLang);
         boolean languageHovered = mouseX >= contentX && mouseX <= contentX + languageButtonWidth && mouseY >= languageButtonY && mouseY <= languageButtonY + 20;
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
         drawLanguageDropdown(context, contentX, languageButtonY, languageButtonWidth, langDisplayName, languageHovered);
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         // Adjust following sections downward by 50 pixels
         int accentLabelY = languageButtonY + 50;
@@ -3635,10 +3637,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Draw dropdown button background
         int bgColor = hovered ? UITheme.DROPDOWN_BG_HOVER : UITheme.DROPDOWN_BG;
+        bgColor = settingsPopupAnimation.getAnimatedPopupColor(bgColor);
         context.fill(x, y, x + width, y + 20, bgColor);
 
         // Draw dropdown text
         int labelColor = (hovered || languageDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        labelColor = settingsPopupAnimation.getAnimatedPopupColor(labelColor);
         context.drawTextWithShadow(this.textRenderer, Text.literal(currentLang), x + 4, y + 6, labelColor);
 
         // Draw animated arrow
@@ -3678,7 +3682,8 @@ public class PathmindVisualEditorScreen extends Screen {
         context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
 
         // Draw background for all options
-        context.fill(x, dropdownY, x + width, dropdownY + fullOptionsHeight, UITheme.BACKGROUND_SECONDARY);
+        context.fill(x, dropdownY, x + width, dropdownY + fullOptionsHeight,
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY));
 
         // Draw each language option
         for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
@@ -3689,11 +3694,13 @@ public class PathmindVisualEditorScreen extends Screen {
             // Only allow hover detection when animation is complete
             boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
             int optionBg = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+            optionBg = settingsPopupAnimation.getAnimatedPopupColor(optionBg);
             context.fill(x, optionY, x + width, optionY + 20, optionBg);
 
             // Highlight current language with accent color
             String currentLang = this.client.getLanguageManager().getLanguage();
             int textColor = lang.equals(currentLang) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+            textColor = settingsPopupAnimation.getAnimatedPopupColor(textColor);
             context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
         }
 

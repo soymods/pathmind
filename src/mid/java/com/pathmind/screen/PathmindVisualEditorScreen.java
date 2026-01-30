@@ -402,6 +402,8 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         // Render context menu on top of everything
+        nodeGraph.updateNodeContextMenuHover(mouseX, mouseY);
+        nodeGraph.renderNodeContextMenu(context, this.textRenderer);
         nodeGraph.updateContextMenuHover(mouseX, mouseY);
         nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
     }
@@ -812,6 +814,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (presetDropdownOpen && !isPointInRect((int)mouseX, (int)mouseY, getPresetDropdownX(), getPresetDropdownY(), PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT + getPresetDropdownOptionsHeight())) {
             presetDropdownOpen = false;
+        }
+
+        if (nodeGraph.isNodeContextMenuOpen()) {
+            return nodeGraph.handleNodeContextMenuClick((int) mouseX, (int) mouseY);
         }
 
         // Handle parameter overlay clicks first
@@ -1272,8 +1278,14 @@ public class PathmindVisualEditorScreen extends Screen {
                                   deltaTime <= CLICK_TIME_THRESHOLD;
 
                 if (isClick && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-                    // Show context menu at the right-click position
-                    nodeGraph.showContextMenu(rightClickStartX, rightClickStartY, sidebar, width, height);
+                    Node clickedNode = nodeGraph.getNodeAt(rightClickStartX, rightClickStartY);
+                    if (clickedNode != null) {
+                        nodeGraph.selectNode(clickedNode);
+                        nodeGraph.showNodeContextMenu(rightClickStartX, rightClickStartY, clickedNode, width, height);
+                    } else {
+                        // Show context menu at the right-click position
+                        nodeGraph.showContextMenu(rightClickStartX, rightClickStartY, sidebar, width, height);
+                    }
                 }
 
                 rightClickStartX = -1;

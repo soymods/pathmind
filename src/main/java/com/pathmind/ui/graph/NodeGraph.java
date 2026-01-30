@@ -110,8 +110,12 @@ public class NodeGraph {
 
     // Context menu state
     private com.pathmind.ui.menu.ContextMenu contextMenu = null;
+    private com.pathmind.ui.menu.NodeContextMenu nodeContextMenu = null;
     private int contextMenuWorldX = 0;
     private int contextMenuWorldY = 0;
+    private int nodeContextMenuWorldX = 0;
+    private int nodeContextMenuWorldY = 0;
+    private Node nodeContextMenuTarget = null;
 
     // Double-click detection
     private long lastClickTime = 0;
@@ -1897,6 +1901,7 @@ public class NodeGraph {
      * Shows the context menu at the specified screen position.
      */
     public void showContextMenu(int screenX, int screenY, com.pathmind.ui.sidebar.Sidebar sidebar, int screenWidth, int screenHeight) {
+        closeNodeContextMenu();
         if (contextMenu == null) {
             contextMenu = new com.pathmind.ui.menu.ContextMenu(sidebar);
         }
@@ -1908,6 +1913,19 @@ public class NodeGraph {
         contextMenu.showAt(screenX, screenY, screenWidth, screenHeight);
     }
 
+    public void showNodeContextMenu(int screenX, int screenY, Node targetNode, int screenWidth, int screenHeight) {
+        closeContextMenu();
+        if (nodeContextMenu == null) {
+            nodeContextMenu = new com.pathmind.ui.menu.NodeContextMenu();
+        }
+        nodeContextMenuTarget = targetNode;
+        nodeContextMenuWorldX = screenToWorldX(screenX);
+        nodeContextMenuWorldY = screenToWorldY(screenY);
+        nodeContextMenu.setScale(getZoomScale());
+        nodeContextMenu.setAnchorScreen(screenX, screenY);
+        nodeContextMenu.showAt(screenX, screenY, screenWidth, screenHeight);
+    }
+
     /**
      * Closes the context menu if it's open.
      */
@@ -1917,11 +1935,22 @@ public class NodeGraph {
         }
     }
 
+    public void closeNodeContextMenu() {
+        if (nodeContextMenu != null) {
+            nodeContextMenu.close();
+        }
+        nodeContextMenuTarget = null;
+    }
+
     /**
      * Returns true if the context menu is open.
      */
     public boolean isContextMenuOpen() {
         return contextMenu != null && contextMenu.isOpen();
+    }
+
+    public boolean isNodeContextMenuOpen() {
+        return nodeContextMenu != null && nodeContextMenu.isOpen();
     }
 
     /**
@@ -1934,6 +1963,16 @@ public class NodeGraph {
             contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
             contextMenu.setScale(getZoomScale());
             contextMenu.updateHover(mouseX, mouseY);
+        }
+    }
+
+    public void updateNodeContextMenuHover(int mouseX, int mouseY) {
+        if (nodeContextMenu != null && nodeContextMenu.isOpen()) {
+            int anchorScreenX = worldToScreenX(nodeContextMenuWorldX);
+            int anchorScreenY = worldToScreenY(nodeContextMenuWorldY);
+            nodeContextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
+            nodeContextMenu.setScale(getZoomScale());
+            nodeContextMenu.updateHover(mouseX, mouseY);
         }
     }
 
@@ -1951,6 +1990,42 @@ public class NodeGraph {
         return null;
     }
 
+    public boolean handleNodeContextMenuClick(int mouseX, int mouseY) {
+        if (nodeContextMenu == null || !nodeContextMenu.isOpen()) {
+            return false;
+        }
+        int anchorScreenX = worldToScreenX(nodeContextMenuWorldX);
+        int anchorScreenY = worldToScreenY(nodeContextMenuWorldY);
+        nodeContextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
+        nodeContextMenu.setScale(getZoomScale());
+        com.pathmind.ui.menu.NodeContextMenuAction action = nodeContextMenu.handleClick(mouseX, mouseY);
+        if (action == null) {
+            closeNodeContextMenu();
+            return true;
+        }
+
+        if (nodeContextMenuTarget != null && !isNodeSelected(nodeContextMenuTarget)) {
+            selectNode(nodeContextMenuTarget);
+        }
+
+        switch (action) {
+            case COPY:
+                copySelectedNodeToClipboard();
+                break;
+            case DUPLICATE:
+                duplicateSelectedNode();
+                break;
+            case PASTE:
+                pasteClipboardNode();
+                break;
+            case DELETE:
+                deleteSelectedNode();
+                break;
+        }
+        closeNodeContextMenu();
+        return true;
+    }
+
     /**
      * Renders the context menu.
      */
@@ -1961,6 +2036,16 @@ public class NodeGraph {
             contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
             contextMenu.setScale(getZoomScale());
             contextMenu.render(context, textRenderer, mouseX, mouseY);
+        }
+    }
+
+    public void renderNodeContextMenu(DrawContext context, TextRenderer textRenderer) {
+        if (nodeContextMenu != null && nodeContextMenu.isOpen()) {
+            int anchorScreenX = worldToScreenX(nodeContextMenuWorldX);
+            int anchorScreenY = worldToScreenY(nodeContextMenuWorldY);
+            nodeContextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
+            nodeContextMenu.setScale(getZoomScale());
+            nodeContextMenu.render(context, textRenderer);
         }
     }
 

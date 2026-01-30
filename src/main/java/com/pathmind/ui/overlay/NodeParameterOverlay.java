@@ -1266,6 +1266,50 @@ public class NodeParameterOverlay {
         resetCaretBlink();
     }
 
+    private void deleteWordBeforeCaret(int index) {
+        if (clearPlaceholderIfActive(index)) {
+            return;
+        }
+        String value = getFieldValue(index);
+        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        if (caret == 0) {
+            return;
+        }
+        int deleteToPos = findPreviousWordBoundary(value, caret);
+        String updated = value.substring(0, deleteToPos) + value.substring(caret);
+        setParameterValue(index, updated);
+        caretPositions.set(index, deleteToPos);
+        resetCaretBlink();
+    }
+
+    private int findPreviousWordBoundary(String text, int fromPosition) {
+        if (text == null || fromPosition <= 0) {
+            return 0;
+        }
+        int pos = fromPosition - 1;
+
+        // Skip any whitespace immediately before the caret
+        while (pos > 0 && Character.isWhitespace(text.charAt(pos))) {
+            pos--;
+        }
+
+        // If we're on alphanumeric, skip back to start of word
+        if (pos >= 0 && Character.isLetterOrDigit(text.charAt(pos))) {
+            while (pos > 0 && Character.isLetterOrDigit(text.charAt(pos - 1))) {
+                pos--;
+            }
+        }
+        // If we're on non-alphanumeric (like punctuation), skip similar characters
+        else if (pos >= 0) {
+            while (pos > 0 && !Character.isLetterOrDigit(text.charAt(pos - 1))
+                   && !Character.isWhitespace(text.charAt(pos - 1))) {
+                pos--;
+            }
+        }
+
+        return pos;
+    }
+
     private void deleteCharAfterCaret(int index) {
         if (clearPlaceholderIfActive(index)) {
             return;
@@ -1426,7 +1470,11 @@ public class NodeParameterOverlay {
                     return true;
                 }
                 if (!deleteSelectionForField(index)) {
-                    deleteCharBeforeCaret(index);
+                    if (controlHeld) {
+                        deleteWordBeforeCaret(index);
+                    } else {
+                        deleteCharBeforeCaret(index);
+                    }
                 }
                 return true;
             case GLFW.GLFW_KEY_DELETE:

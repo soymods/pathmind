@@ -1038,12 +1038,18 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
                 
-                if (!nodeGraph.isNodeSelected(clickedNode)) {
-                    nodeGraph.selectNode(clickedNode);
+                if (Screen.hasShiftDown()) {
+                    // Shift-click: toggle node in selection
+                    nodeGraph.toggleNodeInSelection(clickedNode);
                 } else {
-                    nodeGraph.focusSelectedNode(clickedNode);
+                    // Normal click: select only this node or focus if already selected
+                    if (!nodeGraph.isNodeSelected(clickedNode)) {
+                        nodeGraph.selectNode(clickedNode);
+                    } else {
+                        nodeGraph.focusSelectedNode(clickedNode);
+                    }
+                    nodeGraph.startDragging(clickedNode, (int)mouseX, (int)mouseY);
                 }
-                nodeGraph.startDragging(clickedNode, (int)mouseX, (int)mouseY);
                 return true;
             }
         } else {

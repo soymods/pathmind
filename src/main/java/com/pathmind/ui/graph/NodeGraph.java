@@ -735,6 +735,24 @@ public class NodeGraph {
         node.setSelected(true);
     }
 
+    public void toggleNodeInSelection(Node node) {
+        if (node == null) {
+            return;
+        }
+        if (selectedNodes.contains(node)) {
+            // Remove from selection
+            selectedNodes.remove(node);
+            node.setSelected(false);
+            // Update focused node if we removed it
+            if (selectedNode == node) {
+                selectedNode = selectedNodes.isEmpty() ? null : selectedNodes.iterator().next();
+            }
+        } else {
+            // Add to selection
+            addNodeToSelection(node);
+        }
+    }
+
     private SelectionBounds calculateBounds(Collection<Node> nodesToMeasure) {
         if (nodesToMeasure == null || nodesToMeasure.isEmpty()) {
             return null;
@@ -3819,7 +3837,14 @@ public class NodeGraph {
                 if (deleteCoordinateSelection()) {
                     return true;
                 }
-                if (coordinateCaretPosition > 0 && !coordinateEditBuffer.isEmpty()) {
+                if (controlHeld && coordinateCaretPosition > 0) {
+                    // CTRL+Backspace: delete to previous word boundary
+                    int deleteToPos = findPreviousWordBoundary(coordinateEditBuffer, coordinateCaretPosition);
+                    coordinateEditBuffer = coordinateEditBuffer.substring(0, deleteToPos)
+                        + coordinateEditBuffer.substring(coordinateCaretPosition);
+                    setCoordinateCaretPosition(deleteToPos);
+                    updateCoordinateFieldContentWidth(getClientTextRenderer());
+                } else if (coordinateCaretPosition > 0 && !coordinateEditBuffer.isEmpty()) {
                     coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateCaretPosition - 1)
                         + coordinateEditBuffer.substring(coordinateCaretPosition);
                     setCoordinateCaretPosition(coordinateCaretPosition - 1);
@@ -3884,7 +3909,7 @@ public class NodeGraph {
                 if (controlHeld) {
                     TextRenderer textRenderer = getClientTextRenderer();
                     if (textRenderer != null) {
-                        insertCoordinateText(getClipboardText(), textRenderer);
+                        smartPasteCoordinates(getClipboardText(), textRenderer);
                     }
                     return true;
                 }
@@ -4025,7 +4050,14 @@ public class NodeGraph {
                 if (deleteAmountSelection()) {
                     return true;
                 }
-                if (amountCaretPosition > 0 && !amountEditBuffer.isEmpty()) {
+                if (controlHeld && amountCaretPosition > 0) {
+                    // CTRL+Backspace: delete to previous word boundary
+                    int deleteToPos = findPreviousWordBoundary(amountEditBuffer, amountCaretPosition);
+                    amountEditBuffer = amountEditBuffer.substring(0, deleteToPos)
+                        + amountEditBuffer.substring(amountCaretPosition);
+                    setAmountCaretPosition(deleteToPos);
+                    updateAmountFieldContentWidth(getClientTextRenderer());
+                } else if (amountCaretPosition > 0 && !amountEditBuffer.isEmpty()) {
                     amountEditBuffer = amountEditBuffer.substring(0, amountCaretPosition - 1)
                         + amountEditBuffer.substring(amountCaretPosition);
                     setAmountCaretPosition(amountCaretPosition - 1);
@@ -4219,7 +4251,14 @@ public class NodeGraph {
                 if (deleteStopTargetSelection()) {
                     return true;
                 }
-                if (stopTargetCaretPosition > 0 && !stopTargetEditBuffer.isEmpty()) {
+                if (controlHeld && stopTargetCaretPosition > 0) {
+                    // CTRL+Backspace: delete to previous word boundary
+                    int deleteToPos = findPreviousWordBoundary(stopTargetEditBuffer, stopTargetCaretPosition);
+                    stopTargetEditBuffer = stopTargetEditBuffer.substring(0, deleteToPos)
+                        + stopTargetEditBuffer.substring(stopTargetCaretPosition);
+                    setStopTargetCaretPosition(deleteToPos);
+                    updateStopTargetFieldContentWidth(getClientTextRenderer());
+                } else if (stopTargetCaretPosition > 0 && !stopTargetEditBuffer.isEmpty()) {
                     stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetCaretPosition - 1)
                         + stopTargetEditBuffer.substring(stopTargetCaretPosition);
                     setStopTargetCaretPosition(stopTargetCaretPosition - 1);
@@ -4489,7 +4528,13 @@ public class NodeGraph {
                 if (deleteEventNameSelection()) {
                     return true;
                 }
-                if (eventNameCaretPosition > 0 && !eventNameEditBuffer.isEmpty()) {
+                if (controlHeld && eventNameCaretPosition > 0) {
+                    // CTRL+Backspace: delete to previous word boundary
+                    int deleteToPos = findPreviousWordBoundary(eventNameEditBuffer, eventNameCaretPosition);
+                    eventNameEditBuffer = eventNameEditBuffer.substring(0, deleteToPos)
+                        + eventNameEditBuffer.substring(eventNameCaretPosition);
+                    setEventNameCaretPosition(deleteToPos);
+                } else if (eventNameCaretPosition > 0 && !eventNameEditBuffer.isEmpty()) {
                     eventNameEditBuffer = eventNameEditBuffer.substring(0, eventNameCaretPosition - 1)
                         + eventNameEditBuffer.substring(eventNameCaretPosition);
                     setEventNameCaretPosition(eventNameCaretPosition - 1);
@@ -4740,7 +4785,16 @@ public class NodeGraph {
                 if (deleteParameterSelection()) {
                     return true;
                 }
-                if (parameterCaretPosition > 0 && !parameterEditBuffer.isEmpty()) {
+                if (controlHeld && parameterCaretPosition > 0) {
+                    // CTRL+Backspace: delete to previous word boundary
+                    int deleteToPos = findPreviousWordBoundary(parameterEditBuffer, parameterCaretPosition);
+                    parameterEditBuffer = parameterEditBuffer.substring(0, deleteToPos)
+                        + parameterEditBuffer.substring(parameterCaretPosition);
+                    setParameterCaretPosition(deleteToPos);
+                    updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+                    refreshBlockStateParameterPreview();
+                    clearParameterDropdownSuppression();
+                } else if (parameterCaretPosition > 0 && !parameterEditBuffer.isEmpty()) {
                     parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition - 1)
                         + parameterEditBuffer.substring(parameterCaretPosition);
                     setParameterCaretPosition(parameterCaretPosition - 1);
@@ -4837,7 +4891,14 @@ public class NodeGraph {
                 if (deleteMessageSelection()) {
                     return true;
                 }
-                if (messageCaretPosition > 0 && !messageEditBuffer.isEmpty()) {
+                if (controlHeld && messageCaretPosition > 0) {
+                    // CTRL+Backspace: delete to previous word boundary
+                    int deleteToPos = findPreviousWordBoundary(messageEditBuffer, messageCaretPosition);
+                    messageEditBuffer = messageEditBuffer.substring(0, deleteToPos)
+                        + messageEditBuffer.substring(messageCaretPosition);
+                    setMessageCaretPosition(deleteToPos);
+                    updateMessageFieldContentWidth(getClientTextRenderer());
+                } else if (messageCaretPosition > 0 && !messageEditBuffer.isEmpty()) {
                     messageEditBuffer = messageEditBuffer.substring(0, messageCaretPosition - 1)
                         + messageEditBuffer.substring(messageCaretPosition);
                     setMessageCaretPosition(messageCaretPosition - 1);
@@ -5083,6 +5144,62 @@ public class NodeGraph {
         deleteCoordinateSelection();
     }
 
+    private void smartPasteCoordinates(String clipboardText, TextRenderer textRenderer) {
+        if (!isEditingCoordinateField() || textRenderer == null || clipboardText == null || clipboardText.isEmpty()) {
+            return;
+        }
+
+        // Try to parse as multi-coordinate format (e.g., "2313 123 -32131" or "100,200,300")
+        String[] parts = clipboardText.trim().split("[\\s,]+");
+        if (parts.length == 3) {
+            // Attempt to parse all three as valid coordinates
+            String[] parsedCoords = new String[3];
+            boolean allValid = true;
+
+            for (int i = 0; i < 3; i++) {
+                String trimmed = parts[i].trim();
+                // Remove any non-digit/minus characters
+                StringBuilder cleaned = new StringBuilder();
+                for (int j = 0; j < trimmed.length(); j++) {
+                    char c = trimmed.charAt(j);
+                    if (Character.isDigit(c) || (c == '-' && j == 0)) {
+                        cleaned.append(c);
+                    }
+                }
+
+                String value = cleaned.toString();
+                if (value.isEmpty() || !isValidCoordinateValue(value)) {
+                    allValid = false;
+                    break;
+                }
+                parsedCoords[i] = value;
+            }
+
+            // If we successfully parsed all three coordinates, apply them
+            if (allValid) {
+                // Save reference to node before stopping editing
+                Node node = coordinateEditingNode;
+                if (node == null) {
+                    return;
+                }
+
+                // Stop current coordinate editing
+                stopCoordinateEditing(false);
+
+                // Apply all three coordinate values
+                for (int i = 0; i < 3; i++) {
+                    node.setParameterValueAndPropagate(COORDINATE_AXES[i], parsedCoords[i]);
+                }
+                node.recalculateDimensions();
+                notifyNodeParametersChanged(node);
+                return;
+            }
+        }
+
+        // Fall back to single-axis paste
+        insertCoordinateText(clipboardText, textRenderer);
+    }
+
     private boolean insertCoordinateText(String text, TextRenderer textRenderer) {
         if (!isEditingCoordinateField() || textRenderer == null || text == null || text.isEmpty()) {
             return false;
@@ -5139,6 +5256,35 @@ public class NodeGraph {
         coordinateSelectionEnd = originalSelectionEnd;
         coordinateSelectionAnchor = originalSelectionAnchor;
         return false;
+    }
+
+    private int findPreviousWordBoundary(String text, int fromPosition) {
+        if (text == null || fromPosition <= 0) {
+            return 0;
+        }
+        int pos = fromPosition - 1;
+
+        // Skip any whitespace immediately before the caret
+        while (pos > 0 && Character.isWhitespace(text.charAt(pos))) {
+            pos--;
+        }
+
+        // If we're on alphanumeric, skip back to start of word
+        if (pos >= 0 && Character.isLetterOrDigit(text.charAt(pos))) {
+            while (pos > 0 && Character.isLetterOrDigit(text.charAt(pos - 1))) {
+                pos--;
+            }
+        }
+        // If we're on non-alphanumeric (like punctuation), skip similar characters
+        else if (pos >= 0) {
+            char startChar = text.charAt(pos);
+            while (pos > 0 && !Character.isLetterOrDigit(text.charAt(pos - 1))
+                   && !Character.isWhitespace(text.charAt(pos - 1))) {
+                pos--;
+            }
+        }
+
+        return pos;
     }
 
     private boolean isValidCoordinateValue(String value) {

@@ -107,7 +107,12 @@ public class NodeGraph {
     private Node actionDropTarget = null;
     private Node parameterDropTarget = null;
     private Integer parameterDropSlotIndex = null;
-    
+
+    // Context menu state
+    private com.pathmind.ui.menu.ContextMenu contextMenu = null;
+    private int contextMenuWorldX = 0;
+    private int contextMenuWorldY = 0;
+
     // Double-click detection
     private long lastClickTime = 0;
     private Node lastClickedNode = null;
@@ -1887,7 +1892,114 @@ public class NodeGraph {
         panStartCameraX = cameraX;
         panStartCameraY = cameraY;
     }
-    
+
+    /**
+     * Shows the context menu at the specified screen position.
+     */
+    public void showContextMenu(int screenX, int screenY, com.pathmind.ui.sidebar.Sidebar sidebar, int screenWidth, int screenHeight) {
+        if (contextMenu == null) {
+            contextMenu = new com.pathmind.ui.menu.ContextMenu(sidebar);
+        }
+        contextMenu.setScale(getZoomScale());
+        // Store the world coordinates where nodes should be created
+        contextMenuWorldX = screenToWorldX(screenX);
+        contextMenuWorldY = screenToWorldY(screenY);
+        contextMenu.setAnchorScreen(screenX, screenY);
+        contextMenu.showAt(screenX, screenY, screenWidth, screenHeight);
+    }
+
+    /**
+     * Closes the context menu if it's open.
+     */
+    public void closeContextMenu() {
+        if (contextMenu != null) {
+            contextMenu.close();
+        }
+    }
+
+    /**
+     * Returns true if the context menu is open.
+     */
+    public boolean isContextMenuOpen() {
+        return contextMenu != null && contextMenu.isOpen();
+    }
+
+    /**
+     * Updates the context menu hover state.
+     */
+    public void updateContextMenuHover(int mouseX, int mouseY) {
+        if (contextMenu != null && contextMenu.isOpen()) {
+            int anchorScreenX = worldToScreenX(contextMenuWorldX);
+            int anchorScreenY = worldToScreenY(contextMenuWorldY);
+            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
+            contextMenu.setScale(getZoomScale());
+            contextMenu.updateHover(mouseX, mouseY);
+        }
+    }
+
+    /**
+     * Handles a click on the context menu. Returns the selected NodeType, or null.
+     */
+    public NodeType handleContextMenuClick(int mouseX, int mouseY) {
+        if (contextMenu != null && contextMenu.isOpen()) {
+            int anchorScreenX = worldToScreenX(contextMenuWorldX);
+            int anchorScreenY = worldToScreenY(contextMenuWorldY);
+            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
+            contextMenu.setScale(getZoomScale());
+            return contextMenu.handleClick(mouseX, mouseY);
+        }
+        return null;
+    }
+
+    /**
+     * Renders the context menu.
+     */
+    public void renderContextMenu(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (contextMenu != null && contextMenu.isOpen()) {
+            int anchorScreenX = worldToScreenX(contextMenuWorldX);
+            int anchorScreenY = worldToScreenY(contextMenuWorldY);
+            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
+            contextMenu.setScale(getZoomScale());
+            contextMenu.render(context, textRenderer, mouseX, mouseY);
+        }
+    }
+
+    /**
+     * Adds a node of the specified type at the given world coordinates.
+     */
+    public Node addNodeAtPosition(NodeType type, int worldX, int worldY) {
+        Node node = new Node(type, worldX, worldY);
+        addNode(node);
+        selectNode(node);
+        return node;
+    }
+
+    /**
+     * Adds a node from the context menu at the stored right-click position.
+     */
+    public Node addNodeFromContextMenu(NodeType type) {
+        return addNodeAtPosition(type, contextMenuWorldX, contextMenuWorldY);
+    }
+
+    /**
+     * Handles scroll events for the context menu.
+     * Returns true if the context menu handled the scroll.
+     */
+    public boolean handleContextMenuScroll(int mouseX, int mouseY, double amount) {
+        if (contextMenu != null && contextMenu.isOpen()) {
+            int anchorScreenX = worldToScreenX(contextMenuWorldX);
+            int anchorScreenY = worldToScreenY(contextMenuWorldY);
+            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
+            contextMenu.setScale(getZoomScale());
+            // Check if mouse is over the menu and handle scroll
+            if (contextMenu.isMouseOver(mouseX, mouseY)) {
+                contextMenu.handleScroll(amount);
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void updatePanning(int mouseX, int mouseY) {
         if (isPanning) {
             int deltaX = mouseX - panStartX;
@@ -2270,7 +2382,10 @@ public class NodeGraph {
         // Node header (only for non-START/event function nodes)
         if (simpleStyle) {
             String label = node.getType().getDisplayName().toUpperCase(Locale.ROOT);
-            int titleColor = isOverSidebar ? UITheme.TEXT_LABEL : UITheme.TEXT_PRIMARY;
+            boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
+            int titleColor = (isStopControl || isActivateNode)
+                ? UITheme.TEXT_PRIMARY
+                : (isOverSidebar ? UITheme.TEXT_LABEL : UITheme.TEXT_PRIMARY);
             int textX;
             int textY;
             if (node.hasStopTargetInputField()) {
@@ -3493,11 +3608,11 @@ public class NodeGraph {
         boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
         int fieldBorder = isActivateNode
             ? (isOverSidebar ? UITheme.BORDER_FOCUS : UITheme.BORDER_HIGHLIGHT)
-            : (isOverSidebar ? UITheme.BORDER_DANGER_MUTED : UITheme.BORDER_DANGER_MUTED);
-        int activeFieldBorder = isActivateNode ? UITheme.TEXT_TERTIARY : UITheme.BORDER_DANGER;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int activeTextColor = UITheme.TEXT_DANGER_ACTIVE;
-        int caretColor = isActivateNode ? UITheme.TEXT_PRIMARY : UITheme.CARET_DANGER;
+            : (isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT);
+        int activeFieldBorder = isActivateNode ? UITheme.TEXT_TERTIARY : UITheme.BORDER_HIGHLIGHT;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_LABEL;
+        int activeTextColor = UITheme.TEXT_LABEL;
+        int caretColor = UITheme.TEXT_LABEL;
 
         boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
         if (editing) {
@@ -3528,7 +3643,7 @@ public class NodeGraph {
         String display;
         if (!editing && (value == null || value.isEmpty())) {
             display = "start #";
-            valueColor = isOverSidebar ? UITheme.TEXT_DANGER_MUTED : UITheme.TEXT_DANGER_MUTED;
+            valueColor = UITheme.TEXT_TERTIARY;
         } else {
             display = value == null ? "" : value;
         }
@@ -6837,6 +6952,18 @@ public class NodeGraph {
 
         return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    public boolean handleStopTargetFieldClick(int screenX, int screenY) {
+        for (int i = nodes.size() - 1; i >= 0; i--) {
+            Node node = nodes.get(i);
+            if (node != null && node.hasStopTargetInputField() && isPointInsideStopTargetField(node, screenX, screenY)) {
+                selectNode(node);
+                startStopTargetEditing(node);
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean isPointInsideEventNameField(Node node, int screenX, int screenY) {

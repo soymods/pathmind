@@ -641,6 +641,30 @@ public class Sidebar {
     public int getRenderedWidth() {
         return currentRenderedWidth;
     }
+
+    /**
+     * Returns true if the specified category has any nodes.
+     */
+    public boolean hasNodesInCategory(NodeCategory category) {
+        List<NodeType> nodes = categoryNodes.get(category);
+        return nodes != null && !nodes.isEmpty();
+    }
+
+    /**
+     * Returns the list of nodes for the specified category (non-grouped).
+     */
+    public List<NodeType> getNodesForCategory(NodeCategory category) {
+        List<NodeType> nodes = categoryNodes.get(category);
+        return nodes != null ? nodes : java.util.Collections.emptyList();
+    }
+
+    /**
+     * Returns the grouped nodes for the specified category (SENSORS, PARAMETERS).
+     * Returns null if the category doesn't have groups.
+     */
+    public List<NodeGroup> getGroupedNodesForCategory(NodeCategory category) {
+        return groupedCategoryNodes.get(category);
+    }
     
     /**
      * Darkens a color by the specified factor
@@ -783,7 +807,7 @@ public class Sidebar {
         }
     }
 
-    private static class NodeGroup {
+    public static class NodeGroup {
         private final String title;
         private final List<NodeType> nodes;
 

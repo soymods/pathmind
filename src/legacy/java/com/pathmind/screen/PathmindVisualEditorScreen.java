@@ -119,6 +119,13 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean isDraggingFromSidebar = false;
     private NodeType draggingNodeType = null;
 
+    // Right-click context menu state
+    private static final int CLICK_THRESHOLD = 5;  // pixels
+    private static final long CLICK_TIME_THRESHOLD = 250;  // milliseconds
+    private int rightClickStartX = -1;
+    private int rightClickStartY = -1;
+    private long rightClickStartTime = 0;
+
     // Workspace dialogs
     private final PopupAnimationHandler clearPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler importExportPopupAnimation = new PopupAnimationHandler();
@@ -396,6 +403,10 @@ public class PathmindVisualEditorScreen extends Screen {
         if (isDraggingFromSidebar && draggingNodeType != null) {
             renderDraggingNode(context, mouseX, mouseY);
         }
+
+        // Render context menu on top of everything
+        nodeGraph.updateContextMenuHover(mouseX, mouseY);
+        nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
     }
 
     private boolean isPopupObscuringWorkspace() {
@@ -870,6 +881,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     isDraggingFromSidebar = true;
                     draggingNodeType = hoveredType;
                     nodeGraph.resetDropTargets();
+                    nodeGraph.closeContextMenu();
                 }
                 return true;
             }
@@ -877,12 +889,32 @@ public class PathmindVisualEditorScreen extends Screen {
         
         // Check if clicking on nodes in the graph area
         if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-            // Handle right-click or middle-click for panning
-            if (button == 1 || button == 2) { // Right click or middle click
+            // Check if context menu is open and handle click
+            if (nodeGraph.isContextMenuOpen()) {
+                NodeType clickedNode = nodeGraph.handleContextMenuClick((int)mouseX, (int)mouseY);
+                if (clickedNode != null) {
+                    // Create node at the stored right-click position
+                    nodeGraph.addNodeFromContextMenu(clickedNode);
+                    nodeGraph.closeContextMenu();
+                }
+                // Menu handled the click (either selected node or closed)
+                return true;
+            }
+
+            // Handle right-click - track position for context menu
+            if (button == 1) {
+                rightClickStartX = (int)mouseX;
+                rightClickStartY = (int)mouseY;
+                rightClickStartTime = System.currentTimeMillis();
+                return true;
+            }
+
+            // Handle middle-click for panning
+            if (button == 2) {
                 nodeGraph.startPanning((int)mouseX, (int)mouseY);
                 return true;
             }
-            
+
             if (button == 0 && nodeGraph.handleStartButtonClick((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = false;
                 if (nodeGraph.didLastStartButtonTriggerExecution()) {
@@ -945,6 +977,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         
         // THEN check if clicking on node body
+        if (button == 0 && nodeGraph.handleStopTargetFieldClick((int) mouseX, (int) mouseY)) {
+            return true;
+        }
+
         Node clickedNode = nodeGraph.getNodeAt((int)mouseX, (int)mouseY);
         
         if (clickedNode != null) {
@@ -1109,6 +1145,16 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (button == 1 && rightClickStartX != -1 && !nodeGraph.isPanning()) {
+            int dragDeltaX = Math.abs((int) mouseX - rightClickStartX);
+            int dragDeltaY = Math.abs((int) mouseY - rightClickStartY);
+            if (dragDeltaX > CLICK_THRESHOLD || dragDeltaY > CLICK_THRESHOLD) {
+                nodeGraph.startPanning(rightClickStartX, rightClickStartY);
+                rightClickStartX = -1;
+                rightClickStartY = -1;
+            }
+        }
+
         // Handle dragging from sidebar
         if (isDraggingFromSidebar && button == 0) {
             if (draggingNodeType != null && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
@@ -1223,8 +1269,30 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopDragging();
                 nodeGraph.stopDraggingConnection();
             }
-        } else if (button == 1 || button == 2) {
-            // Stop panning on right-click or middle-click release
+        } else if (button == 1) {
+            // Right-click released - check if it's a click or a drag
+            if (rightClickStartX != -1) {
+                int deltaX = Math.abs((int)mouseX - rightClickStartX);
+                int deltaY = Math.abs((int)mouseY - rightClickStartY);
+                long deltaTime = System.currentTimeMillis() - rightClickStartTime;
+
+                boolean isClick = deltaX <= CLICK_THRESHOLD &&
+                                  deltaY <= CLICK_THRESHOLD &&
+                                  deltaTime <= CLICK_TIME_THRESHOLD;
+
+                if (isClick && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
+                    // Show context menu at the right-click position
+                    nodeGraph.showContextMenu(rightClickStartX, rightClickStartY, sidebar, width, height);
+                }
+
+                rightClickStartX = -1;
+                rightClickStartY = -1;
+            }
+
+            // Stop panning
+            nodeGraph.stopPanning();
+        } else if (button == 2) {
+            // Stop panning on middle-click release
             nodeGraph.stopPanning();
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -1247,6 +1315,12 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.isModeDropdownOpen()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 nodeGraph.closeModeDropdown();
+            }
+            return true;
+        }
+        if (nodeGraph.isContextMenuOpen()) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                nodeGraph.closeContextMenu();
             }
             return true;
         }
@@ -1538,6 +1612,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (nodeGraph.handleModeDropdownScroll(mouseX, mouseY, verticalAmount)) {
+            return true;
+        }
+
+        if (nodeGraph.handleContextMenuScroll((int) mouseX, (int) mouseY, verticalAmount)) {
             return true;
         }
 

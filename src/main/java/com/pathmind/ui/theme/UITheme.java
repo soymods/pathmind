@@ -494,6 +494,31 @@ public final class UITheme {
     public static final int SLOT_SPECIAL = 0xFFD27A48;
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // CONTEXT MENU COLORS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /** Context menu background */
+    public static final int CONTEXT_MENU_BG = 0xFF1C1C1C;
+
+    /** Context menu border */
+    public static final int CONTEXT_MENU_BORDER = 0xFF555555;
+
+    /** Context menu item hover background */
+    public static final int CONTEXT_MENU_ITEM_HOVER = 0xFF262626;
+
+    /** Context menu separator line */
+    public static final int CONTEXT_MENU_SEPARATOR = 0xFF333333;
+
+    /** Context menu text color */
+    public static final int CONTEXT_MENU_TEXT = 0xFFE0E0E0;
+
+    /** Context menu category icon background */
+    public static final int CONTEXT_MENU_ICON_BG = 0xFF2A2A2A;
+
+    /** Context menu group header text (sub-groups) */
+    public static final int CONTEXT_MENU_GROUP_HEADER = 0xFF888888;
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // DIMENSIONS
     // ═══════════════════════════════════════════════════════════════════════════
 
@@ -523,6 +548,18 @@ public final class UITheme {
 
     /** Scrollbar width */
     public static final int SCROLLBAR_WIDTH = 4;
+
+    /** Context menu width */
+    public static final int CONTEXT_MENU_WIDTH = 140;
+
+    /** Context menu item height */
+    public static final int CONTEXT_MENU_ITEM_HEIGHT = 18;
+
+    /** Context menu padding */
+    public static final int CONTEXT_MENU_PADDING = 2;
+
+    /** Submenu horizontal offset from parent menu */
+    public static final int SUBMENU_OFFSET = 0;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // ANIMATION DURATIONS (milliseconds)

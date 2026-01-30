@@ -41,6 +41,19 @@ public final class MatrixStackBridge {
     }
 
     /**
+     * Translates in 2D space for both legacy and modern GUI stacks.
+     */
+    public static void translate(Object matrices, float x, float y) {
+        if (matrices instanceof MatrixStack stack) {
+            stack.translate(x, y, 0.0f);
+        } else if (matrices instanceof Matrix3x2fStack stack3x2) {
+            stack3x2.translate(x, y);
+        } else {
+            throw unsupportedStack(matrices);
+        }
+    }
+
+    /**
      * Translates along the Z axis when available so elements can render above other GUI layers.
      * Matrix3x2f stacks do not support depth, so this becomes a no-op on those versions.
      */

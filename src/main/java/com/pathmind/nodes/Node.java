@@ -8056,22 +8056,24 @@ public class Node {
             for (int i = 0; i < lines.size(); i++) {
                 String raw = lines.get(i);
                 String text = raw == null ? "" : raw.trim();
+                text = resolveRuntimeVariablesInText(text);
                 if (text.isEmpty()) {
                     continue;
                 }
+                String sendText = text;
                 long scheduledDelay = sent[0] * delayMs;
                 MESSAGE_SCHEDULER.schedule(() -> {
                     MinecraftClient.getInstance().execute(() -> {
                         if (MinecraftClient.getInstance().player != null
                             && MinecraftClient.getInstance().player.networkHandler != null) {
-                            boolean isCommand = text.startsWith("/");
+                            boolean isCommand = sendText.startsWith("/");
                             if (isCommand) {
-                                String cmd = text.length() > 1 ? text.substring(1) : "";
+                                String cmd = sendText.length() > 1 ? sendText.substring(1) : "";
                                 if (!cmd.isEmpty()) {
                                     MinecraftClient.getInstance().player.networkHandler.sendChatCommand(cmd);
                                 }
                             } else {
-                                MinecraftClient.getInstance().player.networkHandler.sendChatMessage(text);
+                                MinecraftClient.getInstance().player.networkHandler.sendChatMessage(sendText);
                             }
                         }
                     });
@@ -8086,6 +8088,177 @@ public class Node {
             System.err.println("Unable to send chat message: client or player not available");
             future.complete(null);
         }
+    }
+
+    private String resolveRuntimeVariablesInText(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return raw;
+        }
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        if (startNode == null) {
+            return raw;
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        StringBuilder output = new StringBuilder(raw.length());
+        int index = 0;
+        while (index < raw.length()) {
+            char current = raw.charAt(index);
+            if (current == '~') {
+                int nameStart = index + 1;
+                if (nameStart < raw.length() && isInlineVariableChar(raw.charAt(nameStart))) {
+                    int end = nameStart + 1;
+                    while (end < raw.length() && isInlineVariableChar(raw.charAt(end))) {
+                        end++;
+                    }
+                    String name = raw.substring(nameStart, end);
+                    ExecutionManager.RuntimeVariable variable = resolveRuntimeVariableForName(manager, startNode, name);
+                    if (variable != null) {
+                        String replacement = formatRuntimeVariableValue(variable);
+                        if (replacement != null && !replacement.isEmpty()) {
+                            output.append(replacement);
+                            index = end;
+                            continue;
+                        }
+                    }
+                    output.append(raw, index, end);
+                    index = end;
+                    continue;
+                }
+            }
+            output.append(current);
+            index++;
+        }
+        return output.toString();
+    }
+
+    private ExecutionManager.RuntimeVariable resolveRuntimeVariableForName(ExecutionManager manager, Node startNode, String name) {
+        if (manager == null || name == null || name.trim().isEmpty()) {
+            return null;
+        }
+        if (startNode != null) {
+            ExecutionManager.RuntimeVariable direct = manager.getRuntimeVariable(startNode, name.trim());
+            if (direct != null) {
+                return direct;
+            }
+        }
+        ExecutionManager.RuntimeVariable match = null;
+        for (ExecutionManager.RuntimeVariableEntry entry : manager.getRuntimeVariableEntries()) {
+            if (entry == null) {
+                continue;
+            }
+            String entryName = entry.getName();
+            if (entryName == null) {
+                continue;
+            }
+            if (!entryName.trim().equals(name.trim())) {
+                continue;
+            }
+            if (match != null) {
+                return null;
+            }
+            match = entry.getVariable();
+        }
+        return match;
+    }
+
+    private String formatRuntimeVariableValue(ExecutionManager.RuntimeVariable variable) {
+        if (variable == null) {
+            return "";
+        }
+        Map<String, String> values = variable.getValues();
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        NodeType valueType = variable.getType();
+        if (valueType == null) {
+            return "";
+        }
+        switch (valueType) {
+            case PARAM_BLOCK:
+            case PARAM_PLACE_TARGET:
+                return getRuntimeValue(values, "block");
+            case PARAM_ITEM:
+                return getRuntimeValue(values, "item");
+            case PARAM_ENTITY:
+                return getRuntimeValue(values, "entity");
+            case PARAM_PLAYER:
+                return getRuntimeValue(values, "player");
+            case PARAM_WAYPOINT:
+                return getRuntimeValue(values, "waypoint");
+            case PARAM_SCHEMATIC:
+                return getRuntimeValue(values, "schematic");
+            case PARAM_INVENTORY_SLOT:
+                return getRuntimeValue(values, "slot");
+            case PARAM_DURATION:
+                return getRuntimeValue(values, "duration");
+            case PARAM_RANGE:
+            case PARAM_CLOSEST:
+                return getRuntimeValue(values, "range");
+            case PARAM_AMOUNT:
+                return getRuntimeValue(values, "amount");
+            case PARAM_BOOLEAN:
+                return getRuntimeValue(values, "toggle");
+            case PARAM_HAND:
+                return getRuntimeValue(values, "hand");
+            case PARAM_COORDINATE:
+                return formatCoordinateValues(values);
+            case PARAM_ROTATION:
+                return formatRotationValues(values);
+            case VARIABLE:
+                return getRuntimeValue(values, "variable");
+            default:
+                break;
+        }
+        for (String value : values.values()) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private String formatCoordinateValues(Map<String, String> values) {
+        String x = getRuntimeValue(values, "x");
+        String y = getRuntimeValue(values, "y");
+        String z = getRuntimeValue(values, "z");
+        if (x.isEmpty() || y.isEmpty() || z.isEmpty()) {
+            return "";
+        }
+        return x + " " + y + " " + z;
+    }
+
+    private String formatRotationValues(Map<String, String> values) {
+        String yaw = getRuntimeValue(values, "yaw");
+        String pitch = getRuntimeValue(values, "pitch");
+        if (yaw.isEmpty() || pitch.isEmpty()) {
+            return "";
+        }
+        return yaw + " " + pitch;
+    }
+
+    private String getRuntimeValue(Map<String, String> values, String key) {
+        if (values == null || key == null) {
+            return "";
+        }
+        String direct = values.get(key);
+        if (direct != null && !direct.trim().isEmpty()) {
+            return direct.trim();
+        }
+        String lowerKey = key.toLowerCase(Locale.ROOT);
+        if (!lowerKey.equals(key)) {
+            String lower = values.get(lowerKey);
+            if (lower != null && !lower.trim().isEmpty()) {
+                return lower.trim();
+            }
+        }
+        return "";
+    }
+
+    private boolean isInlineVariableChar(char character) {
+        return Character.isLetterOrDigit(character) || character == '_' || character == '-';
     }
 
     private void executeWriteBookCommand(CompletableFuture<Void> future) {

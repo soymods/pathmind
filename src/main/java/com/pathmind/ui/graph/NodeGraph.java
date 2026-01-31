@@ -2668,17 +2668,49 @@ public class NodeGraph {
             int boxHeight = 16;
             int boxTop = y + height / 2 - boxHeight / 2 + 4;
             int boxBottom = boxTop + boxHeight;
+            boolean editingThis = isEditingParameterField()
+                && parameterEditingNode == node
+                && parameterEditingIndex == 0;
+            if (editingThis) {
+                updateParameterCaretBlink();
+            }
             int inputBackground = isOverSidebar ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_INPUT;
-            context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             int inputBorder = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_INPUT_BORDER, 0.8f) : UITheme.BORDER_SUBTLE;
+            if (editingThis) {
+                inputBorder = UITheme.ACCENT_DEFAULT;
+            }
+            context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Variable");
-            String value = nameParam != null ? nameParam.getDisplayValue() : "";
-            String display = value.isEmpty() ? "enter variable" : value;
-            display = trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
+            String value = editingThis
+                ? parameterEditBuffer
+                : (nameParam != null ? nameParam.getStringValue() : "");
+            if (value == null) {
+                value = "";
+            }
+            String display;
+            if (!editingThis && value.isEmpty()) {
+                display = "enter variable";
+            } else {
+                display = value;
+            }
+            display = editingThis
+                ? display
+                : trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
-            int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_TEXT, 0.85f) : UITheme.NODE_VARIABLE_TEXT;
+            int textColor = editingThis
+                ? UITheme.TEXT_EDITING
+                : (isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_TEXT, 0.85f) : UITheme.NODE_VARIABLE_TEXT);
+            if (editingThis && hasParameterSelection()) {
+                int start = MathHelper.clamp(parameterSelectionStart, 0, display.length());
+                int end = MathHelper.clamp(parameterSelectionEnd, 0, display.length());
+                if (start != end) {
+                    int selectionStartX = boxLeft + 4 + textRenderer.getWidth(display.substring(0, start));
+                    int selectionEndX = boxLeft + 4 + textRenderer.getWidth(display.substring(0, end));
+                    context.fill(selectionStartX, boxTop + 2, selectionEndX, boxBottom - 2, UITheme.TEXT_SELECTION_BG);
+                }
+            }
             drawNodeText(
                 context,
                 textRenderer,
@@ -2687,6 +2719,12 @@ public class NodeGraph {
                 textY,
                 textColor
             );
+            if (editingThis && parameterCaretVisible) {
+                int caretIndex = MathHelper.clamp(parameterCaretPosition, 0, display.length());
+                int caretX = boxLeft + 4 + textRenderer.getWidth(display.substring(0, caretIndex));
+                caretX = Math.min(caretX, boxRight - 2);
+                context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
+            }
         } else if (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT) {
             int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_BG, 0.7f) : UITheme.NODE_OPERATOR_BG;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
@@ -3387,12 +3425,14 @@ public class NodeGraph {
         int activeFieldBorder = UITheme.ACCENT_DEFAULT;
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = UITheme.TEXT_EDITING;
+        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
 
         boolean editing = isEditingMessageField() && messageEditingNode == node;
         if (editing) {
             updateMessageCaretBlink();
         }
 
+        Set<String> runtimeVariableNames = collectRuntimeVariableNames(node);
         int fieldCount = node.getMessageFieldCount();
         for (int i = 0; i < fieldCount; i++) {
             int labelTop = node.getMessageFieldLabelTop(i) - cameraY;
@@ -3415,33 +3455,202 @@ public class NodeGraph {
             context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
             DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
-            String value = editingThis ? messageEditBuffer : node.getMessageLine(i);
-            if (value == null) {
-                value = "";
+            String rawValue = editingThis ? messageEditBuffer : node.getMessageLine(i);
+            if (rawValue == null) {
+                rawValue = "";
             }
             String display = editingThis
-                ? value
-                : trimTextToWidth(value, textRenderer, fieldWidth - 6);
+                ? rawValue
+                : trimTextToWidth(rawValue, textRenderer, fieldWidth - 6);
+            InlineVariableRender renderData = null;
+            if (!runtimeVariableNames.isEmpty() && rawValue.indexOf('~') >= 0) {
+                InlineVariableRender candidate = buildInlineVariableRender(rawValue, runtimeVariableNames, valueColor, variableHighlightColor);
+                if (editingThis) {
+                    renderData = candidate;
+                    display = renderData.displayText;
+                } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
+                    renderData = candidate;
+                    display = renderData.displayText;
+                }
+            }
 
             int textX = fieldLeft + 3;
             int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
             if (editingThis && hasMessageSelection()) {
                 int start = messageSelectionStart;
                 int end = messageSelectionEnd;
+                if (renderData != null) {
+                    start = renderData.toDisplayIndex(start);
+                    end = renderData.toDisplayIndex(end);
+                }
                 if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
                     int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                     int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
                     context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
                 }
             }
-            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+            if (renderData != null) {
+                if (shouldRenderNodeText()) {
+                    renderData.draw(context, textRenderer, textX, textY);
+                }
+            } else {
+                drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+            }
 
             if (editingThis && messageCaretVisible) {
-                int caretIndex = MathHelper.clamp(messageCaretPosition, 0, display.length());
+                int caretIndex = messageCaretPosition;
+                if (renderData != null) {
+                    caretIndex = renderData.toDisplayIndex(caretIndex);
+                }
+                caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
                 int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
                 context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, UITheme.CARET_COLOR);
             }
+        }
+    }
+
+    private InlineVariableRender buildInlineVariableRender(String rawText, Set<String> variableNames, int baseColor, int highlightColor) {
+        if (rawText == null || rawText.isEmpty() || variableNames == null || variableNames.isEmpty()) {
+            return new InlineVariableRender(rawText == null ? "" : rawText, Collections.emptyList(), new int[0]);
+        }
+        List<InlineTextSegment> segments = new ArrayList<>();
+        List<Integer> removedPositions = new ArrayList<>();
+        StringBuilder displayBuilder = new StringBuilder();
+        int cursor = 0;
+        while (cursor < rawText.length()) {
+            int tildeIndex = rawText.indexOf('~', cursor);
+            if (tildeIndex < 0) {
+                String tail = rawText.substring(cursor);
+                if (!tail.isEmpty()) {
+                    segments.add(new InlineTextSegment(tail, baseColor));
+                    displayBuilder.append(tail);
+                }
+                break;
+            }
+            if (tildeIndex > cursor) {
+                String plain = rawText.substring(cursor, tildeIndex);
+                segments.add(new InlineTextSegment(plain, baseColor));
+                displayBuilder.append(plain);
+            }
+            int nameStart = tildeIndex + 1;
+            if (nameStart < rawText.length() && isInlineVariableChar(rawText.charAt(nameStart))) {
+                int end = nameStart + 1;
+                while (end < rawText.length() && isInlineVariableChar(rawText.charAt(end))) {
+                    end++;
+                }
+                String name = rawText.substring(nameStart, end);
+                if (variableNames.contains(name)) {
+                    removedPositions.add(tildeIndex);
+                    segments.add(new InlineTextSegment(name, highlightColor));
+                    displayBuilder.append(name);
+                    cursor = end;
+                    continue;
+                }
+            }
+            segments.add(new InlineTextSegment("~", baseColor));
+            displayBuilder.append("~");
+            cursor = tildeIndex + 1;
+        }
+        int[] removed = new int[removedPositions.size()];
+        for (int i = 0; i < removedPositions.size(); i++) {
+            removed[i] = removedPositions.get(i);
+        }
+        return new InlineVariableRender(displayBuilder.toString(), segments, removed);
+    }
+
+    private boolean isInlineVariableChar(char character) {
+        return Character.isLetterOrDigit(character) || character == '_' || character == '-';
+    }
+
+    private Set<String> collectRuntimeVariableNames(Node node) {
+        Set<String> names = new HashSet<>();
+        for (Node graphNode : nodes) {
+            if (graphNode == null || graphNode.getType() != NodeType.VARIABLE) {
+                continue;
+            }
+            NodeParameter parameter = graphNode.getParameter("Variable");
+            if (parameter == null) {
+                continue;
+            }
+            String value = parameter.getStringValue();
+            if (value == null) {
+                continue;
+            }
+            String trimmed = value.trim();
+            if (!trimmed.isEmpty()) {
+                names.add(trimmed);
+            }
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        List<ExecutionManager.RuntimeVariableEntry> entries = manager.getRuntimeVariableEntries();
+        if (!entries.isEmpty()) {
+            Node startNode = node != null ? node.getOwningStartNode() : null;
+            String startId = startNode != null ? startNode.getId() : null;
+            for (ExecutionManager.RuntimeVariableEntry entry : entries) {
+                if (entry == null) {
+                    continue;
+                }
+                if (startId != null && !startId.equals(entry.getStartNodeId())) {
+                    continue;
+                }
+                String name = entry.getName();
+                if (name != null) {
+                    String trimmed = name.trim();
+                    if (!trimmed.isEmpty()) {
+                        names.add(trimmed);
+                    }
+                }
+            }
+        }
+        return names;
+    }
+
+    private static final class InlineVariableRender {
+        private final String displayText;
+        private final List<InlineTextSegment> segments;
+        private final int[] removedTildePositions;
+
+        private InlineVariableRender(String displayText, List<InlineTextSegment> segments, int[] removedTildePositions) {
+            this.displayText = displayText == null ? "" : displayText;
+            this.segments = segments == null ? Collections.emptyList() : segments;
+            this.removedTildePositions = removedTildePositions == null ? new int[0] : removedTildePositions;
+        }
+
+        private int toDisplayIndex(int rawIndex) {
+            if (rawIndex <= 0) {
+                return 0;
+            }
+            int removed = 0;
+            for (int pos : removedTildePositions) {
+                if (pos < rawIndex) {
+                    removed++;
+                } else {
+                    break;
+                }
+            }
+            return rawIndex - removed;
+        }
+
+        private void draw(DrawContext context, TextRenderer renderer, int x, int y) {
+            int cursorX = x;
+            for (InlineTextSegment segment : segments) {
+                if (segment == null || segment.text == null || segment.text.isEmpty()) {
+                    continue;
+                }
+                context.drawText(renderer, Text.literal(segment.text), cursorX, y, segment.color, false);
+                cursorX += renderer.getWidth(segment.text);
+            }
+        }
+    }
+
+    private static final class InlineTextSegment {
+        private final String text;
+        private final int color;
+
+        private InlineTextSegment(String text, int color) {
+            this.text = text == null ? "" : text;
+            this.color = color;
         }
     }
 
@@ -4033,7 +4242,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+        boolean controlHeld = isTextShortcutDown(modifiers);
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -4121,6 +4330,11 @@ public class NodeGraph {
                 return false;
         }
         return false;
+    }
+
+    private boolean isTextShortcutDown(int modifiers) {
+        return InputCompatibilityBridge.hasControlDown()
+            || (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0;
     }
 
     public boolean handleCoordinateCharTyped(char chr, int modifiers, TextRenderer textRenderer) {
@@ -4246,7 +4460,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+        boolean controlHeld = isTextShortcutDown(modifiers);
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -4447,7 +4661,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+        boolean controlHeld = isTextShortcutDown(modifiers);
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -4724,7 +4938,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+        boolean controlHeld = isTextShortcutDown(modifiers);
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -4981,7 +5195,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+        boolean controlHeld = isTextShortcutDown(modifiers);
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -5087,7 +5301,7 @@ public class NodeGraph {
         }
 
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+        boolean controlHeld = isTextShortcutDown(modifiers);
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -7104,6 +7318,18 @@ public class NodeGraph {
         }
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
+        if (node.getType() == NodeType.VARIABLE) {
+            int boxHeight = 16;
+            int boxLeft = node.getX() + 6;
+            int boxRight = node.getX() + node.getWidth() - 6;
+            int boxTop = node.getY() + node.getHeight() / 2 - boxHeight / 2 + 4;
+            int boxBottom = boxTop + boxHeight;
+            if (worldX >= boxLeft && worldX <= boxRight
+                && worldY >= boxTop && worldY <= boxBottom) {
+                return 0;
+            }
+            return -1;
+        }
         int fieldLeft = getParameterFieldLeft(node);
         int fieldWidth = getParameterFieldWidth(node);
         int fieldHeight = getParameterFieldHeight();

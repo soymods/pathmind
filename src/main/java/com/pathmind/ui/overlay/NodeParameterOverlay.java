@@ -1462,7 +1462,7 @@ public class NodeParameterOverlay {
         int index = focusedFieldIndex;
         ensureCaretEntry(index);
         boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = InputCompatibilityBridge.hasControlDown();
+        boolean controlHeld = isTextShortcutDown(modifiers);
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_BACKSPACE:
@@ -1526,6 +1526,11 @@ public class NodeParameterOverlay {
                 break;
         }
         return false;
+    }
+
+    private boolean isTextShortcutDown(int modifiers) {
+        return InputCompatibilityBridge.hasControlDown()
+            || (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0;
     }
 
     private String trimDisplayString(TextRenderer renderer, String text, int availableWidth) {

@@ -3415,6 +3415,36 @@ public class NodeGraph {
             // Hit area debug outline (optional visual cue)
             // DrawContextBridge.drawBorderInLayer(context, toggleLeft - 2, toggleTop - 2, toggleWidth + 4, toggleHeight + 4, 0x22000000);
         }
+
+        if (node.hasAmountSignToggle()) {
+            int toggleLeft = node.getAmountSignToggleLeft() - cameraX;
+            int toggleTop = node.getAmountSignToggleTop() - cameraY;
+            int toggleWidth = node.getAmountSignToggleWidth();
+            int toggleHeight = node.getAmountSignToggleHeight();
+            boolean positive = node.isAmountSignPositive();
+
+            int signBorderColor;
+            int signFillColor;
+            int signTextColor;
+            if (isOverSidebar) {
+                signBorderColor = UITheme.BORDER_HIGHLIGHT;
+                signFillColor = UITheme.BACKGROUND_SECONDARY;
+                signTextColor = UITheme.TEXT_TERTIARY;
+            } else {
+                signBorderColor = positive ? UITheme.TOGGLE_ON_BORDER : UITheme.TOGGLE_OFF_BORDER;
+                signFillColor = positive ? UITheme.BOOL_TOGGLE_ON_FILL : UITheme.BOOL_TOGGLE_OFF_FILL;
+                signTextColor = UITheme.TEXT_PRIMARY;
+            }
+
+            context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, signFillColor);
+            DrawContextBridge.drawBorderInLayer(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, signBorderColor);
+
+            String label = positive ? "+" : "-";
+            int textWidth = textRenderer.getWidth(label);
+            int signTextX = toggleLeft + Math.max(2, (toggleWidth - textWidth) / 2);
+            int signTextY = toggleTop + (toggleHeight - textRenderer.fontHeight) / 2 + 1;
+            drawNodeText(context, textRenderer, Text.literal(label), signTextX, signTextY, signTextColor);
+        }
     }
 
     private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -7226,6 +7256,18 @@ public class NodeGraph {
             && screenY >= top && screenY <= top + height;
     }
 
+    private boolean isPointInsideAmountSignToggle(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasAmountSignToggle()) {
+            return false;
+        }
+        int left = node.getAmountSignToggleLeft() - cameraX - 3;
+        int top = node.getAmountSignToggleTop() - cameraY - 3;
+        int width = node.getAmountSignToggleWidth() + 6;
+        int height = node.getAmountSignToggleHeight() + 6;
+        return screenX >= left && screenX <= left + width
+            && screenY >= top && screenY <= top + height;
+    }
+
     public boolean handleAmountToggleClick(Node node, int mouseX, int mouseY) {
         if (!isPointInsideAmountToggle(node, mouseX, mouseY)) {
             return false;
@@ -7235,6 +7277,16 @@ public class NodeGraph {
         if (!newState && isEditingAmountField() && amountEditingNode == node) {
             stopAmountEditing(false);
         }
+        node.recalculateDimensions();
+        notifyNodeParametersChanged(node);
+        return true;
+    }
+
+    public boolean handleAmountSignToggleClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideAmountSignToggle(node, mouseX, mouseY)) {
+            return false;
+        }
+        node.setAmountSignPositive(!node.isAmountSignPositive());
         node.recalculateDimensions();
         notifyNodeParametersChanged(node);
         return true;

@@ -89,6 +89,8 @@
   "pathmind.node.type.variable.desc": "Reprezentuje nazwaną zmienną w czasie wykonywania",
   "pathmind.node.type.setVariable": "Ustaw zmienną",
   "pathmind.node.type.setVariable.desc": "Przypisuje wartość parametru do zmiennej w czasie wykonywania",
+  "pathmind.node.type.changeVariable": "Zmień zmienną",
+  "pathmind.node.type.changeVariable.desc": "Zwiększa lub zmniejsza wartość zmiennej w czasie wykonywania",
 
   "pathmind.node.type.operatorEquals": "Równe",
   "pathmind.node.type.operatorEquals.desc": "Sprawdza, czy zmienna jest równa wartości parametru",

@@ -16,6 +16,7 @@ public enum NodeType {
     // Variable nodes
     VARIABLE("pathmind.node.type.variable", 0xFFFF9800, "pathmind.node.type.variable.desc"),
     SET_VARIABLE("pathmind.node.type.setVariable", 0xFFFF9800, "pathmind.node.type.setVariable.desc"),
+    CHANGE_VARIABLE("pathmind.node.type.changeVariable", 0xFFFF9800, "pathmind.node.type.changeVariable.desc"),
 
     // Operator nodes
     OPERATOR_EQUALS("pathmind.node.type.operatorEquals", 0xFF00C853, "pathmind.node.type.operatorEquals.desc"),
@@ -185,6 +186,7 @@ public enum NodeType {
                 return NodeCategory.EVENTS;
             case VARIABLE:
             case SET_VARIABLE:
+            case CHANGE_VARIABLE:
                 return NodeCategory.VARIABLES;
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:

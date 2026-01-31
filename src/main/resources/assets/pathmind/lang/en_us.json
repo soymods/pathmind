@@ -89,6 +89,8 @@
   "pathmind.node.type.variable.desc": "Represents a named runtime variable",
   "pathmind.node.type.setVariable": "Set Variable",
   "pathmind.node.type.setVariable.desc": "Assigns a parameter value to a variable at runtime",
+  "pathmind.node.type.changeVariable": "Change Variable",
+  "pathmind.node.type.changeVariable.desc": "Adjusts a variable value up or down at runtime",
 
   "pathmind.node.type.operatorEquals": "Equals",
   "pathmind.node.type.operatorEquals.desc": "Checks if a variable equals a parameter value",

@@ -4,6 +4,8 @@ import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.ExecutionManager.RuntimeVariable;
 import com.pathmind.execution.ExecutionManager.RuntimeVariableEntry;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.ui.animation.AnimatedValue;
+import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
@@ -23,38 +25,65 @@ public class VariablesOverlay {
     private static final int MARGIN = 10;
     private static final int PADDING = 6;
     private static final int LINE_SPACING = 2;
+    private static final int SLIDE_OFFSET = 12;
+    private static final int OPEN_DURATION_MS = 180;
+    private static final int CLOSE_DURATION_MS = 140;
 
     private final ExecutionManager executionManager;
+    private final AnimatedValue visibility;
 
     public VariablesOverlay() {
         this.executionManager = ExecutionManager.getInstance();
+        this.visibility = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
     }
 
     public void render(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
         List<RuntimeVariableEntry> entries = executionManager.getRuntimeVariableEntries();
-        if (entries.isEmpty()) {
-            return;
-        }
+        List<String> lines = entries.isEmpty() ? List.of() : buildDisplayLines(entries);
+        boolean shouldShow = !lines.isEmpty();
 
-        List<String> lines = buildDisplayLines(entries);
-        if (lines.isEmpty()) {
+        visibility.animateTo(shouldShow ? 1f : 0f, shouldShow ? OPEN_DURATION_MS : CLOSE_DURATION_MS);
+        visibility.tick();
+
+        float progress = visibility.getValue();
+        if (progress <= 0.001f) {
             return;
         }
 
         int lineHeight = textRenderer.fontHeight + LINE_SPACING;
         int overlayHeight = PADDING * 2 + lineHeight * lines.size();
-        int overlayX = MARGIN;
+        int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
+        int overlayX = MARGIN - slideOffset;
         int overlayY = MARGIN;
 
-        context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + overlayHeight, UITheme.OVERLAY_BACKGROUND);
-        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, overlayHeight, UITheme.BORDER_HIGHLIGHT);
+        context.fill(
+            overlayX,
+            overlayY,
+            overlayX + OVERLAY_WIDTH,
+            overlayY + overlayHeight,
+            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress)
+        );
+        DrawContextBridge.drawBorder(
+            context,
+            overlayX,
+            overlayY,
+            OVERLAY_WIDTH,
+            overlayHeight,
+            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress)
+        );
 
         int textX = overlayX + PADDING;
         int textY = overlayY + PADDING;
         for (int i = 0; i < lines.size(); i++) {
             String line = trimTextToWidth(lines.get(i), textRenderer, OVERLAY_WIDTH - PADDING * 2);
             int color = i == 0 ? UITheme.ACCENT_AMBER : UITheme.TEXT_HEADER;
-            context.drawTextWithShadow(textRenderer, Text.literal(line), textX, textY + i * lineHeight, color);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(line),
+                textX,
+                textY + i * lineHeight,
+                applyAlpha(color, progress)
+            );
         }
     }
 
@@ -303,5 +332,11 @@ public class VariablesOverlay {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
         }
         return trimmed + "...";
+    }
+
+    private int applyAlpha(int color, float alpha) {
+        int baseAlpha = (color >>> 24) & 0xFF;
+        int adjustedAlpha = (int) (baseAlpha * AnimationHelper.clamp01(alpha));
+        return (adjustedAlpha << 24) | (color & 0x00FFFFFF);
     }
 }

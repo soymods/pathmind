@@ -164,6 +164,8 @@ public class Node {
     private static final int AMOUNT_TOGGLE_WIDTH = 18;
     private static final int AMOUNT_TOGGLE_HEIGHT = 10;
     private static final int AMOUNT_TOGGLE_SPACING = 6;
+    private static final int AMOUNT_SIGN_TOGGLE_WIDTH = 22;
+    private static final int AMOUNT_SIGN_TOGGLE_HEIGHT = 16;
     private static final int MESSAGE_FIELD_MARGIN_HORIZONTAL = 6;
     private static final int MESSAGE_FIELD_TOP_MARGIN = 6;
     private static final int MESSAGE_FIELD_LABEL_HEIGHT = 10;
@@ -636,6 +638,9 @@ public class Node {
         if (type == NodeType.SET_VARIABLE) {
             return slotIndex == 0 || slotIndex == 1;
         }
+        if (type == NodeType.CHANGE_VARIABLE) {
+            return slotIndex == 0;
+        }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             return slotIndex == 0 || slotIndex == 1;
         }
@@ -671,6 +676,7 @@ public class Node {
         }
         if (parameter.getType() == NodeType.VARIABLE
             && type != NodeType.SET_VARIABLE
+            && type != NodeType.CHANGE_VARIABLE
             && type != NodeType.OPERATOR_EQUALS
             && type != NodeType.OPERATOR_NOT) {
             return true;
@@ -681,6 +687,10 @@ public class Node {
                 return parameterType == NodeType.VARIABLE;
             }
             return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.CHANGE_VARIABLE) {
+            NodeType parameterType = parameter.getType();
+            return slotIndex == 0 && parameterType == NodeType.VARIABLE;
         }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             NodeType parameterType = parameter.getType();
@@ -719,6 +729,7 @@ public class Node {
         }
         if (parameter.getType() == NodeType.VARIABLE
             && type != NodeType.SET_VARIABLE
+            && type != NodeType.CHANGE_VARIABLE
             && type != NodeType.OPERATOR_EQUALS
             && type != NodeType.OPERATOR_NOT) {
             return true;
@@ -729,6 +740,10 @@ public class Node {
                 return parameterType == NodeType.VARIABLE;
             }
             return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+        }
+        if (type == NodeType.CHANGE_VARIABLE) {
+            NodeType parameterType = parameter.getType();
+            return slotIndex == 0 && parameterType == NodeType.VARIABLE;
         }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             NodeType parameterType = parameter.getType();
@@ -1094,6 +1109,9 @@ public class Node {
         if (type == NodeType.SET_VARIABLE) {
             return slotIndex == 0 ? "Variable" : "Parameter";
         }
+        if (type == NodeType.CHANGE_VARIABLE) {
+            return "Variable";
+        }
         if (type == NodeType.BUILD) {
             return "Position";
         }
@@ -1222,6 +1240,9 @@ public class Node {
         if (type == NodeType.TRADE) {
             return true;
         }
+        if (type == NodeType.CHANGE_VARIABLE) {
+            return true;
+        }
         return false;
     }
 
@@ -1272,15 +1293,25 @@ public class Node {
         if (hasAmountToggle()) {
             width = Math.max(40, width - (AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING));
         }
+        if (hasAmountSignToggle()) {
+            width = Math.max(40, width - (AMOUNT_SIGN_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING));
+        }
         return Math.max(width, amountFieldWidthOverride);
     }
 
     public int getAmountFieldLeft() {
+        if (hasAmountSignToggle()) {
+            return getParameterSlotLeft() + AMOUNT_SIGN_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
+        }
         return getParameterSlotLeft();
     }
 
     public boolean hasAmountToggle() {
         return type == NodeType.SENSOR_ITEM_IN_INVENTORY;
+    }
+
+    public boolean hasAmountSignToggle() {
+        return type == NodeType.CHANGE_VARIABLE;
     }
 
     public boolean isAmountInputEnabled() {
@@ -1317,6 +1348,37 @@ public class Node {
 
     public int getAmountToggleHeight() {
         return AMOUNT_TOGGLE_HEIGHT;
+    }
+
+    public int getAmountSignToggleLeft() {
+        return getParameterSlotLeft();
+    }
+
+    public int getAmountSignToggleTop() {
+        return getAmountFieldInputTop() + (getAmountFieldHeight() - AMOUNT_SIGN_TOGGLE_HEIGHT) / 2;
+    }
+
+    public int getAmountSignToggleWidth() {
+        return AMOUNT_SIGN_TOGGLE_WIDTH;
+    }
+
+    public int getAmountSignToggleHeight() {
+        return AMOUNT_SIGN_TOGGLE_HEIGHT;
+    }
+
+    public boolean isAmountSignPositive() {
+        NodeParameter param = getParameter("Increase");
+        if (param == null || param.getStringValue() == null || param.getStringValue().isEmpty()) {
+            return true;
+        }
+        return param.getBoolValue();
+    }
+
+    public void setAmountSignPositive(boolean positive) {
+        NodeParameter param = getParameter("Increase");
+        if (param != null) {
+            param.setStringValueFromUser(Boolean.toString(positive));
+        }
     }
 
     private void ensureInventoryAmountParameters() {
@@ -1642,6 +1704,30 @@ public class Node {
     private void onAttachedParameterResized(int slotIndex) {
         recalculateDimensions();
         updateParentControlLayout();
+    }
+
+    private void notifyParentActionControlOfResize() {
+        if (parentActionControl == null) {
+            return;
+        }
+        parentActionControl.onAttachedActionResized();
+    }
+
+    private void onAttachedActionResized() {
+        recalculateDimensions();
+        updateAttachedActionPosition();
+    }
+
+    private void notifyParentControlOfResize() {
+        if (parentControl == null) {
+            return;
+        }
+        parentControl.onAttachedSensorResized();
+    }
+
+    private void onAttachedSensorResized() {
+        recalculateDimensions();
+        updateAttachedSensorPosition();
     }
 
     private boolean applyParameterValuesFromMap(Map<String, String> values) {
@@ -2188,6 +2274,10 @@ public class Node {
                 break;
             case VARIABLE:
                 parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
+                break;
+            case CHANGE_VARIABLE:
+                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
+                parameters.add(new NodeParameter("Increase", ParameterType.BOOLEAN, "true"));
                 break;
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
@@ -3064,6 +3154,9 @@ public class Node {
                     if (hasAmountToggle()) {
                         amountContentWidth += AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
                     }
+                    if (hasAmountSignToggle()) {
+                        amountContentWidth += AMOUNT_SIGN_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
+                    }
                     int amountWidth = amountContentWidth + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
                     computedWidth = Math.max(computedWidth, amountWidth);
                 }
@@ -3077,6 +3170,9 @@ public class Node {
             int amountContentWidth = Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, amountFieldWidthOverride);
             if (hasAmountToggle()) {
                 amountContentWidth += AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
+            }
+            if (hasAmountSignToggle()) {
+                amountContentWidth += AMOUNT_SIGN_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING;
             }
             int amountWidth = amountContentWidth + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, amountWidth);
@@ -3246,6 +3342,8 @@ public class Node {
         }
         updateAttachedParameterPositions();
         notifyParentParameterHostOfResize();
+        notifyParentActionControlOfResize();
+        notifyParentControlOfResize();
     }
 
     /**
@@ -4324,6 +4422,9 @@ public class Node {
             case SET_VARIABLE:
                 executeSetVariableCommand(future);
                 break;
+            case CHANGE_VARIABLE:
+                executeChangeVariableCommand(future);
+                break;
 
             // Generalized nodes
             case GOTO:
@@ -4533,6 +4634,113 @@ public class Node {
         manager.setRuntimeVariable(startNode, variableName.trim(), value);
         future.complete(null);
     }
+
+    private void executeChangeVariableCommand(CompletableFuture<Void> future) {
+        Node variableNode = getAttachedParameter(0);
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (variableNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Change Variable requires a variable.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Variable name cannot be empty.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "No active node tree available for variable change.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager.RuntimeVariable current = manager.getRuntimeVariable(startNode, variableName.trim());
+        if (current == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Variable \"" + variableName.trim() + "\" is not set.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        NodeType valueType = current.getType();
+        if (valueType == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Variable \"" + variableName.trim() + "\" has no value.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        Node snapshot = new Node(valueType, 0, 0);
+        snapshot.setSocketsHidden(true);
+        Map<String, String> values = current.getValues();
+        if (values != null && !values.isEmpty()) {
+            snapshot.applyParameterValuesFromMap(values);
+        }
+
+        int step = Math.abs(getIntParameter("Amount", 1));
+        if (step == 0) {
+            future.complete(null);
+            return;
+        }
+        if (!isAmountSignPositive()) {
+            step = -step;
+        }
+
+        if (!applyNumericIncrement(snapshot, step)) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Change Variable supports variables with a single numeric value.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        Map<String, String> updatedValues = snapshot.exportParameterValues();
+        ExecutionManager.RuntimeVariable updated = new ExecutionManager.RuntimeVariable(valueType, updatedValues);
+        manager.setRuntimeVariable(startNode, variableName.trim(), updated);
+        future.complete(null);
+    }
+
+    private boolean applyNumericIncrement(Node snapshot, int step) {
+        if (snapshot == null) {
+            return false;
+        }
+        NodeParameter numericParam = null;
+        for (NodeParameter param : snapshot.getParameters()) {
+            if (param == null) {
+                continue;
+            }
+            if (param.getType() == ParameterType.INTEGER || param.getType() == ParameterType.DOUBLE) {
+                if (numericParam != null) {
+                    return false;
+                }
+                numericParam = param;
+            }
+        }
+        if (numericParam == null) {
+            return false;
+        }
+        if (numericParam.getType() == ParameterType.INTEGER) {
+            numericParam.setIntValue(numericParam.getIntValue() + step);
+        } else {
+            numericParam.setDoubleValue(numericParam.getDoubleValue() + step);
+        }
+        return true;
+    }
+
     
     // Command execution methods that wait for Baritone completion
     private void executeGotoCommand(CompletableFuture<Void> future) {

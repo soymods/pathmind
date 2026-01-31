@@ -89,6 +89,8 @@
   "pathmind.node.type.variable.desc": "Repräsentiert eine benannte Laufzeitvariable",
   "pathmind.node.type.setVariable": "Variable setzen",
   "pathmind.node.type.setVariable.desc": "Weist einer Variable zur Laufzeit einen Parameterwert zu",
+  "pathmind.node.type.changeVariable": "Variable ändern",
+  "pathmind.node.type.changeVariable.desc": "Ändert einen Variablenwert zur Laufzeit nach oben oder unten",
 
   "pathmind.node.type.operatorEquals": "Gleich",
   "pathmind.node.type.operatorEquals.desc": "Prüft, ob eine Variable einem Parameterwert entspricht",

@@ -10,6 +10,14 @@
 
 🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
 
+<p align="center">
+  <img
+    src="https://media.discordapp.net/attachments/1453550188143837356/1466486705464017107/output-onlinegiftools.gif?ex=697cebac&is=697b9a2c&hm=dcf24f1767486f9c25bb2ec293dfc56f415593363f1c96e7e8e49f8d327276b6&=&width=1200&height=676"
+    alt="Pathmind features demo"
+    width="600"
+  />
+</p>
+
 ## Quick Start
 
 ### Prerequisites

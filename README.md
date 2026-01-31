@@ -10,14 +10,6 @@
 
 🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
 
-<p align="center">
-  <img
-    src="https://raw.githubusercontent.com/soymods/assets/main/soymods-assets/pathmind/preview.gif"
-    width="600"
-    alt="Pathmind preview"
-  />
-</p>
-
 ## Quick Start
 
 ### Prerequisites
@@ -43,6 +35,14 @@
 5. **Launch and Enjoy!**
    - Start Minecraft with Fabric Loader
    - Use your configured keybind to open the visual editor
+
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/soymods/assets/main/soymods-assets/pathmind/preview.gif"
+    width="600"
+    alt="Pathmind preview"
+  />
+</p>
 
 ## Compatibility
 

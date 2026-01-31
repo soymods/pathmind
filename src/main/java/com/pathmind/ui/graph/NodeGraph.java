@@ -2283,6 +2283,15 @@ public class NodeGraph {
             renderHierarchy(root, context, textRenderer, mouseX, mouseY, delta, onlyDragged, false, renderedNodes);
         }
 
+        if (!onlyDragged) {
+            if (parameterDropdownOpen) {
+                renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
+            }
+            if (modeDropdownOpen) {
+                renderModeDropdownList(context, textRenderer, mouseX, mouseY);
+            }
+        }
+
         MatrixStackBridge.pop(matrices);
     }
 
@@ -2300,7 +2309,7 @@ public class NodeGraph {
         int fillColor = UITheme.NODE_SELECTION_FILL;
         int borderColor = UITheme.NODE_SELECTION_BORDER;
         context.fill(left, top, right, bottom, fillColor);
-        DrawContextBridge.drawBorder(context, left, top, right - left, bottom - top, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, left, top, right - left, bottom - top, borderColor);
     }
 
     private void renderHierarchy(Node node, DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta, boolean onlyDragged, boolean ancestorActive, Set<Node> renderedNodes) {
@@ -2462,7 +2471,7 @@ public class NodeGraph {
         if (isOverSidebar && node.getType() != NodeType.START && !node.isDragging()) {
             borderColor = UITheme.BORDER_SUBTLE; // Darker grey border when over sidebar (for regular nodes)
         }
-        DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, x, y, width, height, borderColor);
 
         // Node header (only for non-START/event function nodes)
         if (simpleStyle) {
@@ -2596,7 +2605,7 @@ public class NodeGraph {
             int inputBackground = isOverSidebar ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_INPUT;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             int inputBorder = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_INPUT_BORDER, 0.8f) : UITheme.BORDER_SUBTLE;
-            DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+            DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
             if (editingEventName) {
@@ -2662,7 +2671,7 @@ public class NodeGraph {
             int inputBackground = isOverSidebar ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_INPUT;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             int inputBorder = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_INPUT_BORDER, 0.8f) : UITheme.BORDER_SUBTLE;
-            DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+            DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             NodeParameter nameParam = node.getParameter("Variable");
             String value = nameParam != null ? nameParam.getDisplayValue() : "";
@@ -2739,7 +2748,7 @@ public class NodeGraph {
             int inputBackground = isOverSidebar ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_INPUT;
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             int inputBorder = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_INPUT_BORDER, 0.8f) : UITheme.BORDER_SUBTLE;
-            DrawContextBridge.drawBorder(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+            DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
             boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
             if (editingEventName) {
@@ -2811,7 +2820,7 @@ public class NodeGraph {
                             : UITheme.BORDER_HIGHLIGHT;
 
                         context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
-                        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+                        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
 
                         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
                         int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
@@ -2855,7 +2864,7 @@ public class NodeGraph {
                             : UITheme.BORDER_HIGHLIGHT;
 
                         context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
-                        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+                        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
 
                         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
                         int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
@@ -2906,12 +2915,6 @@ public class NodeGraph {
                     }
                     if (node.hasPopupEditButton()) {
                         renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                    }
-                    if (parameterDropdownOpen && parameterDropdownNode == node) {
-                        renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
-                    }
-                    if (modeDropdownOpen && modeDropdownNode == node) {
-                        renderModeDropdownList(context, textRenderer, mouseX, mouseY);
                     }
                 }
             } else {
@@ -3025,7 +3028,7 @@ public class NodeGraph {
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, fillColor);
-        DrawContextBridge.drawBorder(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, borderColor);
 
         String label = node.getBooleanToggleValue() ? "TRUE" : "FALSE";
         int textWidth = textRenderer.getWidth(label);
@@ -3052,7 +3055,7 @@ public class NodeGraph {
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        DrawContextBridge.drawBorder(context, slotX, slotY, slotWidth, slotHeight, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
         if (!node.hasAttachedSensor()) {
             String placeholder = "Drag a sensor here";
@@ -3083,7 +3086,7 @@ public class NodeGraph {
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        DrawContextBridge.drawBorder(context, slotX, slotY, slotWidth, slotHeight, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
         if (!node.hasAttachedActionNode()) {
             String placeholder = "Drag a node here";
@@ -3200,7 +3203,7 @@ public class NodeGraph {
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        DrawContextBridge.drawBorder(context, slotX, slotY, slotWidth, slotHeight, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
         String headerText = node.getParameterSlotLabel(slotIndex);
         int headerColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY;
@@ -3211,7 +3214,7 @@ public class NodeGraph {
 
         if (!occupied && isDropTarget) {
             // Provide a minimal visual cue when dragging to an empty slot without adding text.
-            DrawContextBridge.drawBorder(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, UITheme.ACCENT_DEFAULT);
+            DrawContextBridge.drawBorderInLayer(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, UITheme.ACCENT_DEFAULT);
         }
     }
 
@@ -3256,7 +3259,7 @@ public class NodeGraph {
             int valueColor = editingAxis ? activeTextColor : textColor;
 
             context.fill(fieldX, inputTop, fieldX + fieldWidth, inputBottom, backgroundColor);
-            DrawContextBridge.drawBorder(context, fieldX, inputTop, fieldWidth, fieldHeight, borderColor);
+            DrawContextBridge.drawBorderInLayer(context, fieldX, inputTop, fieldWidth, fieldHeight, borderColor);
 
             String value;
             if (editingAxis) {
@@ -3324,7 +3327,7 @@ public class NodeGraph {
         int valueColor = (editing && amountEnabled) ? activeTextColor : (amountEnabled ? textColor : UITheme.TEXT_SECONDARY);
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
-        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
         String value;
         if (editing && amountEnabled) {
@@ -3366,13 +3369,13 @@ public class NodeGraph {
             int toggleBorder = amountEnabled ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
             int toggleBg = amountEnabled ? UITheme.AMOUNT_TOGGLE_ON : UITheme.BACKGROUND_TERTIARY;
             context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, toggleBg);
-            DrawContextBridge.drawBorder(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
+            DrawContextBridge.drawBorderInLayer(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
             int knobWidth = toggleHeight - 2;
             int knobLeft = amountEnabled ? toggleLeft + toggleWidth - knobWidth - 1 : toggleLeft + 1;
             context.fill(knobLeft, toggleTop + 1, knobLeft + knobWidth, toggleTop + toggleHeight - 1, UITheme.TOGGLE_KNOB);
 
             // Hit area debug outline (optional visual cue)
-            // DrawContextBridge.drawBorder(context, toggleLeft - 2, toggleTop - 2, toggleWidth + 4, toggleHeight + 4, 0x22000000);
+            // DrawContextBridge.drawBorderInLayer(context, toggleLeft - 2, toggleTop - 2, toggleWidth + 4, toggleHeight + 4, 0x22000000);
         }
     }
 
@@ -3410,7 +3413,7 @@ public class NodeGraph {
             int valueColor = editingThis ? activeTextColor : textColor;
 
             context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
-            DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+            DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
             String value = editingThis ? messageEditBuffer : node.getMessageLine(i);
             if (value == null) {
@@ -3553,7 +3556,7 @@ public class NodeGraph {
         int addFill = addHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
         int addBorder = addHovered ? UITheme.ACCENT_DEFAULT : baseBorder;
         context.fill(addLeft, top, addLeft + size, top + size, addFill);
-        DrawContextBridge.drawBorder(context, addLeft, top, size, size, addBorder);
+        DrawContextBridge.drawBorderInLayer(context, addLeft, top, size, size, addBorder);
         int addTextX = addLeft + (size - textRenderer.getWidth("+")) / 2;
         int addTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
         drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, UITheme.TEXT_PRIMARY);
@@ -3566,7 +3569,7 @@ public class NodeGraph {
             ? (removeHovered ? UITheme.BORDER_DANGER : baseBorder)
             : UITheme.BORDER_DEFAULT;
         context.fill(removeLeft, top, removeLeft + size, top + size, removeFill);
-        DrawContextBridge.drawBorder(context, removeLeft, top, size, size, removeBorder);
+        DrawContextBridge.drawBorderInLayer(context, removeLeft, top, size, size, removeBorder);
         int removeTextX = removeLeft + (size - textRenderer.getWidth("-")) / 2;
         int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
         int removeTextColor = canRemove ? UITheme.TEXT_PRIMARY : UITheme.NODE_LABEL_DIMMED;
@@ -3594,7 +3597,7 @@ public class NodeGraph {
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
-        DrawContextBridge.drawBorder(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
+        DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
 
         String buttonLabel = "Edit Text";
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
@@ -3615,7 +3618,7 @@ public class NodeGraph {
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
 
         context.fill(buttonLeft, fieldTop, buttonLeft + fieldWidth, fieldTop + fieldHeight, fieldFill);
-        DrawContextBridge.drawBorder(context, buttonLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+        DrawContextBridge.drawBorderInLayer(context, buttonLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
 
         // Display the page value
         NodeParameter pageParam = node.getParameter("Page");
@@ -3647,7 +3650,7 @@ public class NodeGraph {
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
-        DrawContextBridge.drawBorder(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
+        DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
 
         String buttonLabel = "Edit";
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
@@ -3715,7 +3718,7 @@ public class NodeGraph {
         int valueColor = editing ? activeTextColor : textColor;
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
-        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
         String value;
         if (editing) {
@@ -3781,7 +3784,7 @@ public class NodeGraph {
         int backgroundColor = open ? activeFieldBackground : fieldBackground;
         int borderColor = open ? activeFieldBorder : fieldBorder;
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
-        DrawContextBridge.drawBorder(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
         NodeParameter schematicParam = node.getParameter("Schematic");
         String value = schematicParam != null ? schematicParam.getDisplayValue() : "";
@@ -3833,7 +3836,7 @@ public class NodeGraph {
         int listRight = listLeft + node.getSchematicFieldWidth();
 
         context.fill(listLeft, listTop, listRight, listBottom, fieldBackground);
-        DrawContextBridge.drawBorder(context, listLeft, listTop, node.getSchematicFieldWidth(), listHeight, fieldBorder);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getSchematicFieldWidth(), listHeight, fieldBorder);
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
@@ -6552,7 +6555,7 @@ public class NodeGraph {
         int listBottom = listTop + listHeight;
 
         context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
 
         parameterDropdownScrollOffset = MathHelper.clamp(parameterDropdownScrollOffset, 0, layout.maxScrollOffset);
         parameterDropdownHoverIndex = -1;
@@ -6703,7 +6706,7 @@ public class NodeGraph {
         int listBottom = listTop + listHeight;
 
         context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
 
         modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
         modeDropdownHoverIndex = -1;
@@ -7393,7 +7396,7 @@ public class NodeGraph {
     private void renderSocket(DrawContext context, int x, int y, boolean isInput, int color) {
         // Socket circle
         context.fill(x - 3, y - 3, x + 3, y + 3, color);
-        DrawContextBridge.drawBorder(context, x - 3, y - 3, 6, 6, UITheme.BORDER_SOCKET);
+        DrawContextBridge.drawBorderInLayer(context, x - 3, y - 3, 6, 6, UITheme.BORDER_SOCKET);
         
         // Socket highlight
         context.fill(x - 1, y - 1, x + 1, y + 1, UITheme.TEXT_PRIMARY);

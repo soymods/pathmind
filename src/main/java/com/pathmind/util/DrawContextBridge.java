@@ -36,6 +36,19 @@ public final class DrawContextBridge {
         context.drawVerticalLine(right, y, bottom, color);
     }
 
+    public static void drawBorderInLayer(DrawContext context, int x, int y, int width, int height, int color) {
+        if (context == null || width <= 0 || height <= 0) {
+            return;
+        }
+
+        int right = x + width - 1;
+        int bottom = y + height - 1;
+        context.drawHorizontalLine(x, right, y, color);
+        context.drawHorizontalLine(x, right, bottom, color);
+        context.drawVerticalLine(x, y, bottom, color);
+        context.drawVerticalLine(right, y, bottom, color);
+    }
+
     public static void fillOverlay(DrawContext context, int x1, int y1, int x2, int y2, int color) {
         if (context == null) {
             return;

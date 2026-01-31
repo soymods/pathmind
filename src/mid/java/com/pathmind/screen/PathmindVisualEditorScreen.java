@@ -23,6 +23,7 @@ import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
@@ -1065,7 +1066,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
                 
-                if (Screen.hasShiftDown()) {
+                if (InputCompatibilityBridge.hasShiftDown()) {
                     // Shift-click: toggle node in selection
                     nodeGraph.toggleNodeInSelection(clickedNode);
                 } else {
@@ -1140,9 +1141,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 1 && rightClickStartX != -1 && !nodeGraph.isPanning()) {
-            int deltaX = Math.abs((int) mouseX - rightClickStartX);
-            int deltaY = Math.abs((int) mouseY - rightClickStartY);
-            if (deltaX > CLICK_THRESHOLD || deltaY > CLICK_THRESHOLD) {
+            int dragDeltaX = Math.abs((int) mouseX - rightClickStartX);
+            int dragDeltaY = Math.abs((int) mouseY - rightClickStartY);
+            if (dragDeltaX > CLICK_THRESHOLD || dragDeltaY > CLICK_THRESHOLD) {
                 nodeGraph.startPanning(rightClickStartX, rightClickStartY);
                 rightClickStartX = -1;
                 rightClickStartY = -1;

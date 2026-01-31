@@ -23,6 +23,7 @@ import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
@@ -1080,7 +1081,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
                 
-                if (Screen.hasShiftDown()) {
+                if (InputCompatibilityBridge.hasShiftDown()) {
                     // Shift-click: toggle node in selection
                     nodeGraph.toggleNodeInSelection(clickedNode);
                 } else {

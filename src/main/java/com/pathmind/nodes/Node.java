@@ -5582,15 +5582,7 @@ public class Node {
         }
 
         net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket packet =
-            new net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket(
-                syncId,
-                revision,
-                (short) slot,
-                (byte) button,
-                action,
-                new it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap<>(),
-                net.minecraft.screen.sync.ItemStackHash.EMPTY
-            );
+            createClickSlotPacket(syncId, revision, slot, button, action);
 
         sendFabricatedPacket(client, packet, delay, timesToSend);
     }
@@ -5615,6 +5607,73 @@ public class Node {
             new net.minecraft.network.packet.c2s.play.ButtonClickC2SPacket(syncId, buttonId);
 
         sendFabricatedPacket(client, packet, delay, timesToSend);
+    }
+
+    private net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket createClickSlotPacket(
+        int syncId,
+        int revision,
+        int slot,
+        int button,
+        net.minecraft.screen.slot.SlotActionType action
+    ) {
+        net.minecraft.item.ItemStack stack = net.minecraft.item.ItemStack.EMPTY;
+        it.unimi.dsi.fastutil.ints.Int2ObjectMap<net.minecraft.item.ItemStack> changed =
+            new it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap<>();
+
+        java.lang.reflect.Constructor<?>[] constructors =
+            net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket.class.getConstructors();
+
+        int[] numbers = new int[] {syncId, revision, slot, button};
+        for (java.lang.reflect.Constructor<?> constructor : constructors) {
+            Class<?>[] params = constructor.getParameterTypes();
+            if (params.length != 7) {
+                continue;
+            }
+            Object[] args = new Object[7];
+            int numberIndex = 0;
+            boolean ok = true;
+            for (int i = 0; i < params.length; i++) {
+                Class<?> param = params[i];
+                if (param == int.class || param == Integer.class) {
+                    if (numberIndex >= numbers.length) {
+                        ok = false;
+                        break;
+                    }
+                    args[i] = numbers[numberIndex++];
+                } else if (param == short.class || param == Short.class) {
+                    if (numberIndex >= numbers.length) {
+                        ok = false;
+                        break;
+                    }
+                    args[i] = (short) numbers[numberIndex++];
+                } else if (param == byte.class || param == Byte.class) {
+                    if (numberIndex >= numbers.length) {
+                        ok = false;
+                        break;
+                    }
+                    args[i] = (byte) numbers[numberIndex++];
+                } else if (param.isAssignableFrom(net.minecraft.screen.slot.SlotActionType.class)) {
+                    args[i] = action;
+                } else if (param.isAssignableFrom(net.minecraft.item.ItemStack.class)) {
+                    args[i] = stack;
+                } else if (param.isAssignableFrom(it.unimi.dsi.fastutil.ints.Int2ObjectMap.class)) {
+                    args[i] = changed;
+                } else {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok || numberIndex != numbers.length) {
+                continue;
+            }
+            try {
+                return (net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket) constructor.newInstance(args);
+            } catch (ReflectiveOperationException ignored) {
+                // Try next constructor
+            }
+        }
+
+        throw new RuntimeException("Unsupported ClickSlotC2SPacket constructor.");
     }
 
     private void sendFabricatedPacket(net.minecraft.client.MinecraftClient client, net.minecraft.network.packet.Packet<?> packet, boolean delay, int timesToSend) {

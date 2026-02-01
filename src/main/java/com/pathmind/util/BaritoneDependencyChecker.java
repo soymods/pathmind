@@ -9,8 +9,10 @@ import net.fabricmc.loader.api.FabricLoader;
  */
 public final class BaritoneDependencyChecker {
     public static final String DOWNLOAD_URL = "https://github.com/cabaletta/baritone/releases/latest";
+    private static final String BARITONE_MOD_ID = "baritone";
     private static final String BARITONE_API_CLASS = "baritone.api.BaritoneAPI";
-    private static Boolean cachedResult;
+    private static Boolean cachedApiResult;
+    private static Boolean cachedModResult;
 
     private BaritoneDependencyChecker() {
     }
@@ -19,36 +21,60 @@ public final class BaritoneDependencyChecker {
      * @return true if the Baritone API mod is loaded and core classes resolve.
      */
     public static boolean isBaritoneApiPresent() {
-        if (cachedResult != null) {
-            return cachedResult;
+        if (cachedApiResult != null) {
+            return cachedApiResult;
         }
 
-        if (!FabricLoader.getInstance().isModLoaded("baritone")) {
-            cachedResult = Boolean.FALSE;
+        if (!isBaritonePresent()) {
+            cachedApiResult = Boolean.FALSE;
             return false;
         }
 
         try {
             Class.forName(BARITONE_API_CLASS, false, BaritoneDependencyChecker.class.getClassLoader());
-            cachedResult = Boolean.TRUE;
+            cachedApiResult = Boolean.TRUE;
         } catch (ClassNotFoundException e) {
             PathmindMod.LOGGER.warn("Baritone API reported as loaded but classes are missing: {}", e.getMessage());
-            cachedResult = Boolean.FALSE;
+            cachedApiResult = Boolean.FALSE;
         } catch (LinkageError e) {
             PathmindMod.LOGGER.warn("Baritone API failed to initialize, marking unavailable", e);
-            cachedResult = Boolean.FALSE;
+            cachedApiResult = Boolean.FALSE;
         } catch (Throwable t) {
             PathmindMod.LOGGER.warn("Unexpected error while checking for Baritone API", t);
-            cachedResult = Boolean.FALSE;
+            cachedApiResult = Boolean.FALSE;
         }
 
-        return cachedResult;
+        return cachedApiResult;
+    }
+
+    /**
+     * @return true if any Baritone mod is loaded (API may or may not be present).
+     */
+    public static boolean isBaritonePresent() {
+        if (cachedModResult != null) {
+            return cachedModResult;
+        }
+        if (FabricLoader.getInstance().isModLoaded(BARITONE_MOD_ID)) {
+            cachedModResult = Boolean.TRUE;
+            return cachedModResult;
+        }
+
+        // Relaxed detection for Baritone variants (e.g., meteor-bundled)
+        cachedModResult = FabricLoader.getInstance().getAllMods().stream().anyMatch(mod -> {
+            String id = mod.getMetadata() != null ? mod.getMetadata().getId() : null;
+            if (id != null && id.toLowerCase(java.util.Locale.ROOT).contains("baritone")) {
+                return true;
+            }
+            String name = mod.getMetadata() != null ? mod.getMetadata().getName() : null;
+            return name != null && name.toLowerCase(java.util.Locale.ROOT).contains("baritone");
+        });
+        return cachedModResult;
     }
 
     /**
      * Marks the dependency as unavailable so future checks skip loading attempts.
      */
     public static void markUnavailable() {
-        cachedResult = Boolean.FALSE;
+        cachedApiResult = Boolean.FALSE;
     }
 }

@@ -36,7 +36,7 @@ public class PathmindClientMod implements ClientModInitializer {
         LOGGER.info("Initializing Pathmind client mod");
 
         PresetManager.initialize();
-        baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
+        baritoneAvailable = BaritoneDependencyChecker.isBaritonePresent();
         this.activeNodeOverlay = new ActiveNodeOverlay();
         this.variablesOverlay = new VariablesOverlay();
 

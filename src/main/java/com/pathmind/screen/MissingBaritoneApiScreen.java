@@ -72,8 +72,8 @@ public class MissingBaritoneApiScreen extends Screen {
         int centerX = this.width / 2;
         int messageY = this.height / 2 - 40;
 
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Optional Baritone API not detected"), centerX, messageY, UITheme.TEXT_HEADER);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to unlock Baritone nodes"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone not detected"), centerX, messageY, UITheme.TEXT_HEADER);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install Baritone to unlock Baritone nodes"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 32, UITheme.LINK_COLOR);
 
         super.render(context, mouseX, mouseY, delta);

@@ -187,7 +187,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     public PathmindVisualEditorScreen() {
         super(Text.translatable("screen.pathmind.visual_editor.title"));
-        this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
+        this.baritoneAvailable = BaritoneDependencyChecker.isBaritonePresent();
         this.uiUtilsAvailable = UiUtilsDependencyChecker.isUiUtilsPresent();
         this.nodeGraph = new NodeGraph();
         this.sidebar = new Sidebar(baritoneAvailable, uiUtilsAvailable);
@@ -1905,8 +1905,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + popupWidth / 2;
         int messageY = popupY + 16;
         int baritonePrimary = getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone nodes need the Baritone API (optional)"), centerX, messageY, baritonePrimary);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install baritone-api to enable these nodes"), centerX, messageY + 16, baritonePrimary);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone not detected"), centerX, messageY, baritonePrimary);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install Baritone to enable these nodes"), centerX, messageY + 16, baritonePrimary);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 30,
             getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.LINK_COLOR));
 

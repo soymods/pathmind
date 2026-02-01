@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Executors;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
+import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.ChatMessageTracker;
@@ -388,6 +389,14 @@ public class Node {
             System.err.println("Failed to get Baritone instance: " + e.getMessage());
             return null;
         }
+    }
+
+    private boolean isBaritoneApiAvailable() {
+        return BaritoneDependencyChecker.isBaritoneApiPresent();
+    }
+
+    private boolean isBaritoneModAvailable() {
+        return BaritoneDependencyChecker.isBaritonePresent();
     }
 
     public String getId() {
@@ -4749,6 +4758,12 @@ public class Node {
             return;
         }
 
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            if (executeGotoCommandFallback(future)) {
+                return;
+            }
+        }
+
         Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for goto command");
@@ -4919,6 +4934,319 @@ public class Node {
             default:
                 return false;
         }
+    }
+
+    private boolean executeGotoCommandFallback(CompletableFuture<Void> future) {
+        if (!isBaritoneModAvailable()) {
+            return false;
+        }
+
+        boolean[] handled = new boolean[1];
+        BlockPos target = resolveGotoFallbackTargetFromAttachedParameter(future, handled);
+        if (handled[0]) {
+            if (target == null) {
+                return true;
+            }
+            String command = String.format("#goto %d %d %d", target.getX(), target.getY(), target.getZ());
+            executeCommand(command);
+            future.complete(null);
+            return true;
+        }
+
+        switch (mode) {
+            case GOTO_XYZ: {
+                int x = 0, y = 64, z = 0;
+                NodeParameter xParam = getParameter("X");
+                NodeParameter yParam = getParameter("Y");
+                NodeParameter zParam = getParameter("Z");
+
+                if (xParam != null) x = xParam.getIntValue();
+                if (yParam != null) y = yParam.getIntValue();
+                if (zParam != null) z = zParam.getIntValue();
+
+                if (isPlayerAtCoordinates(x, y, z)) {
+                    future.complete(null);
+                    return true;
+                }
+                String command = String.format("#goto %d %d %d", x, y, z);
+                executeCommand(command);
+                future.complete(null);
+                return true;
+            }
+            case GOTO_XZ: {
+                int x = 0, z = 0;
+                NodeParameter xParam = getParameter("X");
+                NodeParameter zParam = getParameter("Z");
+
+                if (xParam != null) x = xParam.getIntValue();
+                if (zParam != null) z = zParam.getIntValue();
+
+                if (isPlayerAtCoordinates(x, null, z)) {
+                    future.complete(null);
+                    return true;
+                }
+                String command = String.format("#goto %d %d", x, z);
+                executeCommand(command);
+                future.complete(null);
+                return true;
+            }
+            case GOTO_Y: {
+                int y = 64;
+                NodeParameter yParam = getParameter("Y");
+                if (yParam != null) y = yParam.getIntValue();
+
+                if (isPlayerAtCoordinates(null, y, null)) {
+                    future.complete(null);
+                    return true;
+                }
+                String command = String.format("#goto %d", y);
+                executeCommand(command);
+                future.complete(null);
+                return true;
+            }
+            case GOTO_BLOCK: {
+                String blockId = getStringParameter("Block", null);
+                BlockPos pos = resolveGotoFallbackTargetFromBlockId(blockId, future);
+                if (pos == null) {
+                    return true;
+                }
+                String command = String.format("#goto %d %d %d", pos.getX(), pos.getY(), pos.getZ());
+                executeCommand(command);
+                future.complete(null);
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    private BlockPos resolveGotoFallbackTargetFromAttachedParameter(CompletableFuture<Void> future, boolean[] handled) {
+        if (handled != null && handled.length > 0) {
+            handled[0] = false;
+        }
+
+        RuntimeParameterData parameterData = runtimeParameterData;
+        if (parameterData != null && parameterData.targetEntity != null) {
+            if (handled != null && handled.length > 0) {
+                handled[0] = true;
+            }
+            return parameterData.targetEntity.getBlockPos();
+        }
+
+        Node parameterNode = getAttachedParameter();
+        if (parameterNode == null) {
+            return null;
+        }
+        if (parameterNode.getType() == NodeType.VARIABLE) {
+            parameterNode = resolveVariableValueNode(parameterNode, 0, future);
+            if (parameterNode == null) {
+                if (handled != null && handled.length > 0) {
+                    handled[0] = true;
+                }
+                future.complete(null);
+                return null;
+            }
+        }
+
+        if (handled != null && handled.length > 0) {
+            handled[0] = true;
+        }
+
+        switch (parameterNode.getType()) {
+            case PARAM_ITEM: {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client == null || client.player == null || client.world == null) {
+                    return null;
+                }
+                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+                if (itemIds.isEmpty()) {
+                    sendNodeErrorMessage(client, "No item selected for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return null;
+                }
+                double searchRange = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+                Optional<BlockPos> matchedPosition = Optional.empty();
+                Item matchedItem = null;
+                String matchedItemId = null;
+
+                for (String candidateId : itemIds) {
+                    Identifier identifier = Identifier.tryParse(candidateId);
+                    if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                        continue;
+                    }
+                    Item candidateItem = Registries.ITEM.get(identifier);
+                    Optional<BlockPos> target = findNearestDroppedItem(client, candidateItem, searchRange);
+                    if (target.isPresent()) {
+                        matchedPosition = target;
+                        matchedItem = candidateItem;
+                        matchedItemId = candidateId;
+                        break;
+                    }
+                }
+
+                if (matchedPosition.isEmpty()) {
+                    String reference = String.join(", ", itemIds);
+                    sendNodeErrorMessage(client, "No dropped " + reference + " found nearby for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return null;
+                }
+
+                if (runtimeParameterData != null) {
+                    runtimeParameterData.targetBlockPos = matchedPosition.get();
+                    runtimeParameterData.targetItem = matchedItem;
+                    runtimeParameterData.targetItemId = matchedItemId;
+                }
+
+                return matchedPosition.get();
+            }
+            case PARAM_ENTITY: {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client == null || client.player == null || client.world == null) {
+                    return null;
+                }
+                List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
+                if (entityIds.isEmpty()) {
+                    sendNodeErrorMessage(client, "No entity selected for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return null;
+                }
+                double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+                Entity nearest = null;
+                double nearestDistance = Double.MAX_VALUE;
+                for (String candidateId : entityIds) {
+                    Identifier identifier = Identifier.tryParse(candidateId);
+                    if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                        continue;
+                    }
+                    EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+                    Optional<Entity> target = findNearestEntity(client, entityType, range);
+                    if (target.isEmpty()) {
+                        continue;
+                    }
+                    double distance = target.get().squaredDistanceTo(client.player);
+                    if (distance < nearestDistance) {
+                        nearest = target.get();
+                        nearestDistance = distance;
+                    }
+                }
+                if (nearest == null) {
+                    sendNodeErrorMessage(client, "No matching entity found nearby for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return null;
+                }
+                if (runtimeParameterData != null) {
+                    runtimeParameterData.targetBlockPos = nearest.getBlockPos();
+                    runtimeParameterData.targetEntity = nearest;
+                }
+                return nearest.getBlockPos();
+            }
+            case PARAM_PLAYER: {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client == null || client.player == null || client.world == null) {
+                    return null;
+                }
+                String playerName = getParameterString(parameterNode, "Player");
+                if (playerName == null || playerName.isEmpty()) {
+                    sendNodeErrorMessage(client, "No player selected for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return null;
+                }
+
+                Optional<AbstractClientPlayerEntity> match = client.world.getPlayers().stream()
+                    .filter(p -> playerName.equalsIgnoreCase(
+                        GameProfileCompatibilityBridge.getName(p.getGameProfile())))
+                    .findFirst();
+
+                if (match.isEmpty()) {
+                    sendNodeErrorMessage(client, "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return null;
+                }
+
+                if (runtimeParameterData != null) {
+                    runtimeParameterData.targetBlockPos = match.get().getBlockPos();
+                    runtimeParameterData.targetEntity = match.get();
+                }
+                return match.get().getBlockPos();
+            }
+            case PARAM_BLOCK: {
+                String blockId = getBlockParameterValue(parameterNode);
+                BlockPos pos = resolveGotoFallbackTargetFromBlockId(blockId, future);
+                if (pos != null && runtimeParameterData != null) {
+                    runtimeParameterData.targetBlockPos = pos;
+                }
+                return pos;
+            }
+            default:
+                if (handled != null && handled.length > 0) {
+                    handled[0] = false;
+                }
+                return null;
+        }
+    }
+
+    private BlockPos resolveGotoFallbackTargetFromBlockId(String blockId, CompletableFuture<Void> future) {
+        if (blockId == null || blockId.isEmpty()) {
+            return null;
+        }
+
+        List<String> blockIds = splitMultiValueList(blockId);
+        if (!blockIds.isEmpty()) {
+            blockId = blockIds.get(0);
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.world == null) {
+            return null;
+        }
+
+        String sanitized = sanitizeResourceId(blockId);
+        String normalized = (sanitized != null && !sanitized.isEmpty())
+            ? normalizeResourceId(sanitized, "minecraft")
+            : null;
+
+        if (normalized == null || normalized.isEmpty()) {
+            sendNodeErrorMessage(client, "Cannot navigate to block: no block selected.");
+            future.complete(null);
+            return null;
+        }
+
+        Identifier identifier = Identifier.tryParse(normalized);
+        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+            sendNodeErrorMessage(client, "Cannot navigate to block \"" + blockId + "\": unknown identifier.");
+            future.complete(null);
+            return null;
+        }
+
+        Block targetBlock = Registries.BLOCK.get(identifier);
+        List<BlockSelection> selections = new ArrayList<>();
+        BlockSelection.parse(blockId).ifPresent(selections::add);
+        Optional<BlockPos> nearest = findNearestBlock(client, selections, PARAMETER_SEARCH_RADIUS);
+        if (nearest.isEmpty()) {
+            sendNodeErrorMessage(client, "No " + normalized + " found nearby for " + type.getDisplayName() + ".");
+            future.complete(null);
+            return null;
+        }
+
+        setParameterValueAndPropagate("Block", normalized);
+
+        if (client.player != null) {
+            BlockPos playerBlockPos = client.player.getBlockPos();
+            BlockPos targetPos = nearest.get();
+            if (playerBlockPos.equals(targetPos)) {
+                future.complete(null);
+                return null;
+            }
+            if (targetBlock != null && client.world.getBlockState(targetPos).isOf(targetBlock)) {
+                double distanceSq = client.player.squaredDistanceTo(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
+                if (distanceSq <= 2.25D) {
+                    future.complete(null);
+                    return null;
+                }
+            }
+        }
+
+        return nearest.get();
     }
 
     private boolean gotoSpecificEntity(Entity targetEntity, Object customGoalProcess, CompletableFuture<Void> future) {
@@ -5188,6 +5516,34 @@ public class Node {
         List<String> targets = resolveCollectTargets(future);
         if (targets.isEmpty()) {
             return;
+        }
+
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            switch (mode) {
+                case COLLECT_SINGLE: {
+                    int amount = Math.max(1, getIntParameter("Amount", 1));
+                    if (hasRequiredBlockAlready(targets.get(0), amount)) {
+                        future.complete(null);
+                        return;
+                    }
+                    String command = "#mine " + targets.get(0);
+                    if (amount > 1) {
+                        command += " " + amount;
+                    }
+                    executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case COLLECT_MULTIPLE: {
+                    String command = "#mine " + String.join(" ", targets);
+                    executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                default:
+                    future.completeExceptionally(new RuntimeException("Unknown COLLECT mode: " + mode));
+                    return;
+            }
         }
 
         Object baritone = getBaritone();
@@ -8010,12 +8366,6 @@ public class Node {
             future.completeExceptionally(new RuntimeException("No mode set for BUILD node"));
             return;
         }
-        Object baritone = getBaritone();
-        if (baritone == null) {
-            System.err.println("Baritone not available for build command");
-            future.completeExceptionally(new RuntimeException("Baritone not available"));
-            return;
-        }
         
         String schematic = "house.schematic";
         NodeParameter schematicParam = getParameter("Schematic");
@@ -8057,7 +8407,20 @@ public class Node {
                     return;
             }
         }
-        
+
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            executeCommand(command);
+            future.complete(null);
+            return;
+        }
+
+        Object baritone = getBaritone();
+        if (baritone == null) {
+            System.err.println("Baritone not available for build command");
+            future.completeExceptionally(new RuntimeException("Baritone not available"));
+            return;
+        }
+
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_BUILD, future);
         executeCommand(command);
     }
@@ -8069,6 +8432,43 @@ public class Node {
         if (mode == null) {
             future.completeExceptionally(new RuntimeException("No mode set for EXPLORE node"));
             return;
+        }
+
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            switch (mode) {
+                case EXPLORE_CURRENT: {
+                    String command = "#explore";
+                    executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case EXPLORE_XYZ: {
+                    int x = 0, z = 0;
+                    NodeParameter xParam = getParameter("X");
+                    NodeParameter zParam = getParameter("Z");
+
+                    if (xParam != null) x = xParam.getIntValue();
+                    if (zParam != null) z = zParam.getIntValue();
+
+                    String command = String.format("#explore %d %d", x, z);
+                    executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case EXPLORE_FILTER: {
+                    String filter = "explore.txt";
+                    NodeParameter filterParam = getParameter("Filter");
+                    if (filterParam != null) {
+                        filter = filterParam.getStringValue();
+                    }
+                    executeCommand("#explore " + filter);
+                    future.complete(null);
+                    return;
+                }
+                default:
+                    future.completeExceptionally(new RuntimeException("Unknown EXPLORE mode: " + mode));
+                    return;
+            }
         }
         
         Object baritone = getBaritone();
@@ -9039,6 +9439,76 @@ public class Node {
             return;
         }
 
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            if (runtimeParameterData != null && runtimeParameterData.targetBlockPos != null) {
+                BlockPos target = runtimeParameterData.targetBlockPos;
+                String command = String.format("#goal %d %d %d", target.getX(), target.getY(), target.getZ());
+                executeCommand(command);
+                future.complete(null);
+                return;
+            }
+            switch (mode) {
+                case GOAL_XYZ: {
+                    int x = 0, y = 64, z = 0;
+                    NodeParameter xParam = getParameter("X");
+                    NodeParameter yParam = getParameter("Y");
+                    NodeParameter zParam = getParameter("Z");
+
+                    if (xParam != null) x = xParam.getIntValue();
+                    if (yParam != null) y = yParam.getIntValue();
+                    if (zParam != null) z = zParam.getIntValue();
+
+                    String command = String.format("#goal %d %d %d", x, y, z);
+                    executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case GOAL_XZ: {
+                    int x = 0, z = 0;
+                    NodeParameter xParam = getParameter("X");
+                    NodeParameter zParam = getParameter("Z");
+
+                    if (xParam != null) x = xParam.getIntValue();
+                    if (zParam != null) z = zParam.getIntValue();
+
+                    String command = String.format("#goal %d %d", x, z);
+                    executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case GOAL_Y: {
+                    int y = 64;
+                    NodeParameter yParam = getParameter("Y");
+                    if (yParam != null) y = yParam.getIntValue();
+
+                    String command = String.format("#goal %d", y);
+                    executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case GOAL_CURRENT: {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null && client.player != null) {
+                        int currentX = (int) client.player.getX();
+                        int currentY = (int) client.player.getY();
+                        int currentZ = (int) client.player.getZ();
+                        String command = String.format("#goal %d %d %d", currentX, currentY, currentZ);
+                        executeCommand(command);
+                    }
+                    future.complete(null);
+                    return;
+                }
+                case GOAL_CLEAR: {
+                    executeCommand("#goal clear");
+                    future.complete(null);
+                    return;
+                }
+                default:
+                    future.completeExceptionally(new RuntimeException("Unknown GOAL mode: " + mode));
+                    return;
+            }
+        }
+
         Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for goal command");
@@ -9126,6 +9596,17 @@ public class Node {
 
         System.out.println("Executing path command");
 
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            if (runtimeParameterData != null && runtimeParameterData.targetBlockPos != null) {
+                BlockPos target = runtimeParameterData.targetBlockPos;
+                String goalCommand = String.format("#goal %d %d %d", target.getX(), target.getY(), target.getZ());
+                executeCommand(goalCommand);
+            }
+            executeCommand("#path");
+            future.complete(null);
+            return;
+        }
+
         Object baritone = getBaritone();
         if (baritone != null) {
             resetBaritonePathing(baritone);
@@ -9155,7 +9636,27 @@ public class Node {
             future.completeExceptionally(new RuntimeException("No mode set for STOP node"));
             return;
         }
-        
+
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            PreciseCompletionTracker.getInstance().cancelAllTasks();
+            String command;
+            switch (mode) {
+                case STOP_NORMAL:
+                    command = "#stop";
+                    break;
+                case STOP_CANCEL:
+                case STOP_FORCE:
+                    command = "#cancel";
+                    break;
+                default:
+                    future.completeExceptionally(new RuntimeException("Unknown STOP mode: " + mode));
+                    return;
+            }
+            executeCommand(command);
+            future.complete(null);
+            return;
+        }
+
         Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for stop command");
@@ -9302,7 +9803,41 @@ public class Node {
             future.completeExceptionally(new RuntimeException("No mode set for FARM node"));
             return;
         }
-        
+
+        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
+            switch (mode) {
+                case FARM_RANGE: {
+                    int range = 10;
+                    NodeParameter rangeParam = getParameter("Range");
+                    if (rangeParam != null) {
+                        range = rangeParam.getIntValue();
+                    }
+                    executeCommand("#farm " + range);
+                    future.complete(null);
+                    return;
+                }
+                case FARM_WAYPOINT: {
+                    String waypoint = "farm";
+                    int waypointRange = 10;
+                    NodeParameter waypointParam = getParameter("Waypoint");
+                    NodeParameter waypointRangeParam = getParameter("Range");
+
+                    if (waypointParam != null) {
+                        waypoint = waypointParam.getStringValue();
+                    }
+                    if (waypointRangeParam != null) {
+                        waypointRange = waypointRangeParam.getIntValue();
+                    }
+                    executeCommand("#farm " + waypoint + " " + waypointRange);
+                    future.complete(null);
+                    return;
+                }
+                default:
+                    future.completeExceptionally(new RuntimeException("Unknown FARM mode: " + mode));
+                    return;
+            }
+        }
+
         Object baritone = getBaritone();
         if (baritone == null) {
             System.err.println("Baritone not available for farm command");

@@ -5,7 +5,16 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [
-    "ScreenAccessor"
+    "DrawContextMixin",
+    "GameRendererMixin",
+    "InGameHudMixin",
+    "ItemRendererMixin",
+    "KeyboardInputBlockerMixin",
+    "MouseInputBlockerMixin",
+    "MousePositionGuardMixin",
+    "ScreenAccessor",
+    "ScreenRenderSealMixin",
+    "TextRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

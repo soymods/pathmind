@@ -38,6 +38,7 @@ import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
 import com.pathmind.util.RenderStateBridge;
+import com.pathmind.util.OverlayProtection;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.MathHelper;
@@ -283,6 +284,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        OverlayProtection.setPathmindRendering(true);
+        try {
         resetOverlayCutout();
         // Fill background with dark grey theme
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
@@ -417,6 +420,9 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.renderNodeContextMenu(context, this.textRenderer);
         nodeGraph.updateContextMenuHover(mouseX, mouseY);
         nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
+        } finally {
+            OverlayProtection.setPathmindRendering(false);
+        }
     }
 
     private boolean isPopupObscuringWorkspace() {

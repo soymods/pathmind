@@ -15,18 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ItemRendererMixin {
 
     private static boolean pathmind$shouldBlockExternalDraw() {
-        if (!OverlayProtection.isProtectionActive()) {
-            return false;
-        }
-
-        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-        for (StackTraceElement element : stackTrace) {
-            if (element.getClassName().startsWith("com.pathmind.")) {
-                return false;
-            }
-        }
-
-        return true;
+        return OverlayProtection.shouldBlockExternalDraw();
     }
 
     @Inject(

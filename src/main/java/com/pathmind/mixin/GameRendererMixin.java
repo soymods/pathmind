@@ -133,6 +133,9 @@ public class GameRendererMixin {
         if (!com.pathmind.screen.PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
             return;
         }
+        if (client.player == null || client.world == null) {
+            return;
+        }
 
         DrawContext context = pathmind$lastDrawContext.get();
         Integer mouseX = pathmind$lastMouseX.get();

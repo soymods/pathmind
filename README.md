@@ -27,9 +27,11 @@
 2. **Install Fabric API**
    - Download the Fabric API build that matches your chosen Minecraft version
    - [Download from Modrinth](https://modrinth.com/mod/fabric-api)
+   - Place it in your `mods` folder
 
 4. **Install Pathmind**
-   - Download the Pathmind jar whose filename ends with your Minecraft version (every release ships with `+mc<version>` in the filename)
+   - Download the Pathmind jar that matches your chosen Minecraft version
+   - [Download from Modrinth](https://modrinth.com/mod/pathmind)
    - Place it in your `mods` folder
 
 5. **Launch and Enjoy!**

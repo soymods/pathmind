@@ -29,8 +29,8 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockFill(
-        com.mojang.blaze3d.pipeline.RenderPipeline pipeline,
-        net.minecraft.client.texture.TextureSetup textureSetup,
+        Object pipeline,
+        Object textureSetup,
         int x1,
         int y1,
         int x2,
@@ -49,8 +49,8 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockFillExtended(
-        com.mojang.blaze3d.pipeline.RenderPipeline pipeline,
-        net.minecraft.client.texture.TextureSetup textureSetup,
+        Object pipeline,
+        Object textureSetup,
         int x1,
         int y1,
         int x2,
@@ -177,7 +177,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureFull(
-        com.mojang.blaze3d.pipeline.RenderPipeline pipeline,
+        Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,
@@ -204,7 +204,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureRegion(
-        com.mojang.blaze3d.pipeline.RenderPipeline pipeline,
+        Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,
@@ -229,7 +229,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureRegionSize(
-        com.mojang.blaze3d.pipeline.RenderPipeline pipeline,
+        Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,
@@ -255,7 +255,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureSimple(
-        com.mojang.blaze3d.pipeline.RenderPipeline pipeline,
+        Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,

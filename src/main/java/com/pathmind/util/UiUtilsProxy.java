@@ -30,6 +30,9 @@ public final class UiUtilsProxy {
     private static Field bypassResourcePackField;
     private static Field resourcePackForceDenyField;
     private static Method executeCommandMethod;
+    private static Field overlayField;
+    private static Method overlaySetEnabledMethod;
+    private static Field overlayEnabledField;
 
     private UiUtilsProxy() {
     }
@@ -74,11 +77,76 @@ public final class UiUtilsProxy {
             Class<?> commandSystem = Class.forName(COMMAND_SYSTEM_CLASS, false, UiUtilsProxy.class.getClassLoader());
             executeCommandMethod = commandSystem.getMethod("executeCommand", String.class);
             backend = Backend.MODERN;
+            initOverlayAccess();
             return true;
         } catch (Throwable t) {
             LOGGER.warn("Failed to initialize UI Utils proxy", t);
             backend = Backend.NONE;
             return false;
+        }
+    }
+
+    private static void initOverlayAccess() {
+        try {
+            Class<?> uiUtilsClass = Class.forName("com.mrbreaknfix.ui_utils.UiUtils", false, UiUtilsProxy.class.getClassLoader());
+            overlayField = uiUtilsClass.getField("overlay");
+            Object overlay = overlayField.get(null);
+            if (overlay != null) {
+                overlaySetEnabledMethod = overlay.getClass().getMethod("setEnabled", boolean.class);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Optional compatibility only.
+        }
+        if (overlaySetEnabledMethod == null) {
+            try {
+                Class<?> baseOverlayClass = Class.forName("com.mrbreaknfix.ui_utils.gui.BaseOverlay", false, UiUtilsProxy.class.getClassLoader());
+                overlayEnabledField = baseOverlayClass.getField("enabled");
+            } catch (ReflectiveOperationException ignored) {
+                // Optional compatibility only.
+            }
+        }
+    }
+
+    public static Boolean setOverlayEnabled(boolean enabled) {
+        if (!init()) {
+            return null;
+        }
+        try {
+            if (overlayField == null) {
+                initOverlayAccess();
+            }
+            if (overlayField == null) {
+                return null;
+            }
+            Object overlay = overlayField.get(null);
+            if (overlay == null) {
+                return null;
+            }
+            Boolean previous = getOverlayEnabled(overlay);
+            if (overlaySetEnabledMethod != null) {
+                overlaySetEnabledMethod.invoke(overlay, enabled);
+                return previous;
+            }
+            if (overlayEnabledField != null) {
+                overlayEnabledField.setBoolean(overlay, enabled);
+                return previous;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static Boolean getOverlayEnabled(Object overlay) {
+        try {
+            if (overlayEnabledField != null) {
+                return overlayEnabledField.getBoolean(overlay);
+            }
+            Method getter = overlay.getClass().getMethod("isEnabled");
+            Object value = getter.invoke(overlay);
+            return value instanceof Boolean ? (Boolean) value : null;
+        } catch (ReflectiveOperationException ignored) {
+            return null;
         }
     }
 

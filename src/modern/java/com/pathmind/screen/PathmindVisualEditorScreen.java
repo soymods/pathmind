@@ -39,6 +39,7 @@ import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.OverlayProtection;
+import com.pathmind.util.UiUtilsProxy;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.MathHelper;
@@ -175,6 +176,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int overlayCutoutY = 0;
     private int overlayCutoutWidth = 0;
     private int overlayCutoutHeight = 0;
+    private Boolean uiUtilsOverlayPrevEnabled = null;
 
     private enum AccentOption {
         SKY("Sky", UITheme.ACCENT_SKY),
@@ -228,6 +230,9 @@ public class PathmindVisualEditorScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        if (uiUtilsOverlayPrevEnabled == null) {
+            uiUtilsOverlayPrevEnabled = UiUtilsProxy.setOverlayEnabled(false);
+        }
 
         refreshAvailablePresets();
         nodeGraph.setActivePreset(activePresetName);
@@ -1696,6 +1701,10 @@ public class PathmindVisualEditorScreen extends Screen {
     @Override
     public void removed() {
         autoSaveWorkspace();
+        if (uiUtilsOverlayPrevEnabled != null) {
+            UiUtilsProxy.setOverlayEnabled(uiUtilsOverlayPrevEnabled);
+            uiUtilsOverlayPrevEnabled = null;
+        }
         super.removed();
     }
 

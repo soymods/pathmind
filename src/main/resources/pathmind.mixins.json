@@ -9,12 +9,11 @@
     "GameRendererMixin",
     "InGameHudMixin",
     "ItemRendererMixin",
-    "KeyboardInputBlockerMixin",
-    "MouseInputBlockerMixin",
     "MousePositionGuardMixin",
     "ScreenAccessor",
     "ScreenRenderSealMixin",
-    "TextRendererMixin"
+    "TextRendererMixin",
+    "UiUtilsOverlayBlockerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

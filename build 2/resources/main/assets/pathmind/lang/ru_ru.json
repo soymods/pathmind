@@ -194,6 +194,8 @@
   "pathmind.node.type.sensorAtCoordinates.desc": "Определяет, находится ли игрок в определенных координатах",
   "pathmind.node.type.sensorBlockAhead": "Блок впереди",
   "pathmind.node.type.sensorBlockAhead.desc": "Определяет, находится ли определенный блок прямо перед игроком",
+  "pathmind.node.type.sensorBlockBelow": "Блок ниже",
+  "pathmind.node.type.sensorBlockBelow.desc": "Определяет, находится ли определенный блок под игроком",
   "pathmind.node.type.sensorLightLevelBelow": "Свет ниже",
   "pathmind.node.type.sensorLightLevelBelow.desc": "Определяет, ниже ли уровень освещения порогового значения",
   "pathmind.node.type.sensorIsDaytime": "Это день",

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "pathmind",
+  "version": "1.1.0+mc1.21.8",
+  "name": "Pathmind",
+  "description": "A visual node editor for building workflows and automation logic in Minecraft.",
+  "authors": ["ryduzz"],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/pathmind",
+    "sources": "https://github.com/soymods/pathmind",
+    "issues": "https://github.com/soymods/pathmind/issues"
+  },
+  "license": "All Rights Reserved",
+  "icon": "assets/pathmind/logo.png",
+  "environment": "client",
+  "entrypoints": {
+    "main": ["com.pathmind.PathmindMod"],
+    "client": ["com.pathmind.PathmindClientMod"]
+  },
+  "mixins": ["pathmind.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.17.2",
+    "minecraft": "1.21.8",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "recommends": {
+    "baritone": "*"
+  }
+}

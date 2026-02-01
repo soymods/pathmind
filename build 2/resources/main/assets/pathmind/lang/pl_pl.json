@@ -194,6 +194,8 @@
   "pathmind.node.type.sensorAtCoordinates.desc": "Wykrywa, czy gracz znajduje się w określonych współrzędnych",
   "pathmind.node.type.sensorBlockAhead": "Blok przed",
   "pathmind.node.type.sensorBlockAhead.desc": "Wykrywa, czy określony blok znajduje się bezpośrednio przed graczem",
+  "pathmind.node.type.sensorBlockBelow": "Blok poniżej",
+  "pathmind.node.type.sensorBlockBelow.desc": "Wykrywa, czy określony blok znajduje się pod graczem",
   "pathmind.node.type.sensorLightLevelBelow": "Światło poniżej",
   "pathmind.node.type.sensorLightLevelBelow.desc": "Wykrywa, czy poziom światła otoczenia jest poniżej progu",
   "pathmind.node.type.sensorIsDaytime": "Jest dzień",

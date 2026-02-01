@@ -525,7 +525,6 @@ public class Node {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_BLOCK_BELOW:
             case SENSOR_LIGHT_LEVEL_BELOW:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
@@ -2283,7 +2282,6 @@ public class Node {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_BLOCK_BELOW:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_ENTITY_NEARBY:
@@ -4554,7 +4552,6 @@ public class Node {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_BLOCK_BELOW:
             case SENSOR_LIGHT_LEVEL_BELOW:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
@@ -4894,9 +4891,20 @@ public class Node {
     }
 
     private boolean tryExecuteGotoUsingAttachedParameter(Object baritone, Object customGoalProcess, CompletableFuture<Void> future) {
+        RuntimeParameterData parameterData = runtimeParameterData;
+        if (parameterData != null && parameterData.targetEntity != null) {
+            return gotoSpecificEntity(parameterData.targetEntity, customGoalProcess, future);
+        }
+
         Node parameterNode = getAttachedParameter();
         if (parameterNode == null) {
             return false;
+        }
+        if (parameterNode.getType() == NodeType.VARIABLE) {
+            parameterNode = resolveVariableValueNode(parameterNode, 0, future);
+            if (parameterNode == null) {
+                return true;
+            }
         }
 
         switch (parameterNode.getType()) {
@@ -4911,6 +4919,27 @@ public class Node {
             default:
                 return false;
         }
+    }
+
+    private boolean gotoSpecificEntity(Entity targetEntity, Object customGoalProcess, CompletableFuture<Void> future) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null) {
+            return false;
+        }
+        if (targetEntity == null || targetEntity.isRemoved()) {
+            return false;
+        }
+        if (customGoalProcess == null) {
+            sendNodeErrorMessage(client, "Cannot navigate to entity: goal process unavailable.");
+            future.complete(null);
+            return true;
+        }
+
+        BlockPos pos = targetEntity.getBlockPos();
+        startGotoTaskWithBreakGuard(future);
+        Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
+        BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
+        return true;
     }
 
     private boolean gotoNearestDroppedItem(Node parameterNode, Object customGoalProcess, CompletableFuture<Void> future) {
@@ -7857,7 +7886,6 @@ public class Node {
         switch (type) {
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_BLOCK_BELOW:
                 return parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_PLACE_TARGET;
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_ENTITY_NEARBY:
@@ -10873,12 +10901,17 @@ public class Node {
 
         // Check for entity parameter
         String configuredEntityId = null;
-        if (parameterData != null && parameterData.targetEntityId != null && !parameterData.targetEntityId.isEmpty()) {
-            configuredEntityId = parameterData.targetEntityId;
+        Entity targetEntity = null;
+        if (parameterData != null) {
+            if (parameterData.targetEntity != null) {
+                targetEntity = parameterData.targetEntity;
+            }
+            if (parameterData.targetEntityId != null && !parameterData.targetEntityId.isEmpty()) {
+                configuredEntityId = parameterData.targetEntityId;
+            }
         }
 
-        Entity targetEntity = null;
-        if (configuredEntityId != null && !configuredEntityId.isEmpty()) {
+        if (targetEntity == null && configuredEntityId != null && !configuredEntityId.isEmpty()) {
             String sanitizedEntity = sanitizeResourceId(configuredEntityId);
             String normalizedEntity = normalizeResourceId(sanitizedEntity, "minecraft");
             Identifier entityIdentifier = Identifier.tryParse(normalizedEntity);
@@ -10902,11 +10935,17 @@ public class Node {
             }
 
             targetEntity = nearestEntity.get();
+        }
 
+        if (targetEntity != null) {
             // Check distance
             if (targetEntity.squaredDistanceTo(client.player.getEyePos()) > DEFAULT_REACH_DISTANCE_SQUARED) {
                 restoreSneakState.run();
-                String entityName = configuredEntityId.replace("minecraft:", "").replace("_", " ");
+                String entityName = configuredEntityId != null
+                    ? configuredEntityId.replace("minecraft:", "").replace("_", " ")
+                    : String.valueOf(Registries.ENTITY_TYPE.getId(targetEntity.getType()))
+                        .replace("minecraft:", "")
+                        .replace("_", " ");
                 sendNodeErrorMessage(client, entityName + " is too far away to interact with.");
                 future.complete(null);
                 return;
@@ -11696,19 +11735,6 @@ public class Node {
                 result = isBlockAhead(blockId);
                 break;
             }
-            case SENSOR_BLOCK_BELOW: {
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
-                if (parameterNode != null) {
-                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
-                    if (!selections.isEmpty()) {
-                        result = isBlockBelow(selections);
-                        break;
-                    }
-                }
-                String blockId = getStringParameter("Block", "stone");
-                result = isBlockBelow(blockId);
-                break;
-            }
             case SENSOR_LIGHT_LEVEL_BELOW: {
                 int threshold = MathHelper.clamp(getIntParameter("Threshold", 7), 0, 15);
                 result = isLightLevelBelow(threshold);
@@ -11924,7 +11950,6 @@ public class Node {
                  SENSOR_TOUCHING_ENTITY,
                  SENSOR_AT_COORDINATES,
                  SENSOR_BLOCK_AHEAD,
-                 SENSOR_BLOCK_BELOW,
                  SENSOR_ENTITY_NEARBY,
                  SENSOR_ITEM_IN_INVENTORY,
                  SENSOR_CHAT_MESSAGE -> true;

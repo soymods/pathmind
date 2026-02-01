@@ -181,8 +181,7 @@ public class Sidebar {
             baritoneAvailable,
             NodeType.SENSOR_AT_COORDINATES,
             NodeType.SENSOR_TOUCHING_BLOCK,
-            NodeType.SENSOR_BLOCK_AHEAD,
-            NodeType.SENSOR_BLOCK_BELOW
+            NodeType.SENSOR_BLOCK_AHEAD
         ));
         groups.add(new NodeGroup(
             "Entities & Visibility",

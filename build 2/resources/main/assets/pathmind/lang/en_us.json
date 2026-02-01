@@ -194,6 +194,8 @@
   "pathmind.node.type.sensorAtCoordinates.desc": "Detect if player is at specific coordinates",
   "pathmind.node.type.sensorBlockAhead": "Block Ahead",
   "pathmind.node.type.sensorBlockAhead.desc": "Detect if a specific block is directly in front of the player",
+  "pathmind.node.type.sensorBlockBelow": "Block Below",
+  "pathmind.node.type.sensorBlockBelow.desc": "Detect if a specific block is beneath the player",
   "pathmind.node.type.sensorLightLevelBelow": "Light Below",
   "pathmind.node.type.sensorLightLevelBelow.desc": "Detect if the ambient light level is below a threshold",
   "pathmind.node.type.sensorIsDaytime": "Is Daytime",

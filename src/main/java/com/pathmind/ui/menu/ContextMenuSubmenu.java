@@ -120,39 +120,46 @@ public class ContextMenuSubmenu {
         // Render background with full border (overlaps with main menu border by 1px)
         ContextMenuRenderer.renderMenuBackground(context, submenuX, submenuY, MENU_WIDTH, submenuHeight, true);
 
-        // Enable scissor for scrolling
+        // Enable scissor for scrolling to clip items outside the visible content area
         int clipLeft = submenuX + 1;
-        int clipTop = submenuY + 1;
+        int clipTop = submenuY + PADDING;
         int clipRight = submenuX + MENU_WIDTH - 1;
-        int clipBottom = submenuY + submenuHeight - 1;
+        int clipBottom = submenuY + submenuHeight - PADDING;
 
-        // Simple scissor implementation (disable when scaled down to avoid clipping artifacts)
-        boolean useScissor = scale >= 1.0f;
+        // Simple scissor implementation (disable when heavily zoomed out to avoid clipping artifacts)
+        boolean useScissor = scale >= 0.75f;
         if (useScissor) {
             enableScissor(context, clipLeft, clipTop, clipRight - clipLeft, clipBottom - clipTop);
         }
 
         // Render items
         int itemY = submenuY + PADDING - scrollOffset;
+        int visibleTop = submenuY + PADDING;
+        int visibleBottom = submenuY + submenuHeight - PADDING;
 
         for (SubmenuItem item : items) {
-            if (item.isGroupHeader) {
-                // Render group header
-                ContextMenuRenderer.renderGroupHeader(
-                    context, textRenderer,
-                    submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,
-                    item.groupName
-                );
-            } else if (item.nodeType != null) {
-                // Render node item
-                boolean hovered = (item.nodeType == hoveredNode);
-                int color = item.nodeType.getCategory().getColor();
-                ContextMenuRenderer.renderNodeItem(
-                    context, textRenderer,
-                    submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,
-                    item.nodeType.getDisplayName(), color,
-                    hovered, item.indented
-                );
+            // Only render items that are fully within the visible bounds
+            boolean isVisible = (itemY >= visibleTop) && (itemY + ITEM_HEIGHT <= visibleBottom);
+
+            if (isVisible) {
+                if (item.isGroupHeader) {
+                    // Render group header
+                    ContextMenuRenderer.renderGroupHeader(
+                        context, textRenderer,
+                        submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,
+                        item.groupName
+                    );
+                } else if (item.nodeType != null) {
+                    // Render node item
+                    boolean hovered = (item.nodeType == hoveredNode);
+                    int color = item.nodeType.getCategory().getColor();
+                    ContextMenuRenderer.renderNodeItem(
+                        context, textRenderer,
+                        submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,
+                        item.nodeType.getDisplayName(), color,
+                        hovered, item.indented
+                    );
+                }
             }
             itemY += ITEM_HEIGHT;
         }
@@ -230,8 +237,9 @@ public class ContextMenuSubmenu {
         try {
             int screenX = (int) Math.floor(anchorX + (x - anchorX) * scale);
             int screenY = (int) Math.floor(anchorY + (y - anchorY) * scale);
-            int screenW = Math.max(0, (int) Math.ceil(width * scale) + 1);
-            int screenH = Math.max(0, (int) Math.ceil(height * scale) + 1);
+            // Add small padding to account for rounding and text shadows
+            int screenW = Math.max(1, (int) Math.ceil(width * scale) + 2);
+            int screenH = Math.max(1, (int) Math.ceil(height * scale) + 2);
             context.enableScissor(screenX, screenY, screenX + screenW, screenY + screenH);
         } catch (Exception e) {
             // Fallback: no scissor

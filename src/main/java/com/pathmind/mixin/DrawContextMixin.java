@@ -22,282 +22,287 @@ public class DrawContextMixin {
 
     /**
      * Block fill operations from other mods when our screen is open.
+     * NOTE: These methods with RenderPipeline/TextureSetup don't exist in MC 1.21.1
      */
-    @Inject(
-        method = "fill(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/texture/TextureSetup;IIII)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockFill(
-        @Coerce Object pipeline,
-        @Coerce Object textureSetup,
-        int x1,
-        int y1,
-        int x2,
-        int y2,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "fill(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/texture/TextureSetup;IIII)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockFill(
+    //     @Coerce Object pipeline,
+    //     @Coerce Object textureSetup,
+    //     int x1,
+    //     int y1,
+    //     int x2,
+    //     int y2,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
-    @Inject(
-        method = "fill(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/texture/TextureSetup;IIIIILjava/lang/Integer;)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockFillExtended(
-        @Coerce Object pipeline,
-        @Coerce Object textureSetup,
-        int x1,
-        int y1,
-        int x2,
-        int y2,
-        int color,
-        Integer z,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "fill(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/texture/TextureSetup;IIIIILjava/lang/Integer;)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockFillExtended(
+    //     @Coerce Object pipeline,
+    //     @Coerce Object textureSetup,
+    //     int x1,
+    //     int y1,
+    //     int x2,
+    //     int y2,
+    //     int color,
+    //     Integer z,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
     /**
      * Block text rendering operations from other mods when our screen is open.
+     * NOTE: These void methods don't exist in MC 1.21.1 - drawText returns int
      */
-    @Inject(
-        method = "drawText(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;IIIZ)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextString(
-        net.minecraft.client.font.TextRenderer textRenderer,
-        String text,
-        int x,
-        int y,
-        int color,
-        boolean shadow,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawText(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;IIIZ)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextString(
+    //     net.minecraft.client.font.TextRenderer textRenderer,
+    //     String text,
+    //     int x,
+    //     int y,
+    //     int color,
+    //     boolean shadow,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
-    @Inject(
-        method = "drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;IIIZ)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextOrdered(
-        net.minecraft.client.font.TextRenderer textRenderer,
-        net.minecraft.text.OrderedText text,
-        int x,
-        int y,
-        int color,
-        boolean shadow,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;IIIZ)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextOrdered(
+    //     net.minecraft.client.font.TextRenderer textRenderer,
+    //     net.minecraft.text.OrderedText text,
+    //     int x,
+    //     int y,
+    //     int color,
+    //     boolean shadow,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
     /**
      * Block shadowed text rendering operations from other mods.
+     * NOTE: These void methods don't exist in MC 1.21.1 - drawTextWithShadow returns int
      */
-    @Inject(
-        method = "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;III)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextWithShadowString(
-        net.minecraft.client.font.TextRenderer textRenderer,
-        String text,
-        int x,
-        int y,
-        int color,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;III)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextWithShadowString(
+    //     net.minecraft.client.font.TextRenderer textRenderer,
+    //     String text,
+    //     int x,
+    //     int y,
+    //     int color,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
-    @Inject(
-        method = "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;III)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextWithShadowOrdered(
-        net.minecraft.client.font.TextRenderer textRenderer,
-        net.minecraft.text.OrderedText text,
-        int x,
-        int y,
-        int color,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;III)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextWithShadowOrdered(
+    //     net.minecraft.client.font.TextRenderer textRenderer,
+    //     net.minecraft.text.OrderedText text,
+    //     int x,
+    //     int y,
+    //     int color,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
-    @Inject(
-        method = "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;III)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextWithShadowText(
-        net.minecraft.client.font.TextRenderer textRenderer,
-        net.minecraft.text.Text text,
-        int x,
-        int y,
-        int color,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;III)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextWithShadowText(
+    //     net.minecraft.client.font.TextRenderer textRenderer,
+    //     net.minecraft.text.Text text,
+    //     int x,
+    //     int y,
+    //     int color,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
     /**
      * Block texture/icon rendering from overlay mods.
+     * NOTE: These methods with RenderPipeline don't exist in MC 1.21.1
      */
-    @Inject(
-        method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIIIIII)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextureFull(
-        @Coerce Object pipeline,
-        net.minecraft.util.Identifier sprite,
-        int x,
-        int y,
-        float u,
-        float v,
-        int width,
-        int height,
-        int regionWidth,
-        int regionHeight,
-        int textureWidth,
-        int textureHeight,
-        int color,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIIIIII)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextureFull(
+    //     @Coerce Object pipeline,
+    //     net.minecraft.util.Identifier sprite,
+    //     int x,
+    //     int y,
+    //     float u,
+    //     float v,
+    //     int width,
+    //     int height,
+    //     int regionWidth,
+    //     int regionHeight,
+    //     int textureWidth,
+    //     int textureHeight,
+    //     int color,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
-    @Inject(
-        method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIIII)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextureRegion(
-        @Coerce Object pipeline,
-        net.minecraft.util.Identifier sprite,
-        int x,
-        int y,
-        float u,
-        float v,
-        int width,
-        int height,
-        int textureWidth,
-        int textureHeight,
-        int color,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIIII)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextureRegion(
+    //     @Coerce Object pipeline,
+    //     net.minecraft.util.Identifier sprite,
+    //     int x,
+    //     int y,
+    //     float u,
+    //     float v,
+    //     int width,
+    //     int height,
+    //     int textureWidth,
+    //     int textureHeight,
+    //     int color,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
-    @Inject(
-        method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIIIII)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextureRegionSize(
-        @Coerce Object pipeline,
-        net.minecraft.util.Identifier sprite,
-        int x,
-        int y,
-        float u,
-        float v,
-        int width,
-        int height,
-        int regionWidth,
-        int regionHeight,
-        int textureWidth,
-        int textureHeight,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIIIII)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextureRegionSize(
+    //     @Coerce Object pipeline,
+    //     net.minecraft.util.Identifier sprite,
+    //     int x,
+    //     int y,
+    //     float u,
+    //     float v,
+    //     int width,
+    //     int height,
+    //     int regionWidth,
+    //     int regionHeight,
+    //     int textureWidth,
+    //     int textureHeight,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
-    @Inject(
-        method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIII)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTextureSimple(
-        @Coerce Object pipeline,
-        net.minecraft.util.Identifier sprite,
-        int x,
-        int y,
-        float u,
-        float v,
-        int width,
-        int height,
-        int textureWidth,
-        int textureHeight,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIFFIIII)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTextureSimple(
+    //     @Coerce Object pipeline,
+    //     net.minecraft.util.Identifier sprite,
+    //     int x,
+    //     int y,
+    //     float u,
+    //     float v,
+    //     int width,
+    //     int height,
+    //     int textureWidth,
+    //     int textureHeight,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
     /**
      * Block textured quad rendering from overlay mods.
+     * NOTE: Method signature doesn't match MC 1.21.1
      */
-    @Inject(
-        method = "drawTexturedQuad(Lnet/minecraft/util/Identifier;IIIIFFFF)V",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0
-    )
-    private void pathmind$blockDrawTexturedQuad(
-        net.minecraft.util.Identifier sprite,
-        int x1,
-        int y1,
-        int x2,
-        int y2,
-        float u1,
-        float u2,
-        float v1,
-        float v2,
-        CallbackInfo ci
-    ) {
-        if (pathmind$shouldBlockExternalDraw()) {
-            ci.cancel();
-        }
-    }
+    // @Inject(
+    //     method = "drawTexturedQuad(Lnet/minecraft/util/Identifier;IIIIFFFF)V",
+    //     at = @At("HEAD"),
+    //     cancellable = true,
+    //     require = 0
+    // )
+    // private void pathmind$blockDrawTexturedQuad(
+    //     net.minecraft.util.Identifier sprite,
+    //     int x1,
+    //     int y1,
+    //     int x2,
+    //     int y2,
+    //     float u1,
+    //     float u2,
+    //     float v1,
+    //     float v2,
+    //     CallbackInfo ci
+    // ) {
+    //     if (pathmind$shouldBlockExternalDraw()) {
+    //         ci.cancel();
+    //     }
+    // }
 
     /**
      * Block item rendering from overlay mods.

@@ -9,7 +9,6 @@
     "GameRendererMixin",
     "InGameHudMixin",
     "ItemRendererMixin",
-    "MousePositionGuardMixin",
     "ScreenAccessor",
     "ScreenRenderSealMixin",
     "TextRendererMixin",

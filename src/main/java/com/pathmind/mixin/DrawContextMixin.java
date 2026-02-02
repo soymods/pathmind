@@ -4,6 +4,7 @@ import com.pathmind.util.OverlayProtection;
 import net.minecraft.client.gui.DrawContext;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -29,8 +30,8 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockFill(
-        Object pipeline,
-        Object textureSetup,
+        @Coerce Object pipeline,
+        @Coerce Object textureSetup,
         int x1,
         int y1,
         int x2,
@@ -49,8 +50,8 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockFillExtended(
-        Object pipeline,
-        Object textureSetup,
+        @Coerce Object pipeline,
+        @Coerce Object textureSetup,
         int x1,
         int y1,
         int x2,
@@ -177,7 +178,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureFull(
-        Object pipeline,
+        @Coerce Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,
@@ -204,7 +205,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureRegion(
-        Object pipeline,
+        @Coerce Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,
@@ -229,7 +230,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureRegionSize(
-        Object pipeline,
+        @Coerce Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,
@@ -255,7 +256,7 @@ public class DrawContextMixin {
         require = 0
     )
     private void pathmind$blockDrawTextureSimple(
-        Object pipeline,
+        @Coerce Object pipeline,
         net.minecraft.util.Identifier sprite,
         int x,
         int y,

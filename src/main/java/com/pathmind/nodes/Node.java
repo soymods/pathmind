@@ -10112,9 +10112,41 @@ public class Node {
     }
 
     private SlotSelectionType resolveInventorySlotSelectionType(Node parameterNode) {
-        if (parameterNode == null || parameterNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+        if (parameterNode == null) {
             return SlotSelectionType.PLAYER_INVENTORY;
         }
+
+        // For item parameters, check if a container GUI is open
+        if (parameterNode.getType() == NodeType.PARAM_ITEM) {
+            // Check if there's a mode specified on the item parameter
+            String modeValue = getParameterString(parameterNode, "Mode");
+            if (modeValue != null && !modeValue.isEmpty()) {
+                Boolean isPlayer = InventorySlotModeHelper.extractPlayerSelectionFlag(modeValue);
+                if (isPlayer != null) {
+                    return isPlayer ? SlotSelectionType.PLAYER_INVENTORY : SlotSelectionType.GUI_CONTAINER;
+                }
+                String modeId = InventorySlotModeHelper.extractModeId(modeValue);
+                if (modeId != null && !modeId.isEmpty() && !"player_inventory".equals(modeId)) {
+                    return SlotSelectionType.GUI_CONTAINER;
+                }
+            }
+
+            // If no mode specified, detect based on open screen
+            net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+            if (client != null && client.player != null) {
+                ScreenHandler handler = client.player.currentScreenHandler;
+                // If a container is open (not just the player inventory screen)
+                if (handler != null && !(handler instanceof PlayerScreenHandler)) {
+                    return SlotSelectionType.GUI_CONTAINER;
+                }
+            }
+            return SlotSelectionType.PLAYER_INVENTORY;
+        }
+
+        if (parameterNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+            return SlotSelectionType.PLAYER_INVENTORY;
+        }
+
         String modeValue = getParameterString(parameterNode, "Mode");
         Boolean isPlayer = InventorySlotModeHelper.extractPlayerSelectionFlag(modeValue);
         if (isPlayer != null) {
@@ -10138,9 +10170,6 @@ public class Node {
             Slot slot = handler.getSlot(slotValue);
             if (slot == null) {
                 return null;
-            }
-            if (slot.inventory instanceof PlayerInventory) {
-                return resolveInventorySlot(handler, inventory, slotValue, SlotSelectionType.PLAYER_INVENTORY);
             }
             return new SlotResolution(slot, slotValue);
         }
@@ -10192,6 +10221,9 @@ public class Node {
             return false;
         }
 
+        SlotSelectionType selectionType = resolveInventorySlotSelectionType(slotIndex);
+        ScreenHandler handler = client.player.currentScreenHandler;
+
         int foundSlot = -1;
         for (String candidateId : itemIds) {
             Identifier identifier = Identifier.tryParse(candidateId);
@@ -10199,16 +10231,33 @@ public class Node {
                 continue;
             }
             Item candidateItem = Registries.ITEM.get(identifier);
-            int slot = findFirstSlotWithItem(client.player.getInventory(), candidateItem);
-            if (slot >= 0) {
-                foundSlot = slot;
+
+            if (selectionType == SlotSelectionType.GUI_CONTAINER && handler != null) {
+                // Search through all handler slots
+                for (int i = 0; i < handler.slots.size(); i++) {
+                    Slot slot = handler.getSlot(i);
+                    if (slot != null && !slot.getStack().isEmpty() && slot.getStack().isOf(candidateItem)) {
+                        foundSlot = i;
+                        break;
+                    }
+                }
+            } else {
+                // Search through player inventory
+                int slot = findFirstSlotWithItem(client.player.getInventory(), candidateItem);
+                if (slot >= 0) {
+                    foundSlot = slot;
+                }
+            }
+
+            if (foundSlot >= 0) {
                 break;
             }
         }
 
         if (foundSlot < 0) {
             String reference = String.join(", ", itemIds);
-            sendParameterSearchFailure("No " + reference + " found in inventory for " + type.getDisplayName() + ".", future);
+            String locationDesc = (selectionType == SlotSelectionType.GUI_CONTAINER) ? "container" : "inventory";
+            sendParameterSearchFailure("No " + reference + " found in " + locationDesc + " for " + type.getDisplayName() + ".", future);
             return false;
         }
 

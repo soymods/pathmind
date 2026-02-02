@@ -60,6 +60,7 @@ public class NodeGraph {
     private static final int SELECTION_BOX_MIN_DRAG = 3;
     private static final int CONNECTION_CLICK_THRESHOLD = 4;
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
+    private static final int GRID_SNAP_SIZE = 20;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
@@ -1411,6 +1412,12 @@ public class NodeGraph {
             int newY = worldMouseY - draggingNode.getDragOffsetY();
 
             if (multiDragActive) {
+                // Apply grid snapping if Shift is held
+                if (InputCompatibilityBridge.hasShiftDown()) {
+                    newX = snapToGrid(newX);
+                    newY = snapToGrid(newY);
+                }
+
                 int deltaX = newX - draggingNodeStartX;
                 int deltaY = newY - draggingNodeStartY;
                 if (deltaX != 0 || deltaY != 0) {
@@ -1443,6 +1450,13 @@ public class NodeGraph {
                     if (currentX != newX || currentY != newY) {
                         dragOperationChanged = true;
                     }
+
+                    // Apply grid snapping if Shift is held
+                    if (InputCompatibilityBridge.hasShiftDown()) {
+                        newX = snapToGrid(newX);
+                        newY = snapToGrid(newY);
+                    }
+
                     draggingNode.setPosition(newX, newY);
 
                     boolean hideSockets = false;
@@ -2138,7 +2152,16 @@ public class NodeGraph {
     public int worldToScreenY(int worldY) {
         return Math.round((worldY - cameraY) * getZoomScale());
     }
-    
+
+    /**
+     * Snaps a world coordinate to the nearest grid point.
+     * @param worldCoord The world coordinate to snap
+     * @return The snapped coordinate
+     */
+    private int snapToGrid(int worldCoord) {
+        return Math.round((float) worldCoord / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+    }
+
     public void deleteNodeIfInSidebar(Node node, int mouseX, int sidebarWidth) {
         // Use the same logic as the grey-out function - more than halfway over the sidebar
         // Calculate the node's screen position (same as in renderNode)

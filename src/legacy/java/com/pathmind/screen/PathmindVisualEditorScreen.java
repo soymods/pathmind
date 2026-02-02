@@ -107,7 +107,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int SETTINGS_TOGGLE_HEIGHT = 16;
     private static final int TITLE_INTERACTION_PADDING = 4;
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
-    private static final String INFO_POPUP_AUTHOR = "ryduzz";
+    private static final String INFO_POPUP_AUTHOR = "soyboy";
     private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
     private static final Text TITLE_TEXT = Text.translatable("pathmind.title");
 

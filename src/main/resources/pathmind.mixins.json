@@ -5,13 +5,11 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [
-    "DrawContextMixin",
     "GameRendererMixin",
     "InGameHudMixin",
     "ItemRendererMixin",
     "ScreenAccessor",
     "ScreenRenderSealMixin",
-    "TextRendererMixin",
     "UiUtilsOverlayBlockerMixin"
   ],
   "injectors": {

@@ -4,7 +4,7 @@
   "version": "${version}",
   "name": "Pathmind",
   "description": "A visual node editor for building workflows and automation logic in Minecraft.",
-  "authors": ["ryduzz"],
+  "authors": ["soyboy"],
   "contact": {
     "homepage": "https://modrinth.com/mod/pathmind",
     "sources": "https://github.com/soymods/pathmind",

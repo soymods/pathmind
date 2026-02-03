@@ -83,7 +83,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int CREATE_PRESET_POPUP_WIDTH = 320;
     private static final int CREATE_PRESET_POPUP_HEIGHT = 170;
     private static final int PLAY_BUTTON_SIZE = 18;
-    private static final int PLAY_BUTTON_MARGIN = 8;
+    private static final int PLAY_BUTTON_MARGIN = 6;
     private static final int STOP_BUTTON_SIZE = 18;
     private static final int CONTROL_BUTTON_GAP = 6;
     private static final int ZOOM_BUTTON_SIZE = 14;

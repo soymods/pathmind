@@ -87,7 +87,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int CREATE_PRESET_POPUP_WIDTH = 320;
     private static final int CREATE_PRESET_POPUP_HEIGHT = 170;
     private static final int PLAY_BUTTON_SIZE = 18;
-    private static final int PLAY_BUTTON_MARGIN = 8;
+    private static final int PLAY_BUTTON_MARGIN = 6;
     private static final int STOP_BUTTON_SIZE = 18;
     private static final int CONTROL_BUTTON_GAP = 6;
     private static final int ZOOM_BUTTON_SIZE = 14;
@@ -2507,6 +2507,9 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonY = getPlayButtonY();
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
+        boolean active = executing;
+
+        drawToolbarButtonFrame(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, hovered, active, disabled, "play-button");
 
         int bgColor = executing ? UITheme.TOOLBAR_EXECUTE_BG : UITheme.TOOLBAR_BG;
         if (hovered) {
@@ -2514,15 +2517,10 @@ public class PathmindVisualEditorScreen extends Screen {
         } else if (disabled && !executing) {
             bgColor = UITheme.TOOLBAR_BG_DISABLED;
         }
-
-        int borderColor = executing ? UITheme.STATE_SUCCESS : UITheme.BORDER_SUBTLE;
-        if (hovered) {
-            borderColor = UITheme.STATE_SUCCESS;
-        } else if (disabled && !executing) {
-            borderColor = UITheme.BORDER_SUBTLE;
-        }
         context.fill(buttonX + 1, buttonY + 1, buttonX + PLAY_BUTTON_SIZE - 1, buttonY + PLAY_BUTTON_SIZE - 1, bgColor);
-        DrawContextBridge.drawBorder(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, borderColor);
+        if (executing) {
+            DrawContextBridge.drawBorder(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, UITheme.STATE_SUCCESS);
+        }
 
         int iconColor = executing ? UITheme.STATE_SUCCESS : UITheme.TOOLBAR_EXECUTE_ICON;
         if (hovered) {
@@ -2553,6 +2551,9 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonY = getStopButtonY();
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
+        boolean active = executing;
+
+        drawToolbarButtonFrame(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, hovered, active, disabled, "stop-button");
 
         int bgColor = executing ? UITheme.TOOLBAR_STOP_BG : UITheme.TOOLBAR_BG;
         if (hovered) {
@@ -2560,16 +2561,11 @@ public class PathmindVisualEditorScreen extends Screen {
         } else if (disabled && !executing) {
             bgColor = UITheme.TOOLBAR_BG_DISABLED;
         }
-
-        int borderColor = executing ? UITheme.TOOLBAR_STOP_BORDER : UITheme.BORDER_SUBTLE;
-        if (hovered) {
-            borderColor = executing ? UITheme.TOOLBAR_STOP_BORDER_HOVER : UITheme.STATE_ERROR;
-        } else if (disabled && !executing) {
-            borderColor = UITheme.BORDER_SUBTLE;
-        }
-
         context.fill(buttonX + 1, buttonY + 1, buttonX + STOP_BUTTON_SIZE - 1, buttonY + STOP_BUTTON_SIZE - 1, bgColor);
-        DrawContextBridge.drawBorder(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, borderColor);
+        if (executing) {
+            int borderColor = hovered ? UITheme.TOOLBAR_STOP_BORDER_HOVER : UITheme.TOOLBAR_STOP_BORDER;
+            DrawContextBridge.drawBorder(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, borderColor);
+        }
 
         int iconColor = executing ? UITheme.TOOLBAR_STOP_ICON : UITheme.TOOLBAR_STOP_ICON_INACTIVE;
         if (hovered) {

@@ -1013,6 +1013,11 @@ public class Node {
             if (hasSensorSlot() || hasActionSlot()) {
                 top += SLOT_AREA_PADDING_TOP;
             }
+        } else if (hasAmountInputField() && type != NodeType.CONTROL_REPEAT) {
+            top += getAmountFieldDisplayHeight();
+            if (hasSensorSlot() || hasActionSlot()) {
+                top += SLOT_AREA_PADDING_TOP;
+            }
         } else if (hasSensorSlot() || hasActionSlot()) {
             top += SLOT_AREA_PADDING_TOP;
         } else if (hasBooleanToggle()) {
@@ -1239,6 +1244,12 @@ public class Node {
         if (type == NodeType.CRAFT && (mode == null || mode == NodeMode.CRAFT_PLAYER_GUI || mode == NodeMode.CRAFT_CRAFTING_TABLE)) {
             return true;
         }
+        if (type == NodeType.MOVE_ITEM) {
+            return true;
+        }
+        if (type == NodeType.CONTROL_REPEAT) {
+            return true;
+        }
         if (type == NodeType.SENSOR_ITEM_IN_INVENTORY) {
             return true;
         }
@@ -1270,6 +1281,10 @@ public class Node {
     }
 
     public int getAmountFieldLabelTop() {
+        if (type == NodeType.CONTROL_REPEAT) {
+            int top = getActionSlotTop() + getActionSlotHeight();
+            return top + SLOT_AREA_PADDING_BOTTOM + AMOUNT_FIELD_TOP_MARGIN;
+        }
         int top = getParameterSlotsBottom();
         if (hasCoordinateInputFields()) {
             top += getCoordinateFieldDisplayHeight();
@@ -1288,6 +1303,19 @@ public class Node {
     public String getAmountFieldLabel() {
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return "Seconds";
+        }
+        if (type == NodeType.CONTROL_REPEAT) {
+            return "Times";
+        }
+        return "Amount";
+    }
+
+    public String getAmountParameterKey() {
+        if (type == NodeType.MOVE_ITEM) {
+            return "Count";
+        }
+        if (type == NodeType.CONTROL_REPEAT) {
+            return "Count";
         }
         return "Amount";
     }
@@ -3297,6 +3325,13 @@ public class Node {
                     contentHeight += SLOT_AREA_PADDING_TOP;
                 }
             }
+        } else if (hasAmountInputField()) {
+            if (type != NodeType.CONTROL_REPEAT) {
+                contentHeight += getAmountFieldDisplayHeight();
+            }
+            if (hasSlots) {
+                contentHeight += SLOT_AREA_PADDING_TOP;
+            }
         } else if (hasSlots) {
             contentHeight += SLOT_AREA_PADDING_TOP;
         } else if (type == NodeType.MESSAGE) {
@@ -3324,6 +3359,9 @@ public class Node {
 
         if (hasSlots) {
             contentHeight += SLOT_AREA_PADDING_BOTTOM;
+        }
+        if (type == NodeType.CONTROL_REPEAT && hasAmountInputField()) {
+            contentHeight += getAmountFieldDisplayHeight();
         }
 
         int computedHeight = Math.max(MIN_HEIGHT, contentHeight);
@@ -11709,7 +11747,7 @@ public class Node {
             net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
             if (offer != null && !offer.isDisabled() && offer.getSellItem().getItem() == desiredItem) {
                 // Check if player has the required items
-                if (canAffordTrade(client.player, offer)) {
+                if (canAffordTrade(client.player, screenHandler, offer)) {
                     tradeIndex = i;
                     break;
                 }
@@ -11722,21 +11760,23 @@ public class Node {
             return;
         }
 
-        // Get the quantity to trade
-        int quantity = Math.max(1, getIntParameter("Amount", 1));
-
-        // Debug: Log the trade quantity
-        System.out.println("[TRADE DEBUG] Trading " + quantity + " times for " + desiredItemId);
+        // Get the quantity to trade (amount is desired output items, not number of trades)
+        int desiredAmount = Math.max(1, getIntParameter("Amount", 1));
 
         final net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
         final int finalTradeIndex = tradeIndex;
+        int sellCount = Math.max(1, selectedOffer.getSellItem().getCount());
+        int tradesToExecute = Math.max(1, (int) Math.ceil(desiredAmount / (double) sellCount));
+
+        // Debug: Log the trade quantity
+        System.out.println("[TRADE DEBUG] Trading " + tradesToExecute + " times for " + desiredItemId);
 
         // Execute trades with proper server synchronization
         new Thread(() -> {
             try {
-                for (int tradeCount = 0; tradeCount < quantity; tradeCount++) {
+                for (int tradeCount = 0; tradeCount < tradesToExecute; tradeCount++) {
                     // Check if we can still afford the trade
-                    if (!canAffordTrade(client.player, selectedOffer)) {
+                    if (!canAffordTrade(client.player, screenHandler, selectedOffer)) {
                         sendNodeErrorMessage(client, "Not enough items to complete the trade.");
                         break;
                     }
@@ -11794,7 +11834,7 @@ public class Node {
                     });
 
                     // Delay between trades to allow server synchronization
-                    if (tradeCount < quantity - 1) {
+                    if (tradeCount < tradesToExecute - 1) {
                         Thread.sleep(250);
                     }
                 }
@@ -11807,8 +11847,10 @@ public class Node {
         }, "Pathmind-Trade").start();
     }
 
-    private boolean canAffordTrade(net.minecraft.entity.player.PlayerEntity player, net.minecraft.village.TradeOffer offer) {
-        if (player == null || offer == null) {
+    private boolean canAffordTrade(net.minecraft.entity.player.PlayerEntity player,
+                                   net.minecraft.screen.MerchantScreenHandler screenHandler,
+                                   net.minecraft.village.TradeOffer offer) {
+        if (player == null || offer == null || screenHandler == null) {
             return false;
         }
 
@@ -11821,13 +11863,7 @@ public class Node {
         // Check first required item
         if (!firstBuyItem.isEmpty()) {
             int required = firstBuyItem.getCount();
-            int available = 0;
-            for (int i = 0; i < inventory.size(); i++) {
-                net.minecraft.item.ItemStack stack = inventory.getStack(i);
-                if (net.minecraft.item.ItemStack.areItemsEqual(stack, firstBuyItem)) {
-                    available += stack.getCount();
-                }
-            }
+            int available = countAvailableForTrade(inventory, screenHandler, firstBuyItem);
             if (available < required) {
                 return false;
             }
@@ -11840,19 +11876,40 @@ public class Node {
             net.minecraft.village.TradedItem tradedItem = secondBuyItemOpt.get();
             net.minecraft.item.ItemStack secondBuyItem = tradedItem.itemStack();
             int required = secondBuyItem.getCount();
-            int available = 0;
-            for (int i = 0; i < inventory.size(); i++) {
-                net.minecraft.item.ItemStack stack = inventory.getStack(i);
-                if (net.minecraft.item.ItemStack.areItemsEqual(stack, secondBuyItem)) {
-                    available += stack.getCount();
-                }
-            }
+            int available = countAvailableForTrade(inventory, screenHandler, secondBuyItem);
             if (available < required) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private int countAvailableForTrade(net.minecraft.entity.player.PlayerInventory inventory,
+                                       net.minecraft.screen.MerchantScreenHandler screenHandler,
+                                       net.minecraft.item.ItemStack requiredStack) {
+        int available = 0;
+        for (int i = 0; i < inventory.size(); i++) {
+            net.minecraft.item.ItemStack stack = inventory.getStack(i);
+            if (net.minecraft.item.ItemStack.areItemsEqual(stack, requiredStack)) {
+                available += stack.getCount();
+            }
+        }
+
+        // Include items already moved into merchant input slots (0 and 1).
+        for (int slotIndex = 0; slotIndex <= 1; slotIndex++) {
+            net.minecraft.item.ItemStack stack = screenHandler.getSlot(slotIndex).getStack();
+            if (net.minecraft.item.ItemStack.areItemsEqual(stack, requiredStack)) {
+                available += stack.getCount();
+            }
+        }
+
+        net.minecraft.item.ItemStack cursorStack = screenHandler.getCursorStack();
+        if (net.minecraft.item.ItemStack.areItemsEqual(cursorStack, requiredStack)) {
+            available += cursorStack.getCount();
+        }
+
+        return available;
     }
 
     private void executeSwingCommand(CompletableFuture<Void> future) {

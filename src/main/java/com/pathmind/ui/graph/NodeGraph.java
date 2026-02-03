@@ -2996,6 +2996,8 @@ public class NodeGraph {
                     if (node.hasAmountInputField()) {
                         renderAmountInputField(context, textRenderer, node, isOverSidebar);
                     }
+                } else if (node.hasAmountInputField()) {
+                    renderAmountInputField(context, textRenderer, node, isOverSidebar);
                 }
                 if (node.hasMessageInputFields()) {
                     renderMessageInputFields(context, textRenderer, node, isOverSidebar);
@@ -3394,8 +3396,12 @@ public class NodeGraph {
         if (editing && amountEnabled) {
             value = amountEditBuffer;
         } else {
-            NodeParameter amountParam = node.getParameter("Amount");
+            String amountKey = node.getAmountParameterKey();
+            NodeParameter amountParam = node.getParameter(amountKey);
             value = amountParam != null ? amountParam.getStringValue() : "";
+            if (node.getType() == NodeType.MOVE_ITEM && "0".equals(value)) {
+                value = "";
+            }
         }
 
         String display = editing
@@ -4443,8 +4449,12 @@ public class NodeGraph {
         stopEventNameEditing(true);
 
         amountEditingNode = node;
-        NodeParameter amountParam = node.getParameter("Amount");
+        String amountKey = node.getAmountParameterKey();
+        NodeParameter amountParam = node.getParameter(amountKey);
         amountEditBuffer = amountParam != null ? amountParam.getStringValue() : "";
+        if (node.getType() == NodeType.MOVE_ITEM && "0".equals(amountEditBuffer)) {
+            amountEditBuffer = "";
+        }
         amountEditOriginalValue = amountEditBuffer;
         resetAmountCaretBlink();
         amountCaretPosition = amountEditBuffer.length();
@@ -4487,14 +4497,19 @@ public class NodeGraph {
 
         String value = amountEditBuffer;
         if (value == null || value.isEmpty()) {
-            value = amountEditOriginalValue != null && !amountEditOriginalValue.isEmpty()
-                ? amountEditOriginalValue
-                : "0";
+            if (amountEditingNode.getType() == NodeType.MOVE_ITEM) {
+                value = "0";
+            } else {
+                value = amountEditOriginalValue != null && !amountEditOriginalValue.isEmpty()
+                    ? amountEditOriginalValue
+                    : "0";
+            }
         }
 
-        NodeParameter amountParam = amountEditingNode.getParameter("Amount");
+        String amountKey = amountEditingNode.getAmountParameterKey();
+        NodeParameter amountParam = amountEditingNode.getParameter(amountKey);
         String previous = amountParam != null ? amountParam.getStringValue() : "";
-        amountEditingNode.setParameterValueAndPropagate("Amount", value);
+        amountEditingNode.setParameterValueAndPropagate(amountKey, value);
         amountEditingNode.recalculateDimensions();
         return !Objects.equals(previous, value);
     }
@@ -4503,7 +4518,8 @@ public class NodeGraph {
         if (!isEditingAmountField()) {
             return;
         }
-        amountEditingNode.setParameterValueAndPropagate("Amount", amountEditOriginalValue);
+        String amountKey = amountEditingNode.getAmountParameterKey();
+        amountEditingNode.setParameterValueAndPropagate(amountKey, amountEditOriginalValue);
         amountEditingNode.recalculateDimensions();
     }
 

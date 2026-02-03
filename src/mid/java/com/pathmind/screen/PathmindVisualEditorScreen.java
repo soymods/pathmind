@@ -1076,7 +1076,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
                 // Check for double-click to open parameter editor
                 boolean shouldOpenOverlay = clickedNode.getType() == NodeType.PARAM_INVENTORY_SLOT
-                    || clickedNode.getType() == NodeType.PARAM_KEY;
+                    || clickedNode.getType() == NodeType.PARAM_KEY
+                    || clickedNode.getType() == NodeType.PARAM_VILLAGER_TRADE;
                 if (shouldOpenOverlay &&
                     nodeGraph.handleNodeClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     openParameterOverlay(clickedNode);
@@ -2432,7 +2433,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (node == null) {
             return;
         }
-        if (node.getType() != NodeType.PARAM_INVENTORY_SLOT && node.getType() != NodeType.PARAM_KEY) {
+        if (node.getType() != NodeType.PARAM_INVENTORY_SLOT
+            && node.getType() != NodeType.PARAM_KEY
+            && node.getType() != NodeType.PARAM_VILLAGER_TRADE) {
             return;
         }
         nodeGraph.stopCoordinateEditing(true);

@@ -154,6 +154,9 @@ public class VariablesOverlay {
             case PARAM_ITEM:
                 result = formatSingle(values, "Item", "item");
                 break;
+            case PARAM_VILLAGER_TRADE:
+                result = formatVillagerTrade(values);
+                break;
             case PARAM_ENTITY:
                 result = formatSingle(values, "Entity", "entity");
                 break;
@@ -219,6 +222,21 @@ public class VariablesOverlay {
             return "";
         }
         return label + ":" + value;
+    }
+
+    private String formatVillagerTrade(Map<String, String> values) {
+        String profession = getValue(values, "Profession");
+        String item = getValue(values, "Item");
+        if (isEmpty(profession) && isEmpty(item)) {
+            return "";
+        }
+        if (isEmpty(profession)) {
+            return "trade:" + blankIfNull(item);
+        }
+        if (isEmpty(item)) {
+            return "profession:" + blankIfNull(profession);
+        }
+        return "profession:" + blankIfNull(profession) + ", trade:" + blankIfNull(item);
     }
 
     private String formatSchematic(Map<String, String> values) {

@@ -788,7 +788,7 @@ public class Node {
             return parameterType == NodeType.PARAM_ITEM || parameterType == NodeType.PARAM_INVENTORY_SLOT;
         }
         if (type == NodeType.TRADE) {
-            return parameterType == NodeType.PARAM_ITEM;
+            return parameterType == NodeType.PARAM_VILLAGER_TRADE;
         }
         if (type == NodeType.MOVE_ITEM && slotIndex >= 0 && slotIndex <= 1 && parameterType == NodeType.PARAM_ITEM) {
             return true;
@@ -1154,7 +1154,7 @@ public class Node {
             return slotIndex == 0 ? "Item" : "Slot";
         }
         if (type == NodeType.TRADE) {
-            return "Item to Buy";
+            return "Villager Trade";
         }
         return "Parameter";
     }
@@ -2385,6 +2385,10 @@ public class Node {
             case PARAM_ITEM:
                 parameters.add(new NodeParameter("Item", ParameterType.STRING, "stick"));
                 break;
+            case PARAM_VILLAGER_TRADE:
+                parameters.add(new NodeParameter("Profession", ParameterType.STRING, "librarian"));
+                parameters.add(new NodeParameter("Item", ParameterType.STRING, "book"));
+                break;
             case PARAM_ENTITY:
                 parameters.add(new NodeParameter("Entity", ParameterType.STRING, "cow"));
                 parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
@@ -2555,6 +2559,9 @@ public class Node {
         if (type == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
             return "User";
         }
+        if (type == NodeType.PARAM_VILLAGER_TRADE && "Item".equalsIgnoreCase(name)) {
+            return "Trade";
+        }
         return name;
     }
 
@@ -2656,6 +2663,14 @@ public class Node {
                 if (amount != null) {
                     values.put("Count", amount);
                     values.put(normalizeParameterKey("Count"), amount);
+                }
+                break;
+            }
+            case PARAM_VILLAGER_TRADE: {
+                String item = values.get("Item");
+                if (item != null && !item.isEmpty()) {
+                    values.put("Items", item);
+                    values.put(normalizeParameterKey("Items"), item);
                 }
                 break;
             }
@@ -3120,7 +3135,9 @@ public class Node {
         if (!isParameterNode() || type == NodeType.PARAM_SCHEMATIC || type == NodeType.PARAM_BOOLEAN) {
             return false;
         }
-        return type == NodeType.PARAM_INVENTORY_SLOT || type == NodeType.PARAM_KEY;
+        return type == NodeType.PARAM_INVENTORY_SLOT
+            || type == NodeType.PARAM_KEY
+            || type == NodeType.PARAM_VILLAGER_TRADE;
     }
 
     public int getPopupEditButtonLeft() {
@@ -3618,7 +3635,8 @@ public class Node {
                 return ParameterHandlingResult.COMPLETE;
             }
         }
-        if (!handled && type == NodeType.TRADE && parameterNode.getType() == NodeType.PARAM_ITEM) {
+        if (!handled && type == NodeType.TRADE
+            && parameterNode.getType() == NodeType.PARAM_VILLAGER_TRADE) {
             List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
             if (!itemIds.isEmpty()) {
                 runtimeParameterData.targetItemId = itemIds.get(0);
@@ -8912,6 +8930,7 @@ public class Node {
             case PARAM_PLACE_TARGET:
                 return getRuntimeValue(values, "block");
             case PARAM_ITEM:
+            case PARAM_VILLAGER_TRADE:
                 return getRuntimeValue(values, "item");
             case PARAM_ENTITY:
                 return getRuntimeValue(values, "entity");
@@ -11780,7 +11799,7 @@ public class Node {
         }
 
         if (desiredItemId == null || desiredItemId.isEmpty()) {
-            sendNodeErrorMessage(client, "No item specified for trading. Attach a PARAM_ITEM to specify what to buy.");
+            sendNodeErrorMessage(client, "No trade specified. Attach a PARAM_VILLAGER_TRADE to select what to buy.");
             future.complete(null);
             return;
         }

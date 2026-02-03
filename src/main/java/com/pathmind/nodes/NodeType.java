@@ -111,6 +111,7 @@ public enum NodeType {
     PARAM_COORDINATE("pathmind.node.type.paramCoordinate", 0xFF8BC34A, "pathmind.node.type.paramCoordinate.desc"),
     PARAM_BLOCK("pathmind.node.type.paramBlock", 0xFF8BC34A, "pathmind.node.type.paramBlock.desc"),
     PARAM_ITEM("pathmind.node.type.paramItem", 0xFF8BC34A, "pathmind.node.type.paramItem.desc"),
+    PARAM_VILLAGER_TRADE("pathmind.node.type.paramVillagerTrade", 0xFF8BC34A, "pathmind.node.type.paramVillagerTrade.desc"),
     PARAM_ENTITY("pathmind.node.type.paramEntity", 0xFF8BC34A, "pathmind.node.type.paramEntity.desc"),
     PARAM_PLAYER("pathmind.node.type.paramPlayer", 0xFF8BC34A, "pathmind.node.type.paramPlayer.desc"),
     PARAM_WAYPOINT("pathmind.node.type.paramWaypoint", 0xFF8BC34A, "pathmind.node.type.paramWaypoint.desc"),
@@ -262,6 +263,7 @@ public enum NodeType {
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
             case PARAM_ITEM:
+            case PARAM_VILLAGER_TRADE:
             case PARAM_ENTITY:
             case PARAM_PLAYER:
             case PARAM_WAYPOINT:
@@ -334,6 +336,7 @@ public enum NodeType {
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
             case PARAM_ITEM:
+            case PARAM_VILLAGER_TRADE:
             case PARAM_ENTITY:
             case PARAM_PLAYER:
             case PARAM_WAYPOINT:

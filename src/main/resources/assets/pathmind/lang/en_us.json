@@ -240,6 +240,8 @@
   "pathmind.node.type.paramBlock.desc": "Represents a single block type",
   "pathmind.node.type.paramItem": "Item",
   "pathmind.node.type.paramItem.desc": "Represents an item and quantity",
+  "pathmind.node.type.paramVillagerTrade": "Villager Trade",
+  "pathmind.node.type.paramVillagerTrade.desc": "Selects a villager profession and trade item",
   "pathmind.node.type.paramEntity": "Entity",
   "pathmind.node.type.paramEntity.desc": "Represents an entity",
   "pathmind.node.type.paramPlayer": "User",

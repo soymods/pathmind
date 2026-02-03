@@ -2970,6 +2970,9 @@ public class NodeGraph {
                         if (value == null) {
                             value = "";
                         }
+                        if (!editingThis && value.isEmpty() && isBlockItemParameter(node, i)) {
+                            value = isBlockStateParameter(node, i) ? "Any State" : "Any";
+                        }
                         String displayValue = editingThis
                             ? value
                             : trimTextToWidth(value, textRenderer, maxValueWidth);
@@ -6563,12 +6566,22 @@ public class NodeGraph {
             return Collections.emptyList();
         }
 
-        if (lowered.isEmpty()) {
-            return Collections.emptyList();
-        }
-
         List<ParameterDropdownOption> starts = new ArrayList<>();
         List<ParameterDropdownOption> contains = new ArrayList<>();
+        List<ParameterDropdownOption> result = new ArrayList<>(65);
+        result.add(new ParameterDropdownOption("Any", ""));
+        if (lowered.isEmpty()) {
+            int limit = 64;
+            int added = 0;
+            for (String option : source) {
+                result.add(new ParameterDropdownOption(option, option));
+                added++;
+                if (added >= limit) {
+                    break;
+                }
+            }
+            return result;
+        }
         for (String option : source) {
             String lower = option.toLowerCase(Locale.ROOT);
             if (!lower.contains(lowered)) {
@@ -6584,7 +6597,6 @@ public class NodeGraph {
                 break;
             }
         }
-        List<ParameterDropdownOption> result = new ArrayList<>(Math.min(64, starts.size() + contains.size()));
         result.addAll(starts);
         result.addAll(contains);
         return result;
@@ -6637,10 +6649,6 @@ public class NodeGraph {
         ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
         boolean isStateParameter = isBlockStateParameter(node, index);
-        if (query.isEmpty() && !isStateParameter) {
-            closeParameterDropdown();
-            return;
-        }
 
         if (isParameterDropdownSuppressed(node, index, query)) {
             closeParameterDropdown();
@@ -6648,6 +6656,9 @@ public class NodeGraph {
         }
 
         List<ParameterDropdownOption> options = getParameterDropdownOptions(node, index, query);
+        if (!parameterEditBuffer.trim().isEmpty()) {
+            options.removeIf(option -> option.value().isEmpty());
+        }
         boolean changed = node != parameterDropdownNode
             || index != parameterDropdownIndex
             || !Objects.equals(parameterDropdownQuery, query);

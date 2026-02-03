@@ -193,7 +193,8 @@ public class Sidebar {
         groups.add(new NodeGroup(
             "Inventory & Items",
             baritoneAvailable,
-            NodeType.SENSOR_ITEM_IN_INVENTORY
+            NodeType.SENSOR_ITEM_IN_INVENTORY,
+            NodeType.SENSOR_ITEM_IN_SLOT
         ));
         groups.add(new NodeGroup(
             "Player Stats",

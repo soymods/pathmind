@@ -541,6 +541,7 @@ public class Node {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
+            case SENSOR_ITEM_IN_SLOT:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -766,6 +767,13 @@ public class Node {
                 return parameterType == NodeType.PARAM_PLAYER;
             }
             return parameterType == NodeType.PARAM_MESSAGE;
+        }
+        if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
+            NodeType parameterType = parameter.getType();
+            if (slotIndex == 0) {
+                return parameterType == NodeType.PARAM_ITEM;
+            }
+            return parameterType == NodeType.PARAM_INVENTORY_SLOT;
         }
         if (!isParameterCompatibleWithSlot(parameter, slotIndex)) {
             return false;
@@ -1077,6 +1085,9 @@ public class Node {
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return 2;
         }
+        if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
+            return 2;
+        }
         return 1;
     }
 
@@ -1139,6 +1150,9 @@ public class Node {
         }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return slotIndex == 0 ? "User" : "Message";
+        }
+        if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
+            return slotIndex == 0 ? "Item" : "Slot";
         }
         if (type == NodeType.TRADE) {
             return "Item to Buy";
@@ -1253,6 +1267,9 @@ public class Node {
         if (type == NodeType.SENSOR_ITEM_IN_INVENTORY) {
             return true;
         }
+        if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
+            return true;
+        }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return true;
         }
@@ -1343,7 +1360,9 @@ public class Node {
     }
 
     public boolean hasAmountToggle() {
-        return type == NodeType.SENSOR_ITEM_IN_INVENTORY;
+        return type == NodeType.SENSOR_ITEM_IN_INVENTORY
+            || type == NodeType.SENSOR_ITEM_IN_SLOT
+            || type == NodeType.TRADE;
     }
 
     public boolean hasAmountSignToggle() {
@@ -1351,11 +1370,11 @@ public class Node {
     }
 
     public boolean isAmountInputEnabled() {
-        ensureInventoryAmountParameters();
+        ensureAmountToggleParameters();
         if (!hasAmountInputField()) {
             return false;
         }
-        if (type == NodeType.SENSOR_ITEM_IN_INVENTORY) {
+        if (hasAmountToggle()) {
             NodeParameter useParam = getParameter("UseAmount");
             return useParam != null && useParam.getBoolValue();
         }
@@ -1363,10 +1382,12 @@ public class Node {
     }
 
     public void setAmountInputEnabled(boolean enabled) {
-        ensureInventoryAmountParameters();
-        NodeParameter useParam = getParameter("UseAmount");
-        if (useParam != null) {
-            useParam.setStringValue(Boolean.toString(enabled));
+        ensureAmountToggleParameters();
+        if (hasAmountToggle()) {
+            NodeParameter useParam = getParameter("UseAmount");
+            if (useParam != null) {
+                useParam.setStringValue(Boolean.toString(enabled));
+            }
         }
     }
 
@@ -1417,8 +1438,8 @@ public class Node {
         }
     }
 
-    private void ensureInventoryAmountParameters() {
-        if (type != NodeType.SENSOR_ITEM_IN_INVENTORY) {
+    private void ensureAmountToggleParameters() {
+        if (!hasAmountToggle()) {
             return;
         }
         if (getParameter("Amount") == null) {
@@ -2277,6 +2298,7 @@ public class Node {
                 break;
             case TRADE:
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
+                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
                 break;
             case LOOK:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
@@ -2323,6 +2345,10 @@ public class Node {
             case SENSOR_IS_RAINING:
             case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
+                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
+                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
+                break;
+            case SENSOR_ITEM_IN_SLOT:
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
                 break;
@@ -4606,6 +4632,7 @@ public class Node {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
+            case SENSOR_ITEM_IN_SLOT:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -11761,7 +11788,10 @@ public class Node {
         }
 
         // Get the quantity to trade (amount is desired output items, not number of trades)
-        int desiredAmount = Math.max(1, getIntParameter("Amount", 1));
+        boolean useAmount = isAmountInputEnabled();
+        int desiredAmount = useAmount
+            ? Math.max(1, getIntParameter("Amount", 1))
+            : Math.max(1, selectedOffer.getSellItem().getCount());
 
         final net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
         final int finalTradeIndex = tradeIndex;
@@ -12457,6 +12487,62 @@ public class Node {
                 result = useAmount ? hasItemAmountInInventory(itemId, requiredAmount) : hasItemInInventory(itemId);
                 break;
             }
+            case SENSOR_ITEM_IN_SLOT: {
+                Node itemNode = getAttachedParameter(0);
+                Node slotNode = getAttachedParameter(1);
+                if (itemNode == null || slotNode == null) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null) {
+                        sendNodeErrorMessage(client, type.getDisplayName() + " requires an item and slot parameter.");
+                    }
+                    result = false;
+                    break;
+                }
+                if (itemNode.getType() != NodeType.PARAM_ITEM) {
+                    sendIncompatibleParameterMessage(itemNode);
+                    result = false;
+                    break;
+                }
+                if (slotNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+                    sendIncompatibleParameterMessage(slotNode);
+                    result = false;
+                    break;
+                }
+                List<String> itemIds = resolveItemIdsFromParameter(itemNode);
+                if (itemIds.isEmpty()) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null) {
+                        sendNodeErrorMessage(client, "No item specified for " + type.getDisplayName() + ".");
+                    }
+                    result = false;
+                    break;
+                }
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client == null || client.player == null) {
+                    result = false;
+                    break;
+                }
+                PlayerInventory inventory = client.player.getInventory();
+                ScreenHandler handler = client.player.currentScreenHandler;
+                int slotValue = parseNodeInt(slotNode, "Slot", 0);
+                SlotSelectionType selectionType = resolveInventorySlotSelectionType(slotNode);
+                SlotResolution resolved = resolveInventorySlot(handler, inventory, slotValue, selectionType);
+                if (resolved == null || resolved.slot == null) {
+                    sendNodeErrorMessage(client, type.getDisplayName() + " requires a valid slot selection.");
+                    result = false;
+                    break;
+                }
+                ItemStack stack = resolved.slot.getStack();
+                if (stack == null || stack.isEmpty()) {
+                    result = false;
+                    break;
+                }
+                boolean useAmount = isAmountInputEnabled();
+                int requiredAmount = Math.max(1, getIntParameter("Amount", 1));
+                boolean matchesItem = stackMatchesAnyItem(stack, itemIds);
+                result = matchesItem && (!useAmount || stack.getCount() >= requiredAmount);
+                break;
+            }
             case SENSOR_IS_SWIMMING:
                 result = isSwimming();
                 break;
@@ -12593,6 +12679,7 @@ public class Node {
                  SENSOR_BLOCK_AHEAD,
                  SENSOR_ENTITY_NEARBY,
                  SENSOR_ITEM_IN_INVENTORY,
+                 SENSOR_ITEM_IN_SLOT,
                  SENSOR_CHAT_MESSAGE -> true;
             default -> false;
         };
@@ -13018,6 +13105,27 @@ public class Node {
             }
             net.minecraft.item.Item item = Registries.ITEM.get(identifier);
             if (client.player.getInventory().count(item) >= needed) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean stackMatchesAnyItem(ItemStack stack, List<String> itemIds) {
+        if (stack == null || stack.isEmpty() || itemIds == null || itemIds.isEmpty()) {
+            return false;
+        }
+        for (String candidateId : itemIds) {
+            String sanitized = sanitizeResourceId(candidateId);
+            String normalized = sanitized != null && !sanitized.isEmpty()
+                ? normalizeResourceId(sanitized, "minecraft")
+                : candidateId;
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            net.minecraft.item.Item item = Registries.ITEM.get(identifier);
+            if (stack.isOf(item)) {
                 return true;
             }
         }

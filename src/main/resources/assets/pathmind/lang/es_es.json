@@ -208,6 +208,8 @@
   "pathmind.node.type.sensorEntityNearby.desc": "Detecta si un tipo de entidad está dentro del alcance",
   "pathmind.node.type.sensorItemInInventory": "Tiene Objeto",
   "pathmind.node.type.sensorItemInInventory.desc": "Detecta si el jugador tiene un objeto específico",
+  "pathmind.node.type.sensorItemInSlot": "Objeto en ranura",
+  "pathmind.node.type.sensorItemInSlot.desc": "Detecta si un objeto específico está en una ranura específica del inventario",
   "pathmind.node.type.sensorIsSwimming": "Está Nadando",
   "pathmind.node.type.sensorIsSwimming.desc": "Detecta si el jugador está nadando",
   "pathmind.node.type.sensorIsInLava": "En Lava",

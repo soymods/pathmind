@@ -208,6 +208,8 @@
   "pathmind.node.type.sensorEntityNearby.desc": "Detect if an entity type is within range",
   "pathmind.node.type.sensorItemInInventory": "Has Item",
   "pathmind.node.type.sensorItemInInventory.desc": "Detect if the player has a specific item",
+  "pathmind.node.type.sensorItemInSlot": "Item In Slot",
+  "pathmind.node.type.sensorItemInSlot.desc": "Detect if a specific item is in a specific inventory slot",
   "pathmind.node.type.sensorIsSwimming": "Is Swimming",
   "pathmind.node.type.sensorIsSwimming.desc": "Detect if the player is swimming",
   "pathmind.node.type.sensorIsInLava": "In Lava",

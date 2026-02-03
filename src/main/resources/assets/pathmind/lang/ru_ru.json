@@ -208,6 +208,8 @@
   "pathmind.node.type.sensorEntityNearby.desc": "Определяет, находится ли тип сущности в радиусе",
   "pathmind.node.type.sensorItemInInventory": "Есть предмет",
   "pathmind.node.type.sensorItemInInventory.desc": "Определяет, есть ли у игрока определенный предмет",
+  "pathmind.node.type.sensorItemInSlot": "Предмет в слоте",
+  "pathmind.node.type.sensorItemInSlot.desc": "Определяет, находится ли указанный предмет в указанном слоте инвентаря",
   "pathmind.node.type.sensorIsSwimming": "Плавает",
   "pathmind.node.type.sensorIsSwimming.desc": "Определяет, плывет ли игрок",
   "pathmind.node.type.sensorIsInLava": "В лаве",

@@ -208,6 +208,8 @@
   "pathmind.node.type.sensorEntityNearby.desc": "Détecte si un type d'entité est à portée",
   "pathmind.node.type.sensorItemInInventory": "Possède un objet",
   "pathmind.node.type.sensorItemInInventory.desc": "Détecte si le joueur possède un objet spécifique",
+  "pathmind.node.type.sensorItemInSlot": "Objet dans l'emplacement",
+  "pathmind.node.type.sensorItemInSlot.desc": "Détecte si un objet spécifique se trouve dans un emplacement d'inventaire spécifique",
   "pathmind.node.type.sensorIsSwimming": "Nage",
   "pathmind.node.type.sensorIsSwimming.desc": "Détecte si le joueur nage",
   "pathmind.node.type.sensorIsInLava": "Dans la lave",

@@ -62,9 +62,7 @@ public final class EntityStateOptions {
 
         Class<?> entityClass = resolveEntityClass(type);
         if (entityClass == null && world != null) {
-            SpawnReason[] reasons = SpawnReason.values();
-            SpawnReason reason = reasons.length > 0 ? reasons[0] : null;
-            Entity entity = reason != null ? type.create(world, reason) : null;
+            Entity entity = createEntityCompat(type, world);
             if (entity != null) {
                 entityClass = entity.getClass();
             }
@@ -159,6 +157,30 @@ public final class EntityStateOptions {
                 continue;
             }
             options.add(new StateOption("variant=" + variant, "Variant: " + titleCase(variant)));
+        }
+    }
+
+    private static Entity createEntityCompat(EntityType<?> type, World world) {
+        if (type == null || world == null) {
+            return null;
+        }
+        try {
+            java.lang.reflect.Method method = EntityType.class.getMethod("create", World.class, SpawnReason.class);
+            SpawnReason[] reasons = SpawnReason.values();
+            Object reason = reasons.length > 0 ? reasons[0] : null;
+            if (reason == null) {
+                return null;
+            }
+            Object result = method.invoke(type, world, reason);
+            return result instanceof Entity entity ? entity : null;
+        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException | IllegalAccessException ignored) {
+        }
+        try {
+            java.lang.reflect.Method method = EntityType.class.getMethod("create", World.class);
+            Object result = method.invoke(type, world);
+            return result instanceof Entity entity ? entity : null;
+        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException | IllegalAccessException ignored) {
+            return null;
         }
     }
 

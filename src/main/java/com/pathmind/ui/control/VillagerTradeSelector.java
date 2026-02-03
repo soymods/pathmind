@@ -26,6 +26,8 @@ import net.minecraft.village.VillagerData;
 import net.minecraft.village.VillagerProfession;
 import org.lwjgl.glfw.GLFW;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -39,6 +41,7 @@ import java.lang.reflect.Method;
  * Helper widget for selecting villager trades by profession with search filtering.
  */
 public class VillagerTradeSelector {
+    private static final Method VILLAGERDATA_WITH_PROFESSION = resolveWithProfessionMethod();
     private static final int DROPDOWN_HEIGHT = 20;
     private static final int SEARCH_HEIGHT = 20;
     private static final int LIST_ROW_HEIGHT = 18;
@@ -541,9 +544,9 @@ public class VillagerTradeSelector {
             return;
         }
 
-        Map<RegistryKey<VillagerProfession>, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> primary =
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> primary =
             TradeOffers.PROFESSION_TO_LEVELED_TRADE;
-        Map<RegistryKey<VillagerProfession>, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> secondary =
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> secondary =
             TradeOffers.REBALANCED_PROFESSION_TO_LEVELED_TRADE;
         it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> levelMap =
             resolveTradeLevels(primary, selectedProfession);
@@ -588,9 +591,11 @@ public class VillagerTradeSelector {
             if (factories == null) {
                 continue;
             }
-            VillagerData data = villager.getVillagerData()
-                .withProfession(selectedProfession.entry)
-                .withLevel(level);
+            VillagerData data = applyProfession(villager.getVillagerData(), selectedProfession);
+            if (data == null) {
+                continue;
+            }
+            data = data.withLevel(level);
             villager.setVillagerData(data);
 
             boolean levelHasOffers = false;
@@ -705,6 +710,60 @@ public class VillagerTradeSelector {
             }
         }
         return levelMap;
+    }
+
+    private VillagerProfession resolveProfession(ProfessionOption option) {
+        if (option == null) {
+            return null;
+        }
+        if (option.entry != null) {
+            return option.entry.value();
+        }
+        if (option.key != null) {
+            return Registries.VILLAGER_PROFESSION.get(option.key);
+        }
+        return null;
+    }
+
+    private static Method resolveWithProfessionMethod() {
+        try {
+            Method method = VillagerData.class.getMethod("withProfession", VillagerProfession.class);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+        }
+        try {
+            Method method = VillagerData.class.getMethod("withProfession", RegistryEntry.class);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private VillagerData applyProfession(VillagerData data, ProfessionOption option) {
+        if (data == null || option == null) {
+            return data;
+        }
+        if (VILLAGERDATA_WITH_PROFESSION == null) {
+            return data;
+        }
+        Object argument = null;
+        Class<?> paramType = VILLAGERDATA_WITH_PROFESSION.getParameterTypes()[0];
+        if (paramType.isAssignableFrom(VillagerProfession.class)) {
+            argument = resolveProfession(option);
+        } else if (RegistryEntry.class.isAssignableFrom(paramType)) {
+            argument = option.entry;
+        }
+        if (argument == null) {
+            return data;
+        }
+        try {
+            Object result = VILLAGERDATA_WITH_PROFESSION.invoke(data, argument);
+            return result instanceof VillagerData villagerData ? villagerData : data;
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+            return data;
+        }
     }
 
     private void updateSearchCaretBlink() {

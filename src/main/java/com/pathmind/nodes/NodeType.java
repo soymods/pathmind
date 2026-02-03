@@ -91,6 +91,7 @@ public enum NodeType {
     SENSOR_HUNGER_BELOW("pathmind.node.type.sensorHungerBelow", 0xFF64B5F6, "pathmind.node.type.sensorHungerBelow.desc"),
     SENSOR_ITEM_IN_INVENTORY("pathmind.node.type.sensorItemInInventory", 0xFF64B5F6, "pathmind.node.type.sensorItemInInventory.desc"),
     SENSOR_ITEM_IN_SLOT("pathmind.node.type.sensorItemInSlot", 0xFF64B5F6, "pathmind.node.type.sensorItemInSlot.desc"),
+    SENSOR_VILLAGER_TRADE("pathmind.node.type.sensorVillagerTrade", 0xFF64B5F6, "pathmind.node.type.sensorVillagerTrade.desc"),
     SENSOR_IS_SWIMMING("pathmind.node.type.sensorIsSwimming", 0xFF64B5F6, "pathmind.node.type.sensorIsSwimming.desc"),
     SENSOR_IS_IN_LAVA("pathmind.node.type.sensorIsInLava", 0xFF64B5F6, "pathmind.node.type.sensorIsInLava.desc"),
     SENSOR_IS_UNDERWATER("pathmind.node.type.sensorIsUnderwater", 0xFF64B5F6, "pathmind.node.type.sensorIsUnderwater.desc"),
@@ -206,6 +207,7 @@ public enum NodeType {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
+            case SENSOR_VILLAGER_TRADE:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -330,6 +332,7 @@ public enum NodeType {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
+            case SENSOR_VILLAGER_TRADE:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
             case SENSOR_CHAT_MESSAGE:

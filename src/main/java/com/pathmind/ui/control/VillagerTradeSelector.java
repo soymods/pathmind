@@ -63,7 +63,7 @@ public class VillagerTradeSelector {
 
     private ProfessionOption selectedProfession;
     private String searchQuery = "";
-    private String selectedTradeItemId = "";
+    private String selectedTradeKey = "";
     private boolean searchFocused = false;
     private int searchCaretPosition = 0;
     private int searchSelectionStart = -1;
@@ -136,25 +136,26 @@ public class VillagerTradeSelector {
         return selectedProfession != null ? selectedProfession.id : "";
     }
 
-    public void setSelectedTradeItemId(String itemId) {
-        selectedTradeItemId = itemId != null ? itemId : "";
-        if (!selectedTradeItemId.isEmpty() && !matchesAnyTrade(selectedTradeItemId)) {
-            selectedTradeItemId = "";
+    public void setSelectedTradeKey(String tradeKey) {
+        selectedTradeKey = tradeKey != null ? tradeKey : "";
+        if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+            String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+            selectedTradeKey = fallbackKey != null ? fallbackKey : "";
         }
-        if (selectedTradeItemId.isEmpty()) {
+        if (selectedTradeKey.isEmpty()) {
             selectFirstTrade();
         }
     }
 
-    public String getSelectedTradeItemId() {
-        return selectedTradeItemId;
+    public String getSelectedTradeKey() {
+        return selectedTradeKey;
     }
 
     public boolean hasFocusedInput() {
         return searchFocused;
     }
 
-    public int render(DrawContext context, TextRenderer textRenderer, int x, int y, int width, int mouseX, int mouseY) {
+    public int render(DrawContext context, TextRenderer textRenderer, int x, int y, int width, int mouseX, int mouseY, float alpha) {
         this.lastTextRenderer = textRenderer;
         this.renderX = x;
         this.renderY = y;
@@ -166,7 +167,7 @@ public class VillagerTradeSelector {
             Text.literal("Profession:"),
             x,
             sectionY,
-            UITheme.TEXT_PRIMARY
+            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         sectionY += textRenderer.fontHeight + 4;
 
@@ -179,22 +180,22 @@ public class VillagerTradeSelector {
                               mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
         int buttonBg = hoverButton ? UITheme.BUTTON_DEFAULT_BG : UITheme.BACKGROUND_SECONDARY;
         int borderColor = dropdownOpen ? UITheme.ACCENT_DEFAULT : (hoverButton ? UITheme.TEXT_SECONDARY : UITheme.BORDER_SUBTLE);
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, buttonBg);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, borderColor);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(buttonBg, alpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(borderColor, alpha));
         String professionLabel = selectedProfession != null ? selectedProfession.displayName : "None";
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(professionLabel),
             dropdownX + TEXT_PADDING,
             dropdownY + 6,
-            UITheme.TEXT_PRIMARY
+            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         context.drawTextWithShadow(
             textRenderer,
             Text.literal("▼"),
             dropdownX + dropdownWidth - 12,
             dropdownY + 6,
-            UITheme.TEXT_PRIMARY
+            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         sectionY += DROPDOWN_HEIGHT + SECTION_SPACING;
 
@@ -206,8 +207,8 @@ public class VillagerTradeSelector {
         boolean isSearchFocused = searchFocused;
         int searchBg = isSearchFocused ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int searchBorder = isSearchFocused ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
-        context.fill(searchX, searchY, searchX + searchWidth, searchY + searchHeight, searchBg);
-        DrawContextBridge.drawBorder(context, searchX, searchY, searchWidth, searchHeight, searchBorder);
+        context.fill(searchX, searchY, searchX + searchWidth, searchY + searchHeight, applyAlpha(searchBg, alpha));
+        DrawContextBridge.drawBorder(context, searchX, searchY, searchWidth, searchHeight, applyAlpha(searchBorder, alpha));
         String displayText = searchQuery;
         boolean showPlaceholder = displayText == null || displayText.isEmpty();
         int textY = searchY + (searchHeight - textRenderer.fontHeight) / 2 + 1;
@@ -217,7 +218,7 @@ public class VillagerTradeSelector {
                 Text.literal("Search trades..."),
                 searchX + TEXT_PADDING,
                 textY,
-                UITheme.TEXT_TERTIARY
+                applyAlpha(UITheme.TEXT_TERTIARY, alpha)
             );
         } else {
             String trimmed = searchFocused
@@ -231,7 +232,8 @@ public class VillagerTradeSelector {
                     int selEndX = searchX + TEXT_PADDING + textRenderer.getWidth(displayText.substring(0, Math.max(start, end)));
                     selStartX = MathHelper.clamp(selStartX, searchX + 2, searchX + searchWidth - 2);
                     selEndX = MathHelper.clamp(selEndX, searchX + 2, searchX + searchWidth - 2);
-                    context.fill(selStartX, searchY + 3, selEndX, searchY + searchHeight - 3, UITheme.TEXT_SELECTION_BG);
+                    context.fill(selStartX, searchY + 3, selEndX, searchY + searchHeight - 3,
+                        applyAlpha(UITheme.TEXT_SELECTION_BG, alpha));
                 }
             }
             context.drawTextWithShadow(
@@ -239,7 +241,7 @@ public class VillagerTradeSelector {
                 Text.literal(trimmed),
                 searchX + TEXT_PADDING,
                 textY,
-                UITheme.TEXT_PRIMARY
+                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -249,7 +251,7 @@ public class VillagerTradeSelector {
                 int caretIndex = MathHelper.clamp(searchCaretPosition, 0, displayText.length());
                 int caretX = searchX + TEXT_PADDING + textRenderer.getWidth(displayText.substring(0, caretIndex));
                 caretX = Math.min(caretX, searchX + searchWidth - 2);
-                context.fill(caretX, searchY + 3, caretX + 1, searchY + searchHeight - 3, UITheme.CARET_COLOR);
+                context.fill(caretX, searchY + 3, caretX + 1, searchY + searchHeight - 3, applyAlpha(UITheme.CARET_COLOR, alpha));
             }
         }
         sectionY += SEARCH_HEIGHT + SECTION_SPACING;
@@ -259,8 +261,8 @@ public class VillagerTradeSelector {
         listWidth = width;
         listHeight = LIST_ROW_HEIGHT * LIST_VISIBLE_ROWS + LIST_PADDING * 2;
 
-        context.fill(listX, listY, listX + listWidth, listY + listHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, listX, listY, listWidth, listHeight, UITheme.BORDER_DEFAULT);
+        context.fill(listX, listY, listX + listWidth, listY + listHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, listX, listY, listWidth, listHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         int visibleRows = LIST_VISIBLE_ROWS;
         int maxScroll = Math.max(0, filteredTrades.size() - visibleRows);
@@ -276,19 +278,19 @@ public class VillagerTradeSelector {
             int rowY = rowTop + i * LIST_ROW_HEIGHT;
             boolean hovered = mouseX >= listX && mouseX <= listX + listWidth &&
                               mouseY >= rowY && mouseY <= rowY + LIST_ROW_HEIGHT;
-            boolean selected = entry.sellItemId.equals(selectedTradeItemId);
+            boolean selected = entry.tradeKey.equals(selectedTradeKey);
             int rowBg = selected ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_SIDEBAR;
             if (hovered) {
                 rowBg = adjustColor(rowBg, 1.15f);
             }
-            context.fill(listX + 1, rowY, listX + listWidth - 1, rowY + LIST_ROW_HEIGHT, rowBg);
+            context.fill(listX + 1, rowY, listX + listWidth - 1, rowY + LIST_ROW_HEIGHT, applyAlpha(rowBg, alpha));
             String rowText = trimDisplayString(textRenderer, entry.displayText, listWidth - TEXT_PADDING * 2);
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(rowText),
                 listX + TEXT_PADDING,
                 rowY + 5,
-                UITheme.TEXT_PRIMARY
+                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -298,7 +300,7 @@ public class VillagerTradeSelector {
                 Text.literal("No trades found."),
                 listX + TEXT_PADDING,
                 listY + LIST_PADDING + 4,
-                UITheme.TEXT_TERTIARY
+                applyAlpha(UITheme.TEXT_TERTIARY, alpha)
             );
         }
 
@@ -312,8 +314,8 @@ public class VillagerTradeSelector {
             visibleRows,
             listScrollIndex,
             maxScroll,
-            UITheme.BORDER_DEFAULT,
-            UITheme.BORDER_HIGHLIGHT
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha),
+            applyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
         );
 
         sectionY += listHeight + SECTION_SPACING;
@@ -324,12 +326,12 @@ public class VillagerTradeSelector {
             Text.literal(selectedText),
             x,
             sectionY,
-            UITheme.TEXT_SECONDARY
+            applyAlpha(UITheme.TEXT_SECONDARY, alpha)
         );
         sectionY += textRenderer.fontHeight;
 
         if (dropdownOpen) {
-            renderDropdown(context, textRenderer, mouseX, mouseY);
+            renderDropdown(context, textRenderer, mouseX, mouseY, alpha);
         }
 
         lastRenderHeight = sectionY - y;
@@ -379,9 +381,9 @@ public class VillagerTradeSelector {
             int tradeIndex = listScrollIndex + rowIndex;
             if (rowIndex >= 0 && rowIndex < LIST_VISIBLE_ROWS && tradeIndex >= 0 && tradeIndex < filteredTrades.size()) {
                 TradeEntry entry = filteredTrades.get(tradeIndex);
-                selectedTradeItemId = entry.sellItemId;
+                selectedTradeKey = entry.tradeKey;
                 if (listener != null) {
-                    listener.onTradeChanged(selectedTradeItemId);
+                    listener.onTradeChanged(selectedTradeKey);
                 }
                 return true;
             }
@@ -564,10 +566,11 @@ public class VillagerTradeSelector {
         if (activeWorld == null) {
             if (loadCachedTrades()) {
                 updateFilteredTrades();
-                if (!selectedTradeItemId.isEmpty() && !matchesAnyTrade(selectedTradeItemId)) {
-                    selectedTradeItemId = "";
+                if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+                    String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+                    selectedTradeKey = fallbackKey != null ? fallbackKey : "";
                 }
-                if (selectedTradeItemId.isEmpty()) {
+                if (selectedTradeKey.isEmpty()) {
                     selectFirstTrade();
                 }
             }
@@ -639,10 +642,11 @@ public class VillagerTradeSelector {
 
         cacheTrades();
         updateFilteredTrades();
-        if (!selectedTradeItemId.isEmpty() && !matchesAnyTrade(selectedTradeItemId)) {
-            selectedTradeItemId = "";
+        if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+            String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+            selectedTradeKey = fallbackKey != null ? fallbackKey : "";
         }
-        if (selectedTradeItemId.isEmpty()) {
+        if (selectedTradeKey.isEmpty()) {
             selectFirstTrade();
         }
     }
@@ -945,12 +949,12 @@ public class VillagerTradeSelector {
         listScrollIndex = 0;
     }
 
-    private boolean matchesAnyTrade(String itemId) {
-        if (itemId == null || itemId.isEmpty()) {
+    private boolean matchesAnyTradeKey(String tradeKey) {
+        if (tradeKey == null || tradeKey.isEmpty()) {
             return false;
         }
         for (TradeEntry entry : trades) {
-            if (entry.sellItemId.equals(itemId)) {
+            if (entry.tradeKey.equals(tradeKey)) {
                 return true;
             }
         }
@@ -959,14 +963,26 @@ public class VillagerTradeSelector {
 
     private void selectFirstTrade() {
         if (!trades.isEmpty()) {
-            selectedTradeItemId = trades.get(0).sellItemId;
+            selectedTradeKey = trades.get(0).tradeKey;
             if (listener != null) {
-                listener.onTradeChanged(selectedTradeItemId);
+                listener.onTradeChanged(selectedTradeKey);
             }
         }
     }
 
-    private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+    private String findTradeKeyBySellItem(String sellItemId) {
+        if (sellItemId == null || sellItemId.isEmpty()) {
+            return null;
+        }
+        for (TradeEntry entry : trades) {
+            if (entry.sellItemId.equals(sellItemId)) {
+                return entry.tradeKey;
+            }
+        }
+        return null;
+    }
+
+    private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float alpha) {
         int dropdownX = this.dropdownX;
         int dropdownY = this.dropdownY + dropdownHeight;
         int dropdownWidth = this.dropdownWidth;
@@ -983,9 +999,9 @@ public class VillagerTradeSelector {
         dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, layout.maxScrollOffset));
         int dropdownHeight = layout.height;
 
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_DEFAULT);
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BORDER_DEFAULT);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
+        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         dropdownHoverIndex = -1;
         for (int i = 0; i < visibleCount; i++) {
@@ -1001,13 +1017,13 @@ public class VillagerTradeSelector {
             if (hovered) {
                 bg = adjustColor(bg, 1.2f);
             }
-            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, bg);
+            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, alpha));
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(option.displayName),
                 dropdownX + TEXT_PADDING,
                 optionTop + 5,
-                UITheme.TEXT_PRIMARY
+                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -1021,8 +1037,8 @@ public class VillagerTradeSelector {
             layout.visibleCount,
             dropdownScrollIndex,
             layout.maxScrollOffset,
-            UITheme.BORDER_DEFAULT,
-            UITheme.BORDER_HIGHLIGHT
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha),
+            applyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
         );
         DropdownLayoutHelper.drawOutline(
             context,
@@ -1030,8 +1046,14 @@ public class VillagerTradeSelector {
             dropdownY,
             dropdownWidth,
             dropdownHeight,
-            UITheme.BORDER_DEFAULT
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha)
         );
+    }
+
+    private int applyAlpha(int color, float alpha) {
+        int baseAlpha = (color >>> 24) & 0xFF;
+        int applied = Math.round(baseAlpha * MathHelper.clamp(alpha, 0f, 1f));
+        return (applied << 24) | (color & 0x00FFFFFF);
     }
 
     private boolean handleDropdownClick(double mouseX, double mouseY) {
@@ -1105,15 +1127,15 @@ public class VillagerTradeSelector {
     }
 
     private String buildSelectedTradeText() {
-        if (selectedTradeItemId == null || selectedTradeItemId.isEmpty()) {
+        if (selectedTradeKey == null || selectedTradeKey.isEmpty()) {
             return "Selected: none";
         }
         for (TradeEntry entry : trades) {
-            if (entry.sellItemId.equals(selectedTradeItemId)) {
+            if (entry.tradeKey.equals(selectedTradeKey)) {
                 return "Selected: " + entry.sellDisplayName;
             }
         }
-        return "Selected: " + selectedTradeItemId;
+        return "Selected: " + selectedTradeKey;
     }
 
     private String trimDisplayString(TextRenderer renderer, String text, int availableWidth) {
@@ -1195,13 +1217,16 @@ public class VillagerTradeSelector {
         private final int level;
         private final String displayText;
         private final String searchText;
+        private final String tradeKey;
         private final String sellItemId;
         private final String sellDisplayName;
 
-        private TradeEntry(int level, String displayText, String searchText, String sellItemId, String sellDisplayName) {
+        private TradeEntry(int level, String displayText, String searchText, String tradeKey,
+                           String sellItemId, String sellDisplayName) {
             this.level = level;
             this.displayText = displayText;
             this.searchText = searchText;
+            this.tradeKey = tradeKey;
             this.sellItemId = sellItemId;
             this.sellDisplayName = sellDisplayName;
         }
@@ -1218,7 +1243,8 @@ public class VillagerTradeSelector {
             String search = buildSearch(firstBuy) + " " + buildSearch(secondBuy) + " " + buildSearch(sell);
             String sellId = getItemId(sell);
             String sellName = sell != null ? sell.getName().getString() : sellId;
-            return new TradeEntry(level, display, search.toLowerCase(Locale.ROOT), sellId, sellName);
+            String tradeKey = buildTradeKey(firstBuy, secondBuy, sell);
+            return new TradeEntry(level, display, search.toLowerCase(Locale.ROOT), tradeKey, sellId, sellName);
         }
 
         private static String formatStack(ItemStack stack) {
@@ -1252,6 +1278,22 @@ public class VillagerTradeSelector {
             }
             Identifier id = Registries.ITEM.getId(stack.getItem());
             return id != null ? id.toString() : "";
+        }
+
+        private static String buildTradeKey(ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+            String first = buildKeyPart(firstBuy);
+            String second = buildKeyPart(secondBuy);
+            String sellPart = buildKeyPart(sell);
+            return first + "|" + second + "|" + sellPart;
+        }
+
+        private static String buildKeyPart(ItemStack stack) {
+            if (stack == null || stack.isEmpty()) {
+                return "none@0";
+            }
+            Identifier id = Registries.ITEM.getId(stack.getItem());
+            String itemId = id != null ? id.toString() : "unknown";
+            return itemId + "@" + stack.getCount();
         }
     }
 }

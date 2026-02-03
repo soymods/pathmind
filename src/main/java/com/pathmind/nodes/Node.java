@@ -291,6 +291,7 @@ public class Node {
         private List<String> targetBlockIds;
         private String targetPlayerName;
         private String targetItemId;
+        private String targetTradeKey;
         private String targetEntityId;
         private String message;
         private Double durationSeconds;
@@ -541,6 +542,7 @@ public class Node {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
+            case SENSOR_VILLAGER_TRADE:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -1152,6 +1154,9 @@ public class Node {
         }
         if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
             return slotIndex == 0 ? "Item" : "Slot";
+        }
+        if (type == NodeType.SENSOR_VILLAGER_TRADE) {
+            return "Villager Trade";
         }
         if (type == NodeType.TRADE) {
             return "Villager Trade";
@@ -2351,6 +2356,8 @@ public class Node {
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
                 break;
+            case SENSOR_VILLAGER_TRADE:
+                break;
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -2559,10 +2566,103 @@ public class Node {
         if (type == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
             return "User";
         }
-        if (type == NodeType.PARAM_VILLAGER_TRADE && "Item".equalsIgnoreCase(name)) {
+        if (type == NodeType.PARAM_VILLAGER_TRADE
+            && ("Item".equalsIgnoreCase(name) || "Trade".equalsIgnoreCase(name))) {
             return "Trade";
         }
         return name;
+    }
+
+    public String getParameterDisplayValue(NodeParameter parameter) {
+        if (parameter == null) {
+            return "";
+        }
+        String value = parameter.getDisplayValue();
+        if (type == NodeType.PARAM_VILLAGER_TRADE
+            && ("Item".equalsIgnoreCase(parameter.getName()) || "Trade".equalsIgnoreCase(parameter.getName()))) {
+            return formatVillagerTradeDisplayValue(value);
+        }
+        return value;
+    }
+
+    private String formatVillagerTradeDisplayValue(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        if (!value.contains("|") || !value.contains("@")) {
+            return value;
+        }
+        String[] parts = value.split("\\|");
+        TradeKeyPart first = parts.length > 0 ? parseTradeKeyPart(parts[0]) : null;
+        TradeKeyPart second = parts.length > 1 ? parseTradeKeyPart(parts[1]) : null;
+        TradeKeyPart sell = parts.length > 2 ? parseTradeKeyPart(parts[2]) : null;
+        if (sell == null || !sell.isValid()) {
+            return value;
+        }
+        StringBuilder builder = new StringBuilder();
+        if (first != null && first.isValid()) {
+            builder.append(first.format());
+        }
+        if (second != null && second.isValid()) {
+            if (builder.length() > 0) {
+                builder.append(" + ");
+            }
+            builder.append(second.format());
+        }
+        if (builder.length() > 0) {
+            builder.append(" -> ");
+        }
+        builder.append(sell.format());
+        return builder.toString();
+    }
+
+    private TradeKeyPart parseTradeKeyPart(String part) {
+        if (part == null || part.isEmpty() || "none@0".equals(part)) {
+            return TradeKeyPart.empty();
+        }
+        int atIndex = part.indexOf('@');
+        if (atIndex <= 0) {
+            return TradeKeyPart.empty();
+        }
+        String itemId = part.substring(0, atIndex);
+        String countRaw = part.substring(atIndex + 1);
+        int count = 1;
+        try {
+            count = Math.max(1, Integer.parseInt(countRaw));
+        } catch (NumberFormatException ignored) {
+            count = 1;
+        }
+        Identifier identifier = Identifier.tryParse(itemId);
+        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            return TradeKeyPart.empty();
+        }
+        return new TradeKeyPart(Registries.ITEM.get(identifier).getName().getString(), count);
+    }
+
+    private static final class TradeKeyPart {
+        private static final TradeKeyPart EMPTY = new TradeKeyPart("", 0);
+        private final String name;
+        private final int count;
+
+        private TradeKeyPart(String name, int count) {
+            this.name = name;
+            this.count = count;
+        }
+
+        private static TradeKeyPart empty() {
+            return EMPTY;
+        }
+
+        private boolean isValid() {
+            return name != null && !name.isEmpty() && count > 0;
+        }
+
+        private String format() {
+            if (count > 1) {
+                return count + "x " + name;
+            }
+            return name;
+        }
     }
 
     public String getParameterLabel(NodeParameter parameter) {
@@ -3217,7 +3317,7 @@ public class Node {
                     continue;
                 }
                 String label = getParameterDisplayName(param);
-                String value = param.getDisplayValue();
+                String value = getParameterDisplayValue(param);
                 int labelLength = label != null ? label.length() : 0;
                 int valueLength = value != null ? value.length() : 0;
                 int estimatedWidth = (labelLength + valueLength) * CHAR_PIXEL_WIDTH + PARAMETER_FIELD_PADDING;
@@ -3637,10 +3737,17 @@ public class Node {
         }
         if (!handled && type == NodeType.TRADE
             && parameterNode.getType() == NodeType.PARAM_VILLAGER_TRADE) {
-            List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
-            if (!itemIds.isEmpty()) {
-                runtimeParameterData.targetItemId = itemIds.get(0);
+            String tradeKey = resolveTradeKeyFromParameter(parameterNode);
+            if (tradeKey != null && !tradeKey.isEmpty()) {
+                runtimeParameterData.targetTradeKey = tradeKey;
+                runtimeParameterData.targetItemId = getTradeKeySellItemId(tradeKey);
                 handled = true;
+            } else {
+                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+                if (!itemIds.isEmpty()) {
+                    runtimeParameterData.targetItemId = itemIds.get(0);
+                    handled = true;
+                }
             }
         }
 
@@ -4312,6 +4419,50 @@ public class Node {
         return itemIds;
     }
 
+    private String resolveTradeKeyFromParameter(Node parameterNode) {
+        if (parameterNode == null) {
+            return "";
+        }
+        String trade = getParameterString(parameterNode, "Trade");
+        if (trade != null && !trade.isEmpty()) {
+            return trade;
+        }
+        String legacy = getParameterString(parameterNode, "Item");
+        return legacy != null ? legacy : "";
+    }
+
+    private String getTradeKeySellItemId(String tradeKey) {
+        if (tradeKey == null || tradeKey.isEmpty()) {
+            return "";
+        }
+        if (tradeKey.contains("|") && tradeKey.contains("@")) {
+            String[] parts = tradeKey.split("\\|");
+            if (parts.length > 0) {
+                String sellPart = parts[parts.length - 1];
+                int atIndex = sellPart.indexOf('@');
+                if (atIndex > 0) {
+                    return sellPart.substring(0, atIndex);
+                }
+            }
+        }
+        return tradeKey;
+    }
+
+    private String buildTradeKey(ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+        return buildTradeKeyPart(firstBuy) + "|"
+            + buildTradeKeyPart(secondBuy) + "|"
+            + buildTradeKeyPart(sell);
+    }
+
+    private String buildTradeKeyPart(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "none@0";
+        }
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        String itemId = id != null ? id.toString() : "unknown";
+        return itemId + "@" + stack.getCount();
+    }
+
     private List<String> resolveEntityIdsFromParameter(Node parameterNode) {
         List<String> entityIds = new ArrayList<>();
         if (parameterNode == null) {
@@ -4680,6 +4831,7 @@ public class Node {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
+            case SENSOR_VILLAGER_TRADE:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -8363,6 +8515,8 @@ public class Node {
                 return parameterType == NodeType.PARAM_COORDINATE || parameterType == NodeType.PARAM_PLACE_TARGET;
             case SENSOR_ITEM_IN_INVENTORY:
                 return parameterType == NodeType.PARAM_ITEM;
+            case SENSOR_VILLAGER_TRADE:
+                return parameterType == NodeType.PARAM_VILLAGER_TRADE;
             case SENSOR_KEY_PRESSED:
                 return parameterType == NodeType.PARAM_KEY;
             case SENSOR_IS_RENDERED:
@@ -11793,9 +11947,13 @@ public class Node {
 
         // Get the desired item from attached parameter
         String desiredItemId = null;
+        String desiredTradeKey = null;
         RuntimeParameterData parameterData = runtimeParameterData;
         if (parameterData != null && parameterData.targetItemId != null && !parameterData.targetItemId.isEmpty()) {
             desiredItemId = parameterData.targetItemId;
+        }
+        if (parameterData != null && parameterData.targetTradeKey != null && !parameterData.targetTradeKey.isEmpty()) {
+            desiredTradeKey = parameterData.targetTradeKey;
         }
 
         if (desiredItemId == null || desiredItemId.isEmpty()) {
@@ -11817,21 +11975,42 @@ public class Node {
 
         net.minecraft.item.Item desiredItem = net.minecraft.registry.Registries.ITEM.get(identifier);
 
-        // Find a trade that sells the desired item
+        // Find a trade that matches the selected trade key (if provided), otherwise match by item
         int tradeIndex = -1;
-        for (int i = 0; i < tradeOffers.size(); i++) {
-            net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
-            if (offer != null && !offer.isDisabled() && offer.getSellItem().getItem() == desiredItem) {
-                // Check if player has the required items
-                if (canAffordTrade(client.player, screenHandler, offer)) {
+        if (desiredTradeKey != null && !desiredTradeKey.isEmpty()) {
+            for (int i = 0; i < tradeOffers.size(); i++) {
+                net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
+                if (offer == null || offer.isDisabled()) {
+                    continue;
+                }
+                String offerKey = buildTradeKey(
+                    offer.getDisplayedFirstBuyItem(),
+                    offer.getDisplayedSecondBuyItem(),
+                    offer.getSellItem()
+                );
+                if (desiredTradeKey.equals(offerKey) && canAffordTrade(client.player, screenHandler, offer)) {
                     tradeIndex = i;
                     break;
                 }
             }
         }
+        if (tradeIndex == -1) {
+            for (int i = 0; i < tradeOffers.size(); i++) {
+                net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
+                if (offer != null && !offer.isDisabled() && offer.getSellItem().getItem() == desiredItem) {
+                    if (canAffordTrade(client.player, screenHandler, offer)) {
+                        tradeIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
 
         if (tradeIndex == -1) {
-            sendNodeErrorMessage(client, "No available trade found for " + desiredItemId + " or missing required items.");
+            String message = desiredTradeKey != null && !desiredTradeKey.isEmpty()
+                ? "No available trade found for the selected trade."
+                : "No available trade found for " + desiredItemId + " or missing required items.";
+            sendNodeErrorMessage(client, message);
             future.complete(null);
             return;
         }
@@ -12708,6 +12887,78 @@ public class Node {
                 }
                 break;
             }
+            case SENSOR_VILLAGER_TRADE: {
+                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_VILLAGER_TRADE);
+                if (parameterNode == null) {
+                    result = false;
+                    break;
+                }
+                String tradeKey = resolveTradeKeyFromParameter(parameterNode);
+                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+                if ((itemIds == null || itemIds.isEmpty()) && tradeKey != null && !tradeKey.isEmpty()
+                    && !tradeKey.contains("|")) {
+                    itemIds = new ArrayList<>();
+                    addItemIdentifier(itemIds, tradeKey);
+                }
+                if ((tradeKey == null || tradeKey.isEmpty()) && itemIds.isEmpty()) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null) {
+                        sendNodeErrorMessage(client, "No trade selected for " + type.getDisplayName() + ".");
+                    }
+                    result = false;
+                    break;
+                }
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client == null) {
+                    result = false;
+                    break;
+                }
+                net.minecraft.client.gui.screen.Screen currentScreen = client.currentScreen;
+                if (!(currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen)) {
+                    if (client != null) {
+                        sendNodeErrorMessage(client, "No villager trading screen is open.");
+                    }
+                    result = false;
+                    break;
+                }
+                net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen =
+                    (net.minecraft.client.gui.screen.ingame.MerchantScreen) currentScreen;
+                net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+                if (screenHandler == null) {
+                    result = false;
+                    break;
+                }
+                net.minecraft.village.TradeOfferList tradeOffers = screenHandler.getRecipes();
+                if (tradeOffers == null || tradeOffers.isEmpty()) {
+                    result = false;
+                    break;
+                }
+                boolean found = false;
+                for (int i = 0; i < tradeOffers.size(); i++) {
+                    net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
+                    if (offer == null || offer.isDisabled()) {
+                        continue;
+                    }
+                    ItemStack sellStack = offer.getSellItem();
+                    if (tradeKey != null && !tradeKey.isEmpty()) {
+                        String offerKey = buildTradeKey(
+                            offer.getDisplayedFirstBuyItem(),
+                            offer.getDisplayedSecondBuyItem(),
+                            offer.getSellItem()
+                        );
+                        if (tradeKey.equals(offerKey)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!itemIds.isEmpty() && stackMatchesAnyItem(sellStack, itemIds)) {
+                        found = true;
+                        break;
+                    }
+                }
+                result = found;
+                break;
+            }
             case SENSOR_CHAT_MESSAGE: {
                 Node playerNode = getAttachedParameter(0);
                 Node messageNode = getAttachedParameter(1);
@@ -12773,6 +13024,7 @@ public class Node {
                  SENSOR_BLOCK_AHEAD,
                  SENSOR_ITEM_IN_INVENTORY,
                  SENSOR_ITEM_IN_SLOT,
+                 SENSOR_VILLAGER_TRADE,
                  SENSOR_CHAT_MESSAGE -> true;
             default -> false;
         };

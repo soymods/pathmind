@@ -226,17 +226,20 @@ public class VariablesOverlay {
 
     private String formatVillagerTrade(Map<String, String> values) {
         String profession = getValue(values, "Profession");
-        String item = getValue(values, "Item");
-        if (isEmpty(profession) && isEmpty(item)) {
+        String trade = getValue(values, "Trade");
+        if (isEmpty(trade)) {
+            trade = getValue(values, "Item");
+        }
+        if (isEmpty(profession) && isEmpty(trade)) {
             return "";
         }
         if (isEmpty(profession)) {
-            return "trade:" + blankIfNull(item);
+            return "trade:" + blankIfNull(trade);
         }
-        if (isEmpty(item)) {
+        if (isEmpty(trade)) {
             return "profession:" + blankIfNull(profession);
         }
-        return "profession:" + blankIfNull(profession) + ", trade:" + blankIfNull(item);
+        return "profession:" + blankIfNull(profession) + ", trade:" + blankIfNull(trade);
     }
 
     private String formatSchematic(Map<String, String> values) {

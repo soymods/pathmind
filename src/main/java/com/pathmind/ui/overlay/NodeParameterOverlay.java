@@ -209,7 +209,7 @@ public class NodeParameterOverlay {
                     continue;
                 }
                 String name = param.getName();
-                if ("Item".equalsIgnoreCase(name)) {
+                if ("Trade".equalsIgnoreCase(name) || "Item".equalsIgnoreCase(name)) {
                     tradeIndex = i;
                 } else if ("Profession".equalsIgnoreCase(name)) {
                     professionIndex = i;
@@ -322,7 +322,7 @@ public class NodeParameterOverlay {
                 villagerTradeSelector.setProfessionById(parameterValues.get(villagerProfessionParamIndex));
             }
             if (villagerTradeParamIndex >= 0 && villagerTradeParamIndex < parameterValues.size()) {
-                villagerTradeSelector.setSelectedTradeItemId(parameterValues.get(villagerTradeParamIndex));
+                villagerTradeSelector.setSelectedTradeKey(parameterValues.get(villagerTradeParamIndex));
             }
         }
 
@@ -356,9 +356,9 @@ public class NodeParameterOverlay {
 
         // Render popup background
         context.fill(scaledX, scaledY, scaledX + scaledWidth, scaledY + scaledHeight,
-            UITheme.BACKGROUND_SECONDARY);
+            applyPopupAlpha(UITheme.BACKGROUND_SECONDARY, popupAlpha));
         DrawContextBridge.drawBorder(context, scaledX, scaledY, scaledWidth, scaledHeight,
-            UITheme.BORDER_HIGHLIGHT); // Grey outline
+            applyPopupAlpha(UITheme.BORDER_HIGHLIGHT, popupAlpha)); // Grey outline
 
         int clipLeft = scaledX;
         int clipTop = scaledY;
@@ -372,7 +372,7 @@ public class NodeParameterOverlay {
             Text.literal("Edit Parameters: " + node.getType().getDisplayName()),
             popupX + 20,
             popupY + 15,
-            UITheme.TEXT_PRIMARY
+            applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
         );
 
         updateButtonPositions();
@@ -404,7 +404,7 @@ public class NodeParameterOverlay {
                 Text.literal(getParameterDisplayName(param) + " (" + param.getType().getDisplayName() + "):"),
                 popupX + 20,
                 sectionY + 4,
-                UITheme.TEXT_PRIMARY
+                applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
             );
 
             int fieldX = popupX + 20;
@@ -417,7 +417,7 @@ public class NodeParameterOverlay {
                 continue;
             }
             if (villagerTradeEditorActive && i == villagerTradeParamIndex && villagerTradeSelector != null) {
-                int selectorHeight = villagerTradeSelector.render(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY);
+                int selectorHeight = villagerTradeSelector.render(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, popupAlpha);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }
@@ -439,8 +439,8 @@ public class NodeParameterOverlay {
                 borderColor = UITheme.BORDER_HIGHLIGHT;
             }
 
-            context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, bgColor);
-            DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+            context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, applyPopupAlpha(bgColor, popupAlpha));
+            DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, applyPopupAlpha(borderColor, popupAlpha));
 
             String text = parameterValues.get(i);
             String baseValue = text != null ? text : "";
@@ -478,7 +478,7 @@ public class NodeParameterOverlay {
                     selectionEndX = MathHelper.clamp(selectionEndX, fieldX + 2, fieldX + fieldWidth - 2);
                     if (selectionEndX != selectionStartX) {
                         context.fill(selectionStartX, fieldY + 4, selectionEndX, fieldY + fieldHeight - 4,
-                            0x80426AD5);
+                            applyPopupAlpha(0x80426AD5, popupAlpha));
                     }
                 }
 
@@ -488,7 +488,7 @@ public class NodeParameterOverlay {
                     Text.literal(displayText),
                     textX,
                     textY,
-                    textColor
+                    applyPopupAlpha(textColor, popupAlpha)
                 );
             }
 
@@ -499,7 +499,7 @@ public class NodeParameterOverlay {
                     int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
                     caretX = Math.min(caretX, fieldX + fieldWidth - 2);
                     context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4,
-                        UITheme.TEXT_PRIMARY);
+                        applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
                 }
             }
 
@@ -527,9 +527,10 @@ public class NodeParameterOverlay {
         boolean hovered = mouseX >= button.getX() && mouseX <= button.getX() + button.getWidth() &&
                          mouseY >= button.getY() && mouseY <= button.getY() + button.getHeight();
 
+        float popupAlpha = popupAnimation.getPopupAlpha();
         int bgColor = hovered ? UITheme.BUTTON_DEFAULT_HOVER : UITheme.BUTTON_DEFAULT_BG;
         context.fill(button.getX(), button.getY(), button.getX() + button.getWidth(), button.getY() + button.getHeight(),
-            bgColor);
+            applyPopupAlpha(bgColor, popupAlpha));
         float hoverProgress = HoverAnimator.getProgress(button, hovered);
         int borderColor = AnimationHelper.lerpColor(
             UITheme.BORDER_HIGHLIGHT,
@@ -537,7 +538,7 @@ public class NodeParameterOverlay {
             hoverProgress
         );
         DrawContextBridge.drawBorder(context, button.getX(), button.getY(), button.getWidth(), button.getHeight(),
-            borderColor);
+            applyPopupAlpha(borderColor, popupAlpha));
 
         // Render button text
         context.drawCenteredTextWithShadow(
@@ -545,7 +546,7 @@ public class NodeParameterOverlay {
             button.getMessage(),
             button.getX() + button.getWidth() / 2,
             button.getY() + 6,
-            UITheme.TEXT_PRIMARY
+            applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
         );
     }
 
@@ -560,9 +561,10 @@ public class NodeParameterOverlay {
         int trackBottom = contentBottom;
         int trackHeight = Math.max(1, trackBottom - trackTop);
 
-        context.fill(trackLeft, trackTop, trackRight, trackBottom, UITheme.BACKGROUND_SIDEBAR);
+        float popupAlpha = popupAnimation.getPopupAlpha();
+        context.fill(trackLeft, trackTop, trackRight, trackBottom, applyPopupAlpha(UITheme.BACKGROUND_SIDEBAR, popupAlpha));
         DrawContextBridge.drawBorder(context, trackLeft, trackTop, SCROLLBAR_WIDTH, trackHeight,
-            UITheme.BORDER_DEFAULT);
+            applyPopupAlpha(UITheme.BORDER_DEFAULT, popupAlpha));
 
         int visibleScrollableHeight = Math.max(1, contentBottom - contentTop);
         int totalScrollableHeight = Math.max(visibleScrollableHeight, visibleScrollableHeight + maxScroll);
@@ -572,7 +574,13 @@ public class NodeParameterOverlay {
         int knobTop = trackTop + knobOffset;
 
         context.fill(trackLeft + 1, knobTop, trackRight - 1, knobTop + knobHeight,
-            UITheme.BORDER_DEFAULT);
+            applyPopupAlpha(UITheme.BORDER_DEFAULT, popupAlpha));
+    }
+
+    private int applyPopupAlpha(int color, float alphaMultiplier) {
+        int baseAlpha = (color >>> 24) & 0xFF;
+        int applied = Math.round(baseAlpha * MathHelper.clamp(alphaMultiplier, 0f, 1f));
+        return (applied << 24) | (color & 0x00FFFFFF);
     }
 
     private void setScissor(DrawContext context, int left, int top, int right, int bottom) {
@@ -652,13 +660,30 @@ public class NodeParameterOverlay {
 
         updateButtonPositions();
 
+        int[] bounds = popupAnimation.getScaledPopupBoundsFromTopLeft(popupX, popupY, popupWidth, popupHeight);
+        int scaledX = bounds[0];
+        int scaledY = bounds[1];
+        float scaleX = popupWidth > 0 ? (float) popupWidth / bounds[2] : 1f;
+        float scaleY = popupHeight > 0 ? (float) popupHeight / bounds[3] : 1f;
+        double adjustedMouseX = popupX + (mouseX - scaledX) * scaleX;
+        double adjustedMouseY = popupY + (mouseY - scaledY) * scaleY;
+
+        if (saveButton != null && saveButton.isMouseOver(adjustedMouseX, adjustedMouseY)) {
+            saveParameters();
+            return true;
+        }
+        if (cancelButton != null && cancelButton.isMouseOver(adjustedMouseX, adjustedMouseY)) {
+            close();
+            return true;
+        }
+
         if (inventorySlotEditorActive && inventorySlotSelector != null) {
-            if (inventorySlotSelector.mouseClicked(mouseX, mouseY)) {
+            if (inventorySlotSelector.mouseClicked(adjustedMouseX, adjustedMouseY)) {
                 return true;
             }
         }
         if (villagerTradeEditorActive && villagerTradeSelector != null) {
-            if (villagerTradeSelector.mouseClicked(mouseX, mouseY)) {
+            if (villagerTradeSelector.mouseClicked(adjustedMouseX, adjustedMouseY)) {
                 return true;
             }
         }
@@ -679,9 +704,9 @@ public class NodeParameterOverlay {
 
             if (usesKeySelectorForIndex(i)) {
                 int selectorHeight = getKeySelectorHeight();
-                if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
-                    mouseY >= Math.max(fieldY, contentTop) && mouseY <= Math.min(fieldY + selectorHeight, contentBottom)) {
-                    if (handleKeySelectorClick(mouseX, mouseY, fieldX, fieldY, fieldWidth, i)) {
+                if (adjustedMouseX >= fieldX && adjustedMouseX <= fieldX + fieldWidth &&
+                    adjustedMouseY >= Math.max(fieldY, contentTop) && adjustedMouseY <= Math.min(fieldY + selectorHeight, contentBottom)) {
+                    if (handleKeySelectorClick(adjustedMouseX, adjustedMouseY, fieldX, fieldY, fieldWidth, i)) {
                         return true;
                     }
                     return true;
@@ -690,27 +715,18 @@ public class NodeParameterOverlay {
                 continue;
             }
 
-            if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
-                mouseY >= Math.max(fieldY, contentTop) && mouseY <= Math.min(fieldY + fieldHeight, contentBottom)) {
+            if (adjustedMouseX >= fieldX && adjustedMouseX <= fieldX + fieldWidth &&
+                adjustedMouseY >= Math.max(fieldY, contentTop) && adjustedMouseY <= Math.min(fieldY + fieldHeight, contentBottom)) {
                 focusField(i);
-                setCaretFromClick(i, mouseX, fieldX, fieldWidth, shiftClick);
+                setCaretFromClick(i, adjustedMouseX, fieldX, fieldWidth, shiftClick);
                 return true;
             }
 
             labelY = fieldY + fieldHeight + SECTION_SPACING;
         }
 
-        if (saveButton != null && saveButton.isMouseOver(mouseX, mouseY)) {
-            ButtonWidgetCompatibilityBridge.press(saveButton);
-            return true;
-        }
-        if (cancelButton != null && cancelButton.isMouseOver(mouseX, mouseY)) {
-            ButtonWidgetCompatibilityBridge.press(cancelButton);
-            return true;
-        }
-
-        boolean insidePopupBounds = mouseX >= popupX && mouseX <= popupX + popupWidth &&
-                                    mouseY >= popupY && mouseY <= popupY + popupHeight;
+        boolean insidePopupBounds = adjustedMouseX >= popupX && adjustedMouseX <= popupX + popupWidth &&
+                                    adjustedMouseY >= popupY && adjustedMouseY <= popupY + popupHeight;
         if (!insidePopupBounds) {
             close();
             return true;
@@ -848,6 +864,7 @@ public class NodeParameterOverlay {
             host.attachParameter(node, slotIndex);
         }
 
+        node.setParameterFieldWidthOverride(0);
         node.recalculateDimensions();
 
         if (onSave != null) {
@@ -953,7 +970,8 @@ public class NodeParameterOverlay {
         if (node.getType() == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
             return "Message";
         }
-        if (node.getType() == NodeType.PARAM_VILLAGER_TRADE && "Item".equalsIgnoreCase(name)) {
+        if (node.getType() == NodeType.PARAM_VILLAGER_TRADE
+            && ("Item".equalsIgnoreCase(name) || "Trade".equalsIgnoreCase(name))) {
             return "Trade";
         }
         return name;

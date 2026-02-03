@@ -7,8 +7,8 @@ package com.pathmind.ui.animation;
 public class PopupAnimationHandler {
 
     private static final int OPEN_DURATION_MS = 220;
-    private static final int BACKGROUND_CLOSE_DURATION_MS = 90;
-    private static final int POPUP_CLOSE_DURATION_MS = 60;
+    private static final int BACKGROUND_CLOSE_DURATION_MS = 180;
+    private static final int POPUP_CLOSE_DURATION_MS = 160;
 
     private final AnimatedValue backgroundAlpha;
     private final AnimatedValue popupScale;

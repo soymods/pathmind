@@ -2971,6 +2971,11 @@ public class NodeGraph {
                         if (value == null) {
                             value = "";
                         }
+                        if (!editingThis
+                            && node.getType() == NodeType.PARAM_VILLAGER_TRADE
+                            && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
+                            value = formatVillagerTradeValue(value);
+                        }
                         if (!editingThis && value.isEmpty() && isBlockItemParameter(node, i)) {
                             value = (isBlockStateParameter(node, i) || isEntityStateParameter(node, i))
                                 ? "Any State"
@@ -3086,6 +3091,90 @@ public class NodeGraph {
         String label = getParameterLabelText(node, parameter, textRenderer, maxLabelWidth);
         int labelWidth = textRenderer != null ? textRenderer.getWidth(label) : 0;
         return fieldLeft + 4 + labelWidth + 4;
+    }
+
+    private String formatVillagerTradeValue(String rawValue) {
+        if (rawValue == null || rawValue.isEmpty()) {
+            return "";
+        }
+        if (!rawValue.contains("|") || !rawValue.contains("@")) {
+            return rawValue;
+        }
+        String[] parts = rawValue.split("\\|");
+        if (parts.length < 1) {
+            return rawValue;
+        }
+        TradeKeyPart first = parseTradeKeyPart(parts[0]);
+        TradeKeyPart second = parts.length > 1 ? parseTradeKeyPart(parts[1]) : null;
+        TradeKeyPart sell = parts.length > 2 ? parseTradeKeyPart(parts[2]) : null;
+        if (sell == null || sell.name == null || sell.name.isEmpty()) {
+            return rawValue;
+        }
+        StringBuilder builder = new StringBuilder();
+        if (first != null && first.isValid()) {
+            builder.append(first.format());
+        }
+        if (second != null && second.isValid()) {
+            if (builder.length() > 0) {
+                builder.append(" + ");
+            }
+            builder.append(second.format());
+        }
+        if (builder.length() > 0) {
+            builder.append(" -> ");
+        }
+        builder.append(sell.format());
+        return builder.toString();
+    }
+
+    private TradeKeyPart parseTradeKeyPart(String part) {
+        if (part == null || part.isEmpty() || "none@0".equals(part)) {
+            return TradeKeyPart.empty();
+        }
+        int atIndex = part.indexOf('@');
+        if (atIndex <= 0) {
+            return TradeKeyPart.empty();
+        }
+        String itemId = part.substring(0, atIndex);
+        String countRaw = part.substring(atIndex + 1);
+        int count = 1;
+        try {
+            count = Math.max(1, Integer.parseInt(countRaw));
+        } catch (NumberFormatException ignored) {
+            count = 1;
+        }
+        Identifier identifier = Identifier.tryParse(itemId);
+        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            return TradeKeyPart.empty();
+        }
+        Item item = Registries.ITEM.get(identifier);
+        return new TradeKeyPart(item.getName().getString(), count);
+    }
+
+    private static final class TradeKeyPart {
+        private static final TradeKeyPart EMPTY = new TradeKeyPart("", 0);
+        private final String name;
+        private final int count;
+
+        private TradeKeyPart(String name, int count) {
+            this.name = name;
+            this.count = count;
+        }
+
+        private static TradeKeyPart empty() {
+            return EMPTY;
+        }
+
+        private boolean isValid() {
+            return name != null && !name.isEmpty() && count > 0;
+        }
+
+        private String format() {
+            if (count > 1) {
+                return count + "x " + name;
+            }
+            return name;
+        }
     }
 
     private void renderStartNodeNumber(DrawContext context, TextRenderer textRenderer, Node node, int x, int y, boolean isOverSidebar) {
@@ -3824,6 +3913,10 @@ public class NodeGraph {
             String value = i == editingIndex ? editingValue : param.getStringValue();
             if (value == null) {
                 value = "";
+            }
+            if (node.getType() == NodeType.PARAM_VILLAGER_TRADE
+                && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
+                value = formatVillagerTradeValue(value);
             }
             int labelWidth = textRenderer.getWidth(label);
             int valueWidth = textRenderer.getWidth(value);

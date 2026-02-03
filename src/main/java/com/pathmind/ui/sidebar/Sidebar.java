@@ -187,7 +187,6 @@ public class Sidebar {
             "Entities & Visibility",
             baritoneAvailable,
             NodeType.SENSOR_TOUCHING_ENTITY,
-            NodeType.SENSOR_ENTITY_NEARBY,
             NodeType.SENSOR_IS_RENDERED
         ));
         groups.add(new NodeGroup(
@@ -206,8 +205,7 @@ public class Sidebar {
             "Environment & Weather",
             baritoneAvailable,
             NodeType.SENSOR_IS_DAYTIME,
-            NodeType.SENSOR_IS_RAINING,
-            NodeType.SENSOR_LIGHT_LEVEL_BELOW
+            NodeType.SENSOR_IS_RAINING
         ));
         return groups;
     }

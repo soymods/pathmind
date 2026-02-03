@@ -24,6 +24,7 @@ import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.ChatMessageTracker;
+import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.InventorySlotModeHelper;
 import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.RecipeCompatibilityBridge;
@@ -534,12 +535,10 @@ public class Node {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_LIGHT_LEVEL_BELOW:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_HEALTH_BELOW:
             case SENSOR_HUNGER_BELOW:
-            case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
             case SENSOR_IS_SWIMMING:
@@ -1362,6 +1361,7 @@ public class Node {
     public boolean hasAmountToggle() {
         return type == NodeType.SENSOR_ITEM_IN_INVENTORY
             || type == NodeType.SENSOR_ITEM_IN_SLOT
+            || type == NodeType.SENSOR_CHAT_MESSAGE
             || type == NodeType.TRADE;
     }
 
@@ -2343,7 +2343,6 @@ public class Node {
             case SENSOR_BLOCK_AHEAD:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
-            case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
@@ -2357,9 +2356,6 @@ public class Node {
             case SENSOR_IS_UNDERWATER:
             case SENSOR_IS_ON_GROUND:
             case SENSOR_KEY_PRESSED:
-                break;
-            case SENSOR_LIGHT_LEVEL_BELOW:
-                parameters.add(new NodeParameter("Threshold", ParameterType.INTEGER, "7"));
                 break;
             case SENSOR_HEALTH_BELOW:
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
@@ -2375,6 +2371,7 @@ public class Node {
                 break;
             case SENSOR_CHAT_MESSAGE:
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
+                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "true"));
                 break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
@@ -2390,6 +2387,7 @@ public class Node {
                 break;
             case PARAM_ENTITY:
                 parameters.add(new NodeParameter("Entity", ParameterType.STRING, "cow"));
+                parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_PLAYER:
                 parameters.add(new NodeParameter("Player", ParameterType.STRING, "PlayerName"));
@@ -2483,6 +2481,13 @@ public class Node {
             parameter.setStringValue(value);
         }
 
+        if (type == NodeType.PARAM_ENTITY && "Entity".equalsIgnoreCase(name)) {
+            NodeParameter stateParam = getParameter("State");
+            if (stateParam != null && stateParam.getStringValue() != null && !stateParam.getStringValue().isEmpty()) {
+                stateParam.setStringValue("");
+            }
+        }
+
         if (!attachedParameters.isEmpty()) {
             for (Node parameterNode : attachedParameters.values()) {
                 if (parameterNode == null || !parameterNode.isParameterNode()) {
@@ -2498,20 +2503,45 @@ public class Node {
     }
 
     private boolean shouldShowStateParameter() {
-        String blockValue = getParameterString(this, "Block");
-        if (blockValue == null || blockValue.isEmpty()) {
-            return false;
+        if (type == NodeType.PARAM_BLOCK) {
+            String blockValue = getParameterString(this, "Block");
+            if (blockValue == null || blockValue.isEmpty()) {
+                return false;
+            }
+            String stripped = BlockSelection.stripState(blockValue);
+            if (stripped == null || stripped.isEmpty()) {
+                return false;
+            }
+            String sanitized = sanitizeResourceId(stripped);
+            if (sanitized == null || sanitized.isEmpty()) {
+                return false;
+            }
+            String normalized = normalizeResourceId(sanitized, "minecraft");
+            return !BlockSelection.getStateOptions(normalized).isEmpty();
         }
-        String stripped = BlockSelection.stripState(blockValue);
-        if (stripped == null || stripped.isEmpty()) {
-            return false;
+        if (type == NodeType.PARAM_ENTITY) {
+            String entityValue = getParameterString(this, "Entity");
+            if (entityValue == null || entityValue.isEmpty()) {
+                return false;
+            }
+            String primary = entityValue;
+            List<String> parts = splitMultiValueList(entityValue);
+            if (!parts.isEmpty()) {
+                primary = parts.get(0);
+            }
+            String sanitized = sanitizeResourceId(primary);
+            if (sanitized == null || sanitized.isEmpty()) {
+                return false;
+            }
+            String normalized = normalizeResourceId(sanitized, "minecraft");
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                return false;
+            }
+            net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+            return !EntityStateOptions.getOptions(Registries.ENTITY_TYPE.get(identifier), client != null ? client.world : null).isEmpty();
         }
-        String sanitized = sanitizeResourceId(stripped);
-        if (sanitized == null || sanitized.isEmpty()) {
-            return false;
-        }
-        String normalized = normalizeResourceId(sanitized, "minecraft");
-        return !BlockSelection.getStateOptions(normalized).isEmpty();
+        return false;
     }
 
     public String getParameterDisplayName(NodeParameter parameter) {
@@ -3760,6 +3790,7 @@ public class Node {
                     sendParameterSearchFailure("No entity selected on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
+                String state = getEntityParameterState(parameterNode);
                 double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
                 Entity nearest = null;
                 String nearestId = null;
@@ -3770,7 +3801,7 @@ public class Node {
                         continue;
                     }
                     EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-                    Optional<Entity> entity = findNearestEntity(client, entityType, range);
+                    Optional<Entity> entity = findNearestEntity(client, entityType, range, state);
                     if (entity.isEmpty()) {
                         continue;
                     }
@@ -4625,12 +4656,10 @@ public class Node {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_LIGHT_LEVEL_BELOW:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_HEALTH_BELOW:
             case SENSOR_HUNGER_BELOW:
-            case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
             case SENSOR_IS_SWIMMING:
@@ -5175,6 +5204,7 @@ public class Node {
                     future.complete(null);
                     return null;
                 }
+                String state = getEntityParameterState(parameterNode);
                 double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
                 Entity nearest = null;
                 double nearestDistance = Double.MAX_VALUE;
@@ -5184,7 +5214,7 @@ public class Node {
                         continue;
                     }
                     EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-                    Optional<Entity> target = findNearestEntity(client, entityType, range);
+                    Optional<Entity> target = findNearestEntity(client, entityType, range, state);
                     if (target.isEmpty()) {
                         continue;
                     }
@@ -5402,6 +5432,7 @@ public class Node {
         if (entityIds.isEmpty()) {
             return false;
         }
+        String state = getEntityParameterState(parameterNode);
         double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
         Entity nearest = null;
         double nearestDistance = Double.MAX_VALUE;
@@ -5411,7 +5442,7 @@ public class Node {
                 continue;
             }
             EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-            Optional<Entity> target = findNearestEntity(client, entityType, range);
+            Optional<Entity> target = findNearestEntity(client, entityType, range, state);
             if (target.isEmpty()) {
                 continue;
             }
@@ -8309,7 +8340,6 @@ public class Node {
             case SENSOR_BLOCK_AHEAD:
                 return parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_PLACE_TARGET;
             case SENSOR_TOUCHING_ENTITY:
-            case SENSOR_ENTITY_NEARBY:
                 return parameterType == NodeType.PARAM_ENTITY;
             case SENSOR_AT_COORDINATES:
                 return parameterType == NodeType.PARAM_COORDINATE || parameterType == NodeType.PARAM_PLACE_TARGET;
@@ -11787,13 +11817,13 @@ public class Node {
             return;
         }
 
+        final net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
+
         // Get the quantity to trade (amount is desired output items, not number of trades)
         boolean useAmount = isAmountInputEnabled();
         int desiredAmount = useAmount
             ? Math.max(1, getIntParameter("Amount", 1))
             : Math.max(1, selectedOffer.getSellItem().getCount());
-
-        final net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
         final int finalTradeIndex = tradeIndex;
         int sellCount = Math.max(1, selectedOffer.getSellItem().getCount());
         int tradesToExecute = Math.max(1, (int) Math.ceil(desiredAmount / (double) sellCount));
@@ -12186,6 +12216,43 @@ public class Node {
         return null;
     }
 
+    private String getEntityParameterState(Node node) {
+        if (node == null) {
+            return "";
+        }
+        String state = getParameterString(node, "State");
+        if (state == null) {
+            return "";
+        }
+        String trimmedState = state.trim();
+        if (trimmedState.isEmpty()) {
+            return "";
+        }
+        String entityRaw = getParameterString(node, "Entity");
+        if (entityRaw == null || entityRaw.trim().isEmpty()) {
+            return "";
+        }
+        String primaryEntity = entityRaw;
+        List<String> parts = splitMultiValueList(entityRaw);
+        if (!parts.isEmpty()) {
+            primaryEntity = parts.get(0);
+        }
+        String sanitized = sanitizeResourceId(primaryEntity);
+        String normalized = sanitized != null && !sanitized.isEmpty()
+            ? normalizeResourceId(sanitized, "minecraft")
+            : primaryEntity;
+        Identifier identifier = Identifier.tryParse(normalized);
+        if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+            return trimmedState;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (!EntityStateOptions.isStateSupported(Registries.ENTITY_TYPE.get(identifier), client != null ? client.world : null, trimmedState)) {
+            notifyInvalidEntityStateSelection(primaryEntity, trimmedState);
+            return trimmedState;
+        }
+        return trimmedState;
+    }
+
     private double getDoubleParameter(String name, double defaultValue) {
         NodeParameter param = getParameter(name);
         if (param == null) {
@@ -12234,6 +12301,13 @@ public class Node {
         sendNodeErrorMessage(client, "State \"" + stateLabel + "\" is not valid for " + blockLabel + " on " + type.getDisplayName() + ".");
     }
 
+    private void notifyInvalidEntityStateSelection(String entityId, String state) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        String entityLabel = (entityId == null || entityId.isEmpty()) ? "the selected entity" : entityId;
+        String stateLabel = state == null || state.isEmpty() ? "(unspecified state)" : state;
+        sendNodeErrorMessage(client, "State \"" + stateLabel + "\" is not valid for " + entityLabel + " on " + type.getDisplayName() + ".");
+    }
+
     private Optional<BlockPos> findNearestDroppedItem(net.minecraft.client.MinecraftClient client, Item item, double range) {
         if (client == null || client.player == null || client.world == null || item == null) {
             return Optional.empty();
@@ -12250,12 +12324,20 @@ public class Node {
     }
 
     private Optional<Entity> findNearestEntity(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, double range) {
+        return findNearestEntity(client, entityType, range, "");
+    }
+
+    private Optional<Entity> findNearestEntity(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, double range, String state) {
         if (client == null || client.player == null || client.world == null || entityType == null) {
             return Optional.empty();
         }
         double searchRadius = Math.max(1.0, range);
         Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-        List<Entity> matches = client.world.getOtherEntities(client.player, searchBox, entity -> entity.getType() == entityType);
+        List<Entity> matches = client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity.getType() == entityType && EntityStateOptions.matchesState(entity, state)
+        );
         if (matches.isEmpty()) {
             return Optional.empty();
         }
@@ -12347,7 +12429,7 @@ public class Node {
             return false;
         }
 
-        boolean result;
+        boolean result = false;
         switch (type) {
             case OPERATOR_EQUALS:
                 result = evaluateOperatorEquals();
@@ -12376,6 +12458,9 @@ public class Node {
                     if (nodeEntity != null && !nodeEntity.isEmpty()) {
                         entityId = nodeEntity;
                     }
+                    String state = getEntityParameterState(parameterNode);
+                    result = isTouchingEntity(entityId, state);
+                    break;
                 }
                 result = evaluateSensorCondition(SensorConditionType.TOUCHING_ENTITY, null, entityId, 0, 0, 0);
                 break;
@@ -12406,11 +12491,6 @@ public class Node {
                 result = isBlockAhead(blockId);
                 break;
             }
-            case SENSOR_LIGHT_LEVEL_BELOW: {
-                int threshold = MathHelper.clamp(getIntParameter("Threshold", 7), 0, 15);
-                result = isLightLevelBelow(threshold);
-                break;
-            }
             case SENSOR_IS_DAYTIME:
                 result = isDaytime();
                 break;
@@ -12434,20 +12514,6 @@ public class Node {
                     amount = MathHelper.clamp((int) Math.round(parsed), 0, 20);
                 }
                 result = isHungerBelow(amount);
-                break;
-            }
-            case SENSOR_ENTITY_NEARBY: {
-                String entityId = getStringParameter("Entity", "zombie");
-                double range = Math.max(1.0, getIntParameter("Range", 6));
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ENTITY);
-                if (parameterNode != null) {
-                    String nodeEntity = getParameterString(parameterNode, "Entity");
-                    if (nodeEntity != null && !nodeEntity.isEmpty()) {
-                        entityId = nodeEntity;
-                    }
-                    range = Math.max(1.0, parseNodeDouble(parameterNode, "Range", range));
-                }
-                result = isEntityNearby(entityId, range);
                 break;
             }
             case SENSOR_ITEM_IN_INVENTORY: {
@@ -12574,6 +12640,7 @@ public class Node {
             }
             case SENSOR_IS_RENDERED: {
                 String resourceId = getStringParameter("Resource", "stone");
+                boolean handled = false;
                 Node parameterNode = getAttachedParameterOfType(
                     NodeType.PARAM_BLOCK,
                     NodeType.PARAM_ITEM,
@@ -12594,7 +12661,10 @@ public class Node {
                         case PARAM_ENTITY: {
                             String nodeEntity = getParameterString(parameterNode, "Entity");
                             if (nodeEntity != null && !nodeEntity.isEmpty()) {
-                                resourceId = nodeEntity;
+                                String state = getEntityParameterState(parameterNode);
+                                result = isEntityRendered(nodeEntity, state);
+                                handled = true;
+                                break;
                             }
                             break;
                         }
@@ -12614,7 +12684,9 @@ public class Node {
                         }
                     }
                 }
-                result = isResourceRendered(resourceId);
+                if (!handled) {
+                    result = isResourceRendered(resourceId);
+                }
                 break;
             }
             case SENSOR_CHAT_MESSAGE: {
@@ -12647,7 +12719,10 @@ public class Node {
                     result = false;
                     break;
                 }
-                double seconds = Math.max(0.0, getDoubleParameter("Amount", 10.0));
+                boolean useAmount = isAmountInputEnabled();
+                double seconds = useAmount
+                    ? Math.max(0.0, getDoubleParameter("Amount", 10.0))
+                    : ChatMessageTracker.getMaxRetentionSeconds();
                 result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds);
                 break;
             }
@@ -12677,7 +12752,6 @@ public class Node {
                  SENSOR_TOUCHING_ENTITY,
                  SENSOR_AT_COORDINATES,
                  SENSOR_BLOCK_AHEAD,
-                 SENSOR_ENTITY_NEARBY,
                  SENSOR_ITEM_IN_INVENTORY,
                  SENSOR_ITEM_IN_SLOT,
                  SENSOR_CHAT_MESSAGE -> true;
@@ -12826,6 +12900,10 @@ public class Node {
     }
     
     private boolean isTouchingEntity(String entityId) {
+        return isTouchingEntity(entityId, "");
+    }
+
+    private boolean isTouchingEntity(String entityId, String state) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null || entityId == null || entityId.isEmpty()) {
             return false;
@@ -12847,7 +12925,7 @@ public class Node {
             List<Entity> entities = world.getOtherEntities(
                 client.player,
                 client.player.getBoundingBox().expand(0.15),
-                entity -> entity.getType() == entityType
+                entity -> entity.getType() == entityType && EntityStateOptions.matchesState(entity, state)
             );
             if (!entities.isEmpty()) {
                 return true;
@@ -13153,6 +13231,28 @@ public class Node {
         return isSingleResourceRendered(client, trimmed);
     }
 
+    private boolean isEntityRendered(String entityId, String state) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null || entityId == null || entityId.isEmpty()) {
+            return false;
+        }
+        for (String candidateId : splitMultiValueList(entityId)) {
+            String sanitized = sanitizeResourceId(candidateId);
+            String normalized = sanitized != null && !sanitized.isEmpty()
+                ? normalizeResourceId(sanitized, "minecraft")
+                : candidateId;
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                continue;
+            }
+            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+            if (isEntityRendered(client, entityType, state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean isSingleResourceRendered(net.minecraft.client.MinecraftClient client, String resourceId) {
         if (client == null || client.player == null || client.world == null || resourceId == null || resourceId.isEmpty()) {
             return false;
@@ -13176,7 +13276,7 @@ public class Node {
             }
             if (Registries.ENTITY_TYPE.containsId(identifier)) {
                 EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-                return isEntityRendered(client, entityType);
+                return isEntityRendered(client, entityType, "");
             }
         }
         return isPlayerRendered(client, resourceId);
@@ -13284,13 +13384,16 @@ public class Node {
         return !candidates.isEmpty();
     }
 
-    private boolean isEntityRendered(net.minecraft.client.MinecraftClient client, EntityType<?> entityType) {
+    private boolean isEntityRendered(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, String state) {
         if (client == null || client.player == null || client.world == null || entityType == null) {
             return false;
         }
 
         HitResult hitResult = client.crosshairTarget;
-        if (hitResult instanceof EntityHitResult entityHit && entityHit.getEntity() != null && entityHit.getEntity().getType() == entityType) {
+        if (hitResult instanceof EntityHitResult entityHit
+            && entityHit.getEntity() != null
+            && entityHit.getEntity().getType() == entityType
+            && EntityStateOptions.matchesState(entityHit.getEntity(), state)) {
             return true;
         }
 
@@ -13299,7 +13402,10 @@ public class Node {
         List<Entity> matches = client.world.getOtherEntities(
             client.player,
             searchBox,
-            entity -> entity != null && entity.isAlive() && entity.getType() == entityType && client.player.canSee(entity)
+            entity -> entity != null
+                && entity.isAlive()
+                && entity.getType() == entityType
+                && EntityStateOptions.matchesState(entity, state)
         );
         return !matches.isEmpty();
     }
@@ -13334,9 +13440,7 @@ public class Node {
             if (playerEntity.squaredDistanceTo(client.player) > renderDistance * renderDistance) {
                 continue;
             }
-            if (client.player.canSee(playerEntity)) {
-                return true;
-            }
+            return true;
         }
 
         return false;

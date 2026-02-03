@@ -70,6 +70,10 @@ public final class ChatMessageTracker {
         return false;
     }
 
+    public static double getMaxRetentionSeconds() {
+        return MAX_RETENTION_MS / 1000.0;
+    }
+
     public static void clear() {
         synchronized (LOCK) {
             MESSAGES.clear();

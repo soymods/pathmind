@@ -45,6 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.InputCompatibilityBridge;
 
 /**
@@ -2971,7 +2972,9 @@ public class NodeGraph {
                             value = "";
                         }
                         if (!editingThis && value.isEmpty() && isBlockItemParameter(node, i)) {
-                            value = isBlockStateParameter(node, i) ? "Any State" : "Any";
+                            value = (isBlockStateParameter(node, i) || isEntityStateParameter(node, i))
+                                ? "Any State"
+                                : "Any";
                         }
                         String displayValue = editingThis
                             ? value
@@ -3195,12 +3198,14 @@ public class NodeGraph {
         if (node == null || !node.hasBooleanToggle()) {
             return false;
         }
-        int buttonLeft = node.getBooleanToggleLeft() - cameraX;
-        int buttonTop = node.getBooleanToggleTop() - cameraY;
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int buttonLeft = node.getBooleanToggleLeft();
+        int buttonTop = node.getBooleanToggleTop();
         int buttonWidth = node.getBooleanToggleWidth();
         int buttonHeight = node.getBooleanToggleHeight();
-        return mouseX >= buttonLeft && mouseX <= buttonLeft + buttonWidth &&
-               mouseY >= buttonTop && mouseY <= buttonTop + buttonHeight;
+        return worldMouseX >= buttonLeft && worldMouseX <= buttonLeft + buttonWidth &&
+               worldMouseY >= buttonTop && worldMouseY <= buttonTop + buttonHeight;
     }
 
     public boolean handleBooleanToggleClick(Node node, int mouseX, int mouseY) {
@@ -5250,17 +5255,15 @@ public class NodeGraph {
         return !Objects.equals(previous, value);
     }
 
-    private void refreshBlockStateParameterPreview() {
+    private void refreshStateParameterPreview() {
         if (!isEditingParameterField() || parameterEditingNode == null) {
-            return;
-        }
-        if (parameterEditingNode.getType() != NodeType.PARAM_BLOCK) {
             return;
         }
         if (parameterEditingIndex < 0 || parameterEditingIndex >= parameterEditingNode.getParameters().size()) {
             return;
         }
-        if (!isBlockParameter(parameterEditingNode, parameterEditingIndex)) {
+        if (!isBlockParameter(parameterEditingNode, parameterEditingIndex)
+            && !isEntityParameter(parameterEditingNode, parameterEditingIndex)) {
             return;
         }
         NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
@@ -5307,14 +5310,14 @@ public class NodeGraph {
                         + parameterEditBuffer.substring(parameterCaretPosition);
                     setParameterCaretPosition(deleteToPos);
                     updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-                    refreshBlockStateParameterPreview();
+                    refreshStateParameterPreview();
                     clearParameterDropdownSuppression();
                 } else if (parameterCaretPosition > 0 && !parameterEditBuffer.isEmpty()) {
                     parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition - 1)
                         + parameterEditBuffer.substring(parameterCaretPosition);
                     setParameterCaretPosition(parameterCaretPosition - 1);
                     updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-                    refreshBlockStateParameterPreview();
+                    refreshStateParameterPreview();
                     clearParameterDropdownSuppression();
                 }
                 return true;
@@ -5327,7 +5330,7 @@ public class NodeGraph {
                         + parameterEditBuffer.substring(parameterCaretPosition + 1);
                     setParameterCaretPosition(parameterCaretPosition);
                     updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-                    refreshBlockStateParameterPreview();
+                    refreshStateParameterPreview();
                     clearParameterDropdownSuppression();
                 }
                 return true;
@@ -6051,7 +6054,7 @@ public class NodeGraph {
             + parameterEditBuffer.substring(parameterSelectionEnd);
         setParameterCaretPosition(parameterSelectionStart);
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-        refreshBlockStateParameterPreview();
+        refreshStateParameterPreview();
         clearParameterDropdownSuppression();
         return true;
     }
@@ -6393,7 +6396,7 @@ public class NodeGraph {
             parameterEditBuffer = working;
             setParameterCaretPosition(caret);
             updateParameterFieldContentWidth(parameterEditingNode, textRenderer, parameterEditingIndex, parameterEditBuffer);
-            refreshBlockStateParameterPreview();
+            refreshStateParameterPreview();
             clearParameterDropdownSuppression();
             return true;
         }
@@ -6419,6 +6422,7 @@ public class NodeGraph {
         }
         String name = param.getName();
         return isBlockStateParameter(node, index)
+            || isEntityStateParameter(node, index)
             || "Block".equalsIgnoreCase(name)
             || "Blocks".equalsIgnoreCase(name)
             || "Item".equalsIgnoreCase(name)
@@ -6430,6 +6434,20 @@ public class NodeGraph {
             return false;
         }
         if (node.getType() != NodeType.PARAM_BLOCK) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "State".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isEntityStateParameter(Node node, int index) {
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_ENTITY) {
             return false;
         }
         NodeParameter param = node.getParameters().get(index);
@@ -6460,6 +6478,38 @@ public class NodeGraph {
             return "";
         }
         String fullId = stripped.contains(":") ? stripped : "minecraft:" + stripped;
+        Identifier id = Identifier.tryParse(fullId);
+        if (id == null) {
+            return "";
+        }
+        return id.toString();
+    }
+
+    private String getNormalizedEntityIdForStateOptions(Node node) {
+        if (node == null || node.getType() != NodeType.PARAM_ENTITY) {
+            return "";
+        }
+        NodeParameter entityParam = node.getParameter("Entity");
+        if (entityParam == null) {
+            return "";
+        }
+        String raw = entityParam.getStringValue();
+        if (raw == null) {
+            return "";
+        }
+        int comma = raw.indexOf(',');
+        if (comma >= 0) {
+            raw = raw.substring(0, comma);
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        String sanitized = trimmed.toLowerCase(Locale.ROOT).replace(' ', '_').replaceAll("[^a-z0-9_:\\/.-]", "");
+        if (sanitized.isEmpty()) {
+            return "";
+        }
+        String fullId = sanitized.contains(":") ? sanitized : "minecraft:" + sanitized;
         Identifier id = Identifier.tryParse(fullId);
         if (id == null) {
             return "";
@@ -6554,6 +6604,9 @@ public class NodeGraph {
         if (isBlockStateParameter(node, index)) {
             return getBlockStateDropdownOptions(node, lowered);
         }
+        if (isEntityStateParameter(node, index)) {
+            return getEntityStateDropdownOptions(node, lowered);
+        }
 
         List<String> source;
         if (isBlockParameter(node, index)) {
@@ -6621,6 +6674,48 @@ public class NodeGraph {
         }
         String lowered = loweredQuery == null ? "" : loweredQuery;
         for (BlockSelection.StateOption option : options) {
+            String value = option.value();
+            String label = option.displayText();
+            if (!lowered.isEmpty()) {
+                String valueLower = value.toLowerCase(Locale.ROOT);
+                String labelLower = label.toLowerCase(Locale.ROOT);
+                if (!valueLower.contains(lowered) && !labelLower.contains(lowered)) {
+                    continue;
+                }
+            }
+            results.add(new ParameterDropdownOption(label, value));
+            if (results.size() >= 64) {
+                break;
+            }
+        }
+        return results;
+    }
+
+    private List<ParameterDropdownOption> getEntityStateDropdownOptions(Node node, String loweredQuery) {
+        if (node == null) {
+            return Collections.emptyList();
+        }
+        String entityId = getNormalizedEntityIdForStateOptions(node);
+        if (entityId.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Identifier id = Identifier.tryParse(entityId);
+        if (id == null || !Registries.ENTITY_TYPE.containsId(id)) {
+            return Collections.emptyList();
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        net.minecraft.world.World world = client != null ? client.world : null;
+        List<EntityStateOptions.StateOption> options = EntityStateOptions.getOptions(Registries.ENTITY_TYPE.get(id), world);
+        if (options.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ParameterDropdownOption> results = new ArrayList<>();
+        boolean includeAnyState = loweredQuery == null || loweredQuery.isEmpty();
+        if (includeAnyState) {
+            results.add(new ParameterDropdownOption("Any State", ""));
+        }
+        String lowered = loweredQuery == null ? "" : loweredQuery;
+        for (EntityStateOptions.StateOption option : options) {
             String value = option.value();
             String label = option.displayText();
             if (!lowered.isEmpty()) {
@@ -6732,7 +6827,7 @@ public class NodeGraph {
         parameterEditBuffer = prefix + replacement + suffix;
         setParameterCaretPosition(prefix.length() + replacement.length());
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-        refreshBlockStateParameterPreview();
+        refreshStateParameterPreview();
         ParameterSegment updatedSegment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String updatedQuery = updatedSegment.trimmedSegment == null ? "" : updatedSegment.trimmedSegment.trim();
         suppressParameterDropdown(parameterEditingNode, parameterEditingIndex, updatedQuery);
@@ -7201,7 +7296,9 @@ public class NodeGraph {
     }
 
     private ItemStack resolveParameterDropdownIcon(Node node, int index, String optionValue) {
-        if (node == null || optionValue == null || optionValue.isEmpty() || isBlockStateParameter(node, index)) {
+        if (node == null || optionValue == null || optionValue.isEmpty()
+            || isBlockStateParameter(node, index)
+            || isEntityStateParameter(node, index)) {
             return ItemStack.EMPTY;
         }
         String fullId = optionValue.contains(":") ? optionValue : "minecraft:" + optionValue;
@@ -7324,24 +7421,28 @@ public class NodeGraph {
         if (node == null || !node.hasAmountToggle()) {
             return false;
         }
-        int left = node.getAmountToggleLeft() - cameraX - 3;
-        int top = node.getAmountToggleTop() - cameraY - 3;
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int left = node.getAmountToggleLeft() - 3;
+        int top = node.getAmountToggleTop() - 3;
         int width = node.getAmountToggleWidth() + 6;
         int height = node.getAmountToggleHeight() + 6;
-        return screenX >= left && screenX <= left + width
-            && screenY >= top && screenY <= top + height;
+        return worldX >= left && worldX <= left + width
+            && worldY >= top && worldY <= top + height;
     }
 
     private boolean isPointInsideAmountSignToggle(Node node, int screenX, int screenY) {
         if (node == null || !node.hasAmountSignToggle()) {
             return false;
         }
-        int left = node.getAmountSignToggleLeft() - cameraX - 3;
-        int top = node.getAmountSignToggleTop() - cameraY - 3;
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int left = node.getAmountSignToggleLeft() - 3;
+        int top = node.getAmountSignToggleTop() - 3;
         int width = node.getAmountSignToggleWidth() + 6;
         int height = node.getAmountSignToggleHeight() + 6;
-        return screenX >= left && screenX <= left + width
-            && screenY >= top && screenY <= top + height;
+        return worldX >= left && worldX <= left + width
+            && worldY >= top && worldY <= top + height;
     }
 
     public boolean handleAmountToggleClick(Node node, int mouseX, int mouseY) {

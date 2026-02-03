@@ -85,12 +85,10 @@ public enum NodeType {
     SENSOR_TOUCHING_ENTITY("pathmind.node.type.sensorTouchingEntity", 0xFF64B5F6, "pathmind.node.type.sensorTouchingEntity.desc"),
     SENSOR_AT_COORDINATES("pathmind.node.type.sensorAtCoordinates", 0xFF64B5F6, "pathmind.node.type.sensorAtCoordinates.desc"),
     SENSOR_BLOCK_AHEAD("pathmind.node.type.sensorBlockAhead", 0xFF64B5F6, "pathmind.node.type.sensorBlockAhead.desc"),
-    SENSOR_LIGHT_LEVEL_BELOW("pathmind.node.type.sensorLightLevelBelow", 0xFF64B5F6, "pathmind.node.type.sensorLightLevelBelow.desc"),
     SENSOR_IS_DAYTIME("pathmind.node.type.sensorIsDaytime", 0xFF64B5F6, "pathmind.node.type.sensorIsDaytime.desc"),
     SENSOR_IS_RAINING("pathmind.node.type.sensorIsRaining", 0xFF64B5F6, "pathmind.node.type.sensorIsRaining.desc"),
     SENSOR_HEALTH_BELOW("pathmind.node.type.sensorHealthBelow", 0xFF64B5F6, "pathmind.node.type.sensorHealthBelow.desc"),
     SENSOR_HUNGER_BELOW("pathmind.node.type.sensorHungerBelow", 0xFF64B5F6, "pathmind.node.type.sensorHungerBelow.desc"),
-    SENSOR_ENTITY_NEARBY("pathmind.node.type.sensorEntityNearby", 0xFF64B5F6, "pathmind.node.type.sensorEntityNearby.desc"),
     SENSOR_ITEM_IN_INVENTORY("pathmind.node.type.sensorItemInInventory", 0xFF64B5F6, "pathmind.node.type.sensorItemInInventory.desc"),
     SENSOR_ITEM_IN_SLOT("pathmind.node.type.sensorItemInSlot", 0xFF64B5F6, "pathmind.node.type.sensorItemInSlot.desc"),
     SENSOR_IS_SWIMMING("pathmind.node.type.sensorIsSwimming", 0xFF64B5F6, "pathmind.node.type.sensorIsSwimming.desc"),
@@ -201,12 +199,10 @@ public enum NodeType {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_LIGHT_LEVEL_BELOW:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_HEALTH_BELOW:
             case SENSOR_HUNGER_BELOW:
-            case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
             case SENSOR_IS_SWIMMING:
@@ -328,10 +324,8 @@ public enum NodeType {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
-            case SENSOR_LIGHT_LEVEL_BELOW:
             case SENSOR_HEALTH_BELOW:
             case SENSOR_HUNGER_BELOW:
-            case SENSOR_ENTITY_NEARBY:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
             case SENSOR_IS_FALLING:

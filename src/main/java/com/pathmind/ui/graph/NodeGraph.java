@@ -2238,6 +2238,32 @@ public class NodeGraph {
         double scaledCenter = (screenX + screenWidth / 2.0) * getZoomScale();
         return scaledCenter < sidebarWidth;
     }
+
+    public boolean isSelectionOverSidebar(int sidebarWidth) {
+        if (selectedNodes == null || selectedNodes.isEmpty()) {
+            return false;
+        }
+        List<Node> draggedNodes = new ArrayList<>();
+        for (Node node : selectedNodes) {
+            if (node != null && node.isDragging()) {
+                draggedNodes.add(node);
+            }
+        }
+        if (draggedNodes.isEmpty()) {
+            return false;
+        }
+        if (draggedNodes.size() == 1) {
+            return isNodeOverSidebar(draggedNodes.get(0), sidebarWidth);
+        }
+        SelectionBounds bounds = calculateBounds(draggedNodes);
+        if (bounds == null) {
+            return false;
+        }
+        int left = bounds.minX - cameraX;
+        int right = bounds.maxX - cameraX;
+        double scaledCenter = (left + (right - left) / 2.0) * getZoomScale();
+        return scaledCenter < sidebarWidth;
+    }
     
     public boolean tryConnectToSocket(Node targetNode, int targetSocket, boolean isInput) {
         if (isDraggingConnection && connectionSourceNode != null) {
@@ -7837,7 +7863,14 @@ public class NodeGraph {
         if (node == null) {
             return false;
         }
-        boolean isOverSidebar = node.isDragging() && isNodeOverSidebar(node, sidebarWidthForRendering, screenX, screenWidth);
+        boolean isOverSidebar = false;
+        if (node.isDragging()) {
+            if (multiDragActive && node.isSelected()) {
+                isOverSidebar = isSelectionOverSidebar(sidebarWidthForRendering);
+            } else {
+                isOverSidebar = isNodeOverSidebar(node, sidebarWidthForRendering, screenX, screenWidth);
+            }
+        }
         if (!isOverSidebar && selectionDeletionPreviewActive && node.isSelected()) {
             isOverSidebar = true;
         }
@@ -8141,6 +8174,10 @@ public class NodeGraph {
 
     private void updateCascadeDeletionPreview() {
         cascadeDeletionPreviewNodes.clear();
+        boolean selectionOverSidebar = false;
+        if (multiDragActive && selectedNodes != null && !selectedNodes.isEmpty()) {
+            selectionOverSidebar = isSelectionOverSidebar(sidebarWidthForRendering);
+        }
         for (Node node : nodes) {
             if (!shouldCascadeDelete(node)) {
                 continue;
@@ -8148,9 +8185,15 @@ public class NodeGraph {
             if (!node.isDragging()) {
                 continue;
             }
-            int screenX = node.getX() - cameraX;
-            if (!isNodeOverSidebar(node, sidebarWidthForRendering, screenX, node.getWidth())) {
-                continue;
+            if (multiDragActive) {
+                if (!selectionOverSidebar) {
+                    continue;
+                }
+            } else {
+                int screenX = node.getX() - cameraX;
+                if (!isNodeOverSidebar(node, sidebarWidthForRendering, screenX, node.getWidth())) {
+                    continue;
+                }
             }
             List<Node> removalOrder = new ArrayList<>();
             collectNodesForCascade(node, removalOrder, new HashSet<>());

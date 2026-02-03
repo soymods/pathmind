@@ -1270,6 +1270,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (selectedNodes != null && !selectedNodes.isEmpty()) {
                     List<Node> snapshot = new ArrayList<>(selectedNodes);
                     boolean selectionDragged = false;
+                    Node draggedNode = null;
                     boolean selectionOverSidebar = false;
                     for (Node selected : snapshot) {
                         if (selected == null) {
@@ -1277,10 +1278,16 @@ public class PathmindVisualEditorScreen extends Screen {
                         }
                         if (selected.isDragging()) {
                             selectionDragged = true;
-                            if (nodeGraph.isNodeOverSidebar(selected, sidebar.getWidth())) {
-                                selectionOverSidebar = true;
-                                break;
+                            if (draggedNode == null) {
+                                draggedNode = selected;
                             }
+                        }
+                    }
+                    if (selectionDragged) {
+                        if (snapshot.size() > 1) {
+                            selectionOverSidebar = nodeGraph.isSelectionOverSidebar(sidebar.getWidth());
+                        } else if (draggedNode != null) {
+                            selectionOverSidebar = nodeGraph.isNodeOverSidebar(draggedNode, sidebar.getWidth());
                         }
                     }
                     if (selectionDragged && selectionOverSidebar) {
@@ -3461,10 +3468,23 @@ public class PathmindVisualEditorScreen extends Screen {
         Set<Node> selectedNodes = nodeGraph.getSelectedNodes();
         boolean preview = false;
         if (selectedNodes != null && !selectedNodes.isEmpty()) {
+            boolean hasDragging = false;
             for (Node node : selectedNodes) {
-                if (node != null && node.isDragging() && nodeGraph.isNodeOverSidebar(node, sidebar.getWidth())) {
-                    preview = true;
+                if (node != null && node.isDragging()) {
+                    hasDragging = true;
                     break;
+                }
+            }
+            if (hasDragging) {
+                if (selectedNodes.size() > 1) {
+                    preview = nodeGraph.isSelectionOverSidebar(sidebar.getWidth());
+                } else {
+                    for (Node node : selectedNodes) {
+                        if (node != null && node.isDragging() && nodeGraph.isNodeOverSidebar(node, sidebar.getWidth())) {
+                            preview = true;
+                            break;
+                        }
+                    }
                 }
             }
         }

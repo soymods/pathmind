@@ -121,10 +121,6 @@ public class PathmindClientMod implements ClientModInitializer {
             PathmindScreens.openVisualEditorOrWarn(client, client.currentScreen);
         }
 
-        if (!baritoneAvailable) {
-            return;
-        }
-
         ExecutionManager manager = ExecutionManager.getInstance();
         boolean editorOpen = PathmindScreens.isVisualEditorScreen(client.currentScreen);
         boolean screenPauses = client.currentScreen != null && client.currentScreen.shouldPause();

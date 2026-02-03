@@ -477,6 +477,11 @@ public class PreciseCompletionTracker {
         return prefix + message;
     }
 
+    public static void notifyPlayerMessage(String message) {
+        PreciseCompletionTracker tracker = getInstance();
+        tracker.notifyPlayer(message);
+    }
+
     /**
      * Mark a task as completed from an external event (e.g. amount monitors).
      */

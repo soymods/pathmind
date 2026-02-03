@@ -59,7 +59,7 @@ public class ExecutionManager {
     private long activeNodePauseStartTime;
     private long activeNodeEndTime;
     private boolean singleplayerPaused;
-    private String lastStartNodeId;
+    private Integer lastStartNodeNumber;
     private String lastStartPreset;
 
     private static final long NODE_EXECUTION_DELAY_MS = 150L;
@@ -175,7 +175,7 @@ public class ExecutionManager {
         this.activeNodePauseStartTime = 0;
         this.activeNodeEndTime = 0;
         this.singleplayerPaused = false;
-        this.lastStartNodeId = null;
+        this.lastStartNodeNumber = null;
         this.lastStartPreset = null;
     }
     
@@ -254,6 +254,9 @@ public class ExecutionManager {
             return;
         }
 
+        // Track the last started chain by START node number so the keybind can replay it.
+        updateLastStartContext(startNodes.get(startNodes.size() - 1), PresetManager.getActivePreset());
+
         // Ensure Baritone isn't still executing stale goals from a previous session
         cancelAllBaritoneCommands();
 
@@ -297,20 +300,10 @@ public class ExecutionManager {
     }
 
     public void playAllGraphs() {
-        if (playLastStartNodeGraphFromWorkspace()) {
-            return;
+        if (!playLastStartNodeGraphFromWorkspace()) {
+            LOGGER.debug("No last START chain available to play");
+            PreciseCompletionTracker.notifyPlayerMessage("No last START chain available to play.");
         }
-
-        if (lastGlobalGraph != null && executeGraphSnapshot(lastGlobalGraph, true)) {
-            return;
-        }
-
-        NodeGraphData savedGraph = NodeGraphPersistence.loadNodeGraph();
-        if (savedGraph != null && executeGraphSnapshot(savedGraph, true)) {
-            return;
-        }
-
-        LOGGER.debug("No saved node graph available to play");
     }
 
     public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections) {
@@ -1051,8 +1044,15 @@ public class ExecutionManager {
     }
 
     private boolean playLastStartNodeGraphFromWorkspace() {
-        if (lastStartNodeId == null || lastStartPreset == null) {
+        if (lastStartNodeNumber == null || lastStartPreset == null) {
             return false;
+        }
+
+        if (workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
+            Node workspaceStart = findStartNodeByNumber(workspaceNodes, lastStartNodeNumber);
+            if (workspaceStart != null && workspaceStart.getType() == NodeType.START) {
+                return executeBranch(workspaceStart, workspaceNodes, workspaceConnections, lastStartPreset);
+            }
         }
 
         NodeGraphData graphData = NodeGraphPersistence.loadNodeGraphForPreset(lastStartPreset);
@@ -1066,9 +1066,9 @@ public class ExecutionManager {
             return false;
         }
 
-        Node startNode = loadedGraph.nodeLookup.get(lastStartNodeId);
+        Node startNode = findStartNodeByNumber(loadedGraph.nodes, lastStartNodeNumber);
         if (startNode == null || startNode.getType() != NodeType.START) {
-            LOGGER.debug("Last START node not found in current workspace");
+            LOGGER.debug("Last START node not found in current workspace for number {}", lastStartNodeNumber);
             return false;
         }
 
@@ -1079,7 +1079,13 @@ public class ExecutionManager {
         if (startNode == null) {
             return;
         }
-        this.lastStartNodeId = startNode.getId();
+        int startNumber = startNode.getStartNodeNumber();
+        if (startNumber <= 0) {
+            this.lastStartNodeNumber = null;
+            this.lastStartPreset = null;
+            return;
+        }
+        this.lastStartNodeNumber = startNumber;
         this.lastStartPreset = presetName != null ? presetName : PresetManager.getActivePreset();
     }
 
@@ -1240,6 +1246,19 @@ public class ExecutionManager {
         return null;
     }
 
+    private Node findStartNodeByNumber(List<Node> nodes, int startNodeNumber) {
+        if (nodes == null || startNodeNumber <= 0) {
+            return null;
+        }
+        for (Node startNode : nodes) {
+            if (startNode != null && startNode.getType() == NodeType.START
+                && startNode.getStartNodeNumber() == startNodeNumber) {
+                return startNode;
+            }
+        }
+        return null;
+    }
+
     private BranchData buildBranchData(Node startNode, List<Node> nodes, List<NodeConnection> connections) {
         if (startNode == null || nodes == null || connections == null) {
             return null;
@@ -1268,6 +1287,7 @@ public class ExecutionManager {
 
         return new BranchData(branchNodes, branchConnections);
     }
+
 
     private void mergeActiveGraph(List<Node> branchNodes, List<NodeConnection> branchConnections) {
         if (branchNodes == null || branchConnections == null) {

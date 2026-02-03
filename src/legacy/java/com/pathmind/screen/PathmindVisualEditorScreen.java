@@ -296,6 +296,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Always render sidebar after node graph/buttons so expanded categories sit on top
         boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
+        boolean allowSidebarTooltips = showWorkspaceTooltips && !nodeGraph.isAnyNodeBeingDragged();
         sidebar.render(
             context,
             this.textRenderer,
@@ -304,7 +305,7 @@ public class PathmindVisualEditorScreen extends Screen {
             TITLE_BAR_HEIGHT,
             this.height - TITLE_BAR_HEIGHT,
             sidebarInteractionsEnabled,
-            showWorkspaceTooltips
+            allowSidebarTooltips
         );
 
         // Render title bar above the workspace so nodes never overlap it.

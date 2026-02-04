@@ -838,7 +838,7 @@ public class NodeParameterOverlay {
             }
             String value = parameterValues.get(i);
             boolean empty = value == null || value.trim().isEmpty();
-            if (empty && !isPlaceholderActive(i)) {
+            if (empty && !isPlaceholderActive(i) && !isPlayerParameter(param) && !isMessageParameter(param)) {
                 emptyParameterNames.add(getParameterDisplayName(param));
             }
         }
@@ -848,6 +848,17 @@ public class NodeParameterOverlay {
         for (int i = 0; i < parameters.size() && i < parameterValues.size(); i++) {
             NodeParameter param = parameters.get(i);
             String value = parameterValues.get(i);
+            if (param != null && (isPlayerParameter(param) || isMessageParameter(param))) {
+                if (value == null || value.trim().isEmpty()) {
+                    String placeholder = getPlaceholderText(i);
+                    String applied = placeholder != null ? placeholder : "Any";
+                    param.setStringValue(applied);
+                    param.setUserEdited(false);
+                    parameterValues.set(i, applied);
+                    placeholderActive.set(i, true);
+                    continue;
+                }
+            }
             if (isPlaceholderActive(i)) {
                 param.setStringValue(value);
             } else {
@@ -949,6 +960,10 @@ public class NodeParameterOverlay {
         if (parameter == null || parameter.getType() != ParameterType.STRING) {
             return false;
         }
+        if ((isPlayerParameter(parameter) || isMessageParameter(parameter))
+            && (value == null || value.trim().isEmpty())) {
+            return true;
+        }
         if (parameter.isUserEdited()) {
             return false;
         }
@@ -957,6 +972,24 @@ public class NodeParameterOverlay {
             return false;
         }
         return Objects.equals(placeholder, value);
+    }
+
+    private boolean isPlayerParameter(NodeParameter parameter) {
+        if (parameter == null) {
+            return false;
+        }
+        return node.getType() == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(parameter.getName());
+    }
+
+    private boolean isMessageParameter(NodeParameter parameter) {
+        if (parameter == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_MESSAGE) {
+            return false;
+        }
+        String name = parameter.getName();
+        return "Text".equalsIgnoreCase(name) || "Message".equalsIgnoreCase(name);
     }
 
     private String getParameterDisplayName(NodeParameter parameter) {

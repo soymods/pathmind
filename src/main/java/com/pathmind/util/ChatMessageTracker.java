@@ -39,12 +39,17 @@ public final class ChatMessageTracker {
     }
 
     public static boolean hasRecentMessage(String sender, String message, double seconds) {
-        if (sender == null || message == null) {
+        return hasRecentMessage(sender, message, seconds, false, false);
+    }
+
+    public static boolean hasRecentMessage(String sender, String message, double seconds,
+                                           boolean matchAnySender, boolean matchAnyMessage) {
+        String senderTrim = sender != null ? sender.trim() : "";
+        String messageTrim = message != null ? message.trim() : "";
+        if (!matchAnySender && senderTrim.isEmpty()) {
             return false;
         }
-        String senderTrim = sender.trim();
-        String messageTrim = message.trim();
-        if (senderTrim.isEmpty() || messageTrim.isEmpty()) {
+        if (!matchAnyMessage && messageTrim.isEmpty()) {
             return false;
         }
         long now = System.currentTimeMillis();
@@ -59,8 +64,11 @@ public final class ChatMessageTracker {
                 if (entry.timestampMs < cutoff) {
                     continue;
                 }
-                if (!entry.senderLower.equals(senderLower)) {
+                if (!matchAnySender && !entry.senderLower.equals(senderLower)) {
                     continue;
+                }
+                if (matchAnyMessage) {
+                    return true;
                 }
                 if (entry.rawLower.equals(messageLower) || entry.contentLower.equals(messageLower)) {
                     return true;

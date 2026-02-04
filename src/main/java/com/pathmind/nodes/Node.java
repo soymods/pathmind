@@ -2159,7 +2159,7 @@ public class Node {
                     
                 // FOLLOW modes
                 case FOLLOW_PLAYER:
-                    parameters.add(new NodeParameter("Player", ParameterType.STRING, "PlayerName"));
+                    parameters.add(new NodeParameter("Player", ParameterType.STRING, "Any"));
                     break;
                 case FOLLOW_PLAYERS:
                 case FOLLOW_ENTITIES:
@@ -2401,10 +2401,10 @@ public class Node {
                 parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_PLAYER:
-                parameters.add(new NodeParameter("Player", ParameterType.STRING, "PlayerName"));
+                parameters.add(new NodeParameter("Player", ParameterType.STRING, "Any"));
                 break;
             case PARAM_MESSAGE:
-                parameters.add(new NodeParameter("Text", ParameterType.STRING, "message"));
+                parameters.add(new NodeParameter("Text", ParameterType.STRING, "Any"));
                 break;
             case PARAM_WAYPOINT:
                 parameters.add(new NodeParameter("Waypoint", ParameterType.STRING, "home"));
@@ -3953,20 +3953,25 @@ public class Node {
                     return Optional.empty();
                 }
                 String playerName = getParameterString(parameterNode, "Player");
-                if (playerName == null || playerName.isEmpty()) {
-                    sendParameterSearchFailure("No player selected on parameter for " + type.getDisplayName() + ".", future);
-                    return Optional.empty();
+                Optional<AbstractClientPlayerEntity> player;
+                if (isAnyPlayerValue(playerName)) {
+                    player = findNearestPlayer(client, client.player);
+                } else {
+                    player = client.world.getPlayers().stream()
+                        .filter(p -> playerName.equalsIgnoreCase(
+                            GameProfileCompatibilityBridge.getName(p.getGameProfile())))
+                        .findFirst();
                 }
-                Optional<AbstractClientPlayerEntity> player = client.world.getPlayers().stream()
-                    .filter(p -> playerName.equalsIgnoreCase(
-                        GameProfileCompatibilityBridge.getName(p.getGameProfile())))
-                    .findFirst();
                 if (player.isEmpty()) {
-                    sendParameterSearchFailure("Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".", future);
+                    String message = isAnyPlayerValue(playerName)
+                        ? "No players nearby for " + type.getDisplayName() + "."
+                        : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                    sendParameterSearchFailure(message, future);
                     return Optional.empty();
                 }
+                String resolvedName = GameProfileCompatibilityBridge.getName(player.get().getGameProfile());
                 if (data != null) {
-                    data.targetPlayerName = playerName;
+                    data.targetPlayerName = resolvedName != null ? resolvedName : playerName;
                     data.targetBlockPos = player.get().getBlockPos();
                 }
                 return Optional.ofNullable(EntityCompatibilityBridge.getPos(player.get()));
@@ -5411,19 +5416,21 @@ public class Node {
                     return null;
                 }
                 String playerName = getParameterString(parameterNode, "Player");
-                if (playerName == null || playerName.isEmpty()) {
-                    sendNodeErrorMessage(client, "No player selected for " + type.getDisplayName() + ".");
-                    future.complete(null);
-                    return null;
+                Optional<AbstractClientPlayerEntity> match;
+                if (isAnyPlayerValue(playerName)) {
+                    match = findNearestPlayer(client, client.player);
+                } else {
+                    match = client.world.getPlayers().stream()
+                        .filter(p -> playerName.equalsIgnoreCase(
+                            GameProfileCompatibilityBridge.getName(p.getGameProfile())))
+                        .findFirst();
                 }
 
-                Optional<AbstractClientPlayerEntity> match = client.world.getPlayers().stream()
-                    .filter(p -> playerName.equalsIgnoreCase(
-                        GameProfileCompatibilityBridge.getName(p.getGameProfile())))
-                    .findFirst();
-
                 if (match.isEmpty()) {
-                    sendNodeErrorMessage(client, "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".");
+                    String message = isAnyPlayerValue(playerName)
+                        ? "No players nearby for " + type.getDisplayName() + "."
+                        : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                    sendNodeErrorMessage(client, message);
                     future.complete(null);
                     return null;
                 }
@@ -5648,17 +5655,21 @@ public class Node {
         }
 
         String playerName = getParameterString(parameterNode, "Player");
-        if (playerName == null || playerName.isEmpty()) {
-            return false;
+        Optional<AbstractClientPlayerEntity> match;
+        if (isAnyPlayerValue(playerName)) {
+            match = findNearestPlayer(client, client.player);
+        } else {
+            match = client.world.getPlayers().stream()
+                .filter(p -> playerName.equalsIgnoreCase(
+                    GameProfileCompatibilityBridge.getName(p.getGameProfile())))
+                .findFirst();
         }
 
-        Optional<AbstractClientPlayerEntity> match = client.world.getPlayers().stream()
-            .filter(p -> playerName.equalsIgnoreCase(
-                GameProfileCompatibilityBridge.getName(p.getGameProfile())))
-            .findFirst();
-
         if (match.isEmpty()) {
-            sendNodeErrorMessage(client, "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".");
+            String message = isAnyPlayerValue(playerName)
+                ? "No players nearby for " + type.getDisplayName() + "."
+                : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+            sendNodeErrorMessage(client, message);
             future.complete(null);
             return true;
         }
@@ -8798,14 +8809,19 @@ public class Node {
         String command;
         switch (mode) {
             case FOLLOW_PLAYER:
-                String player = "PlayerName";
+                String player = "Any";
                 NodeParameter playerParam = getParameter("Player");
                 if (playerParam != null) {
                     player = playerParam.getStringValue();
                 }
 
-                command = "#follow player " + player;
-                System.out.println("Executing follow player: " + command);
+                if (isAnyPlayerValue(player)) {
+                    command = "#follow players";
+                    System.out.println("Executing follow any players: " + command);
+                } else {
+                    command = "#follow player " + player;
+                    System.out.println("Executing follow player: " + command);
+                }
                 break;
                 
             case FOLLOW_PLAYERS:
@@ -12373,6 +12389,42 @@ public class Node {
             return defaultValue;
         }
     }
+
+    private static boolean isAnyPlayerValue(String value) {
+        return value == null || value.trim().isEmpty() || "any".equalsIgnoreCase(value.trim());
+    }
+
+    private static boolean isAnyMessageValue(String value) {
+        return value == null || value.trim().isEmpty() || "any".equalsIgnoreCase(value.trim());
+    }
+
+    private static Optional<AbstractClientPlayerEntity> findNearestPlayer(
+        net.minecraft.client.MinecraftClient client,
+        AbstractClientPlayerEntity reference
+    ) {
+        if (client == null || client.world == null) {
+            return Optional.empty();
+        }
+        AbstractClientPlayerEntity best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
+            if (player == null) {
+                continue;
+            }
+            if (reference != null && player == reference) {
+                continue;
+            }
+            double distance = reference != null ? player.squaredDistanceTo(reference) : 0.0;
+            if (best == null || distance < bestDistance) {
+                best = player;
+                bestDistance = distance;
+            }
+        }
+        if (best == null && reference != null) {
+            best = reference;
+        }
+        return Optional.ofNullable(best);
+    }
     
     private String getStringParameter(String name, String defaultValue) {
         NodeParameter param = getParameter(name);
@@ -12985,15 +13037,13 @@ public class Node {
                 if (messageText == null || messageText.isEmpty()) {
                     messageText = getParameterString(messageNode, "Message");
                 }
-                if (playerName == null || playerName.trim().isEmpty() || messageText == null || messageText.trim().isEmpty()) {
-                    result = false;
-                    break;
-                }
+                boolean anyPlayer = isAnyPlayerValue(playerName);
+                boolean anyMessage = isAnyMessageValue(messageText);
                 boolean useAmount = isAmountInputEnabled();
                 double seconds = useAmount
                     ? Math.max(0.0, getDoubleParameter("Amount", 10.0))
                     : ChatMessageTracker.getMaxRetentionSeconds();
-                result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds);
+                result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds, anyPlayer, anyMessage);
                 break;
             }
             default:

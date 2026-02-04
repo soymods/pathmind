@@ -2971,6 +2971,17 @@ public class NodeGraph {
                         if (value == null) {
                             value = "";
                         }
+                        boolean isPlayerParam = isPlayerParameter(node, param);
+                        boolean isMessageParam = isMessageParameter(node, param);
+                        boolean showPlayerPlaceholder = false;
+                        boolean showMessagePlaceholder = false;
+                        if (isPlayerParam || isMessageParam) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty()
+                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            showPlayerPlaceholder = isPlayerParam && showPlaceholder;
+                            showMessagePlaceholder = isMessageParam && showPlaceholder;
+                        }
                         if (!editingThis
                             && node.getType() == NodeType.PARAM_VILLAGER_TRADE
                             && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
@@ -2980,6 +2991,10 @@ public class NodeGraph {
                             value = (isBlockStateParameter(node, i) || isEntityStateParameter(node, i))
                                 ? "Any State"
                                 : "Any";
+                        }
+                        if (showPlayerPlaceholder || showMessagePlaceholder) {
+                            value = "Any";
+                            valueColor = UITheme.TEXT_TERTIARY;
                         }
                         String displayValue = editingThis
                             ? value
@@ -5289,8 +5304,15 @@ public class NodeGraph {
         parameterEditingNode = node;
         parameterEditingIndex = index;
         NodeParameter parameter = node.getParameters().get(index);
-        parameterEditBuffer = parameter != null ? parameter.getStringValue() : "";
-        parameterEditOriginalValue = parameterEditBuffer;
+        String originalValue = parameter != null ? parameter.getStringValue() : "";
+        parameterEditBuffer = originalValue;
+        if (parameter != null && (isPlayerParameter(node, parameter) || isMessageParameter(node, parameter))) {
+            if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
+                || "Any".equalsIgnoreCase(parameterEditBuffer)) {
+                parameterEditBuffer = "";
+            }
+        }
+        parameterEditOriginalValue = originalValue != null ? originalValue : "";
         resetParameterCaretBlink();
         parameterCaretPosition = parameterEditBuffer.length();
         parameterSelectionAnchor = -1;
@@ -5340,12 +5362,25 @@ public class NodeGraph {
         NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
         String value = parameterEditBuffer == null ? "" : parameterEditBuffer;
         String previous = parameter != null ? parameter.getStringValue() : "";
+        String appliedValue = value;
         if (parameter != null) {
-            parameter.setStringValueFromUser(value);
-            parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+            if (isPlayerParameter(parameterEditingNode, parameter) || isMessageParameter(parameterEditingNode, parameter)) {
+                if (value.trim().isEmpty()) {
+                    appliedValue = "Any";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    parameter.setStringValueFromUser(value);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+                }
+            } else {
+                parameter.setStringValueFromUser(value);
+                parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+            }
         }
         parameterEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, value);
+        return !Objects.equals(previous, appliedValue);
     }
 
     private void refreshStateParameterPreview() {
@@ -5366,6 +5401,26 @@ public class NodeGraph {
         String value = parameterEditBuffer == null ? "" : parameterEditBuffer;
         parameter.setStringValueFromUser(value);
         parameterEditingNode.recalculateDimensions();
+    }
+
+    private boolean isPlayerParameter(Node node, NodeParameter parameter) {
+        if (node == null || parameter == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_PLAYER) {
+            return false;
+        }
+        return "Player".equalsIgnoreCase(parameter.getName());
+    }
+
+    private boolean isMessageParameter(Node node, NodeParameter parameter) {
+        if (node == null || parameter == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_MESSAGE) {
+            return false;
+        }
+        return "Text".equalsIgnoreCase(parameter.getName()) || "Message".equalsIgnoreCase(parameter.getName());
     }
 
     private void revertParameterEdit() {

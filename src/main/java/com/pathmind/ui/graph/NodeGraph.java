@@ -3735,7 +3735,7 @@ public class NodeGraph {
             ? value
             : trimTextToWidth(value, textRenderer, fieldWidth - 6);
         if (showPlaceholder) {
-            display = "0";
+            display = node.getType() == NodeType.MOVE_ITEM ? "Any" : "0";
             valueColor = UITheme.TEXT_TERTIARY;
         }
 

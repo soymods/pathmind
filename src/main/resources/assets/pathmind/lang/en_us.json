@@ -29,6 +29,8 @@
   "pathmind.settings.accent": "GUI accent",
   "pathmind.settings.showGrid": "Show grid",
   "pathmind.settings.showTooltips": "Show tooltips",
+  "pathmind.settings.showChatErrors": "Show chat errors",
+  "pathmind.settings.nodeDelay": "Node delay",
   "pathmind.settings.on": "On",
   "pathmind.settings.off": "Off",
 

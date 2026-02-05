@@ -29,6 +29,8 @@
   "pathmind.settings.accent": "Цвет интерфейса",
   "pathmind.settings.showGrid": "Показать сетку",
   "pathmind.settings.showTooltips": "Показать подсказки",
+  "pathmind.settings.showChatErrors": "Показывать ошибки в чате",
+  "pathmind.settings.nodeDelay": "Задержка узла",
   "pathmind.settings.on": "Вкл",
   "pathmind.settings.off": "Выкл",
 

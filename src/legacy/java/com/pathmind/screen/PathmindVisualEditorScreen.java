@@ -99,12 +99,18 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int MISSING_UI_UTILS_POPUP_HEIGHT = 175;
     private static final String UI_UTILS_DOWNLOAD_URL = "https://ui-utils.com";
     private static final int SETTINGS_POPUP_WIDTH = 360;
-    private static final int SETTINGS_POPUP_HEIGHT = 280;
+    private static final int SETTINGS_POPUP_HEIGHT = 324;
     private static final int SETTINGS_OPTION_WIDTH = 90;
     private static final int SETTINGS_OPTION_HEIGHT = 16;
     private static final int SETTINGS_OPTION_GAP = 6;
     private static final int SETTINGS_TOGGLE_WIDTH = 60;
     private static final int SETTINGS_TOGGLE_HEIGHT = 16;
+    private static final int SETTINGS_SLIDER_WIDTH = 160;
+    private static final int SETTINGS_SLIDER_HEIGHT = 6;
+    private static final int SETTINGS_SLIDER_HANDLE_WIDTH = 8;
+    private static final int SETTINGS_SLIDER_HANDLE_HEIGHT = 12;
+    private static final int NODE_DELAY_MIN_MS = 0;
+    private static final int NODE_DELAY_MAX_MS = 500;
     private static final int TITLE_INTERACTION_PADDING = 4;
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final String INFO_POPUP_AUTHOR = "soyboy";
@@ -166,6 +172,9 @@ public class PathmindVisualEditorScreen extends Screen {
     private int languageDropdownWidth = 0;
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
+    private boolean showChatErrors = true;
+    private int nodeDelayMs = 150;
+    private boolean nodeDelayDragging = false;
     private AccentOption accentOption = AccentOption.SKY;
     private boolean overlayCutoutActive = false;
     private int overlayCutoutX = 0;
@@ -203,8 +212,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Apply loaded settings
         this.accentOption = getAccentOptionFromString(currentSettings.accentColor);
-        this.showGrid = currentSettings.showGrid;
-        this.showWorkspaceTooltips = currentSettings.showTooltips;
+        this.showGrid = currentSettings.showGrid == null || currentSettings.showGrid;
+        this.showWorkspaceTooltips = currentSettings.showTooltips == null || currentSettings.showTooltips;
+        this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
+        this.nodeDelayMs = currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150;
     }
 
     @Override
@@ -1151,6 +1162,9 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
+            if (nodeDelayDragging) {
+                updateNodeDelayFromMouse((int) mouseX);
+            }
             return true;
         }
         if (createPresetPopupAnimation.isVisible()) {
@@ -1217,6 +1231,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
+            nodeDelayDragging = false;
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -3781,6 +3796,19 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(sectionDividerX, popupX + SETTINGS_POPUP_WIDTH - 16, footerDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
+        int chatDividerY = footerDividerY + 22;
+        int chatRowCenterY = (footerDividerY + chatDividerY) / 2;
+        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY, Text.translatable("pathmind.settings.showChatErrors").getString(), showChatErrors, settingsPopupAnimation);
+        context.drawHorizontalLine(sectionDividerX, popupX + SETTINGS_POPUP_WIDTH - 16, chatDividerY,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+        int delayDividerY = chatDividerY + 26;
+        int delayRowCenterY = (chatDividerY + delayDividerY) / 2;
+        String delayLabel = Text.translatable("pathmind.settings.nodeDelay").getString() + " (" + nodeDelayMs + "ms)";
+        renderSliderRow(context, mouseX, mouseY, contentX, delayRowCenterY, delayLabel, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, settingsPopupAnimation);
+        context.drawHorizontalLine(sectionDividerX, popupX + SETTINGS_POPUP_WIDTH - 16, delayDividerY,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
         int buttonWidth = 90;
         int buttonHeight = 20;
         int buttonX = popupX + SETTINGS_POPUP_WIDTH - buttonWidth - 20;
@@ -3828,6 +3856,44 @@ public class PathmindVisualEditorScreen extends Screen {
         PopupButtonStyle style = active ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
         String toggleLabel = active ? "On" : "Off";
         drawPopupButton(context, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT, hovered, Text.literal(toggleLabel), style, label, animation);
+    }
+
+    private void renderSliderRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label,
+                                 int value, int min, int max, PopupAnimationHandler animation) {
+        int labelY = centerY - this.textRenderer.fontHeight / 2;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), labelX, labelY,
+            getPopupAnimatedColor(animation, UITheme.TEXT_SECONDARY));
+
+        int sliderX = getSettingsPopupX() + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
+        int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
+        int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
+        boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
+        int trackColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        int trackBorder = hovered ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, getPopupAnimatedColor(animation, trackColor));
+        DrawContextBridge.drawBorder(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT,
+            getPopupAnimatedColor(animation, trackBorder));
+
+        int clamped = MathHelper.clamp(value, min, max);
+        float t = max == min ? 0f : (clamped - min) / (float) (max - min);
+        int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
+        int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
+        int handleColor = getPopupAnimatedColor(animation, getAccentColor());
+        context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
+        DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
+            getPopupAnimatedColor(animation, UITheme.BORDER_SUBTLE));
+    }
+
+    private void updateNodeDelayFromMouse(int mouseX) {
+        int sliderX = getSettingsPopupX() + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
+        int localX = MathHelper.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
+        float t = SETTINGS_SLIDER_WIDTH <= 0 ? 0f : localX / (float) SETTINGS_SLIDER_WIDTH;
+        int value = NODE_DELAY_MIN_MS + Math.round(t * (NODE_DELAY_MAX_MS - NODE_DELAY_MIN_MS));
+        if (value != nodeDelayMs) {
+            nodeDelayMs = value;
+            currentSettings.nodeDelayMs = nodeDelayMs;
+            SettingsManager.save(currentSettings);
+        }
     }
 
     private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY, boolean active, Object hoverKey) {
@@ -4018,6 +4084,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void closeSettingsPopup() {
         languageDropdownOpen = false;
+        nodeDelayDragging = false;
         settingsPopupAnimation.hide();
     }
 
@@ -4099,6 +4166,27 @@ public class PathmindVisualEditorScreen extends Screen {
             showWorkspaceTooltips = !showWorkspaceTooltips;
             currentSettings.showTooltips = showWorkspaceTooltips;
             SettingsManager.save(currentSettings);
+            return true;
+        }
+
+        int chatDividerY = footerDividerY + 22;
+        int chatRowCenterY = (footerDividerY + chatDividerY) / 2;
+        int chatToggleX = gridToggleX;
+        int chatToggleY = chatRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (isPointInRect(mouseXi, mouseYi, chatToggleX, chatToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            showChatErrors = !showChatErrors;
+            currentSettings.showChatErrors = showChatErrors;
+            SettingsManager.save(currentSettings);
+            return true;
+        }
+
+        int delayDividerY = chatDividerY + 26;
+        int delayRowCenterY = (chatDividerY + delayDividerY) / 2;
+        int sliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
+        int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
+        if (isPointInRect(mouseXi, mouseYi, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
+            nodeDelayDragging = true;
+            updateNodeDelayFromMouse(mouseXi);
             return true;
         }
 

@@ -29,6 +29,8 @@
   "pathmind.settings.accent": "GUI-Akzent",
   "pathmind.settings.showGrid": "Raster anzeigen",
   "pathmind.settings.showTooltips": "Tooltips anzeigen",
+  "pathmind.settings.showChatErrors": "Chatfehler anzeigen",
+  "pathmind.settings.nodeDelay": "Knotenverzögerung",
   "pathmind.settings.on": "An",
   "pathmind.settings.off": "Aus",
 

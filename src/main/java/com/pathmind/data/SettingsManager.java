@@ -19,6 +19,7 @@ public final class SettingsManager {
     private static final String BASE_DIRECTORY_NAME = "pathmind";
     private static final String SETTINGS_FILE_NAME = "settings.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static volatile Settings cachedSettings;
 
     private SettingsManager() {
     }
@@ -29,8 +30,10 @@ public final class SettingsManager {
     public static class Settings {
         public String language = "en_us";
         public String accentColor = "sky";
-        public boolean showGrid = true;
-        public boolean showTooltips = true;
+        public Boolean showGrid = true;
+        public Boolean showTooltips = true;
+        public Boolean showChatErrors = true;
+        public Integer nodeDelayMs = 150;
 
         public Settings() {
         }
@@ -40,6 +43,16 @@ public final class SettingsManager {
             this.accentColor = accentColor;
             this.showGrid = showGrid;
             this.showTooltips = showTooltips;
+        }
+
+        public Settings(String language, String accentColor, boolean showGrid, boolean showTooltips,
+                        boolean showChatErrors, int nodeDelayMs) {
+            this.language = language;
+            this.accentColor = accentColor;
+            this.showGrid = showGrid;
+            this.showTooltips = showTooltips;
+            this.showChatErrors = showChatErrors;
+            this.nodeDelayMs = nodeDelayMs;
         }
     }
 
@@ -66,7 +79,8 @@ public final class SettingsManager {
                 String json = Files.readString(settingsFile, StandardCharsets.UTF_8);
                 Settings settings = GSON.fromJson(json, Settings.class);
                 if (settings != null) {
-                    return settings;
+                    cachedSettings = normalizeSettings(settings);
+                    return cachedSettings;
                 }
             } catch (IOException e) {
                 System.err.println("Failed to read settings file: " + e.getMessage());
@@ -76,7 +90,8 @@ public final class SettingsManager {
         }
 
         // Return default settings if file doesn't exist or failed to load
-        return new Settings();
+        cachedSettings = normalizeSettings(new Settings());
+        return cachedSettings;
     }
 
     /**
@@ -89,11 +104,38 @@ public final class SettingsManager {
 
         initialize();
         try {
-            String json = GSON.toJson(settings);
+            Settings normalized = normalizeSettings(settings);
+            cachedSettings = normalized;
+            String json = GSON.toJson(normalized);
             Files.writeString(getSettingsPath(), json, StandardCharsets.UTF_8);
         } catch (IOException e) {
             System.err.println("Failed to save settings: " + e.getMessage());
         }
+    }
+
+    public static Settings getCurrent() {
+        Settings cached = cachedSettings;
+        if (cached != null) {
+            return cached;
+        }
+        return load();
+    }
+
+    public static boolean shouldShowChatErrors() {
+        Settings settings = getCurrent();
+        return settings.showChatErrors == null || settings.showChatErrors;
+    }
+
+    public static long getNodeDelayMs() {
+        Settings settings = getCurrent();
+        int delay = settings.nodeDelayMs == null ? 150 : settings.nodeDelayMs;
+        if (delay < 0) {
+            delay = 0;
+        }
+        if (delay > 1000) {
+            delay = 1000;
+        }
+        return delay;
     }
 
     /**
@@ -127,5 +169,32 @@ public final class SettingsManager {
         if (!Files.exists(directory)) {
             Files.createDirectories(directory);
         }
+    }
+
+    private static Settings normalizeSettings(Settings settings) {
+        if (settings == null) {
+            return new Settings();
+        }
+        if (settings.language == null || settings.language.isEmpty()) {
+            settings.language = "en_us";
+        }
+        if (settings.accentColor == null || settings.accentColor.isEmpty()) {
+            settings.accentColor = "sky";
+        }
+        if (settings.showGrid == null) {
+            settings.showGrid = true;
+        }
+        if (settings.showTooltips == null) {
+            settings.showTooltips = true;
+        }
+        if (settings.showChatErrors == null) {
+            settings.showChatErrors = true;
+        }
+        if (settings.nodeDelayMs == null) {
+            settings.nodeDelayMs = 150;
+        } else if (settings.nodeDelayMs < 0) {
+            settings.nodeDelayMs = 0;
+        }
+        return settings;
     }
 }

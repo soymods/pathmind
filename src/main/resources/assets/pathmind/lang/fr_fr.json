@@ -29,6 +29,8 @@
   "pathmind.settings.accent": "Couleur de l'interface",
   "pathmind.settings.showGrid": "Afficher la grille",
   "pathmind.settings.showTooltips": "Afficher les infobulles",
+  "pathmind.settings.showChatErrors": "Afficher les erreurs du chat",
+  "pathmind.settings.nodeDelay": "Délai du nœud",
   "pathmind.settings.on": "Activé",
   "pathmind.settings.off": "Désactivé",
 

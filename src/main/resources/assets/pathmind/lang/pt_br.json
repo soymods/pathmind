@@ -29,6 +29,8 @@
   "pathmind.settings.accent": "Cor da interface",
   "pathmind.settings.showGrid": "Mostrar grade",
   "pathmind.settings.showTooltips": "Mostrar dicas",
+  "pathmind.settings.showChatErrors": "Mostrar erros no chat",
+  "pathmind.settings.nodeDelay": "Atraso do nó",
   "pathmind.settings.on": "Ativado",
   "pathmind.settings.off": "Desativado",
 

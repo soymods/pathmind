@@ -8,6 +8,7 @@ import com.pathmind.nodes.ParameterType;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
+import com.pathmind.data.SettingsManager;
 import com.pathmind.util.BaritoneApiProxy;
 
 import org.slf4j.Logger;
@@ -745,12 +746,13 @@ public class ExecutionManager {
     }
 
     private CompletableFuture<Void> scheduleNodeStartDelay() {
-        if (NODE_EXECUTION_DELAY_MS <= 0L) {
+        long delayMs = SettingsManager.getNodeDelayMs();
+        if (delayMs <= 0L) {
             return CompletableFuture.completedFuture(null);
         }
 
         return CompletableFuture.runAsync(() -> { },
-            CompletableFuture.delayedExecutor(NODE_EXECUTION_DELAY_MS, TimeUnit.MILLISECONDS));
+            CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS));
     }
 
     private CompletableFuture<Void> waitForExecutionResume() {

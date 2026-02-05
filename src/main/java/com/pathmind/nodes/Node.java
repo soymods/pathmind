@@ -357,6 +357,9 @@ public class Node {
         if (client == null || message == null || message.isEmpty()) {
             return;
         }
+        if (!com.pathmind.data.SettingsManager.shouldShowChatErrors()) {
+            return;
+        }
 
         client.execute(() -> sendNodeErrorMessageOnClientThread(client, message));
     }

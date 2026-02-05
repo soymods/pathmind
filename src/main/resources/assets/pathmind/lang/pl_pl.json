@@ -29,6 +29,8 @@
   "pathmind.settings.accent": "Kolor interfejsu",
   "pathmind.settings.showGrid": "Pokaż siatkę",
   "pathmind.settings.showTooltips": "Pokaż podpowiedzi",
+  "pathmind.settings.showChatErrors": "Pokaż błędy czatu",
+  "pathmind.settings.nodeDelay": "Opóźnienie węzła",
   "pathmind.settings.on": "Wł.",
   "pathmind.settings.off": "Wył.",
 

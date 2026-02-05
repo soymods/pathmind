@@ -298,13 +298,15 @@ public class VillagerTradeSelector {
         }
 
         if (filteredTrades.isEmpty()) {
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal("No trades found."),
-                listX + TEXT_PADDING,
-                listY + LIST_PADDING + 4,
-                applyAlpha(UITheme.TEXT_TERTIARY, alpha)
-            );
+            String emptyMessage = "No trades found. Open a villager trade screen to load trades.";
+            if (selectedProfession != null && "open_gui".equals(selectedProfession.id)) {
+                emptyMessage = "Open a villager trade screen to load trades.";
+            }
+            int maxTextWidth = Math.max(0, listWidth - TEXT_PADDING * 2);
+            int emptyTextX = listX + TEXT_PADDING;
+            int emptyTextY = listY + LIST_PADDING + 4;
+            renderWrappedText(context, textRenderer, emptyMessage, emptyTextX, emptyTextY, maxTextWidth,
+                applyAlpha(UITheme.TEXT_TERTIARY, alpha));
         }
 
         DropdownLayoutHelper.drawScrollBar(
@@ -502,6 +504,7 @@ public class VillagerTradeSelector {
     private void loadProfessionOptions() {
         professions.clear();
         List<ProfessionOption> options = new ArrayList<>();
+        options.add(new ProfessionOption("open_gui", "Open Villager GUI", null, null));
         for (Identifier id : Registries.VILLAGER_PROFESSION.getIds()) {
             if (id == null) {
                 continue;
@@ -521,6 +524,12 @@ public class VillagerTradeSelector {
         }
         options.sort(Comparator.comparing(option -> option.id, String.CASE_INSENSITIVE_ORDER));
         options.sort((a, b) -> {
+            if ("open_gui".equals(a.id)) {
+                return -1;
+            }
+            if ("open_gui".equals(b.id)) {
+                return 1;
+            }
             if ("librarian".equals(a.id)) {
                 return -1;
             }
@@ -541,6 +550,18 @@ public class VillagerTradeSelector {
         listScrollIndex = 0;
 
         if (selectedProfession == null || selectedProfession.entry == null) {
+            if (selectedProfession != null && "open_gui".equals(selectedProfession.id)) {
+                if (loadTradesFromOpenMerchantScreen()) {
+                    updateFilteredTrades();
+                    if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+                        String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+                        selectedTradeKey = fallbackKey != null ? fallbackKey : "";
+                    }
+                    if (selectedTradeKey.isEmpty()) {
+                        selectFirstTrade();
+                    }
+                }
+            }
             return;
         }
 
@@ -567,7 +588,7 @@ public class VillagerTradeSelector {
         World fallbackWorld = client.world;
         World activeWorld = serverWorld != null ? serverWorld : fallbackWorld;
         if (activeWorld == null) {
-            if (loadCachedTrades()) {
+            if (loadCachedTrades() || loadTradesFromOpenMerchantScreen()) {
                 updateFilteredTrades();
                 if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
                     String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
@@ -644,6 +665,20 @@ public class VillagerTradeSelector {
         trades.sort(Comparator
             .comparingInt((TradeEntry entry) -> entry.level)
             .thenComparing(entry -> entry.displayText, String.CASE_INSENSITIVE_ORDER));
+
+        if (trades.isEmpty()) {
+            if (loadCachedTrades() || loadTradesFromOpenMerchantScreen()) {
+                updateFilteredTrades();
+                if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+                    String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+                    selectedTradeKey = fallbackKey != null ? fallbackKey : "";
+                }
+                if (selectedTradeKey.isEmpty()) {
+                    selectFirstTrade();
+                }
+                return;
+            }
+        }
 
         cacheTrades();
         updateFilteredTrades();
@@ -943,6 +978,42 @@ public class VillagerTradeSelector {
         return true;
     }
 
+    private boolean loadTradesFromOpenMerchantScreen() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return false;
+        }
+        if (!(client.currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen)) {
+            return false;
+        }
+        net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+        if (screenHandler == null) {
+            return false;
+        }
+        net.minecraft.village.TradeOfferList offers = screenHandler.getRecipes();
+        if (offers == null || offers.isEmpty()) {
+            return false;
+        }
+        trades.clear();
+        for (net.minecraft.village.TradeOffer offer : offers) {
+            if (offer == null) {
+                continue;
+            }
+            ItemStack sell = offer.getSellItem();
+            if (sell == null || sell.isEmpty()) {
+                continue;
+            }
+            ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
+            ItemStack buySecond = offer.getDisplayedSecondBuyItem();
+            trades.add(TradeEntry.fromOffer(1, buyFirst, buySecond, sell));
+        }
+        if (trades.isEmpty()) {
+            return false;
+        }
+        cacheTrades();
+        return true;
+    }
+
     private TradeOffer createOffer(TradeOffers.Factory factory, net.minecraft.server.world.ServerWorld serverWorld,
                                    World fallbackWorld, VillagerEntity villager, Random random) {
         if (factory == null || villager == null) {
@@ -1208,6 +1279,22 @@ public class VillagerTradeSelector {
         int trimmedWidth = Math.max(0, availableWidth - ellipsisWidth);
         String trimmed = renderer.trimToWidth(text, trimmedWidth);
         return trimmed + "...";
+    }
+
+    private void renderWrappedText(DrawContext context, TextRenderer textRenderer, String message,
+                                   int x, int y, int maxWidth, int color) {
+        if (message == null || message.isEmpty() || maxWidth <= 0) {
+            return;
+        }
+        List<net.minecraft.text.OrderedText> lines = textRenderer.wrapLines(Text.literal(message), maxWidth);
+        if (lines == null || lines.isEmpty()) {
+            return;
+        }
+        int lineY = y;
+        for (int i = 0; i < lines.size(); i++) {
+            context.drawTextWithShadow(textRenderer, lines.get(i), x, lineY, color);
+            lineY += textRenderer.fontHeight + 2;
+        }
     }
 
     private String normalizeId(String raw) {

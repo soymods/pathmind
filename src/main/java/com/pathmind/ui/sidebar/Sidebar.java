@@ -197,7 +197,8 @@ public class Sidebar {
             baritoneAvailable,
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
-            NodeType.SENSOR_VILLAGER_TRADE
+            NodeType.SENSOR_VILLAGER_TRADE,
+            NodeType.SENSOR_GUI_FILLED
         ));
         groups.add(new NodeGroup(
             "Player Stats",

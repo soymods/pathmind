@@ -198,6 +198,8 @@
   "pathmind.node.type.sensorBlockAhead.desc": "Wykrywa, czy określony blok znajduje się bezpośrednio przed graczem",
   "pathmind.node.type.sensorPositionOf": "Position Of",
   "pathmind.node.type.sensorPositionOf.desc": "Gets the position of an entity, block, or item",
+  "pathmind.node.type.sensorGuiFilled": "GUI Filled",
+  "pathmind.node.type.sensorGuiFilled.desc": "Detect if the open GUI has every slot filled",
   "pathmind.node.type.sensorIsDaytime": "Jest dzień",
   "pathmind.node.type.sensorIsDaytime.desc": "Wykrywa, czy jest obecnie dzień",
   "pathmind.node.type.sensorIsRaining": "Pada deszcz",

@@ -559,6 +559,7 @@ public class Node {
             case SENSOR_CHAT_MESSAGE:
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
+            case SENSOR_GUI_FILLED:
                 return true;
             default:
                 return false;
@@ -3024,6 +3025,7 @@ public class Node {
             case SENSOR_IS_FALLING:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
+            case SENSOR_GUI_FILLED:
                 return true;
             default:
                 return false;
@@ -9375,6 +9377,32 @@ public class Node {
         return Character.isLetterOrDigit(character) || character == '_' || character == '-';
     }
 
+    private boolean isOpenGuiFilled() {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return false;
+        }
+        ScreenHandler handler = client.player.currentScreenHandler;
+        if (handler == null) {
+            return false;
+        }
+        boolean hasContainerSlots = false;
+        for (Slot slot : handler.slots) {
+            if (slot == null) {
+                continue;
+            }
+            if (slot.inventory instanceof PlayerInventory) {
+                continue;
+            }
+            hasContainerSlots = true;
+            ItemStack stack = slot.getStack();
+            if (stack == null || stack.isEmpty()) {
+                return false;
+            }
+        }
+        return hasContainerSlots;
+    }
+
     private void executeWriteBookCommand(CompletableFuture<Void> future) {
         if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
             return;
@@ -13012,6 +13040,9 @@ public class Node {
                 break;
             case SENSOR_IS_RAINING:
                 result = isRaining();
+                break;
+            case SENSOR_GUI_FILLED:
+                result = isOpenGuiFilled();
                 break;
             case SENSOR_HEALTH_BELOW: {
                 double amount = MathHelper.clamp(getDoubleParameter("Amount", 10.0), 0.0, 40.0);

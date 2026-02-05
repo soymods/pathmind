@@ -21,6 +21,7 @@ public enum NodeType {
     // Operator nodes
     OPERATOR_EQUALS("pathmind.node.type.operatorEquals", 0xFF00C853, "pathmind.node.type.operatorEquals.desc"),
     OPERATOR_NOT("pathmind.node.type.operatorNot", 0xFF00C853, "pathmind.node.type.operatorNot.desc"),
+    OPERATOR_RANDOM("pathmind.node.type.operatorRandom", 0xFF00C853, "pathmind.node.type.operatorRandom.desc"),
 
     // Navigation Commands
     GOTO("pathmind.node.type.goto", 0xFF00BCD4, "pathmind.node.type.goto.desc"),
@@ -190,6 +191,7 @@ public enum NodeType {
                 return NodeCategory.VARIABLES;
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
+            case OPERATOR_RANDOM:
                 return NodeCategory.OPERATORS;
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
@@ -357,6 +359,7 @@ public enum NodeType {
             case PARAM_CLOSEST:
             case PARAM_MESSAGE:
             case VARIABLE:
+            case OPERATOR_RANDOM:
                 return true;
             default:
                 return false;

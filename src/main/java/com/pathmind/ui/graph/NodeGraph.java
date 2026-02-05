@@ -2973,14 +2973,22 @@ public class NodeGraph {
                         }
                         boolean isPlayerParam = isPlayerParameter(node, param);
                         boolean isMessageParam = isMessageParameter(node, param);
+                        boolean isSeedParam = isSeedParameter(node, param);
                         boolean showPlayerPlaceholder = false;
                         boolean showMessagePlaceholder = false;
+                        boolean showSeedPlaceholder = false;
                         if (isPlayerParam || isMessageParam) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty()
                                 : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
                             showPlayerPlaceholder = isPlayerParam && showPlaceholder;
                             showMessagePlaceholder = isMessageParam && showPlaceholder;
+                        }
+                        if (isSeedParam) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty()
+                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            showSeedPlaceholder = showPlaceholder;
                         }
                         if (!editingThis
                             && node.getType() == NodeType.PARAM_VILLAGER_TRADE
@@ -2992,7 +3000,7 @@ public class NodeGraph {
                                 ? "Any State"
                                 : "Any";
                         }
-                        if (showPlayerPlaceholder || showMessagePlaceholder) {
+                        if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder) {
                             value = "Any";
                             valueColor = UITheme.TEXT_TERTIARY;
                         }
@@ -5306,7 +5314,9 @@ public class NodeGraph {
         NodeParameter parameter = node.getParameters().get(index);
         String originalValue = parameter != null ? parameter.getStringValue() : "";
         parameterEditBuffer = originalValue;
-        if (parameter != null && (isPlayerParameter(node, parameter) || isMessageParameter(node, parameter))) {
+        if (parameter != null && (isPlayerParameter(node, parameter)
+            || isMessageParameter(node, parameter)
+            || isSeedParameter(node, parameter))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
                 || "Any".equalsIgnoreCase(parameterEditBuffer)) {
                 parameterEditBuffer = "";
@@ -5364,7 +5374,9 @@ public class NodeGraph {
         String previous = parameter != null ? parameter.getStringValue() : "";
         String appliedValue = value;
         if (parameter != null) {
-            if (isPlayerParameter(parameterEditingNode, parameter) || isMessageParameter(parameterEditingNode, parameter)) {
+            if (isPlayerParameter(parameterEditingNode, parameter)
+                || isMessageParameter(parameterEditingNode, parameter)
+                || isSeedParameter(parameterEditingNode, parameter)) {
                 if (value.trim().isEmpty()) {
                     appliedValue = "Any";
                     parameter.setStringValue(appliedValue);
@@ -5421,6 +5433,16 @@ public class NodeGraph {
             return false;
         }
         return "Text".equalsIgnoreCase(parameter.getName()) || "Message".equalsIgnoreCase(parameter.getName());
+    }
+
+    private boolean isSeedParameter(Node node, NodeParameter parameter) {
+        if (node == null || parameter == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.OPERATOR_RANDOM) {
+            return false;
+        }
+        return "Seed".equalsIgnoreCase(parameter.getName());
     }
 
     private void revertParameterEdit() {

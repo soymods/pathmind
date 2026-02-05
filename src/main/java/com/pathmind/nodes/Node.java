@@ -93,6 +93,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.regex.Pattern;
+import java.util.Random;
 import org.lwjgl.glfw.GLFW;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -249,6 +250,8 @@ public class Node {
     private int coordinateFieldWidthOverride;
     private int amountFieldWidthOverride;
     private int stopTargetFieldWidthOverride;
+    private transient Random randomGenerator;
+    private transient String randomSeedCache;
 
     public Node(NodeType type, int x, int y) {
         this.id = java.util.UUID.randomUUID().toString();
@@ -520,7 +523,9 @@ public class Node {
     }
 
     public boolean isParameterNode() {
-        return type.getCategory() == NodeCategory.PARAMETERS || type == NodeType.VARIABLE;
+        return type.getCategory() == NodeCategory.PARAMETERS
+            || type == NodeType.VARIABLE
+            || type == NodeType.OPERATOR_RANDOM;
     }
 
     public boolean shouldRenderInlineParameters() {
@@ -560,7 +565,10 @@ public class Node {
     }
 
     public static boolean isParameterType(NodeType nodeType) {
-        return nodeType != null && (nodeType.getCategory() == NodeCategory.PARAMETERS || nodeType == NodeType.VARIABLE);
+        return nodeType != null
+            && (nodeType.getCategory() == NodeCategory.PARAMETERS
+                || nodeType == NodeType.VARIABLE
+                || nodeType == NodeType.OPERATOR_RANDOM);
     }
 
     public boolean canAcceptSensor() {
@@ -2338,6 +2346,11 @@ public class Node {
             case VARIABLE:
                 parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
                 break;
+            case OPERATOR_RANDOM:
+                parameters.add(new NodeParameter("Min", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("Max", ParameterType.DOUBLE, "1.0"));
+                parameters.add(new NodeParameter("Seed", ParameterType.STRING, "Any"));
+                break;
             case CHANGE_VARIABLE:
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                 parameters.add(new NodeParameter("Increase", ParameterType.BOOLEAN, "true"));
@@ -2736,6 +2749,21 @@ public class Node {
                     values.put("Value", amount);
                     values.put(normalizeParameterKey("Value"), amount);
                 }
+                break;
+            }
+            case OPERATOR_RANDOM: {
+                double min = getDoubleParameter("Min", 0.0);
+                double max = getDoubleParameter("Max", 1.0);
+                double randomValue = generateRandomValue(min, max);
+                String value = Double.toString(randomValue);
+                values.put("Amount", value);
+                values.put(normalizeParameterKey("Amount"), value);
+                values.put("Count", value);
+                values.put(normalizeParameterKey("Count"), value);
+                values.put("Threshold", value);
+                values.put(normalizeParameterKey("Threshold"), value);
+                values.put("Value", value);
+                values.put(normalizeParameterKey("Value"), value);
                 break;
             }
             case PARAM_ITEM: {
@@ -4339,6 +4367,11 @@ public class Node {
     }
 
     private static int parseNodeInt(Node node, String name, int defaultValue) {
+        if (node != null && node.getType() == NodeType.OPERATOR_RANDOM) {
+            double min = node.getDoubleParameter("Min", 0.0);
+            double max = node.getDoubleParameter("Max", 1.0);
+            return (int) Math.round(node.generateRandomValue(min, max));
+        }
         String value = getParameterString(node, name);
         if (value == null || value.isEmpty()) {
             return defaultValue;
@@ -4351,6 +4384,11 @@ public class Node {
     }
 
     private static double parseNodeDouble(Node node, String name, double defaultValue) {
+        if (node != null && node.getType() == NodeType.OPERATOR_RANDOM) {
+            double min = node.getDoubleParameter("Min", 0.0);
+            double max = node.getDoubleParameter("Max", 1.0);
+            return node.generateRandomValue(min, max);
+        }
         String value = getParameterString(node, name);
         if (value == null || value.isEmpty()) {
             return defaultValue;
@@ -4380,6 +4418,63 @@ public class Node {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private double generateRandomValue(double min, double max) {
+        if (Double.isNaN(min) || Double.isNaN(max)) {
+            return 0.0;
+        }
+        double lower = min;
+        double upper = max;
+        if (lower > upper) {
+            double swap = lower;
+            lower = upper;
+            upper = swap;
+        }
+        if (lower == upper) {
+            return lower;
+        }
+        Random generator = getRandomGenerator();
+        double range = upper - lower;
+        if (generator == null) {
+            return lower + Math.random() * range;
+        }
+        return lower + generator.nextDouble() * range;
+    }
+
+    private Random getRandomGenerator() {
+        String seed = getParameterString(this, "Seed");
+        if (seed == null || seed.trim().isEmpty() || isAnySeedValue(seed)) {
+            randomGenerator = null;
+            randomSeedCache = null;
+            return null;
+        }
+        String trimmed = seed.trim();
+        if (randomGenerator == null || randomSeedCache == null || !randomSeedCache.equals(trimmed)) {
+            long hashedSeed = hashSeedString(trimmed);
+            randomGenerator = new Random(hashedSeed);
+            randomSeedCache = trimmed;
+        }
+        return randomGenerator;
+    }
+
+    private static long hashSeedString(String seed) {
+        if (seed == null) {
+            return 0L;
+        }
+        long hash = 1125899906842597L;
+        for (int i = 0; i < seed.length(); i++) {
+            hash = 31L * hash + seed.charAt(i);
+        }
+        return hash;
+    }
+
+    private boolean isAnySeedValue(String seed) {
+        if (seed == null) {
+            return true;
+        }
+        String trimmed = seed.trim();
+        return trimmed.isEmpty() || "any".equalsIgnoreCase(trimmed);
     }
 
     private List<BlockSelection> resolveBlocksFromParameter(Node parameterNode) {
@@ -9119,6 +9214,12 @@ public class Node {
                 return getRuntimeValue(values, "range");
             case PARAM_AMOUNT:
                 return getRuntimeValue(values, "amount");
+            case OPERATOR_RANDOM:
+                String value = getRuntimeValue(values, "value");
+                if (!value.isEmpty()) {
+                    return value;
+                }
+                return getRuntimeValue(values, "amount");
             case PARAM_BOOLEAN:
                 return getRuntimeValue(values, "toggle");
             case PARAM_HAND:
@@ -12749,7 +12850,7 @@ public class Node {
                 break;
             case SENSOR_HEALTH_BELOW: {
                 double amount = MathHelper.clamp(getDoubleParameter("Amount", 10.0), 0.0, 40.0);
-                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT);
+                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT, NodeType.OPERATOR_RANDOM);
                 if (amountParameter != null) {
                     amount = MathHelper.clamp(parseNodeDouble(amountParameter, "Amount", amount), 0.0, 40.0);
                 }
@@ -12758,7 +12859,7 @@ public class Node {
             }
             case SENSOR_HUNGER_BELOW: {
                 int amount = MathHelper.clamp(getIntParameter("Amount", 10), 0, 20);
-                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT);
+                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT, NodeType.OPERATOR_RANDOM);
                 if (amountParameter != null) {
                     double parsed = parseNodeDouble(amountParameter, "Amount", amount);
                     amount = MathHelper.clamp((int) Math.round(parsed), 0, 20);
@@ -12774,7 +12875,7 @@ public class Node {
                 Node parameterNode = null;
                 Node attached = getAttachedParameter();
                 if (attached != null && attached.isParameterNode()) {
-                    if (attached.getType() == NodeType.PARAM_AMOUNT) {
+                    if (attached.getType() == NodeType.PARAM_AMOUNT || attached.getType() == NodeType.OPERATOR_RANDOM) {
                         amountNode = attached;
                     } else if (attached.getType() == NodeType.PARAM_ITEM) {
                         parameterNode = attached;

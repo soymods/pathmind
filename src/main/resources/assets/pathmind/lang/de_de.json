@@ -96,6 +96,8 @@
   "pathmind.node.type.operatorEquals.desc": "Prüft, ob eine Variable einem Parameterwert entspricht",
   "pathmind.node.type.operatorNot": "Ungleich",
   "pathmind.node.type.operatorNot.desc": "Prüft, ob eine Variable nicht einem Parameterwert entspricht",
+  "pathmind.node.type.operatorRandom": "Random",
+  "pathmind.node.type.operatorRandom.desc": "Generates a random number between a minimum and maximum value",
 
   "pathmind.node.type.goto": "Gehe zu",
   "pathmind.node.type.goto.desc": "Bewegt sich zu angegebenen Koordinaten",

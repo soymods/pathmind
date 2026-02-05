@@ -96,6 +96,8 @@
   "pathmind.node.type.operatorEquals.desc": "Sprawdza, czy zmienna jest równa wartości parametru",
   "pathmind.node.type.operatorNot": "Różne",
   "pathmind.node.type.operatorNot.desc": "Sprawdza, czy zmienna nie jest równa wartości parametru",
+  "pathmind.node.type.operatorRandom": "Random",
+  "pathmind.node.type.operatorRandom.desc": "Generates a random number between a minimum and maximum value",
 
   "pathmind.node.type.goto": "Idź do",
   "pathmind.node.type.goto.desc": "Przemieszcza się do określonych współrzędnych",

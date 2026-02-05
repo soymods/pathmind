@@ -8285,34 +8285,33 @@ public class NodeGraph {
         boolean animateConnections = manager.isExecuting();
         long animationTimestamp = System.currentTimeMillis();
 
-        for (NodeConnection connection : connections) {
-            if (onlyDragged != isConnectionInDraggedLayer(connection)) {
-                continue;
-            }
-            Node outputNode = connection.getOutputNode();
-            Node inputNode = connection.getInputNode();
+        if (!onlyDragged) {
+            for (NodeConnection connection : connections) {
+                Node outputNode = connection.getOutputNode();
+                Node inputNode = connection.getInputNode();
 
-            if (!outputNode.shouldRenderSockets() || !inputNode.shouldRenderSockets()) {
-                continue;
-            }
+                if (!outputNode.shouldRenderSockets() || !inputNode.shouldRenderSockets()) {
+                    continue;
+                }
 
-            int outputX = outputNode.getSocketX(false) - cameraX;
-            int outputY = outputNode.getSocketY(connection.getOutputSocket(), false) - cameraY;
-            int inputX = inputNode.getSocketX(true) - cameraX;
-            int inputY = inputNode.getSocketY(connection.getInputSocket(), true) - cameraY;
+                int outputX = outputNode.getSocketX(false) - cameraX;
+                int outputY = outputNode.getSocketY(connection.getOutputSocket(), false) - cameraY;
+                int inputX = inputNode.getSocketX(true) - cameraX;
+                int inputY = inputNode.getSocketY(connection.getInputSocket(), true) - cameraY;
 
-            int color = outputNode.getOutputSocketColor(connection.getOutputSocket());
-            if (shouldGrayOutConnection(outputNode, inputNode)) {
-                color = toGrayscale(color, 0.65f);
-            }
+                int color = outputNode.getOutputSocketColor(connection.getOutputSocket());
+                if (shouldGrayOutConnection(outputNode, inputNode)) {
+                    color = toGrayscale(color, 0.65f);
+                }
 
-            // Simple bezier-like curve
-            if (animateConnections && manager.shouldAnimateConnection(connection)) {
-                renderAnimatedConnectionCurve(context, outputX, outputY, inputX, inputY,
-                        color, animationTimestamp);
-            } else {
-                renderConnectionCurve(context, outputX, outputY, inputX, inputY,
-                        color);
+                // Simple bezier-like curve
+                if (animateConnections && manager.shouldAnimateConnection(connection)) {
+                    renderAnimatedConnectionCurve(context, outputX, outputY, inputX, inputY,
+                            color, animationTimestamp);
+                } else {
+                    renderConnectionCurve(context, outputX, outputY, inputX, inputY,
+                            color);
+                }
             }
         }
 

@@ -180,6 +180,7 @@ public class Sidebar {
         groups.add(new NodeGroup(
             "Position & Blocks",
             baritoneAvailable,
+            NodeType.SENSOR_POSITION_OF,
             NodeType.SENSOR_AT_COORDINATES,
             NodeType.SENSOR_TOUCHING_BLOCK,
             NodeType.SENSOR_BLOCK_AHEAD

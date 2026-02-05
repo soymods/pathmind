@@ -86,6 +86,7 @@ public enum NodeType {
     SENSOR_TOUCHING_ENTITY("pathmind.node.type.sensorTouchingEntity", 0xFF64B5F6, "pathmind.node.type.sensorTouchingEntity.desc"),
     SENSOR_AT_COORDINATES("pathmind.node.type.sensorAtCoordinates", 0xFF64B5F6, "pathmind.node.type.sensorAtCoordinates.desc"),
     SENSOR_BLOCK_AHEAD("pathmind.node.type.sensorBlockAhead", 0xFF64B5F6, "pathmind.node.type.sensorBlockAhead.desc"),
+    SENSOR_POSITION_OF("pathmind.node.type.sensorPositionOf", 0xFF64B5F6, "pathmind.node.type.sensorPositionOf.desc"),
     SENSOR_IS_DAYTIME("pathmind.node.type.sensorIsDaytime", 0xFF64B5F6, "pathmind.node.type.sensorIsDaytime.desc"),
     SENSOR_IS_RAINING("pathmind.node.type.sensorIsRaining", 0xFF64B5F6, "pathmind.node.type.sensorIsRaining.desc"),
     SENSOR_HEALTH_BELOW("pathmind.node.type.sensorHealthBelow", 0xFF64B5F6, "pathmind.node.type.sensorHealthBelow.desc"),
@@ -203,6 +204,7 @@ public enum NodeType {
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
+            case SENSOR_POSITION_OF:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_HEALTH_BELOW:

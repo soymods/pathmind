@@ -196,6 +196,8 @@
   "pathmind.node.type.sensorAtCoordinates.desc": "Определяет, находится ли игрок в определенных координатах",
   "pathmind.node.type.sensorBlockAhead": "Блок впереди",
   "pathmind.node.type.sensorBlockAhead.desc": "Определяет, находится ли определенный блок прямо перед игроком",
+  "pathmind.node.type.sensorPositionOf": "Position Of",
+  "pathmind.node.type.sensorPositionOf.desc": "Gets the position of an entity, block, or item",
   "pathmind.node.type.sensorIsDaytime": "Это день",
   "pathmind.node.type.sensorIsDaytime.desc": "Определяет, сейчас день",
   "pathmind.node.type.sensorIsRaining": "Идет дождь",

@@ -568,7 +568,8 @@ public class Node {
         return nodeType != null
             && (nodeType.getCategory() == NodeCategory.PARAMETERS
                 || nodeType == NodeType.VARIABLE
-                || nodeType == NodeType.OPERATOR_RANDOM);
+                || nodeType == NodeType.OPERATOR_RANDOM
+                || nodeType == NodeType.SENSOR_POSITION_OF);
     }
 
     public boolean canAcceptSensor() {
@@ -587,6 +588,9 @@ public class Node {
     }
 
     public boolean canAcceptParameter() {
+        if (type == NodeType.SENSOR_POSITION_OF) {
+            return true;
+        }
         if (type == NodeType.OPEN_INVENTORY || type == NodeType.CLOSE_GUI) {
             return false;
         }
@@ -640,7 +644,8 @@ public class Node {
     }
 
     public boolean canAcceptParameterNode(Node parameterNode, int slotIndex) {
-        if (parameterNode == null || !parameterNode.isParameterNode()) {
+        if (parameterNode == null
+            || (!parameterNode.isParameterNode() && parameterNode.getType() != NodeType.SENSOR_POSITION_OF)) {
             return false;
         }
         if (!canAcceptParameterAt(slotIndex)) {
@@ -704,7 +709,8 @@ public class Node {
             if (slotIndex == 0) {
                 return parameterType == NodeType.VARIABLE;
             }
-            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
+                && parameterType != NodeType.VARIABLE;
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
@@ -715,7 +721,8 @@ public class Node {
             if (slotIndex == 0) {
                 return parameterType == NodeType.VARIABLE;
             }
-            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
+                && parameterType != NodeType.VARIABLE;
         }
         if (type == NodeType.WALK) {
             NodeType parameterType = parameter.getType();
@@ -745,6 +752,15 @@ public class Node {
         if (parameter == null) {
             return false;
         }
+        if (type == NodeType.SENSOR_POSITION_OF) {
+            if (slotIndex != 0) {
+                return false;
+            }
+            NodeType parameterType = parameter.getType();
+            return parameterType == NodeType.PARAM_ENTITY
+                || parameterType == NodeType.PARAM_BLOCK
+                || parameterType == NodeType.PARAM_ITEM;
+        }
         if (parameter.getType() == NodeType.VARIABLE
             && type != NodeType.SET_VARIABLE
             && type != NodeType.CHANGE_VARIABLE
@@ -757,7 +773,8 @@ public class Node {
             if (slotIndex == 0) {
                 return parameterType == NodeType.VARIABLE;
             }
-            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
+                && parameterType != NodeType.VARIABLE;
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
@@ -768,7 +785,8 @@ public class Node {
             if (slotIndex == 0) {
                 return parameterType == NodeType.VARIABLE;
             }
-            return parameter.isParameterNode() && parameterType != NodeType.VARIABLE;
+            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
+                && parameterType != NodeType.VARIABLE;
         }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             NodeType parameterType = parameter.getType();
@@ -1140,7 +1158,7 @@ public class Node {
             return "";
         }
         if (type == NodeType.SET_VARIABLE) {
-            return slotIndex == 0 ? "Variable" : "Parameter";
+            return slotIndex == 0 ? "Variable" : "Value";
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             return "Variable";
@@ -1162,6 +1180,9 @@ public class Node {
         }
         if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
             return slotIndex == 0 ? "Item" : "Slot";
+        }
+        if (type == NodeType.SENSOR_POSITION_OF) {
+            return "Target";
         }
         if (type == NodeType.SENSOR_VILLAGER_TRADE) {
             return "Villager Trade";
@@ -1564,7 +1585,11 @@ public class Node {
         int availableHeight = getParameterSlotHeight(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
         int parameterX = slotX + Math.max(0, (availableWidth - parameter.getWidth()) / 2);
         int parameterY = slotY + Math.max(0, (availableHeight - parameter.getHeight()) / 2);
-        parameter.setPositionSilently(parameterX, parameterY);
+        if (parameter.hasAttachedParameter() || parameter.hasAttachedSensor() || parameter.hasAttachedActionNode()) {
+            parameter.setPosition(parameterX, parameterY);
+        } else {
+            parameter.setPositionSilently(parameterX, parameterY);
+        }
     }
 
     public int getActionSlotLeft() {
@@ -1677,7 +1702,9 @@ public class Node {
     }
 
     public boolean attachParameter(Node parameter, int slotIndex) {
-        if (parameter == null || !parameter.isParameterNode() || parameter == this) {
+        if (parameter == null
+            || (!parameter.isParameterNode() && parameter.getType() != NodeType.SENSOR_POSITION_OF)
+            || parameter == this) {
             return false;
         }
         if ((type == NodeType.PLACE || type == NodeType.PLACE_HAND)
@@ -2764,6 +2791,34 @@ public class Node {
                 values.put(normalizeParameterKey("Threshold"), value);
                 values.put("Value", value);
                 values.put(normalizeParameterKey("Value"), value);
+                break;
+            }
+            case SENSOR_POSITION_OF: {
+                Node parameterNode = getAttachedParameterOfType(
+                    NodeType.PARAM_ENTITY,
+                    NodeType.PARAM_BLOCK,
+                    NodeType.PARAM_ITEM
+                );
+                if (parameterNode == null) {
+                    break;
+                }
+                Optional<Vec3d> resolved = resolvePositionTarget(parameterNode, null, null);
+                if (resolved.isEmpty()) {
+                    break;
+                }
+                Vec3d position = resolved.get();
+                int x = MathHelper.floor(position.x);
+                int y = MathHelper.floor(position.y);
+                int z = MathHelper.floor(position.z);
+                String xValue = Integer.toString(x);
+                String yValue = Integer.toString(y);
+                String zValue = Integer.toString(z);
+                values.put("X", xValue);
+                values.put(normalizeParameterKey("X"), xValue);
+                values.put("Y", yValue);
+                values.put(normalizeParameterKey("Y"), yValue);
+                values.put("Z", zValue);
+                values.put(normalizeParameterKey("Z"), zValue);
                 break;
             }
             case PARAM_ITEM: {
@@ -5000,7 +5055,11 @@ public class Node {
         }
 
         Map<String, String> values = valueNode.exportParameterValues();
-        ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueNode.getType(), values);
+        NodeType valueType = valueNode.getType();
+        if (valueType == NodeType.SENSOR_POSITION_OF) {
+            valueType = NodeType.PARAM_COORDINATE;
+        }
+        ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
         manager.setRuntimeVariable(startNode, variableName.trim(), value);
         future.complete(null);
     }
@@ -9230,6 +9289,8 @@ public class Node {
                 return formatRotationValues(values);
             case VARIABLE:
                 return getRuntimeValue(values, "variable");
+            case SENSOR_POSITION_OF:
+                return formatCoordinateValues(values);
             default:
                 break;
         }
@@ -13200,7 +13261,11 @@ public class Node {
         if (variable == null) {
             return false;
         }
-        if (variable.getType() != valueNode.getType()) {
+        NodeType valueType = valueNode.getType();
+        if (valueType == NodeType.SENSOR_POSITION_OF) {
+            valueType = NodeType.PARAM_COORDINATE;
+        }
+        if (variable.getType() != valueType) {
             return false;
         }
         Map<String, String> currentValues = valueNode.exportParameterValues();
@@ -13230,7 +13295,11 @@ public class Node {
         if (variable == null) {
             return false;
         }
-        if (variable.getType() != valueNode.getType()) {
+        NodeType valueType = valueNode.getType();
+        if (valueType == NodeType.SENSOR_POSITION_OF) {
+            valueType = NodeType.PARAM_COORDINATE;
+        }
+        if (variable.getType() != valueType) {
             return false;
         }
         Map<String, String> currentValues = valueNode.exportParameterValues();

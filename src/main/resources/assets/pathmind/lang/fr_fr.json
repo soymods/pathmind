@@ -87,9 +87,9 @@
 
   "pathmind.node.type.variable": "Variable",
   "pathmind.node.type.variable.desc": "Représente une variable nommée à l'exécution",
-  "pathmind.node.type.setVariable": "Définir une variable",
+  "pathmind.node.type.setVariable": "Définir",
   "pathmind.node.type.setVariable.desc": "Attribue une valeur de paramètre à une variable à l'exécution",
-  "pathmind.node.type.changeVariable": "Modifier variable",
+  "pathmind.node.type.changeVariable": "Modifier",
   "pathmind.node.type.changeVariable.desc": "Ajuste la valeur d'une variable à la hausse ou à la baisse pendant l'exécution",
 
   "pathmind.node.type.operatorEquals": "Égal",

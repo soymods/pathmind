@@ -647,7 +647,9 @@ public class Node {
 
     public boolean canAcceptParameterNode(Node parameterNode, int slotIndex) {
         if (parameterNode == null
-            || (!parameterNode.isParameterNode() && parameterNode.getType() != NodeType.SENSOR_POSITION_OF)) {
+            || (!parameterNode.isParameterNode()
+                && parameterNode.getType() != NodeType.SENSOR_POSITION_OF
+                && parameterNode.getType() != NodeType.VARIABLE)) {
             return false;
         }
         if (!canAcceptParameterAt(slotIndex)) {
@@ -708,11 +710,18 @@ public class Node {
         }
         if (type == NodeType.SET_VARIABLE) {
             NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.VARIABLE;
+            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
+            Node otherParameter = getAttachedParameter(otherSlotIndex);
+            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
+            boolean otherIsValue = otherParameter != null && otherParameter.getType() != NodeType.VARIABLE;
+
+            if (parameterType == NodeType.VARIABLE) {
+                return !otherIsVariable;
             }
-            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
-                && parameterType != NodeType.VARIABLE;
+            if (otherIsValue) {
+                return false;
+            }
+            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF);
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
@@ -772,11 +781,18 @@ public class Node {
         }
         if (type == NodeType.SET_VARIABLE) {
             NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.VARIABLE;
+            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
+            Node otherParameter = getAttachedParameter(otherSlotIndex);
+            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
+            boolean otherIsValue = otherParameter != null && otherParameter.getType() != NodeType.VARIABLE;
+
+            if (parameterType == NodeType.VARIABLE) {
+                return !otherIsVariable;
             }
-            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
-                && parameterType != NodeType.VARIABLE;
+            if (otherIsValue) {
+                return false;
+            }
+            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF);
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
@@ -1163,7 +1179,17 @@ public class Node {
             return "";
         }
         if (type == NodeType.SET_VARIABLE) {
-            return slotIndex == 0 ? "Variable" : "Value";
+            Node slot0 = getAttachedParameter(0);
+            Node slot1 = getAttachedParameter(1);
+            boolean slot0Variable = slot0 != null && slot0.getType() == NodeType.VARIABLE;
+            boolean slot1Variable = slot1 != null && slot1.getType() == NodeType.VARIABLE;
+            if (slot0Variable && !slot1Variable) {
+                return slotIndex == 0 ? "Output" : "Input";
+            }
+            if (slot1Variable && !slot0Variable) {
+                return slotIndex == 1 ? "Output" : "Input";
+            }
+            return slotIndex == 0 ? "Input" : "Output";
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             return "Variable";
@@ -5057,13 +5083,23 @@ public class Node {
     }
 
     private void executeSetVariableCommand(CompletableFuture<Void> future) {
-        Node variableNode = getAttachedParameter(0);
-        Node valueNode = getAttachedParameter(1);
+        Node slot0 = getAttachedParameter(0);
+        Node slot1 = getAttachedParameter(1);
+        Node variableNode = null;
+        Node valueNode = null;
+
+        if (slot0 != null && slot0.getType() == NodeType.VARIABLE) {
+            variableNode = slot0;
+            valueNode = slot1;
+        } else if (slot1 != null && slot1.getType() == NodeType.VARIABLE) {
+            variableNode = slot1;
+            valueNode = slot0;
+        }
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (variableNode == null || valueNode == null) {
+        if (variableNode == null || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
             if (client != null) {
-                sendNodeErrorMessage(client, "Set Variable requires a variable and a parameter.");
+                sendNodeErrorMessage(client, "Set requires an input value and an output variable.");
             }
             future.complete(null);
             return;

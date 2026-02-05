@@ -87,9 +87,9 @@
 
   "pathmind.node.type.variable": "Переменная",
   "pathmind.node.type.variable.desc": "Представляет именованную переменную во время выполнения",
-  "pathmind.node.type.setVariable": "Установить переменную",
+  "pathmind.node.type.setVariable": "Установить",
   "pathmind.node.type.setVariable.desc": "Присваивает значение параметра переменной во время выполнения",
-  "pathmind.node.type.changeVariable": "Изменить переменную",
+  "pathmind.node.type.changeVariable": "Изменить",
   "pathmind.node.type.changeVariable.desc": "Увеличивает или уменьшает значение переменной во время выполнения",
 
   "pathmind.node.type.operatorEquals": "Равно",

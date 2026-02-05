@@ -264,6 +264,8 @@
   "pathmind.node.type.paramBoolean.desc": "Repräsentiert einen booleschen Umschaltwert",
   "pathmind.node.type.paramHand": "Hand",
   "pathmind.node.type.paramHand.desc": "Repräsentiert eine bevorzugte Handauswahl",
+  "pathmind.node.type.paramGui": "GUI",
+  "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramKey": "Taste",
   "pathmind.node.type.paramKey.desc": "Repräsentiert eine Tastaturtastenbelegung",
   "pathmind.node.type.paramRange": "Reichweite",

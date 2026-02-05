@@ -264,6 +264,8 @@
   "pathmind.node.type.paramBoolean.desc": "Reprezentuje wartość logiczną przełącznika",
   "pathmind.node.type.paramHand": "Ręka",
   "pathmind.node.type.paramHand.desc": "Reprezentuje preferowany wybór ręki",
+  "pathmind.node.type.paramGui": "GUI",
+  "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramKey": "Klawisz",
   "pathmind.node.type.paramKey.desc": "Reprezentuje przypisanie klawisza klawiatury",
   "pathmind.node.type.paramRange": "Zasięg",

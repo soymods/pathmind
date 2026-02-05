@@ -264,6 +264,8 @@
   "pathmind.node.type.paramBoolean.desc": "Représente une valeur de bascule booléenne",
   "pathmind.node.type.paramHand": "Main",
   "pathmind.node.type.paramHand.desc": "Représente une sélection de main préférée",
+  "pathmind.node.type.paramGui": "GUI",
+  "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramKey": "Touche",
   "pathmind.node.type.paramKey.desc": "Représente une liaison de touche de clavier",
   "pathmind.node.type.paramRange": "Portée",

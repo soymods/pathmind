@@ -264,6 +264,8 @@
   "pathmind.node.type.paramBoolean.desc": "Representa un valor de alternancia booleano",
   "pathmind.node.type.paramHand": "Mano",
   "pathmind.node.type.paramHand.desc": "Representa una selección de mano preferida",
+  "pathmind.node.type.paramGui": "GUI",
+  "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramKey": "Tecla",
   "pathmind.node.type.paramKey.desc": "Representa una asignación de tecla del teclado",
   "pathmind.node.type.paramRange": "Alcance",

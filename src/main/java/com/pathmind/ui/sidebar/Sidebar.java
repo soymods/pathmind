@@ -142,7 +142,8 @@ public class Sidebar {
             baritoneAvailable,
             NodeType.PARAM_VILLAGER_TRADE,
             NodeType.PARAM_INVENTORY_SLOT,
-            NodeType.PARAM_HAND
+            NodeType.PARAM_HAND,
+            NodeType.PARAM_GUI
         ));
         groups.add(new NodeGroup(
             "Input",

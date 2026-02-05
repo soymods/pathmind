@@ -14,6 +14,7 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.util.GuiSelectionMode;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -3091,10 +3092,12 @@ public class NodeGraph {
                         boolean isPlayerParam = isPlayerParameter(node, param);
                         boolean isMessageParam = isMessageParameter(node, param);
                         boolean isSeedParam = isSeedParameter(node, param);
+                        boolean isGuiParam = isGuiParameter(node, param);
                         boolean showPlayerPlaceholder = false;
                         boolean showMessagePlaceholder = false;
                         boolean showSeedPlaceholder = false;
                         boolean showBlockItemPlaceholder = false;
+                        boolean showGuiPlaceholder = false;
                         if (isPlayerParam || isMessageParam) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty()
@@ -3107,6 +3110,12 @@ public class NodeGraph {
                                 ? value.isEmpty()
                                 : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
                             showSeedPlaceholder = showPlaceholder;
+                        }
+                        if (isGuiParam) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty() || "Any".equalsIgnoreCase(value)
+                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            showGuiPlaceholder = showPlaceholder;
                         }
                         if (isBlockItemParameter(node, i)) {
                             boolean showPlaceholder = editingThis
@@ -3124,7 +3133,8 @@ public class NodeGraph {
                                 ? "Any State"
                                 : "Any";
                         }
-                        if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder || showBlockItemPlaceholder) {
+                        if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
+                            || showBlockItemPlaceholder || showGuiPlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
                             } else {
@@ -3156,7 +3166,7 @@ public class NodeGraph {
                             context.fill(caretX, fieldTop + 2, caretX + 1, fieldTop + fieldHeight - 2, UITheme.CARET_COLOR);
                         }
 
-                        if (editingThis && isBlockItemParameter(node, i)) {
+                        if (editingThis && (isBlockItemParameter(node, i) || isGuiParameter(node, param))) {
                             updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
                         }
 
@@ -5445,6 +5455,7 @@ public class NodeGraph {
         if (parameter != null && (isPlayerParameter(node, parameter)
             || isMessageParameter(node, parameter)
             || isSeedParameter(node, parameter)
+            || isGuiParameter(node, parameter)
             || isBlockItemParameter(node, index))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
                 || "Any".equalsIgnoreCase(parameterEditBuffer)
@@ -5506,7 +5517,8 @@ public class NodeGraph {
         if (parameter != null) {
             boolean isAnyLikeParam = isPlayerParameter(parameterEditingNode, parameter)
                 || isMessageParameter(parameterEditingNode, parameter)
-                || isSeedParameter(parameterEditingNode, parameter);
+                || isSeedParameter(parameterEditingNode, parameter)
+                || isGuiParameter(parameterEditingNode, parameter);
             boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
             if (isAnyLikeParam || isBlockItemParam) {
                 String trimmed = value.trim();
@@ -5582,6 +5594,20 @@ public class NodeGraph {
             return false;
         }
         return "Seed".equalsIgnoreCase(parameter.getName());
+    }
+
+    private boolean isGuiParameter(Node node, NodeParameter parameter) {
+        if (node == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_GUI) {
+            return false;
+        }
+        if (parameter != null) {
+            return "GUI".equalsIgnoreCase(parameter.getName());
+        }
+        NodeParameter guiParam = node.getParameter("GUI");
+        return guiParam != null;
     }
 
     private void revertParameterEdit() {
@@ -6928,6 +6954,14 @@ public class NodeGraph {
         }
 
         List<String> source;
+        if (node != null && node.getType() == NodeType.PARAM_GUI) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("Any", ""));
+            for (GuiSelectionMode mode : GuiSelectionMode.valuesList()) {
+                result.add(new ParameterDropdownOption(mode.getDisplayName(), mode.getId()));
+            }
+            return filterDropdownOptions(result, lowered);
+        }
         if (isBlockParameter(node, index)) {
             source = RegistryStringCache.BLOCK_IDS;
         } else if (isItemParameter(node, index)) {
@@ -6969,6 +7003,35 @@ public class NodeGraph {
                 break;
             }
         }
+        result.addAll(starts);
+        result.addAll(contains);
+        return result;
+    }
+
+    private List<ParameterDropdownOption> filterDropdownOptions(List<ParameterDropdownOption> options, String lowered) {
+        if (options == null || options.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (lowered == null || lowered.isEmpty()) {
+            return options;
+        }
+        List<ParameterDropdownOption> starts = new ArrayList<>();
+        List<ParameterDropdownOption> contains = new ArrayList<>();
+        for (ParameterDropdownOption option : options) {
+            if (option == null || option.label() == null) {
+                continue;
+            }
+            String labelLower = option.label().toLowerCase(Locale.ROOT);
+            if (!labelLower.contains(lowered)) {
+                continue;
+            }
+            if (labelLower.startsWith(lowered)) {
+                starts.add(option);
+            } else {
+                contains.add(option);
+            }
+        }
+        List<ParameterDropdownOption> result = new ArrayList<>(starts.size() + contains.size());
         result.addAll(starts);
         result.addAll(contains);
         return result;
@@ -7056,7 +7119,7 @@ public class NodeGraph {
         if (!isEditingParameterField() || parameterEditingNode != node || parameterEditingIndex != index) {
             return;
         }
-        if (!isBlockItemParameter(node, index)) {
+        if (!isBlockItemParameter(node, index) && !isGuiParameter(node, null)) {
             closeParameterDropdown();
             return;
         }

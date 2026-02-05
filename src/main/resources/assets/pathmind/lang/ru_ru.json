@@ -264,6 +264,8 @@
   "pathmind.node.type.paramBoolean.desc": "Представляет булево значение переключателя",
   "pathmind.node.type.paramHand": "Рука",
   "pathmind.node.type.paramHand.desc": "Представляет предпочтительный выбор руки",
+  "pathmind.node.type.paramGui": "GUI",
+  "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramKey": "Клавиша",
   "pathmind.node.type.paramKey.desc": "Представляет привязку клавиши клавиатуры",
   "pathmind.node.type.paramRange": "Радиус",

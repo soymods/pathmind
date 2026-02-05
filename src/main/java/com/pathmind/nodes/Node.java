@@ -100,6 +100,7 @@ import java.lang.reflect.Method;
 import com.pathmind.util.CameraCompatibilityBridge;
 import com.pathmind.util.ChatScreenCompatibilityBridge;
 import com.pathmind.util.EntityCompatibilityBridge;
+import com.pathmind.util.GuiSelectionMode;
 import com.pathmind.util.GameProfileCompatibilityBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 
@@ -819,6 +820,9 @@ public class Node {
             return parameterType == NodeType.PARAM_VILLAGER_TRADE;
         }
         if (type == NodeType.MOVE_ITEM && slotIndex >= 0 && slotIndex <= 1 && parameterType == NodeType.PARAM_ITEM) {
+            return true;
+        }
+        if (type == NodeType.MOVE_ITEM && slotIndex == 1 && parameterType == NodeType.PARAM_GUI) {
             return true;
         }
         if ((type == NodeType.PLACE || type == NodeType.PLACE_HAND)
@@ -2472,6 +2476,9 @@ public class Node {
             case PARAM_HAND:
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
                 break;
+            case PARAM_GUI:
+                parameters.add(new NodeParameter("GUI", ParameterType.STRING, "Any"));
+                break;
             case PARAM_KEY:
                 parameters.add(new NodeParameter("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
                 break;
@@ -2618,6 +2625,9 @@ public class Node {
             return "";
         }
         String value = parameter.getDisplayValue();
+        if (type == NodeType.PARAM_GUI && "GUI".equalsIgnoreCase(parameter.getName())) {
+            return GuiSelectionMode.getDisplayNameOrFallback(value);
+        }
         if (type == NodeType.PARAM_VILLAGER_TRADE
             && ("Item".equalsIgnoreCase(parameter.getName()) || "Trade".equalsIgnoreCase(parameter.getName()))) {
             return formatVillagerTradeDisplayValue(value);
@@ -3811,6 +3821,9 @@ public class Node {
                 return ParameterHandlingResult.COMPLETE;
             }
         }
+        if (!handled && type == NodeType.MOVE_ITEM && parameterNode.getType() == NodeType.PARAM_GUI) {
+            handled = true;
+        }
         if (!handled && type == NodeType.USE) {
             if (resolveUseParameterSelection(parameterNode, future)) {
                 handled = true;
@@ -4532,6 +4545,16 @@ public class Node {
         return trimmed.isEmpty() || "any".equalsIgnoreCase(trimmed);
     }
 
+    private static boolean isAnySelectionValue(String value) {
+        if (value == null) {
+            return true;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty()
+            || "any".equalsIgnoreCase(trimmed)
+            || "any state".equalsIgnoreCase(trimmed);
+    }
+
     private List<BlockSelection> resolveBlocksFromParameter(Node parameterNode) {
         List<BlockSelection> selections = new ArrayList<>();
         String primary = getBlockParameterValue(parameterNode);
@@ -4547,6 +4570,9 @@ public class Node {
 
     private void addBlockSelection(List<BlockSelection> selections, String rawValue) {
         if (rawValue == null || rawValue.isEmpty()) {
+            return;
+        }
+        if (isAnySelectionValue(rawValue)) {
             return;
         }
         BlockSelection.parse(rawValue).ifPresent(selection -> {
@@ -4633,6 +4659,9 @@ public class Node {
         if (rawValue == null || rawValue.isEmpty()) {
             return;
         }
+        if (isAnySelectionValue(rawValue)) {
+            return;
+        }
         String sanitized = sanitizeResourceId(rawValue);
         if (sanitized == null || sanitized.isEmpty()) {
             return;
@@ -4645,6 +4674,9 @@ public class Node {
 
     private void addEntityIdentifier(List<String> entityIds, String rawValue) {
         if (rawValue == null || rawValue.isEmpty()) {
+            return;
+        }
+        if (isAnySelectionValue(rawValue)) {
             return;
         }
         String sanitized = sanitizeResourceId(rawValue);
@@ -10486,15 +10518,39 @@ public class Node {
 
         SlotSelectionType sourceSelection = resolveInventorySlotSelectionType(0);
         SlotSelectionType targetSelection = resolveInventorySlotSelectionType(1);
-        SlotResolution sourceResolution = resolveInventorySlot(handler, inventory, requestedSourceSlot, sourceSelection);
-        SlotResolution targetResolution = resolveInventorySlot(handler, inventory, requestedTargetSlot, targetSelection);
+        boolean shiftClickTarget = false;
+        Node targetParameterNode = getAttachedParameter(1);
+        GuiSelectionMode targetGuiMode = null;
+        if (targetParameterNode != null && targetParameterNode.getType() == NodeType.PARAM_GUI) {
+            shiftClickTarget = true;
+            targetGuiMode = GuiSelectionMode.fromId(getParameterString(targetParameterNode, "GUI"));
+        }
 
-        if (sourceResolution == null || targetResolution == null) {
+        if (shiftClickTarget && targetGuiMode != null) {
+            Node sourceParameterNode = getAttachedParameter(0);
+            SlotSelectionType desiredSourceSelection = targetGuiMode == GuiSelectionMode.PLAYER_INVENTORY
+                ? SlotSelectionType.GUI_CONTAINER
+                : SlotSelectionType.PLAYER_INVENTORY;
+            if (sourceParameterNode != null && sourceParameterNode.getType() == NodeType.PARAM_ITEM) {
+                if (!resolveMoveItemSlotFromItemParameter(sourceParameterNode, 0, desiredSourceSelection, future)) {
+                    return;
+                }
+                requestedSourceSlot = getIntParameter("SourceSlot", 0);
+            }
+            sourceSelection = desiredSourceSelection;
+        }
+
+        SlotResolution sourceResolution = resolveInventorySlot(handler, inventory, requestedSourceSlot, sourceSelection);
+        SlotResolution targetResolution = shiftClickTarget
+            ? null
+            : resolveInventorySlot(handler, inventory, requestedTargetSlot, targetSelection);
+
+        if (sourceResolution == null || (!shiftClickTarget && targetResolution == null)) {
             future.complete(null);
             return;
         }
 
-        if (sourceResolution.handlerSlotIndex == targetResolution.handlerSlotIndex) {
+        if (!shiftClickTarget && sourceResolution.handlerSlotIndex == targetResolution.handlerSlotIndex) {
             future.complete(null);
             return;
         }
@@ -10514,15 +10570,25 @@ public class Node {
         }
 
         boolean moveEntireStack = moveCount >= available;
-        performInventoryTransfer(
-            interactionManager,
-            handler,
-            client.player,
-            sourceResolution.handlerSlotIndex,
-            targetResolution.handlerSlotIndex,
-            moveCount,
-            moveEntireStack
-        );
+        if (shiftClickTarget) {
+            interactionManager.clickSlot(
+                handler.syncId,
+                sourceResolution.handlerSlotIndex,
+                0,
+                SlotActionType.QUICK_MOVE,
+                client.player
+            );
+        } else {
+            performInventoryTransfer(
+                interactionManager,
+                handler,
+                client.player,
+                sourceResolution.handlerSlotIndex,
+                targetResolution.handlerSlotIndex,
+                moveCount,
+                moveEntireStack
+            );
+        }
 
         inventory.markDirty();
         client.player.playerScreenHandler.sendContentUpdates();
@@ -10589,6 +10655,10 @@ public class Node {
             return SlotSelectionType.PLAYER_INVENTORY;
         }
 
+        if (parameterNode.getType() == NodeType.PARAM_GUI) {
+            return SlotSelectionType.GUI_CONTAINER;
+        }
+
         if (parameterNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
             return SlotSelectionType.PLAYER_INVENTORY;
         }
@@ -10650,6 +10720,12 @@ public class Node {
     }
 
     private boolean resolveMoveItemSlotFromItemParameter(Node parameterNode, int slotIndex, CompletableFuture<Void> future) {
+        SlotSelectionType selectionType = resolveInventorySlotSelectionType(slotIndex);
+        return resolveMoveItemSlotFromItemParameter(parameterNode, slotIndex, selectionType, future);
+    }
+
+    private boolean resolveMoveItemSlotFromItemParameter(Node parameterNode, int slotIndex,
+                                                         SlotSelectionType selectionType, CompletableFuture<Void> future) {
         if (slotIndex < 0 || slotIndex > 1) {
             return false;
         }
@@ -10662,15 +10738,30 @@ public class Node {
         }
 
         List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
-        if (itemIds.isEmpty()) {
+        boolean anySelection = itemIds.isEmpty()
+            && (isAnySelectionValue(getParameterString(parameterNode, "Item"))
+                || isAnySelectionValue(getParameterString(parameterNode, "Items")));
+        if (itemIds.isEmpty() && !anySelection) {
             sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
             return false;
         }
 
-        SlotSelectionType selectionType = resolveInventorySlotSelectionType(slotIndex);
         ScreenHandler handler = client.player.currentScreenHandler;
 
         int foundSlot = -1;
+        if (anySelection) {
+            if (selectionType == SlotSelectionType.GUI_CONTAINER && handler != null) {
+                for (int i = 0; i < handler.slots.size(); i++) {
+                    Slot slot = handler.getSlot(i);
+                    if (slot != null && !slot.getStack().isEmpty()) {
+                        foundSlot = i;
+                        break;
+                    }
+                }
+            } else if (client.player != null) {
+                foundSlot = findFirstNonEmptySlot(client.player.getInventory());
+            }
+        }
         for (String candidateId : itemIds) {
             Identifier identifier = Identifier.tryParse(candidateId);
             if (identifier == null || !Registries.ITEM.containsId(identifier)) {
@@ -10701,7 +10792,7 @@ public class Node {
         }
 
         if (foundSlot < 0) {
-            String reference = String.join(", ", itemIds);
+            String reference = anySelection ? "item" : String.join(", ", itemIds);
             String locationDesc = (selectionType == SlotSelectionType.GUI_CONTAINER) ? "container" : "inventory";
             sendParameterSearchFailure("No " + reference + " found in " + locationDesc + " for " + type.getDisplayName() + ".", future);
             return false;
@@ -10821,6 +10912,19 @@ public class Node {
         for (int i = 0; i < inventory.size(); i++) {
             ItemStack stack = inventory.getStack(i);
             if (!stack.isEmpty() && stack.isOf(item)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findFirstNonEmptySlot(PlayerInventory inventory) {
+        if (inventory == null) {
+            return -1;
+        }
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (!stack.isEmpty()) {
                 return i;
             }
         }

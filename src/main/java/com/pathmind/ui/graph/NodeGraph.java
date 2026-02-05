@@ -3094,6 +3094,7 @@ public class NodeGraph {
                         boolean showPlayerPlaceholder = false;
                         boolean showMessagePlaceholder = false;
                         boolean showSeedPlaceholder = false;
+                        boolean showBlockItemPlaceholder = false;
                         if (isPlayerParam || isMessageParam) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty()
@@ -3107,18 +3108,28 @@ public class NodeGraph {
                                 : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
                             showSeedPlaceholder = showPlaceholder;
                         }
+                        if (isBlockItemParameter(node, i)) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty() || isAnyBlockItemValue(value)
+                                : value.isEmpty() || (!param.isUserEdited() && isAnyBlockItemValue(value));
+                            showBlockItemPlaceholder = showPlaceholder;
+                        }
                         if (!editingThis
                             && node.getType() == NodeType.PARAM_VILLAGER_TRADE
                             && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
                             value = formatVillagerTradeValue(value);
                         }
-                        if (!editingThis && value.isEmpty() && isBlockItemParameter(node, i)) {
+                        if (!editingThis && (value.isEmpty() || isAnyBlockItemValue(value)) && isBlockItemParameter(node, i)) {
                             value = (isBlockStateParameter(node, i) || isEntityStateParameter(node, i))
                                 ? "Any State"
                                 : "Any";
                         }
-                        if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder) {
-                            value = "Any";
+                        if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder || showBlockItemPlaceholder) {
+                            if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
+                                value = "Any State";
+                            } else {
+                                value = "Any";
+                            }
                             valueColor = UITheme.TEXT_TERTIARY;
                         }
                         String displayValue = editingThis
@@ -5433,9 +5444,11 @@ public class NodeGraph {
         parameterEditBuffer = originalValue;
         if (parameter != null && (isPlayerParameter(node, parameter)
             || isMessageParameter(node, parameter)
-            || isSeedParameter(node, parameter))) {
+            || isSeedParameter(node, parameter)
+            || isBlockItemParameter(node, index))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
-                || "Any".equalsIgnoreCase(parameterEditBuffer)) {
+                || "Any".equalsIgnoreCase(parameterEditBuffer)
+                || "Any State".equalsIgnoreCase(parameterEditBuffer)) {
                 parameterEditBuffer = "";
             }
         }
@@ -5491,11 +5504,20 @@ public class NodeGraph {
         String previous = parameter != null ? parameter.getStringValue() : "";
         String appliedValue = value;
         if (parameter != null) {
-            if (isPlayerParameter(parameterEditingNode, parameter)
+            boolean isAnyLikeParam = isPlayerParameter(parameterEditingNode, parameter)
                 || isMessageParameter(parameterEditingNode, parameter)
-                || isSeedParameter(parameterEditingNode, parameter)) {
-                if (value.trim().isEmpty()) {
-                    appliedValue = "Any";
+                || isSeedParameter(parameterEditingNode, parameter);
+            boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
+            if (isAnyLikeParam || isBlockItemParam) {
+                String trimmed = value.trim();
+                boolean isEmptyOrAny = trimmed.isEmpty()
+                    || "Any".equalsIgnoreCase(trimmed)
+                    || "Any State".equalsIgnoreCase(trimmed);
+                if (isEmptyOrAny) {
+                    appliedValue = (isBlockItemParam && (isBlockStateParameter(parameterEditingNode, parameterEditingIndex)
+                        || isEntityStateParameter(parameterEditingNode, parameterEditingIndex)))
+                        ? "Any State"
+                        : "Any";
                     parameter.setStringValue(appliedValue);
                     parameter.setUserEdited(false);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
@@ -6742,6 +6764,16 @@ public class NodeGraph {
             return false;
         }
         return "State".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isAnyBlockItemValue(String value) {
+        if (value == null) {
+            return true;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty()
+            || "Any".equalsIgnoreCase(trimmed)
+            || "Any State".equalsIgnoreCase(trimmed);
     }
 
     private String getNormalizedBlockIdForStateOptions(Node node) {

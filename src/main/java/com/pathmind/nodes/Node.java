@@ -142,6 +142,7 @@ public class Node {
     private static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
     private static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
     private static final int OPERATOR_SLOT_GAP = 8;
+    private static final int MINIMAL_NODE_TAB_WIDTH = 6;
     private static final int PARAMETER_FIELD_PADDING = 12;
     private static final int PLAYER_ARMOR_SLOT_COUNT = 4;
     private static final int PLAYER_OFFHAND_INVENTORY_INDEX = PlayerInventory.MAIN_SIZE + PLAYER_ARMOR_SLOT_COUNT;
@@ -634,6 +635,8 @@ public class Node {
             || type == NodeType.START_CHAIN
             || type == NodeType.SWING
             || type == NodeType.JUMP
+            || type == NodeType.OPERATOR_EQUALS
+            || type == NodeType.OPERATOR_NOT
             || type == NodeType.OPEN_INVENTORY
             || type == NodeType.CLOSE_GUI;
     }
@@ -729,11 +732,13 @@ public class Node {
         }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.VARIABLE;
+            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
+            Node otherParameter = getAttachedParameter(otherSlotIndex);
+            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
+            if (parameterType == NodeType.VARIABLE) {
+                return !otherIsVariable;
             }
-            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
-                && parameterType != NodeType.VARIABLE;
+            return true;
         }
         if (type == NodeType.WALK) {
             NodeType parameterType = parameter.getType();
@@ -800,11 +805,13 @@ public class Node {
         }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.VARIABLE;
+            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
+            Node otherParameter = getAttachedParameter(otherSlotIndex);
+            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
+            if (parameterType == NodeType.VARIABLE) {
+                return !otherIsVariable;
             }
-            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF)
-                && parameterType != NodeType.VARIABLE;
+            return true;
         }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             NodeType parameterType = parameter.getType();
@@ -1147,6 +1154,16 @@ public class Node {
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             int slotWidth = getParameterSlotWidth(slotIndex);
             int baseLeft = x + PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            if (usesMinimalNodePresentation()) {
+                int contentLeft = x + MINIMAL_NODE_TAB_WIDTH + PARAMETER_SLOT_MARGIN_HORIZONTAL;
+                int contentWidth = Math.max(0, width - MINIMAL_NODE_TAB_WIDTH - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL);
+                int groupWidth = slotWidth * 2 + OPERATOR_SLOT_GAP;
+                int startX = contentLeft + Math.max(0, (contentWidth - groupWidth) / 2);
+                if (slotIndex <= 0) {
+                    return startX;
+                }
+                return startX + slotWidth + OPERATOR_SLOT_GAP;
+            }
             if (slotIndex <= 0) {
                 return baseLeft;
             }
@@ -1161,6 +1178,10 @@ public class Node {
             top += getSchematicFieldDisplayHeight();
         }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+            if (usesMinimalNodePresentation()) {
+                int slotHeight = getParameterSlotHeight(slotIndex);
+                return y + Math.max(0, (height - slotHeight) / 2);
+            }
             return top;
         }
         for (int i = 0; i < slotIndex; i++) {
@@ -1232,6 +1253,9 @@ public class Node {
     public int getParameterSlotWidth(int slotIndex) {
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             int widthWithMargins = this.width - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            if (usesMinimalNodePresentation()) {
+                widthWithMargins = Math.max(0, this.width - MINIMAL_NODE_TAB_WIDTH - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL);
+            }
             int minCombinedWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH * 2 + OPERATOR_SLOT_GAP;
             int effectiveWidth = Math.max(minCombinedWidth, widthWithMargins);
             int available = effectiveWidth - OPERATOR_SLOT_GAP;
@@ -13414,71 +13438,142 @@ public class Node {
     }
 
     private boolean evaluateOperatorEquals() {
-        Node variableNode = getAttachedParameter(0);
-        Node valueNode = getAttachedParameter(1);
-        if (variableNode == null || valueNode == null) {
-            return false;
-        }
-        String variableName = getParameterString(variableNode, "Variable");
-        if (variableName == null || variableName.trim().isEmpty()) {
-            return false;
-        }
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = getOwningStartNode();
-        if (startNode == null && getParentControl() != null) {
-            startNode = getParentControl().getOwningStartNode();
-        }
-        ExecutionManager.RuntimeVariable variable = manager.getRuntimeVariable(startNode, variableName.trim());
-        if (variable == null) {
-            return false;
-        }
-        NodeType valueType = valueNode.getType();
-        if (valueType == NodeType.SENSOR_POSITION_OF) {
-            valueType = NodeType.PARAM_COORDINATE;
-        }
-        if (variable.getType() != valueType) {
-            return false;
-        }
-        Map<String, String> currentValues = valueNode.exportParameterValues();
-        Map<String, String> storedValues = variable.getValues();
-        if (currentValues == null || storedValues == null) {
-            return false;
-        }
-        return storedValues.equals(currentValues);
+        Optional<Boolean> result = evaluateOperatorComparison();
+        return result.orElse(false);
     }
 
     private boolean evaluateOperatorNot() {
-        Node variableNode = getAttachedParameter(0);
-        Node valueNode = getAttachedParameter(1);
-        if (variableNode == null || valueNode == null) {
-            return false;
+        Optional<Boolean> result = evaluateOperatorComparison();
+        return result.map(value -> !value).orElse(false);
+    }
+
+    private Optional<Boolean> evaluateOperatorComparison() {
+        Node left = getAttachedParameter(0);
+        Node right = getAttachedParameter(1);
+        if (left == null || right == null) {
+            return Optional.empty();
         }
-        String variableName = getParameterString(variableNode, "Variable");
-        if (variableName == null || variableName.trim().isEmpty()) {
-            return false;
+        boolean leftIsVariable = left.getType() == NodeType.VARIABLE;
+        boolean rightIsVariable = right.getType() == NodeType.VARIABLE;
+        if (leftIsVariable || rightIsVariable) {
+            return compareVariableNodes(left, right);
         }
+        return compareParameterNodes(left, right);
+    }
+
+    private Optional<Boolean> compareVariableNodes(Node left, Node right) {
+        if (left == null || right == null) {
+            return Optional.empty();
+        }
+        boolean leftIsVariable = left.getType() == NodeType.VARIABLE;
+        boolean rightIsVariable = right.getType() == NodeType.VARIABLE;
         ExecutionManager manager = ExecutionManager.getInstance();
         Node startNode = getOwningStartNode();
         if (startNode == null && getParentControl() != null) {
             startNode = getParentControl().getOwningStartNode();
         }
+        if (leftIsVariable && rightIsVariable) {
+            String leftName = getParameterString(left, "Variable");
+            String rightName = getParameterString(right, "Variable");
+            if (leftName == null || leftName.trim().isEmpty() || rightName == null || rightName.trim().isEmpty()) {
+                return Optional.empty();
+            }
+            ExecutionManager.RuntimeVariable leftVar = manager.getRuntimeVariable(startNode, leftName.trim());
+            ExecutionManager.RuntimeVariable rightVar = manager.getRuntimeVariable(startNode, rightName.trim());
+            if (leftVar == null || rightVar == null) {
+                return Optional.empty();
+            }
+            if (leftVar.getType() != rightVar.getType()) {
+                return Optional.empty();
+            }
+            Map<String, String> leftValues = leftVar.getValues();
+            Map<String, String> rightValues = rightVar.getValues();
+            if (leftValues == null || rightValues == null) {
+                return Optional.empty();
+            }
+            return Optional.of(leftValues.equals(rightValues));
+        }
+        Node variableNode = leftIsVariable ? left : right;
+        Node valueNode = leftIsVariable ? right : left;
+        String variableName = getParameterString(variableNode, "Variable");
+        if (variableName == null || variableName.trim().isEmpty()) {
+            return Optional.empty();
+        }
         ExecutionManager.RuntimeVariable variable = manager.getRuntimeVariable(startNode, variableName.trim());
         if (variable == null) {
-            return false;
+            return Optional.empty();
         }
         NodeType valueType = valueNode.getType();
         if (valueType == NodeType.SENSOR_POSITION_OF) {
             valueType = NodeType.PARAM_COORDINATE;
         }
         if (variable.getType() != valueType) {
-            return false;
+            return Optional.empty();
         }
         Map<String, String> currentValues = valueNode.exportParameterValues();
         Map<String, String> storedValues = variable.getValues();
         if (currentValues == null || storedValues == null) {
-            return false;
+            return Optional.empty();
         }
-        return !storedValues.equals(currentValues);
+        return Optional.of(storedValues.equals(currentValues));
+    }
+
+    private Optional<Boolean> compareParameterNodes(Node left, Node right) {
+        if (left == null || right == null) {
+            return Optional.empty();
+        }
+        Optional<Double> leftNumber = resolveComparableNumber(left);
+        Optional<Double> rightNumber = resolveComparableNumber(right);
+        if (leftNumber.isPresent() && rightNumber.isPresent()) {
+            return Optional.of(Double.compare(leftNumber.get(), rightNumber.get()) == 0);
+        }
+        if (leftNumber.isPresent() || rightNumber.isPresent()) {
+            return Optional.empty();
+        }
+        Map<String, String> leftValues = left.exportParameterValues();
+        Map<String, String> rightValues = right.exportParameterValues();
+        if (leftValues == null || rightValues == null || leftValues.isEmpty() || rightValues.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(leftValues.equals(rightValues));
+    }
+
+    private Optional<Double> resolveComparableNumber(Node node) {
+        if (node == null) {
+            return Optional.empty();
+        }
+        switch (node.getType()) {
+            case PARAM_AMOUNT:
+            case OPERATOR_RANDOM:
+                return Optional.of(parseNodeDouble(node, "Amount", 0.0));
+            case PARAM_INVENTORY_SLOT:
+                return resolveInventorySlotCount(node).map(count -> (double) count);
+            default:
+                return Optional.empty();
+        }
+    }
+
+    private Optional<Integer> resolveInventorySlotCount(Node slotNode) {
+        if (slotNode == null || slotNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+            return Optional.empty();
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return Optional.empty();
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        ScreenHandler handler = client.player.currentScreenHandler;
+        int slotValue = parseNodeInt(slotNode, "Slot", 0);
+        SlotSelectionType selectionType = resolveInventorySlotSelectionType(slotNode);
+        SlotResolution resolved = resolveInventorySlot(handler, inventory, slotValue, selectionType);
+        if (resolved == null || resolved.slot == null) {
+            return Optional.empty();
+        }
+        ItemStack stack = resolved.slot.getStack();
+        if (stack == null || stack.isEmpty()) {
+            return Optional.of(0);
+        }
+        return Optional.of(stack.getCount());
     }
 
     private boolean adjustBooleanToggleResult(boolean rawResult) {

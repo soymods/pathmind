@@ -2643,6 +2643,7 @@ public class NodeGraph {
 
         // Node header (only for non-START/event function nodes)
         if (simpleStyle) {
+            boolean isOperator = node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT;
             String label = node.getType().getDisplayName().toUpperCase(Locale.ROOT);
             boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
             int titleColor = (isStopControl || isActivateNode)
@@ -2654,7 +2655,7 @@ public class NodeGraph {
                 int contentLeft = x + MINIMAL_NODE_TAB_WIDTH;
                 textX = contentLeft + 4;
                 textY = y + 4;
-            } else {
+            } else if (!isOperator) {
                 int contentLeft = x + MINIMAL_NODE_TAB_WIDTH;
                 int contentWidth = Math.max(0, width - MINIMAL_NODE_TAB_WIDTH);
                 String displayLabel = trimTextToWidth(label, textRenderer, Math.max(0, contentWidth - 8));
@@ -2662,8 +2663,13 @@ public class NodeGraph {
                 textX = contentLeft + Math.max(4, (contentWidth - textWidth) / 2);
                 textY = y + (height - textRenderer.fontHeight) / 2;
                 label = displayLabel;
+            } else {
+                textX = 0;
+                textY = 0;
             }
-            drawNodeText(context, textRenderer, label, textX, textY, titleColor);
+            if (!isOperator) {
+                drawNodeText(context, textRenderer, label, textX, textY, titleColor);
+            }
         } else if (node.getType() != NodeType.START
             && node.getType() != NodeType.EVENT_FUNCTION
             && node.getType() != NodeType.VARIABLE
@@ -2893,7 +2899,7 @@ public class NodeGraph {
                 caretX = Math.min(caretX, boxRight - 2);
                 context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
             }
-        } else if (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT) {
+        } else if (!simpleStyle && (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT)) {
             int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_BG, 0.7f) : UITheme.NODE_OPERATOR_BG;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
@@ -3093,11 +3099,13 @@ public class NodeGraph {
                         boolean isMessageParam = isMessageParameter(node, param);
                         boolean isSeedParam = isSeedParameter(node, param);
                         boolean isGuiParam = isGuiParameter(node, param);
+                        boolean isAmountParam = isAmountParameter(node, param);
                         boolean showPlayerPlaceholder = false;
                         boolean showMessagePlaceholder = false;
                         boolean showSeedPlaceholder = false;
                         boolean showBlockItemPlaceholder = false;
                         boolean showGuiPlaceholder = false;
+                        boolean showAmountPlaceholder = false;
                         if (isPlayerParam || isMessageParam) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty()
@@ -3117,6 +3125,12 @@ public class NodeGraph {
                                 : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
                             showGuiPlaceholder = showPlaceholder;
                         }
+                        if (isAmountParam) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty()
+                                : value.isEmpty() || (!param.isUserEdited() && "0".equalsIgnoreCase(value));
+                            showAmountPlaceholder = showPlaceholder;
+                        }
                         if (isBlockItemParameter(node, i)) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty() || isAnyBlockItemValue(value)
@@ -3134,9 +3148,11 @@ public class NodeGraph {
                                 : "Any";
                         }
                         if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
-                            || showBlockItemPlaceholder || showGuiPlaceholder) {
+                            || showBlockItemPlaceholder || showGuiPlaceholder || showAmountPlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
+                            } else if (showAmountPlaceholder) {
+                                value = "0";
                             } else {
                                 value = "Any";
                             }
@@ -3563,6 +3579,32 @@ public class NodeGraph {
             // Provide a minimal visual cue when dragging to an empty slot without adding text.
             DrawContextBridge.drawBorderInLayer(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, UITheme.ACCENT_DEFAULT);
         }
+
+        if (node.usesMinimalNodePresentation()
+            && (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT)
+            && slotIndex == 0) {
+            int leftSlotX = node.getParameterSlotLeft(0) - cameraX;
+            int rightSlotX = node.getParameterSlotLeft(1) - cameraX;
+            int leftSlotWidth = node.getParameterSlotWidth(0);
+            int leftSlotHeight = node.getParameterSlotHeight(0);
+            int rightSlotHeight = node.getParameterSlotHeight(1);
+            int slotTop = node.getParameterSlotTop(0) - cameraY;
+            int maxSlotHeight = Math.max(leftSlotHeight, rightSlotHeight);
+            int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
+            String operatorText = node.getType() == NodeType.OPERATOR_EQUALS ? "=" : "=/";
+            int operatorWidth = textRenderer.getWidth(operatorText);
+            int operatorX = gapCenterX - operatorWidth / 2;
+            int operatorY = slotTop + (maxSlotHeight - textRenderer.fontHeight) / 2;
+            int operatorColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_SYMBOL, 0.85f) : UITheme.NODE_OPERATOR_SYMBOL;
+            drawNodeText(
+                context,
+                textRenderer,
+                Text.literal(operatorText),
+                operatorX,
+                operatorY,
+                operatorColor
+            );
+        }
     }
 
     private void renderCoordinateInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -3688,9 +3730,14 @@ public class NodeGraph {
             }
         }
 
+        boolean showPlaceholder = amountEnabled && value.isEmpty();
         String display = editing
             ? value
             : trimTextToWidth(value, textRenderer, fieldWidth - 6);
+        if (showPlaceholder) {
+            display = "0";
+            valueColor = UITheme.TEXT_TERTIARY;
+        }
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
@@ -5455,11 +5502,13 @@ public class NodeGraph {
         if (parameter != null && (isPlayerParameter(node, parameter)
             || isMessageParameter(node, parameter)
             || isSeedParameter(node, parameter)
+            || isAmountParameter(node, parameter)
             || isGuiParameter(node, parameter)
             || isBlockItemParameter(node, index))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
                 || "Any".equalsIgnoreCase(parameterEditBuffer)
-                || "Any State".equalsIgnoreCase(parameterEditBuffer)) {
+                || "Any State".equalsIgnoreCase(parameterEditBuffer)
+                || "0".equals(parameterEditBuffer)) {
                 parameterEditBuffer = "";
             }
         }
@@ -5519,8 +5568,20 @@ public class NodeGraph {
                 || isMessageParameter(parameterEditingNode, parameter)
                 || isSeedParameter(parameterEditingNode, parameter)
                 || isGuiParameter(parameterEditingNode, parameter);
+            boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
             boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
-            if (isAnyLikeParam || isBlockItemParam) {
+            if (isAmountParam) {
+                String trimmed = value.trim();
+                if (trimmed.isEmpty()) {
+                    appliedValue = "0";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    parameter.setStringValueFromUser(value);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+                }
+            } else if (isAnyLikeParam || isBlockItemParam) {
                 String trimmed = value.trim();
                 boolean isEmptyOrAny = trimmed.isEmpty()
                     || "Any".equalsIgnoreCase(trimmed)
@@ -5594,6 +5655,16 @@ public class NodeGraph {
             return false;
         }
         return "Seed".equalsIgnoreCase(parameter.getName());
+    }
+
+    private boolean isAmountParameter(Node node, NodeParameter parameter) {
+        if (node == null || parameter == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_AMOUNT) {
+            return false;
+        }
+        return "Amount".equalsIgnoreCase(parameter.getName());
     }
 
     private boolean isGuiParameter(Node node, NodeParameter parameter) {

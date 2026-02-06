@@ -1465,7 +1465,8 @@ public class NodeGraph {
                     draggingNode.setPosition(newX, newY);
 
                     boolean hideSockets = false;
-                    if (draggingNode.getType() == NodeType.SENSOR_POSITION_OF) {
+                    if (draggingNode.getType() == NodeType.SENSOR_POSITION_OF
+                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
                         resetDropTargets();
                         for (Node node : nodes) {
                             if (!node.canAcceptParameter() || node == draggingNode) {
@@ -1504,7 +1505,9 @@ public class NodeGraph {
                             }
                         }
                         if (parameterDropTarget == null
-                            && (hoveredNode == null || hoveredNode.getType() != NodeType.SENSOR_POSITION_OF)) {
+                            && (hoveredNode == null
+                                || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE))) {
                             for (Node node : nodes) {
                                 if (!node.canAcceptParameter() || node == draggingNode) {
                                     continue;
@@ -1590,7 +1593,7 @@ public class NodeGraph {
             return;
         }
 
-        if (nodeType == NodeType.SENSOR_POSITION_OF) {
+        if (nodeType == NodeType.SENSOR_POSITION_OF || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
             Node parameterCandidate = new Node(nodeType, worldMouseX, worldMouseY);
             Node hoveredNode = getNodeAtWorld(worldMouseX, worldMouseY);
             if (hoveredNode != null) {
@@ -1602,7 +1605,9 @@ public class NodeGraph {
                 }
             }
             if (parameterDropTarget == null
-                && (hoveredNode == null || hoveredNode.getType() != NodeType.SENSOR_POSITION_OF)) {
+                && (hoveredNode == null
+                    || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                        && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE))) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1637,7 +1642,9 @@ public class NodeGraph {
                 }
             }
             if (parameterDropTarget == null
-                && (hoveredNode == null || hoveredNode.getType() != NodeType.SENSOR_POSITION_OF)) {
+                && (hoveredNode == null
+                    || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                        && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE))) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1678,7 +1685,7 @@ public class NodeGraph {
             assignNewStartNodeNumber(newNode);
         }
 
-        if (nodeType == NodeType.SENSOR_POSITION_OF) {
+        if (nodeType == NodeType.SENSOR_POSITION_OF || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
             Node hoveredNode = getNodeAtWorld(worldMouseX, worldMouseY);
             if (hoveredNode != null) {
                 int slotIndex = hoveredNode.getParameterSlotIndexAt(worldMouseX, worldMouseY);
@@ -1690,7 +1697,9 @@ public class NodeGraph {
                     return newNode;
                 }
             }
-            if (hoveredNode == null || hoveredNode.getType() != NodeType.SENSOR_POSITION_OF) {
+            if (hoveredNode == null
+                || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE)) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1728,7 +1737,9 @@ public class NodeGraph {
                     return newNode;
                 }
             }
-            if (hoveredNode == null || hoveredNode.getType() != NodeType.SENSOR_POSITION_OF) {
+            if (hoveredNode == null
+                || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE)) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1830,7 +1841,8 @@ public class NodeGraph {
                     }
                 }
                 rootToPromote = getRootNode(node);
-            } else if (node.getType() == NodeType.SENSOR_POSITION_OF
+            } else if ((node.getType() == NodeType.SENSOR_POSITION_OF
+                || node.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE)
                 && parameterDropTarget != null
                 && parameterDropSlotIndex != null) {
                 Node target = parameterDropTarget;
@@ -1916,7 +1928,9 @@ public class NodeGraph {
             }
         }
 
-        if ((draggingNode.isParameterNode() || draggingNode.getType() == NodeType.SENSOR_POSITION_OF)
+        if ((draggingNode.isParameterNode()
+            || draggingNode.getType() == NodeType.SENSOR_POSITION_OF
+            || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE)
             && draggingNode.getParentParameterHost() != null) {
             Node parent = draggingNode.getParentParameterHost();
             if (parent != null) {
@@ -2921,13 +2935,16 @@ public class NodeGraph {
             int leftSlotWidth = node.getParameterSlotWidth(0);
             int leftSlotHeight = node.getParameterSlotHeight(0);
             int rightSlotHeight = node.getParameterSlotHeight(1);
-            int slotTop = node.getParameterSlotTop(0) - cameraY;
-            int maxSlotHeight = Math.max(leftSlotHeight, rightSlotHeight);
             int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
             String operatorText = node.getType() == NodeType.OPERATOR_EQUALS ? "=" : "!=";
             int operatorWidth = textRenderer.getWidth(operatorText);
             int operatorX = gapCenterX - operatorWidth / 2;
-            int operatorY = slotTop + (maxSlotHeight - textRenderer.fontHeight) / 2;
+            int leftSlotTop = node.getParameterSlotTop(0) - cameraY;
+            int rightSlotTop = node.getParameterSlotTop(1) - cameraY;
+            int leftCenterY = leftSlotTop + leftSlotHeight / 2;
+            int rightCenterY = rightSlotTop + rightSlotHeight / 2;
+            int operatorCenterY = (leftCenterY + rightCenterY) / 2;
+            int operatorY = operatorCenterY - textRenderer.fontHeight / 2;
             int operatorColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_SYMBOL, 0.85f) : UITheme.NODE_OPERATOR_SYMBOL;
             drawNodeText(
                 context,
@@ -3104,6 +3121,7 @@ public class NodeGraph {
                         boolean showMessagePlaceholder = false;
                         boolean showSeedPlaceholder = false;
                         boolean showBlockItemPlaceholder = false;
+                        boolean showDirectionPlaceholder = false;
                         boolean showGuiPlaceholder = false;
                         boolean showAmountPlaceholder = false;
                         if (isPlayerParam || isMessageParam) {
@@ -3137,6 +3155,12 @@ public class NodeGraph {
                                 : value.isEmpty() || (!param.isUserEdited() && isAnyBlockItemValue(value));
                             showBlockItemPlaceholder = showPlaceholder;
                         }
+                        if (isDirectionParameter(node, i)) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty() || "Any".equalsIgnoreCase(value)
+                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            showDirectionPlaceholder = showPlaceholder;
+                        }
                         if (!editingThis
                             && node.getType() == NodeType.PARAM_VILLAGER_TRADE
                             && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
@@ -3148,11 +3172,14 @@ public class NodeGraph {
                                 : "Any";
                         }
                         if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
-                            || showBlockItemPlaceholder || showGuiPlaceholder || showAmountPlaceholder) {
+                            || showBlockItemPlaceholder || showGuiPlaceholder || showAmountPlaceholder
+                            || showDirectionPlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
                             } else if (showAmountPlaceholder) {
                                 value = "0";
+                            } else if (showDirectionPlaceholder) {
+                                value = "Any";
                             } else {
                                 value = "Any";
                             }
@@ -3182,7 +3209,7 @@ public class NodeGraph {
                             context.fill(caretX, fieldTop + 2, caretX + 1, fieldTop + fieldHeight - 2, UITheme.CARET_COLOR);
                         }
 
-                        if (editingThis && (isBlockItemParameter(node, i) || isGuiParameter(node, param))) {
+                        if (editingThis && (isBlockItemParameter(node, i) || isGuiParameter(node, param) || isDirectionParameter(node, i))) {
                             updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
                         }
 
@@ -3588,13 +3615,16 @@ public class NodeGraph {
             int leftSlotWidth = node.getParameterSlotWidth(0);
             int leftSlotHeight = node.getParameterSlotHeight(0);
             int rightSlotHeight = node.getParameterSlotHeight(1);
-            int slotTop = node.getParameterSlotTop(0) - cameraY;
-            int maxSlotHeight = Math.max(leftSlotHeight, rightSlotHeight);
             int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
             String operatorText = node.getType() == NodeType.OPERATOR_EQUALS ? "=" : "=/";
             int operatorWidth = textRenderer.getWidth(operatorText);
             int operatorX = gapCenterX - operatorWidth / 2;
-            int operatorY = slotTop + (maxSlotHeight - textRenderer.fontHeight) / 2;
+            int leftSlotTop = node.getParameterSlotTop(0) - cameraY;
+            int rightSlotTop = node.getParameterSlotTop(1) - cameraY;
+            int leftCenterY = leftSlotTop + leftSlotHeight / 2;
+            int rightCenterY = rightSlotTop + rightSlotHeight / 2;
+            int operatorCenterY = (leftCenterY + rightCenterY) / 2;
+            int operatorY = operatorCenterY - textRenderer.fontHeight / 2;
             int operatorColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_SYMBOL, 0.85f) : UITheme.NODE_OPERATOR_SYMBOL;
             drawNodeText(
                 context,
@@ -5681,6 +5711,20 @@ public class NodeGraph {
         return guiParam != null;
     }
 
+    private boolean isDirectionParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.PARAM_DIRECTION) {
+            return false;
+        }
+        if (index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "Direction".equalsIgnoreCase(param.getName());
+    }
+
     private void revertParameterEdit() {
         if (!isEditingParameterField()) {
             return;
@@ -7033,6 +7077,17 @@ public class NodeGraph {
             }
             return filterDropdownOptions(result, lowered);
         }
+        if (isDirectionParameter(node, index)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("Any", ""));
+            result.add(new ParameterDropdownOption("North", "north"));
+            result.add(new ParameterDropdownOption("South", "south"));
+            result.add(new ParameterDropdownOption("East", "east"));
+            result.add(new ParameterDropdownOption("West", "west"));
+            result.add(new ParameterDropdownOption("Up", "up"));
+            result.add(new ParameterDropdownOption("Down", "down"));
+            return filterDropdownOptions(result, lowered);
+        }
         if (isBlockParameter(node, index)) {
             source = RegistryStringCache.BLOCK_IDS;
         } else if (isItemParameter(node, index)) {
@@ -7190,7 +7245,7 @@ public class NodeGraph {
         if (!isEditingParameterField() || parameterEditingNode != node || parameterEditingIndex != index) {
             return;
         }
-        if (!isBlockItemParameter(node, index) && !isGuiParameter(node, null)) {
+        if (!isBlockItemParameter(node, index) && !isGuiParameter(node, null) && !isDirectionParameter(node, index)) {
             closeParameterDropdown();
             return;
         }

@@ -123,6 +123,7 @@ public class Sidebar {
             baritoneAvailable,
             NodeType.PARAM_COORDINATE,
             NodeType.PARAM_ROTATION,
+            NodeType.PARAM_DIRECTION,
             NodeType.PARAM_RANGE,
             NodeType.PARAM_DISTANCE,
             NodeType.PARAM_CLOSEST
@@ -182,6 +183,7 @@ public class Sidebar {
             "Position & Blocks",
             baritoneAvailable,
             NodeType.SENSOR_POSITION_OF,
+            NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_AT_COORDINATES,
             NodeType.SENSOR_TOUCHING_BLOCK,
             NodeType.SENSOR_BLOCK_AHEAD

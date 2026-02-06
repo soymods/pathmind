@@ -87,6 +87,7 @@ public enum NodeType {
     SENSOR_AT_COORDINATES("pathmind.node.type.sensorAtCoordinates", 0xFF64B5F6, "pathmind.node.type.sensorAtCoordinates.desc"),
     SENSOR_BLOCK_AHEAD("pathmind.node.type.sensorBlockAhead", 0xFF64B5F6, "pathmind.node.type.sensorBlockAhead.desc"),
     SENSOR_POSITION_OF("pathmind.node.type.sensorPositionOf", 0xFF64B5F6, "pathmind.node.type.sensorPositionOf.desc"),
+    SENSOR_TARGETED_BLOCK_FACE("pathmind.node.type.sensorTargetedBlockFace", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlockFace.desc"),
     SENSOR_GUI_FILLED("pathmind.node.type.sensorGuiFilled", 0xFF64B5F6, "pathmind.node.type.sensorGuiFilled.desc"),
     SENSOR_IS_DAYTIME("pathmind.node.type.sensorIsDaytime", 0xFF64B5F6, "pathmind.node.type.sensorIsDaytime.desc"),
     SENSOR_IS_RAINING("pathmind.node.type.sensorIsRaining", 0xFF64B5F6, "pathmind.node.type.sensorIsRaining.desc"),
@@ -130,6 +131,7 @@ public enum NodeType {
     PARAM_KEY("pathmind.node.type.paramKey", 0xFF8BC34A, "pathmind.node.type.paramKey.desc"),
     PARAM_RANGE("pathmind.node.type.paramRange", 0xFF8BC34A, "pathmind.node.type.paramRange.desc"),
     PARAM_DISTANCE("pathmind.node.type.paramDistance", 0xFF8BC34A, "pathmind.node.type.paramDistance.desc"),
+    PARAM_DIRECTION("pathmind.node.type.paramDirection", 0xFF8BC34A, "pathmind.node.type.paramDirection.desc"),
     PARAM_ROTATION("pathmind.node.type.paramRotation", 0xFF8BC34A, "pathmind.node.type.paramRotation.desc"),
     PARAM_PLACE_TARGET("pathmind.node.type.paramPlaceTarget", 0xFF8BC34A, "pathmind.node.type.paramPlaceTarget.desc"),
     PARAM_CLOSEST("pathmind.node.type.paramClosest", 0xFF8BC34A, "pathmind.node.type.paramClosest.desc");
@@ -207,6 +209,7 @@ public enum NodeType {
             case SENSOR_AT_COORDINATES:
             case SENSOR_BLOCK_AHEAD:
             case SENSOR_POSITION_OF:
+            case SENSOR_TARGETED_BLOCK_FACE:
             case SENSOR_GUI_FILLED:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
@@ -286,6 +289,7 @@ public enum NodeType {
             case PARAM_KEY:
             case PARAM_RANGE:
             case PARAM_DISTANCE:
+            case PARAM_DIRECTION:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
@@ -361,6 +365,7 @@ public enum NodeType {
             case PARAM_KEY:
             case PARAM_RANGE:
             case PARAM_DISTANCE:
+            case PARAM_DIRECTION:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:

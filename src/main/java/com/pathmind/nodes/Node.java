@@ -320,6 +320,7 @@ public class Node {
         private Double rangeValue;
         private Float resolvedYaw;
         private Float resolvedPitch;
+        private Double resolvedLookDistance;
     }
 
     private static final class PlacementFailure extends RuntimeException {
@@ -576,6 +577,7 @@ public class Node {
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
             case SENSOR_GUI_FILLED:
+            case SENSOR_TARGETED_BLOCK_FACE:
                 return true;
             default:
                 return false;
@@ -609,6 +611,9 @@ public class Node {
         if (type == NodeType.SENSOR_POSITION_OF) {
             return true;
         }
+        if (type == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+            return false;
+        }
         if (type == NodeType.OPEN_INVENTORY || type == NodeType.CLOSE_GUI) {
             return false;
         }
@@ -633,6 +638,7 @@ public class Node {
             && type != NodeType.EVENT_CALL
             && type != NodeType.EVENT_FUNCTION
             && type != NodeType.SWING
+            && type != NodeType.CROUCH
             && type != NodeType.JUMP
             && type.getCategory() != NodeCategory.LOGIC;
     }
@@ -649,7 +655,9 @@ public class Node {
         return isStopControlNode()
             || type == NodeType.START_CHAIN
             || type == NodeType.SWING
+            || type == NodeType.CROUCH
             || type == NodeType.JUMP
+            || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || type == NodeType.OPERATOR_EQUALS
             || type == NodeType.OPERATOR_NOT
             || type == NodeType.OPEN_INVENTORY
@@ -667,6 +675,7 @@ public class Node {
         if (parameterNode == null
             || (!parameterNode.isParameterNode()
                 && parameterNode.getType() != NodeType.SENSOR_POSITION_OF
+                && parameterNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
                 && parameterNode.getType() != NodeType.VARIABLE)) {
             return false;
         }
@@ -704,7 +713,8 @@ public class Node {
             if (blockParameter != null && blockParameter.getType() == NodeType.VARIABLE) {
                 return false;
             }
-            return blockParameter == null || !parameterProvidesCoordinates(blockParameter);
+            // Only block placement targets provide coordinates for slot 1 conflicts.
+            return blockParameter == null || !blockParameterProvidesPlacementCoordinates(blockParameter);
         }
         if (type == NodeType.PLACE_HAND) {
             return false;
@@ -739,7 +749,9 @@ public class Node {
             if (otherIsValue) {
                 return false;
             }
-            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF);
+            return (parameter.isParameterNode()
+                || parameterType == NodeType.SENSOR_POSITION_OF
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE);
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
@@ -758,7 +770,8 @@ public class Node {
         if (type == NodeType.WALK) {
             NodeType parameterType = parameter.getType();
             if (slotIndex == 0) {
-                return parameterType == NodeType.PARAM_ROTATION;
+                return parameterType == NodeType.PARAM_ROTATION
+                    || parameterType == NodeType.PARAM_DIRECTION;
             }
             return parameterType == NodeType.PARAM_DURATION || parameterType == NodeType.PARAM_DISTANCE;
         }
@@ -812,7 +825,9 @@ public class Node {
             if (otherIsValue) {
                 return false;
             }
-            return (parameter.isParameterNode() || parameterType == NodeType.SENSOR_POSITION_OF);
+            return (parameter.isParameterNode()
+                || parameterType == NodeType.SENSOR_POSITION_OF
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE);
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
@@ -853,7 +868,9 @@ public class Node {
             return true;
         }
         if (type == NodeType.USE) {
-            return parameterType == NodeType.PARAM_ITEM || parameterType == NodeType.PARAM_INVENTORY_SLOT;
+            return parameterType == NodeType.PARAM_ITEM
+                || parameterType == NodeType.PARAM_INVENTORY_SLOT
+                || parameterType == NodeType.PARAM_BLOCK;
         }
         if (type == NodeType.TRADE) {
             return parameterType == NodeType.PARAM_VILLAGER_TRADE;
@@ -1653,7 +1670,14 @@ public class Node {
         int slotY = getParameterSlotTop(slotIndex) + PARAMETER_SLOT_INNER_PADDING;
         int availableWidth = getParameterSlotWidth(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
         int availableHeight = getParameterSlotHeight(slotIndex) - 2 * PARAMETER_SLOT_INNER_PADDING;
-        int parameterX = slotX + Math.max(0, (availableWidth - parameter.getWidth()) / 2);
+        int parameterWidth = parameter.getWidth();
+        int parameterX;
+        if (parameter.usesMinimalNodePresentation()) {
+            int visualAdjustment = MINIMAL_NODE_TAB_WIDTH;
+            parameterX = slotX + Math.max(0, (availableWidth - parameterWidth - visualAdjustment) / 2);
+        } else {
+            parameterX = slotX + Math.max(0, (availableWidth - parameterWidth) / 2);
+        }
         int parameterY = slotY + Math.max(0, (availableHeight - parameter.getHeight()) / 2);
         if (parameter.hasAttachedParameter() || parameter.hasAttachedSensor() || parameter.hasAttachedActionNode()) {
             parameter.setPosition(parameterX, parameterY);
@@ -1773,7 +1797,9 @@ public class Node {
 
     public boolean attachParameter(Node parameter, int slotIndex) {
         if (parameter == null
-            || (!parameter.isParameterNode() && parameter.getType() != NodeType.SENSOR_POSITION_OF)
+            || (!parameter.isParameterNode()
+                && parameter.getType() != NodeType.SENSOR_POSITION_OF
+                && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE)
             || parameter == this) {
             return false;
         }
@@ -2111,7 +2137,9 @@ public class Node {
             case POSITION:
                 return parameterProvidesCoordinates(parameterType);
             case LOOK_ORIENTATION:
-                return parameterType == NodeType.PARAM_ROTATION || parameterProvidesCoordinates(parameterType);
+                return parameterType == NodeType.PARAM_ROTATION
+                    || parameterType == NodeType.PARAM_DIRECTION
+                    || parameterProvidesCoordinates(parameterType);
             default:
                 return false;
         }
@@ -2419,9 +2447,6 @@ public class Node {
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "0.0"));
                 break;
             case CROUCH:
-                parameters.add(new NodeParameter("Active", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("ToggleKey", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("DurationSeconds", ParameterType.DOUBLE, "0.0"));
                 break;
             case SPRINT:
                 parameters.add(new NodeParameter("Active", ParameterType.BOOLEAN, "true"));
@@ -2553,6 +2578,9 @@ public class Node {
                 break;
             case PARAM_DISTANCE:
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
+                break;
+            case PARAM_DIRECTION:
+                parameters.add(new NodeParameter("Direction", ParameterType.STRING, ""));
                 break;
             case PARAM_ROTATION:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
@@ -2897,6 +2925,22 @@ public class Node {
                 values.put(normalizeParameterKey("Z"), zValue);
                 break;
             }
+            case SENSOR_TARGETED_BLOCK_FACE: {
+                Optional<Direction> targetFace = getTargetedBlockFace();
+                if (targetFace.isEmpty()) {
+                    break;
+                }
+                String faceValue = targetFace.get().toString().toLowerCase(Locale.ROOT);
+                values.put("Side", faceValue);
+                values.put(normalizeParameterKey("Side"), faceValue);
+                values.put("Face", faceValue);
+                values.put(normalizeParameterKey("Face"), faceValue);
+                values.put("Text", faceValue);
+                values.put(normalizeParameterKey("Text"), faceValue);
+                values.put("Message", faceValue);
+                values.put(normalizeParameterKey("Message"), faceValue);
+                break;
+            }
             case PARAM_ITEM: {
                 String items = values.get("Items");
                 String item = values.get("Item");
@@ -3063,6 +3107,55 @@ public class Node {
                 if (pitch != null) {
                     values.put("PitchOffset", pitch);
                     values.put(normalizeParameterKey("PitchOffset"), pitch);
+                }
+                break;
+            }
+            case PARAM_DIRECTION: {
+                String direction = values.get("Direction");
+                if (direction != null && !direction.trim().isEmpty()) {
+                    String normalized = direction.trim().toLowerCase(Locale.ROOT);
+                    Double yaw = null;
+                    Double pitch = null;
+                    switch (normalized) {
+                        case "north":
+                            yaw = 180.0;
+                            break;
+                        case "south":
+                            yaw = 0.0;
+                            break;
+                        case "west":
+                            yaw = 90.0;
+                            break;
+                        case "east":
+                            yaw = -90.0;
+                            break;
+                        case "up":
+                            pitch = -90.0;
+                            break;
+                        case "down":
+                            pitch = 90.0;
+                            break;
+                        default:
+                            break;
+                    }
+                    if (yaw != null) {
+                        String yawValue = Double.toString(yaw);
+                        values.put("Yaw", yawValue);
+                        values.put(normalizeParameterKey("Yaw"), yawValue);
+                    }
+                    if (pitch != null) {
+                        String pitchValue = Double.toString(pitch);
+                        values.put("Pitch", pitchValue);
+                        values.put(normalizeParameterKey("Pitch"), pitchValue);
+                    }
+                    values.put("Side", direction);
+                    values.put(normalizeParameterKey("Side"), direction);
+                    values.put("Face", direction);
+                    values.put(normalizeParameterKey("Face"), direction);
+                    values.put("Text", direction);
+                    values.put(normalizeParameterKey("Text"), direction);
+                    values.put("Message", direction);
+                    values.put(normalizeParameterKey("Message"), direction);
                 }
                 break;
             }
@@ -4166,14 +4259,8 @@ public class Node {
                 }
                 return Optional.of(Vec3d.ofCenter(match.get()));
             }
-            case PARAM_ROTATION: {
-                if (type != NodeType.GOTO && type != NodeType.GOAL) {
-                    return Optional.empty();
-                }
-                if (mode != NodeMode.GOTO_XYZ && mode != NodeMode.GOTO_XZ
-                    && mode != NodeMode.GOAL_XYZ && mode != NodeMode.GOAL_XZ) {
-                    return Optional.empty();
-                }
+            case PARAM_ROTATION:
+            case PARAM_DIRECTION: {
                 if (client == null || client.player == null) {
                     return Optional.empty();
                 }
@@ -4185,6 +4272,45 @@ public class Node {
                 Float pitchParam = parseNodeFloat(parameterNode, "Pitch");
                 float yaw = yawParam != null ? yawParam : client.player.getYaw();
                 float pitch = pitchParam != null ? pitchParam : client.player.getPitch();
+
+                if (parameterType == NodeType.PARAM_DIRECTION) {
+                    String direction = getParameterString(parameterNode, "Direction");
+                    if (direction != null) {
+                        switch (direction.trim().toLowerCase(Locale.ROOT)) {
+                            case "north":
+                                yaw = 180.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "south":
+                                yaw = 0.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "west":
+                                yaw = 90.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "east":
+                                yaw = -90.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "up":
+                                pitch = -90.0F;
+                                break;
+                            case "down":
+                                pitch = 90.0F;
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+
+                if (type == NodeType.GOTO || type == NodeType.GOAL) {
+                    if (mode != NodeMode.GOTO_XYZ && mode != NodeMode.GOTO_XZ
+                        && mode != NodeMode.GOAL_XYZ && mode != NodeMode.GOAL_XZ) {
+                        return Optional.empty();
+                    }
+                }
                 Float yawOffset = parseNodeFloat(parameterNode, "YawOffset");
                 Float pitchOffset = parseNodeFloat(parameterNode, "PitchOffset");
                 if (yawOffset != null) {
@@ -4193,7 +4319,8 @@ public class Node {
                 if (pitchOffset != null) {
                     pitch += pitchOffset;
                 }
-                double distance = Math.max(0.0, parseNodeDouble(parameterNode, "Distance", DEFAULT_DIRECTION_DISTANCE));
+                double distance = Math.max(0.0, parseNodeDouble(parameterNode, "Distance",
+                    parameterType == NodeType.PARAM_DIRECTION ? 1.0 : DEFAULT_DIRECTION_DISTANCE));
                 double yawRad = Math.toRadians(yaw);
                 double pitchRad = Math.toRadians(pitch);
                 double xDir = -Math.sin(yawRad) * Math.cos(pitchRad);
@@ -4303,7 +4430,66 @@ public class Node {
                     data.resolvedPitch = clamped;
                 }
             }
+            if (data != null) {
+                double distance = parseNodeDouble(parameterNode, "Distance", -1.0);
+                if (distance > 0.0) {
+                    data.resolvedLookDistance = distance;
+                }
+            }
             return true;
+        }
+
+        if (parameterNode.getType() == NodeType.PARAM_DIRECTION) {
+            String direction = getParameterString(parameterNode, "Direction");
+            if (direction != null) {
+                String normalized = direction.trim().toLowerCase(Locale.ROOT);
+                Float yaw = null;
+                Float pitch = null;
+                switch (normalized) {
+                    case "north":
+                        yaw = 180.0F;
+                        break;
+                    case "south":
+                        yaw = 0.0F;
+                        break;
+                    case "west":
+                        yaw = 90.0F;
+                        break;
+                    case "east":
+                        yaw = -90.0F;
+                        break;
+                    case "up":
+                        pitch = -90.0F;
+                        break;
+                    case "down":
+                        pitch = 90.0F;
+                        break;
+                    default:
+                        break;
+                }
+                if (yaw != null) {
+                    setParameterIfPresent("Yaw", formatFloat(yaw));
+                    if (data != null) {
+                        data.resolvedYaw = yaw;
+                    }
+                }
+                if (pitch != null) {
+                    float clamped = MathHelper.clamp(pitch, -90.0F, 90.0F);
+                    setParameterIfPresent("Pitch", formatFloat(clamped));
+                    if (data != null) {
+                        data.resolvedPitch = clamped;
+                    }
+                }
+                if (yaw != null || pitch != null) {
+                    if (data != null) {
+                        double distance = parseNodeDouble(parameterNode, "Distance", -1.0);
+                        if (distance > 0.0) {
+                            data.resolvedLookDistance = distance;
+                        }
+                    }
+                    return true;
+                }
+            }
         }
 
         Vec3d target = null;
@@ -5098,6 +5284,7 @@ public class Node {
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_TARGETED_BLOCK_FACE:
                 completeSensorEvaluation(future);
                 break;
             
@@ -5171,6 +5358,8 @@ public class Node {
         NodeType valueType = valueNode.getType();
         if (valueType == NodeType.SENSOR_POSITION_OF) {
             valueType = NodeType.PARAM_COORDINATE;
+        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+            valueType = NodeType.PARAM_MESSAGE;
         }
         ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
         manager.setRuntimeVariable(startNode, variableName.trim(), value);
@@ -9020,16 +9209,25 @@ public class Node {
         }
 
         if (coordinateParameterNode != null) {
-            EnumSet<ParameterUsage> coordinateUsages = parameterProvidesCoordinates(coordinateParameterNode)
-                ? EnumSet.of(ParameterUsage.POSITION)
-                : EnumSet.noneOf(ParameterUsage.class);
+            NodeType coordType = coordinateParameterNode.getType();
+            EnumSet<ParameterUsage> coordinateUsages;
+            if (coordType == NodeType.PARAM_ROTATION || coordType == NodeType.PARAM_DIRECTION) {
+                coordinateUsages = EnumSet.of(ParameterUsage.LOOK_ORIENTATION);
+            } else if (parameterProvidesCoordinates(coordinateParameterNode)) {
+                coordinateUsages = EnumSet.of(ParameterUsage.POSITION);
+            } else {
+                coordinateUsages = EnumSet.noneOf(ParameterUsage.class);
+            }
             if (preprocessParameterSlot(1, coordinateUsages, future, blockParameterNode == null) == ParameterHandlingResult.COMPLETE) {
                 return;
             }
         }
 
         boolean inheritPlacementCoordinates = coordinateHandledByBlockParam
-            || parameterProvidesCoordinates(coordinateParameterNode);
+            || (coordinateParameterNode != null
+                && parameterProvidesCoordinates(coordinateParameterNode)
+                && coordinateParameterNode.getType() != NodeType.PARAM_ROTATION
+                && coordinateParameterNode.getType() != NodeType.PARAM_DIRECTION);
         String block = "stone";
         int x = 0, y = 0, z = 0;
 
@@ -9077,12 +9275,20 @@ public class Node {
         }
 
         String originalBlockId = block;
+        if (isAnySelectionValue(originalBlockId)) {
+            String anyBlock = resolveAnyBlockId(client, hand);
+            if (anyBlock != null && !anyBlock.isEmpty()) {
+                block = anyBlock;
+                originalBlockId = block;
+                setParameterValueAndPropagate("Block", block);
+            }
+        }
         block = normalizeResourceId(block, "minecraft");
         if (!Objects.equals(originalBlockId, block)) {
             setParameterValueAndPropagate("Block", block);
         }
 
-        if (block == null || block.isEmpty()) {
+        if (block == null || block.isEmpty() || isAnySelectionValue(block)) {
             sendNodeErrorMessage(client, "Cannot place block: no block selected.");
             future.complete(null);
             return;
@@ -9096,6 +9302,46 @@ public class Node {
                 future.complete(null);
                 return;
             }
+        }
+
+        if (!inheritPlacementCoordinates
+            && coordinateParameterNode != null
+            && (coordinateParameterNode.getType() == NodeType.PARAM_ROTATION
+                || coordinateParameterNode.getType() == NodeType.PARAM_DIRECTION)) {
+            try {
+                float yaw = parameterData != null && parameterData.resolvedYaw != null
+                    ? parameterData.resolvedYaw
+                    : client.player.getYaw();
+                float pitch = parameterData != null && parameterData.resolvedPitch != null
+                    ? parameterData.resolvedPitch
+                    : client.player.getPitch();
+                double reachDistance = Math.sqrt(getPlacementReachSquared(client));
+                double lookDistance = parameterData != null && parameterData.resolvedLookDistance != null
+                    ? parameterData.resolvedLookDistance
+                    : reachDistance;
+                BlockHitResult hit = supplyFromClient(client, () ->
+                    raycastBlockFromOrientation(client, yaw, pitch, lookDistance)
+                );
+                if (hit != null) {
+                    runOnClientThread(client, () -> {
+                        client.player.setYaw(yaw);
+                        client.player.setPitch(pitch);
+                        client.player.setHeadYaw(yaw);
+                        ActionResult result = client.interactionManager.interactBlock(client.player, hand, hit);
+                        if (result.isAccepted()) {
+                            client.player.swingHand(hand);
+                            if (client.player.networkHandler != null) {
+                                client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
+                            }
+                        }
+                    });
+                }
+                future.complete(null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            }
+            return;
         }
 
         System.out.println("Placing block '" + block + "' at " + x + ", " + y + ", " + z);
@@ -9182,6 +9428,8 @@ public class Node {
             case PARAM_BLOCK:
             case PARAM_WAYPOINT:
             case PARAM_CLOSEST:
+            case PARAM_DIRECTION:
+            case PARAM_ROTATION:
                 return true;
             default:
                 return false;
@@ -9310,6 +9558,31 @@ public class Node {
         }
         Identifier id = Registries.ITEM.getId(stack.getItem());
         return id != null ? id.toString() : null;
+    }
+
+    private String resolveAnyBlockId(net.minecraft.client.MinecraftClient client, Hand preferredHand) {
+        if (client == null || client.player == null) {
+            return null;
+        }
+        String fromHand = getBlockIdFromHand(client, preferredHand);
+        if (fromHand != null && !fromHand.isEmpty()) {
+            return fromHand;
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        if (inventory == null) {
+            return null;
+        }
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
+                continue;
+            }
+            Identifier id = Registries.ITEM.getId(stack.getItem());
+            if (id != null) {
+                return id.toString();
+            }
+        }
+        return null;
     }
     
     private void executeBuildCommand(CompletableFuture<Void> future) {
@@ -9793,6 +10066,19 @@ public class Node {
             case PARAM_RANGE:
             case PARAM_CLOSEST:
                 return getRuntimeValue(values, "range");
+            case PARAM_DISTANCE:
+                return getRuntimeValue(values, "distance");
+            case PARAM_DIRECTION: {
+                String direction = getRuntimeValue(values, "direction");
+                if (!direction.isEmpty()) {
+                    return direction;
+                }
+                direction = getRuntimeValue(values, "side");
+                if (!direction.isEmpty()) {
+                    return direction;
+                }
+                return getRuntimeValue(values, "face");
+            }
             case PARAM_AMOUNT:
                 return getRuntimeValue(values, "amount");
             case OPERATOR_RANDOM:
@@ -9813,6 +10099,17 @@ public class Node {
                 return getRuntimeValue(values, "variable");
             case SENSOR_POSITION_OF:
                 return formatCoordinateValues(values);
+            case SENSOR_TARGETED_BLOCK_FACE: {
+                String side = getRuntimeValue(values, "side");
+                if (!side.isEmpty()) {
+                    return side;
+                }
+                side = getRuntimeValue(values, "face");
+                if (!side.isEmpty()) {
+                    return side;
+                }
+                return getRuntimeValue(values, "text");
+            }
             default:
                 break;
         }
@@ -11343,6 +11640,37 @@ public class Node {
         PlayerInventory inventory = client.player.getInventory();
         NodeType parameterType = parameterNode.getType();
         switch (parameterType) {
+            case PARAM_BLOCK: {
+                String rawBlock = getParameterString(parameterNode, "Block");
+                boolean anySelection = isAnySelectionValue(rawBlock);
+                List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                if (selections.isEmpty() && !anySelection) {
+                    sendParameterSearchFailure("No block selected on parameter for " + type.getDisplayName() + ".", future);
+                    return false;
+                }
+
+                ItemSearchResult result = null;
+                if (anySelection || selections.isEmpty()) {
+                    result = findFirstBlockItemSlot(inventory);
+                } else {
+                    result = findUseBlockSlot(inventory, selections);
+                }
+
+                if (result == null) {
+                    String reference = anySelection ? "block" : selections.stream()
+                        .map(BlockSelection::getBlockIdString)
+                        .filter(id -> id != null && !id.isEmpty())
+                        .findFirst()
+                        .orElse("block");
+                    sendParameterSearchFailure("No " + reference + " found in inventory for " + type.getDisplayName() + ".", future);
+                    return false;
+                }
+                runtimeParameterData.slotIndex = result.slotIndex();
+                runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                runtimeParameterData.targetItem = result.item();
+                runtimeParameterData.targetItemId = result.itemId();
+                return true;
+            }
             case PARAM_ITEM: {
                 List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
                 if (itemIds.isEmpty()) {
@@ -11396,6 +11724,60 @@ public class Node {
             int slot = findAccessibleSlotWithItem(inventory, candidateItem);
             if (slot >= 0) {
                 return new ItemSearchResult(slot, candidateItem, candidateId);
+            }
+        }
+        return null;
+    }
+
+    private ItemSearchResult findUseBlockSlot(PlayerInventory inventory, List<BlockSelection> selections) {
+        if (inventory == null || selections == null || selections.isEmpty()) {
+            return null;
+        }
+        for (BlockSelection selection : selections) {
+            if (selection == null || selection.getBlock() == null) {
+                continue;
+            }
+            Item candidateItem = selection.getBlock().asItem();
+            if (candidateItem == null || candidateItem == Items.AIR) {
+                continue;
+            }
+            int slot = findAccessibleSlotWithItem(inventory, candidateItem);
+            if (slot >= 0) {
+                Identifier id = Registries.ITEM.getId(candidateItem);
+                String itemId = id != null ? id.toString() : selection.getBlockIdString();
+                return new ItemSearchResult(slot, candidateItem, itemId);
+            }
+        }
+        return null;
+    }
+
+    private ItemSearchResult findFirstBlockItemSlot(PlayerInventory inventory) {
+        if (inventory == null) {
+            return null;
+        }
+        int limit = Math.min(PlayerInventory.MAIN_SIZE, inventory.size());
+        for (int slot = 0; slot < limit; slot++) {
+            ItemStack stack = inventory.getStack(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            Item item = stack.getItem();
+            if (item instanceof BlockItem) {
+                Identifier id = Registries.ITEM.getId(item);
+                String itemId = id != null ? id.toString() : "";
+                return new ItemSearchResult(slot, item, itemId);
+            }
+        }
+        int offhandIndex = getOffhandInventoryIndex(inventory);
+        if (offhandIndex >= 0 && offhandIndex < inventory.size()) {
+            ItemStack offhandStack = inventory.getStack(offhandIndex);
+            if (!offhandStack.isEmpty()) {
+                Item item = offhandStack.getItem();
+                if (item instanceof BlockItem) {
+                    Identifier id = Registries.ITEM.getId(item);
+                    String itemId = id != null ? id.toString() : "";
+                    return new ItemSearchResult(offhandIndex, item, itemId);
+                }
             }
         }
         return null;
@@ -11831,10 +12213,16 @@ public class Node {
         }
 
         String blockIdToUse = parameterBlockId;
-        if (blockIdToUse == null || blockIdToUse.isEmpty()) {
+        if (blockIdToUse == null || blockIdToUse.isEmpty() || isAnySelectionValue(blockIdToUse)) {
+            String anyBlock = resolveAnyBlockId(client, hand);
+            if (anyBlock != null && !anyBlock.isEmpty()) {
+                blockIdToUse = anyBlock;
+            }
+        }
+        if (blockIdToUse == null || blockIdToUse.isEmpty() || isAnySelectionValue(blockIdToUse)) {
             blockIdToUse = getBlockIdFromHand(client, hand);
         }
-        if (blockIdToUse == null || blockIdToUse.isEmpty()) {
+        if (blockIdToUse == null || blockIdToUse.isEmpty() || isAnySelectionValue(blockIdToUse)) {
             sendNodeErrorMessage(client, "Cannot place block: no block selected.");
             future.complete(null);
             return;
@@ -12074,7 +12462,17 @@ public class Node {
             );
         }
 
-        BlockHitResult surface = createPlacementHitResult(client, targetPos, eyePos, reachSquared);
+        Vec3d preferredLook = null;
+        if (runtimeParameterData != null && runtimeParameterData.resolvedYaw != null && runtimeParameterData.resolvedPitch != null) {
+            double yawRad = Math.toRadians(runtimeParameterData.resolvedYaw);
+            double pitchRad = Math.toRadians(runtimeParameterData.resolvedPitch);
+            double xDir = -Math.sin(yawRad) * Math.cos(pitchRad);
+            double yDir = -Math.sin(pitchRad);
+            double zDir = Math.cos(yawRad) * Math.cos(pitchRad);
+            preferredLook = new Vec3d(xDir, yDir, zDir).normalize();
+        }
+
+        BlockHitResult surface = createPlacementHitResult(client, targetPos, eyePos, reachSquared, preferredLook);
         if (surface == null) {
             throw new PlacementFailure("Cannot place block at " + formatBlockPos(targetPos) + ": no nearby surface to place against.");
         }
@@ -12100,13 +12498,14 @@ public class Node {
         return surface;
     }
 
-    private BlockHitResult createPlacementHitResult(net.minecraft.client.MinecraftClient client, BlockPos targetPos, Vec3d eyePos, double reachSquared) {
+    private BlockHitResult createPlacementHitResult(net.minecraft.client.MinecraftClient client, BlockPos targetPos, Vec3d eyePos, double reachSquared, Vec3d preferredLook) {
         if (client.player == null || client.world == null) {
             return null;
         }
 
         BlockHitResult bestResult = null;
         double bestDistance = Double.MAX_VALUE;
+        double bestAlignment = -Double.MAX_VALUE;
 
         for (Direction direction : Direction.values()) {
             BlockPos supportPos = targetPos.offset(direction);
@@ -12143,6 +12542,7 @@ public class Node {
             }
 
             Vec3d placementNormal = Vec3d.of(placementSide.getVector());
+            double faceAlignment = preferredLook != null ? preferredLook.dotProduct(placementNormal) : 0.0D;
 
             for (double offsetA : FACE_OFFSET_SAMPLES) {
                 for (double offsetB : FACE_OFFSET_SAMPLES) {
@@ -12154,8 +12554,22 @@ public class Node {
                         continue;
                     }
 
-                    if (distance < bestDistance) {
+                    boolean better;
+                    if (preferredLook != null) {
+                        if (faceAlignment > bestAlignment + 1e-6) {
+                            better = true;
+                        } else if (Math.abs(faceAlignment - bestAlignment) <= 1e-6) {
+                            better = distance < bestDistance;
+                        } else {
+                            better = false;
+                        }
+                    } else {
+                        better = distance < bestDistance;
+                    }
+
+                    if (better) {
                         bestDistance = distance;
+                        bestAlignment = faceAlignment;
                         bestResult = new BlockHitResult(
                             samplePoint.subtract(placementNormal.multiply(0.001D)),
                             placementSide,
@@ -12223,6 +12637,9 @@ public class Node {
         }
         String trimmed = value.trim();
         if (trimmed.isEmpty()) {
+            return "";
+        }
+        if (isAnySelectionValue(trimmed)) {
             return "";
         }
         if (!trimmed.contains(":")) {
@@ -12341,8 +12758,13 @@ public class Node {
                         () -> client.player != null ? EntityCompatibilityBridge.getPos(client.player) : null);
                     if (startPos != null) {
                         double targetDistanceSquared = distance * distance;
+                        long startTime = System.currentTimeMillis();
+                        long maxDurationMs = durationSeconds > 0.0 ? (long) (durationSeconds * 1000) : Long.MAX_VALUE;
                         while (true) {
                             Thread.sleep(50L);
+                            if (System.currentTimeMillis() - startTime >= maxDurationMs) {
+                                break;
+                            }
                             Vec3d currentPos = supplyFromClient(client,
                                 () -> client.player != null ? EntityCompatibilityBridge.getPos(client.player) : null);
                             if (currentPos == null) {
@@ -12400,48 +12822,84 @@ public class Node {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
-        
-        boolean active = getBooleanParameter("Active", true);
-        boolean toggleKey = getBooleanParameter("ToggleKey", false);
-        double durationSeconds = Math.max(0.0, getDoubleParameter("DurationSeconds", 0.0));
 
-        if (durationSeconds <= 0.0) {
-            applyCrouchState(client, active, toggleKey);
-            future.complete(null);
-            return;
-        }
-
-        boolean previousSneak = client.player.isSneaking();
-        new Thread(() -> {
-            try {
-                runOnClientThread(client, () -> applyCrouchState(client, active, toggleKey));
-                if (durationSeconds > 0.0) {
-                    Thread.sleep((long) (durationSeconds * 1000));
-                }
-                if (previousSneak != active) {
-                    runOnClientThread(client, () -> applyCrouchState(client, previousSneak, toggleKey));
-                }
-                future.complete(null);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                future.completeExceptionally(e);
-            }
-        }, "Pathmind-Crouch").start();
+        boolean target = !client.player.isSneaking();
+        applyCrouchState(client, target);
+        future.complete(null);
     }
 
-    private void applyCrouchState(net.minecraft.client.MinecraftClient client, boolean active, boolean toggleKey) {
+    private void applyCrouchState(net.minecraft.client.MinecraftClient client, boolean active) {
         if (client == null || client.player == null) {
             return;
         }
         client.player.setSneaking(active);
         if (client.options != null && client.options.sneakKey != null) {
-            if (toggleKey) {
-                client.options.sneakKey.setPressed(true);
-                client.options.sneakKey.setPressed(false);
-            } else {
-                client.options.sneakKey.setPressed(active);
-            }
+            client.options.sneakKey.setPressed(active);
         }
+    }
+
+    private Vec3d resolveLookTargetFromOrientation(net.minecraft.client.MinecraftClient client, float yaw, float pitch, double distance) {
+        if (client == null || client.player == null || client.world == null) {
+            return null;
+        }
+        Vec3d eyePos = client.player.getEyePos();
+        double yawRad = Math.toRadians(yaw);
+        double pitchRad = Math.toRadians(pitch);
+        Vec3d direction = new Vec3d(
+            -Math.sin(yawRad) * Math.cos(pitchRad),
+            -Math.sin(pitchRad),
+            Math.cos(yawRad) * Math.cos(pitchRad)
+        );
+        double reachDistance = Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED);
+        double rayDistance = distance > 0.0 ? Math.min(distance, reachDistance) : reachDistance;
+        Vec3d end = eyePos.add(direction.multiply(reachDistance));
+        if (rayDistance != reachDistance) {
+            end = eyePos.add(direction.multiply(rayDistance));
+        }
+        HitResult hit = client.world.raycast(new RaycastContext(
+            eyePos,
+            end,
+            RaycastContext.ShapeType.OUTLINE,
+            RaycastContext.FluidHandling.NONE,
+            client.player
+        ));
+        if (hit == null || hit.getType() != HitResult.Type.BLOCK) {
+            return null;
+        }
+        BlockHitResult blockHit = (BlockHitResult) hit;
+        BlockPos pos = blockHit.getBlockPos();
+        if (pos == null) {
+            return null;
+        }
+        return Vec3d.ofCenter(pos);
+    }
+
+    private BlockHitResult raycastBlockFromOrientation(net.minecraft.client.MinecraftClient client, float yaw, float pitch, double distance) {
+        if (client == null || client.player == null || client.world == null) {
+            return null;
+        }
+        Vec3d eyePos = client.player.getEyePos();
+        double yawRad = Math.toRadians(yaw);
+        double pitchRad = Math.toRadians(pitch);
+        Vec3d direction = new Vec3d(
+            -Math.sin(yawRad) * Math.cos(pitchRad),
+            -Math.sin(pitchRad),
+            Math.cos(yawRad) * Math.cos(pitchRad)
+        );
+        double reachDistance = Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED);
+        double rayDistance = distance > 0.0 ? Math.min(distance, reachDistance) : reachDistance;
+        Vec3d end = eyePos.add(direction.multiply(rayDistance));
+        HitResult hit = client.world.raycast(new RaycastContext(
+            eyePos,
+            end,
+            RaycastContext.ShapeType.OUTLINE,
+            RaycastContext.FluidHandling.NONE,
+            client.player
+        ));
+        if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK) {
+            return blockHit;
+        }
+        return null;
     }
 
     private void executeSprintCommand(CompletableFuture<Void> future) {
@@ -13233,7 +13691,7 @@ public class Node {
             return null;
         }
         String blockId = getParameterString(node, "Block");
-        if (blockId == null || blockId.isEmpty()) {
+        if (blockId == null || blockId.isEmpty() || isAnySelectionValue(blockId)) {
             return null;
         }
         String state = getParameterString(node, "State");
@@ -13375,6 +13833,19 @@ public class Node {
         }
         Entity nearest = Collections.min(matches, Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)));
         return Optional.of(nearest);
+    }
+
+    private Optional<Direction> getTargetedBlockFace() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return Optional.empty();
+        }
+        HitResult hit = client.crosshairTarget;
+        if (!(hit instanceof BlockHitResult) || hit.getType() != HitResult.Type.BLOCK) {
+            return Optional.empty();
+        }
+        Direction face = ((BlockHitResult) hit).getSide();
+        return face == null ? Optional.empty() : Optional.of(face);
     }
     
     private Hand resolveHand(NodeParameter parameter, Hand defaultHand) {
@@ -13523,6 +13994,9 @@ public class Node {
                 result = isBlockAhead(blockId);
                 break;
             }
+            case SENSOR_TARGETED_BLOCK_FACE:
+                result = getTargetedBlockFace().isPresent();
+                break;
             case SENSOR_IS_DAYTIME:
                 result = isDaytime();
                 break;
@@ -13934,6 +14408,8 @@ public class Node {
         NodeType valueType = valueNode.getType();
         if (valueType == NodeType.SENSOR_POSITION_OF) {
             valueType = NodeType.PARAM_COORDINATE;
+        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+            valueType = NodeType.PARAM_MESSAGE;
         }
         if (variable.getType() != valueType) {
             return Optional.empty();
@@ -13958,12 +14434,66 @@ public class Node {
         if (leftNumber.isPresent() || rightNumber.isPresent()) {
             return Optional.empty();
         }
+        Optional<String> leftString = resolveComparableString(left);
+        Optional<String> rightString = resolveComparableString(right);
+        if (leftString.isPresent() && rightString.isPresent()) {
+            String l = leftString.get();
+            String r = rightString.get();
+            return Optional.of(l.equalsIgnoreCase(r));
+        }
+        if (leftString.isPresent() || rightString.isPresent()) {
+            return Optional.empty();
+        }
         Map<String, String> leftValues = left.exportParameterValues();
         Map<String, String> rightValues = right.exportParameterValues();
         if (leftValues == null || rightValues == null || leftValues.isEmpty() || rightValues.isEmpty()) {
             return Optional.empty();
         }
         return Optional.of(leftValues.equals(rightValues));
+    }
+
+    private Optional<String> resolveComparableString(Node node) {
+        if (node == null) {
+            return Optional.empty();
+        }
+        switch (node.getType()) {
+            case PARAM_MESSAGE: {
+                String text = getParameterString(node, "Text");
+                if (text == null || text.trim().isEmpty()) {
+                    text = getParameterString(node, "Message");
+                }
+                if (text == null || text.trim().isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.of(text.trim());
+            }
+            case PARAM_DIRECTION: {
+                String direction = getParameterString(node, "Direction");
+                if (direction == null || direction.trim().isEmpty()) {
+                    direction = getParameterString(node, "Side");
+                }
+                if (direction == null || direction.trim().isEmpty()) {
+                    direction = getParameterString(node, "Face");
+                }
+                if (direction == null || direction.trim().isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.of(direction.trim());
+            }
+            case SENSOR_TARGETED_BLOCK_FACE: {
+                Map<String, String> values = node.exportParameterValues();
+                String face = getRuntimeValue(values, "face");
+                if (face.isEmpty()) {
+                    face = getRuntimeValue(values, "side");
+                }
+                if (face.isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.of(face.trim());
+            }
+            default:
+                return Optional.empty();
+        }
     }
 
     private Optional<Double> resolveComparableNumber(Node node) {

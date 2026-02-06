@@ -4420,9 +4420,13 @@ public class Node {
     }
 
     private void sendParameterSearchFailure(String message, CompletableFuture<Void> future) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client != null) {
-            sendNodeErrorMessage(client, message);
+        // Only surface search failures during execution contexts (future != null).
+        // UI/preview calls (future == null) should not spam chat.
+        if (future != null) {
+            net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+            if (client != null) {
+                sendNodeErrorMessage(client, message);
+            }
         }
         if (future != null && !future.isDone()) {
             future.complete(null);

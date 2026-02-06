@@ -772,7 +772,7 @@ public final class RecipeCompatibilityBridge {
             return displayIngredient;
         }
 
-        List<?> nested = extractDisplayEntries(slotDisplay, "comp_3272", "components", "displays", "children");
+        List<?> nested = extractDisplayEntries(slotDisplay, "comp_3272", "comp_3271", "components", "displays", "children", "ingredients", "slots");
         if (nested != null && !nested.isEmpty()) {
             Ingredient combined = ingredientFromSlotDisplays(nested, registryManager);
             if (combined != null && !isIngredientEmpty(combined, registryManager)) {
@@ -819,6 +819,8 @@ public final class RecipeCompatibilityBridge {
         addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3301", "second", "right", "addition"));
         addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3297"));
         addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3298"));
+        addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3258"));
+        addSlotDisplayCandidate(candidates, accessValue(slotDisplay, "comp_3259"));
 
         if (candidates.isEmpty()) {
             return null;

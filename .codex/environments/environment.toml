@@ -9,3 +9,8 @@ script = ""
 name = "Run"
 icon = "run"
 command = "./gradlew runClient -Pmc_version=1.21.11"
+
+[[actions]]
+name = "1.21.8"
+icon = "tool"
+command = "./gradlew runClient -Pmc_version=1.21.x"

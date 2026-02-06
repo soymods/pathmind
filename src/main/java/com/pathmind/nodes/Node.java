@@ -1,6 +1,8 @@
 package com.pathmind.nodes;
 
 import net.minecraft.text.Text;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +96,11 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.regex.Pattern;
 import java.util.Random;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import net.fabricmc.loader.api.FabricLoader;
 import org.lwjgl.glfw.GLFW;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -123,6 +130,11 @@ public class Node {
     private static final int PARAM_PADDING_TOP = 2;
     private static final int PARAM_PADDING_BOTTOM = 4;
     private static final int MAX_PARAMETER_LABEL_LENGTH = 20;
+    private static final String RECIPE_CACHE_FILE_NAME = "recipe_cache.json";
+    private static final int RECIPE_CACHE_VERSION = 1;
+    private static final Gson RECIPE_CACHE_GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Object RECIPE_CACHE_LOCK = new Object();
+    private static volatile CachedRecipeBook cachedRecipeBook;
     private static final int BODY_PADDING_NO_PARAMS = 10;
     private static final int START_END_SIZE = 36;
     private static final String CHAT_MESSAGE_PREFIX = "\u00A74[\u00A7cPathmind\u00A74] \u00A77";
@@ -6279,38 +6291,64 @@ public class Node {
         Object serverRegistryManager = client.getServer() != null
             ? client.getServer().getRegistryManager()
             : null;
-        net.minecraft.world.World clientWorld = EntityCompatibilityBridge.getWorld(client.player);
-        if (clientWorld == null) {
-            clientWorld = client.world;
+        net.minecraft.world.World clientWorld;
+        try {
+            clientWorld = supplyFromClient(client, () -> {
+                net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+                if (world == null) {
+                    world = client.world;
+                }
+                return world;
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.complete(null);
+            return;
         }
         Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
 
         java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable = new java.util.concurrent.atomic.AtomicBoolean(false);
-        RecipeEntry<CraftingRecipe> recipeEntry = findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable);
+        RecipeEntry<CraftingRecipe> recipeEntry;
         Object displayEntry = null;
-        if (recipeEntry == null) {
-            displayEntry = findCraftingDisplayEntry(client, targetItem, effectiveCraftMode, requiresCraftingTable, clientWorld);
-            if (displayEntry == null) {
-                String message;
-                if (effectiveCraftMode == NodeMode.CRAFT_PLAYER_GUI && requiresCraftingTable.get()) {
-                    message = "Cannot craft " + itemDisplayName + ": recipe requires a crafting table.";
-                } else {
-                    message = "Cannot craft " + itemDisplayName + ": no matching recipe found.";
-                }
-                sendNodeErrorMessage(client, message);
-                future.complete(null);
-                return;
+        try {
+            recipeEntry = supplyFromClient(client, () -> findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable));
+            if (recipeEntry == null) {
+                displayEntry = supplyFromClient(client, () -> findCraftingDisplayEntry(client, targetItem, effectiveCraftMode, requiresCraftingTable, clientWorld));
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.complete(null);
+            return;
+        }
+        CachedRecipe cachedRecipe = findCachedRecipe(client, targetItem, effectiveCraftMode);
+        if (recipeEntry == null && displayEntry == null && cachedRecipe == null) {
+            String message;
+            if (effectiveCraftMode == NodeMode.CRAFT_PLAYER_GUI && requiresCraftingTable.get()) {
+                message = "Cannot craft " + itemDisplayName + ": recipe requires a crafting table.";
+            } else {
+                message = "Cannot craft " + itemDisplayName + ": no matching recipe found. "
+                    + "If this is a multiplayer server, open a singleplayer world once to cache recipes.";
+            }
+            sendNodeErrorMessage(client, message);
+            future.complete(null);
+            return;
         }
 
         ItemStack outputTemplate;
-        if (recipeEntry != null) {
+        if (cachedRecipe != null && recipeEntry == null && displayEntry == null) {
+            int outputCount = Math.max(1, cachedRecipe.outputCount);
+            outputTemplate = new ItemStack(targetItem, outputCount);
+        } else if (recipeEntry != null) {
             outputTemplate = getRecipeOutput(recipeEntry.value(), serverRegistryManager);
             if (outputTemplate.isEmpty() && clientRegistryManager != serverRegistryManager) {
                 outputTemplate = getRecipeOutput(recipeEntry.value(), clientRegistryManager);
             }
         } else {
             outputTemplate = getDisplayOutput(RecipeCompatibilityBridge.getDisplayFromEntry(displayEntry), clientWorld);
+        }
+        if ((outputTemplate == null || outputTemplate.isEmpty()) && cachedRecipe != null) {
+            int outputCount = Math.max(1, cachedRecipe.outputCount);
+            outputTemplate = new ItemStack(targetItem, outputCount);
         }
         if (outputTemplate == null || outputTemplate.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe produced no output.");
@@ -6324,10 +6362,15 @@ public class Node {
 
         Object ingredientRegistryManager = clientWorld;
         List<GridIngredient> gridIngredients;
-        if (recipeEntry != null) {
+        if (cachedRecipe != null && recipeEntry == null && displayEntry == null) {
+            gridIngredients = buildGridIngredientsFromCache(cachedRecipe);
+        } else if (recipeEntry != null) {
             gridIngredients = resolveGridIngredients(recipeEntry.value(), effectiveCraftMode, ingredientRegistryManager);
         } else {
             gridIngredients = resolveDisplayGridIngredients(RecipeCompatibilityBridge.getDisplayFromEntry(displayEntry), effectiveCraftMode, ingredientRegistryManager);
+        }
+        if ((gridIngredients == null || gridIngredients.isEmpty()) && cachedRecipe != null) {
+            gridIngredients = buildGridIngredientsFromCache(cachedRecipe);
         }
         if (gridIngredients.isEmpty()) {
             sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": the recipe has no ingredients.");
@@ -6335,12 +6378,17 @@ public class Node {
             return;
         }
 
+        if (recipeEntry != null && client.getServer() != null) {
+            cacheCraftingRecipe(client, targetItem, recipeEntry.value(), outputTemplate.getCount(), clientWorld);
+        }
+
         int[] craftingGridSlots = getCraftingGridSlots(effectiveCraftMode);
+        List<GridIngredient> finalGridIngredients = gridIngredients;
 
         CompletableFuture
             .supplyAsync(() -> {
                 try {
-                    return craftRecipeUsingScreen(client, effectiveCraftMode, recipeEntry, targetItem, craftsRequested, desiredCount, itemDisplayName, gridIngredients, craftingGridSlots, ingredientRegistryManager);
+                    return craftRecipeUsingScreen(client, effectiveCraftMode, recipeEntry, targetItem, craftsRequested, desiredCount, itemDisplayName, finalGridIngredients, craftingGridSlots, ingredientRegistryManager);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new java.util.concurrent.CompletionException(e);
@@ -7156,6 +7204,9 @@ public class Node {
         }
 
         List<RecipeEntry<?>> entries = new ArrayList<>();
+        if (tryCollectClientRecipeManagerEntries(manager, entries)) {
+            return entries;
+        }
         RecipeType<?> craftingType = RecipeType.CRAFTING;
         List<String> preferredNames = List.of("listAllOfType", "getAllOfType", "getAllRecipes", "getRecipes");
         for (String name : preferredNames) {
@@ -7195,6 +7246,301 @@ public class Node {
             collectRecipeEntriesFromFields(manager, entries, 0, new java.util.IdentityHashMap<>());
         }
         return entries;
+    }
+
+    private boolean tryCollectClientRecipeManagerEntries(Object manager, List<RecipeEntry<?>> entries) {
+        if (manager == null || entries == null) {
+            return false;
+        }
+        String className = manager.getClass().getName();
+        if (!className.contains("ClientRecipeManager") && !className.contains("class_10333")) {
+            return false;
+        }
+
+        // Newer client recipe manager wraps a RecipeManager and a recipes store.
+        Object recipeManager = tryGetFieldValue(manager, "recipeManager", "field_54850");
+        if (recipeManager != null && recipeManager != manager) {
+            entries.addAll(getRecipeEntries(recipeManager));
+            if (!entries.isEmpty()) {
+                return true;
+            }
+        }
+
+        Object recipesStore = tryGetFieldValue(manager, "recipes", "field_54854");
+        if (collectRecipeEntries(recipesStore, entries)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Object tryGetFieldValue(Object target, String... fieldNames) {
+        if (target == null || fieldNames == null) {
+            return null;
+        }
+        for (String fieldName : fieldNames) {
+            try {
+                java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+                if (!field.canAccess(target)) {
+                    field.setAccessible(true);
+                }
+                Object value = field.get(target);
+                if (value != null) {
+                    return value;
+                }
+            } catch (NoSuchFieldException | IllegalAccessException | RuntimeException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private CachedRecipe findCachedRecipe(net.minecraft.client.MinecraftClient client, Item targetItem, NodeMode craftMode) {
+        if (client == null || targetItem == null || craftMode == null) {
+            return null;
+        }
+        CachedRecipeBook book = loadRecipeCache(client);
+        if (book == null || book.recipesByOutput == null) {
+            return null;
+        }
+        Identifier id = Registries.ITEM.getId(targetItem);
+        if (id == null) {
+            return null;
+        }
+        List<CachedRecipe> recipes = book.recipesByOutput.get(id.toString());
+        if (recipes == null || recipes.isEmpty()) {
+            return null;
+        }
+        for (CachedRecipe recipe : recipes) {
+            if (recipe != null && craftMode.name().equals(recipe.mode)) {
+                return recipe;
+            }
+        }
+        return null;
+    }
+
+    private void cacheCraftingRecipe(net.minecraft.client.MinecraftClient client,
+                                     Item targetItem,
+                                     CraftingRecipe recipe,
+                                     int outputCount,
+                                     Object registryManager) {
+        if (client == null || targetItem == null || recipe == null) {
+            return;
+        }
+        if (client.getServer() == null) {
+            return;
+        }
+        CachedRecipeBook book = loadRecipeCache(client);
+        if (book == null) {
+            return;
+        }
+        if (book.recipesByOutput == null || book.recipesByOutput.isEmpty()) {
+            cacheAllCraftingRecipes(book, client, registryManager);
+        }
+
+        cacheRecipeForMode(book, targetItem, recipe, outputCount, NodeMode.CRAFT_CRAFTING_TABLE, registryManager);
+        if (recipeFitsPlayerGrid(recipe)) {
+            cacheRecipeForMode(book, targetItem, recipe, outputCount, NodeMode.CRAFT_PLAYER_GUI, registryManager);
+        }
+
+        saveRecipeCache(client, book);
+    }
+
+    private void cacheAllCraftingRecipes(CachedRecipeBook book,
+                                         net.minecraft.client.MinecraftClient client,
+                                         Object registryManager) {
+        if (book == null || client == null || client.getServer() == null) {
+            return;
+        }
+        RecipeManager manager = client.getServer().getRecipeManager();
+        if (manager == null) {
+            return;
+        }
+        Object serverRegistryManager = client.getServer().getRegistryManager();
+        for (RecipeEntry<?> entry : getCraftingRecipeEntries(manager)) {
+            if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
+                continue;
+            }
+            ItemStack output = getRecipeOutput(craftingRecipe, serverRegistryManager);
+            if (output == null || output.isEmpty()) {
+                continue;
+            }
+            Item outputItem = output.getItem();
+            int count = output.getCount();
+            cacheRecipeForMode(book, outputItem, craftingRecipe, count, NodeMode.CRAFT_CRAFTING_TABLE, registryManager);
+            if (recipeFitsPlayerGrid(craftingRecipe)) {
+                cacheRecipeForMode(book, outputItem, craftingRecipe, count, NodeMode.CRAFT_PLAYER_GUI, registryManager);
+            }
+        }
+    }
+
+    private void cacheRecipeForMode(CachedRecipeBook book,
+                                    Item targetItem,
+                                    CraftingRecipe recipe,
+                                    int outputCount,
+                                    NodeMode mode,
+                                    Object registryManager) {
+        if (book == null || targetItem == null || recipe == null || mode == null) {
+            return;
+        }
+        List<GridIngredient> grid = resolveGridIngredients(recipe, mode, registryManager);
+        if (grid == null || grid.isEmpty()) {
+            return;
+        }
+        List<CachedGridIngredient> cachedGrid = new ArrayList<>();
+        for (GridIngredient ingredient : grid) {
+            if (ingredient == null || ingredient.ingredient() == null) {
+                continue;
+            }
+            List<ItemStack> stacks = RecipeCompatibilityBridge.getIngredientStacks(ingredient.ingredient(), registryManager);
+            if (stacks == null || stacks.isEmpty()) {
+                continue;
+            }
+            List<String> itemIds = new ArrayList<>();
+            for (ItemStack stack : stacks) {
+                if (stack == null || stack.isEmpty()) {
+                    continue;
+                }
+                Identifier id = Registries.ITEM.getId(stack.getItem());
+                if (id != null) {
+                    itemIds.add(id.toString());
+                }
+            }
+            if (itemIds.isEmpty()) {
+                continue;
+            }
+            CachedGridIngredient cachedIngredient = new CachedGridIngredient();
+            cachedIngredient.slotIndex = ingredient.slotIndex();
+            cachedIngredient.itemIds = itemIds;
+            cachedGrid.add(cachedIngredient);
+        }
+        if (cachedGrid.isEmpty()) {
+            return;
+        }
+
+        CachedRecipe cachedRecipe = new CachedRecipe();
+        cachedRecipe.mode = mode.name();
+        cachedRecipe.outputCount = Math.max(1, outputCount);
+        cachedRecipe.grid = cachedGrid;
+
+        Identifier outputId = Registries.ITEM.getId(targetItem);
+        if (outputId == null) {
+            return;
+        }
+        String key = outputId.toString();
+        book.recipesByOutput.computeIfAbsent(key, unused -> new ArrayList<>());
+        List<CachedRecipe> list = book.recipesByOutput.get(key);
+        list.removeIf(existing -> existing != null && mode.name().equals(existing.mode));
+        list.add(cachedRecipe);
+    }
+
+    private List<GridIngredient> buildGridIngredientsFromCache(CachedRecipe cachedRecipe) {
+        List<GridIngredient> result = new ArrayList<>();
+        if (cachedRecipe == null || cachedRecipe.grid == null) {
+            return result;
+        }
+        for (CachedGridIngredient cachedIngredient : cachedRecipe.grid) {
+            if (cachedIngredient == null || cachedIngredient.itemIds == null || cachedIngredient.itemIds.isEmpty()) {
+                continue;
+            }
+            Ingredient ingredient = buildIngredientFromItemIds(cachedIngredient.itemIds);
+            if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
+                continue;
+            }
+            result.add(new GridIngredient(cachedIngredient.slotIndex, ingredient, false));
+        }
+        return result;
+    }
+
+    private Ingredient buildIngredientFromItemIds(List<String> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return null;
+        }
+        List<Item> items = new ArrayList<>();
+        for (String idString : itemIds) {
+            Identifier id = Identifier.tryParse(idString);
+            if (id == null || !Registries.ITEM.containsId(id)) {
+                continue;
+            }
+            items.add(Registries.ITEM.get(id));
+        }
+        if (items.isEmpty()) {
+            return null;
+        }
+        return Ingredient.ofItems(items.toArray(new Item[0]));
+    }
+
+    private CachedRecipeBook loadRecipeCache(net.minecraft.client.MinecraftClient client) {
+        synchronized (RECIPE_CACHE_LOCK) {
+            if (cachedRecipeBook != null) {
+                return cachedRecipeBook;
+            }
+            Path path = getRecipeCachePath(client);
+            if (path == null || !Files.exists(path)) {
+                cachedRecipeBook = new CachedRecipeBook();
+                return cachedRecipeBook;
+            }
+            try {
+                String json = Files.readString(path, StandardCharsets.UTF_8);
+                CachedRecipeBook loaded = RECIPE_CACHE_GSON.fromJson(json, CachedRecipeBook.class);
+                if (loaded == null || loaded.schemaVersion != RECIPE_CACHE_VERSION) {
+                    cachedRecipeBook = new CachedRecipeBook();
+                    return cachedRecipeBook;
+                }
+                if (loaded.recipesByOutput == null) {
+                    loaded.recipesByOutput = new HashMap<>();
+                }
+                cachedRecipeBook = loaded;
+                return cachedRecipeBook;
+            } catch (Exception e) {
+                cachedRecipeBook = new CachedRecipeBook();
+                return cachedRecipeBook;
+            }
+        }
+    }
+
+    private void saveRecipeCache(net.minecraft.client.MinecraftClient client, CachedRecipeBook book) {
+        if (client == null || book == null) {
+            return;
+        }
+        synchronized (RECIPE_CACHE_LOCK) {
+            Path path = getRecipeCachePath(client);
+            if (path == null) {
+                return;
+            }
+            try {
+                Path parent = path.getParent();
+                if (parent != null && !Files.exists(parent)) {
+                    Files.createDirectories(parent);
+                }
+                String json = RECIPE_CACHE_GSON.toJson(book);
+                Files.writeString(path, json, StandardCharsets.UTF_8);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private Path getRecipeCachePath(net.minecraft.client.MinecraftClient client) {
+        Path base = getPathmindDirectory(client);
+        if (base == null) {
+            return null;
+        }
+        return base.resolve(RECIPE_CACHE_FILE_NAME);
+    }
+
+    private Path getPathmindDirectory(net.minecraft.client.MinecraftClient client) {
+        Path minecraftDirectory = null;
+        if (client != null && client.runDirectory != null) {
+            minecraftDirectory = client.runDirectory.toPath();
+        } else {
+            FabricLoader loader = FabricLoader.getInstance();
+            if (loader != null) {
+                minecraftDirectory = loader.getGameDir();
+            }
+        }
+        if (minecraftDirectory == null) {
+            minecraftDirectory = Paths.get(System.getProperty("user.home"), ".minecraft");
+        }
+        return minecraftDirectory.resolve("pathmind");
     }
 
     private List<RecipeEntry<?>> getRecipeEntries(Object manager) {
@@ -8160,6 +8506,33 @@ public class Node {
             }
             return result;
         }
+        if (ingredients.size() == 1) {
+            Object entry = ingredients.get(0);
+            List<?> slots = RecipeCompatibilityBridge.getDisplayIngredientSlots(entry);
+            if (slots != null && !slots.isEmpty()) {
+                List<Ingredient> slotIngredients = new ArrayList<>();
+                for (Object slot : slots) {
+                    Ingredient ingredient = RecipeCompatibilityBridge.extractDisplayIngredient(slot, registryManager);
+                    if (!RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                        slotIngredients.add(ingredient);
+                    }
+                }
+                if (!slotIngredients.isEmpty()) {
+                    int limit = Math.min(slotIngredients.size(), gridLimit);
+                    for (int i = 0; i < limit; i++) {
+                        Ingredient ingredient = slotIngredients.get(i);
+                        if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+                            continue;
+                        }
+                        result.add(new GridIngredient(1 + i, ingredient, false));
+                    }
+                    if (result.isEmpty()) {
+                        logEmptyPlacementIngredients(slotIngredients, registryManager);
+                    }
+                    return result;
+                }
+            }
+        }
 
         int limit = Math.min(ingredients.size(), gridLimit);
         boolean loggedUnknown = false;
@@ -8542,6 +8915,54 @@ public class Node {
             this.produced = produced;
             this.failureMessage = failureMessage;
         }
+    }
+
+    private static class CachedRecipeBook {
+        int schemaVersion = RECIPE_CACHE_VERSION;
+        Map<String, List<CachedRecipe>> recipesByOutput = new HashMap<>();
+    }
+
+    private static class CachedRecipe {
+        String mode;
+        int outputCount;
+        List<CachedGridIngredient> grid = new ArrayList<>();
+    }
+
+    private static class CachedGridIngredient {
+        int slotIndex;
+        List<String> itemIds = new ArrayList<>();
+    }
+
+    public static boolean warmRecipeCache(net.minecraft.client.MinecraftClient client) {
+        if (client == null || client.getServer() == null) {
+            return false;
+        }
+        Node node = new Node(NodeType.CRAFT, 0, 0);
+        return node.warmRecipeCacheInternal(client);
+    }
+
+    private boolean warmRecipeCacheInternal(net.minecraft.client.MinecraftClient client) {
+        if (client == null || client.getServer() == null) {
+            return false;
+        }
+        RecipeManager manager = client.getServer().getRecipeManager();
+        if (manager == null || getCraftingRecipeEntries(manager).isEmpty()) {
+            return false;
+        }
+        CachedRecipeBook book = loadRecipeCache(client);
+        if (book == null) {
+            return false;
+        }
+        if (book.recipesByOutput != null && !book.recipesByOutput.isEmpty()) {
+            return false;
+        }
+        Object registryManager = client.world;
+        if (registryManager == null && client.getServer() != null) {
+            registryManager = client.getServer().getRegistryManager();
+        }
+        cacheAllCraftingRecipes(book, client, registryManager);
+        saveRecipeCache(client, book);
+        return book.recipesByOutput != null && !book.recipesByOutput.isEmpty();
     }
 
     private static class GridIngredient {

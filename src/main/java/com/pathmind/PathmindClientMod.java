@@ -2,6 +2,7 @@ package com.pathmind;
 
 import com.pathmind.data.PresetManager;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.nodes.Node;
 import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
@@ -30,6 +31,8 @@ public class PathmindClientMod implements ClientModInitializer {
     private VariablesOverlay variablesOverlay;
     private volatile boolean worldShutdownHandled;
     private boolean baritoneAvailable;
+    private boolean recipeCacheWarmed;
+    private int recipeCacheWarmupCooldownTicks;
 
     @Override
     public void onInitializeClient() {
@@ -52,11 +55,14 @@ public class PathmindClientMod implements ClientModInitializer {
         // Register client tick events for keybind handling
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             handleKeybinds(client);
+            handleRecipeCacheWarmup(client);
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             worldShutdownHandled = false;
             ChatMessageTracker.clear();
+            recipeCacheWarmed = false;
+            recipeCacheWarmupCooldownTicks = 0;
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
@@ -145,6 +151,27 @@ public class PathmindClientMod implements ClientModInitializer {
 
         while (PathmindKeybinds.PLAY_GRAPHS.wasPressed()) {
             ExecutionManager.getInstance().playAllGraphs();
+        }
+    }
+
+    private void handleRecipeCacheWarmup(MinecraftClient client) {
+        if (client == null || recipeCacheWarmed || !client.isInSingleplayer()) {
+            return;
+        }
+        if (recipeCacheWarmupCooldownTicks > 0) {
+            recipeCacheWarmupCooldownTicks--;
+            return;
+        }
+        if (client.getServer() == null) {
+            recipeCacheWarmupCooldownTicks = 20;
+            return;
+        }
+        boolean cached = Node.warmRecipeCache(client);
+        if (cached) {
+            recipeCacheWarmed = true;
+            LOGGER.info("Pathmind recipe cache populated from singleplayer recipes.");
+        } else {
+            recipeCacheWarmupCooldownTicks = 40;
         }
     }
 

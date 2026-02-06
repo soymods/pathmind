@@ -18,8 +18,10 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.util.InputUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * The client-side mod class for Pathmind.
@@ -33,6 +35,10 @@ public class PathmindClientMod implements ClientModInitializer {
     private boolean baritoneAvailable;
     private boolean recipeCacheWarmed;
     private int recipeCacheWarmupCooldownTicks;
+    private boolean playGraphsKeyDown;
+    private boolean stopGraphsKeyDown;
+    private boolean playGraphsRawKeyDown;
+    private boolean stopGraphsRawKeyDown;
 
     @Override
     public void onInitializeClient() {
@@ -141,17 +147,32 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
 
-        while (PathmindKeybinds.STOP_GRAPHS.wasPressed()) {
+        boolean stopDown = PathmindKeybinds.STOP_GRAPHS.isPressed();
+        boolean stopRawDown = isKeyDownRaw(client, GLFW.GLFW_KEY_J);
+        if ((stopDown && !stopGraphsKeyDown) || (stopRawDown && !stopGraphsRawKeyDown)) {
             ExecutionManager.getInstance().requestStopAll();
         }
+        stopGraphsKeyDown = stopDown;
+        stopGraphsRawKeyDown = stopRawDown;
 
         if (client.player == null) {
             return;
         }
 
-        while (PathmindKeybinds.PLAY_GRAPHS.wasPressed()) {
+        boolean playDown = PathmindKeybinds.PLAY_GRAPHS.isPressed();
+        boolean playRawDown = isKeyDownRaw(client, GLFW.GLFW_KEY_K);
+        if ((playDown && !playGraphsKeyDown) || (playRawDown && !playGraphsRawKeyDown)) {
             ExecutionManager.getInstance().playAllGraphs();
         }
+        playGraphsKeyDown = playDown;
+        playGraphsRawKeyDown = playRawDown;
+    }
+
+    private boolean isKeyDownRaw(MinecraftClient client, int keyCode) {
+        if (client == null || client.getWindow() == null) {
+            return false;
+        }
+        return InputUtil.isKeyPressed(client.getWindow(), keyCode);
     }
 
     private void handleRecipeCacheWarmup(MinecraftClient client) {

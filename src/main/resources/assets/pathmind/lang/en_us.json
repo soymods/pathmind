@@ -234,6 +234,8 @@
   "pathmind.node.type.sensorKeyPressed.desc": "Detect if a specific keyboard key is currently held",
   "pathmind.node.type.sensorChatMessage": "Chat Message",
   "pathmind.node.type.sensorChatMessage.desc": "Detect if a player sent a chat message within a time window",
+  "pathmind.node.type.sensorVariableIs": "Variable Is",
+  "pathmind.node.type.sensorVariableIs.desc": "Detect if a variable matches a value",
 
   "pathmind.node.type.screenControl": "Screen Control",
   "pathmind.node.type.screenControl.desc": "Open or close in-game screens",

@@ -423,7 +423,7 @@ public class NodeParameterOverlay {
             }
 
             if (usesKeySelectorForIndex(i)) {
-                int selectorHeight = renderKeySelector(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, i);
+                int selectorHeight = renderKeySelector(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, i, popupAlpha);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }
@@ -1149,12 +1149,12 @@ public class NodeParameterOverlay {
     }
 
     private int renderKeySelector(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth,
-                                  int mouseX, int mouseY, int paramIndex) {
+                                  int mouseX, int mouseY, int paramIndex, float popupAlpha) {
         int totalHeight = getKeySelectorHeight();
         int backgroundColor = UITheme.BACKGROUND_SIDEBAR;
         int borderColor = UITheme.BORDER_HIGHLIGHT;
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + totalHeight, backgroundColor);
-        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, totalHeight, borderColor);
+        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + totalHeight, applyPopupAlpha(backgroundColor, popupAlpha));
+        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, totalHeight, applyPopupAlpha(borderColor, popupAlpha));
 
         String currentValue = paramIndex >= 0 && paramIndex < parameterValues.size()
             ? parameterValues.get(paramIndex)
@@ -1183,14 +1183,20 @@ public class NodeParameterOverlay {
                     keyBase = adjustColorBrightness(keyBase, 1.2f);
                 }
                 int keyBorder = selected ? UITheme.ACCENT_DEFAULT : UITheme.TEXT_TERTIARY;
-                context.fill(keyX, rowTop, keyX + keyWidth, rowTop + keyHeight, keyBase);
-                DrawContextBridge.drawBorder(context, keyX, rowTop, keyWidth, keyHeight, keyBorder);
+                context.fill(keyX, rowTop, keyX + keyWidth, rowTop + keyHeight, applyPopupAlpha(keyBase, popupAlpha));
+                DrawContextBridge.drawBorder(context, keyX, rowTop, keyWidth, keyHeight, applyPopupAlpha(keyBorder, popupAlpha));
 
                 String label = key.label;
                 int textWidth = textRenderer.getWidth(label);
                 int textX = keyX + Math.max(2, (keyWidth - textWidth) / 2);
                 int textY = rowTop + (keyHeight - textRenderer.fontHeight) / 2 + 1;
-                context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, UITheme.TEXT_PRIMARY);
+                context.drawTextWithShadow(
+                    textRenderer,
+                    Text.literal(label),
+                    textX,
+                    textY,
+                    applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
+                );
 
                 keyX += keyWidth + KEY_SELECTOR_KEY_GAP;
             }

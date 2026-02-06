@@ -232,6 +232,8 @@
   "pathmind.node.type.sensorKeyPressed.desc": "Erkennt, ob eine bestimmte Taste gerade gedrückt wird",
   "pathmind.node.type.sensorChatMessage": "Chat-Nachricht",
   "pathmind.node.type.sensorChatMessage.desc": "Erkennt, ob ein Spieler innerhalb eines Zeitfensters eine Chat-Nachricht gesendet hat",
+  "pathmind.node.type.sensorVariableIs": "Variable ist",
+  "pathmind.node.type.sensorVariableIs.desc": "Erkennt, ob eine Variable einem Wert entspricht",
 
   "pathmind.node.type.screenControl": "Bildschirmsteuerung",
   "pathmind.node.type.screenControl.desc": "Öffnen oder Schließen von Spielbildschirmen",

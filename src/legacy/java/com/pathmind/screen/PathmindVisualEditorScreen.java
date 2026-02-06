@@ -980,6 +980,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopCoordinateEditing(true);
                         nodeGraph.stopAmountEditing(true);
                         nodeGraph.stopStopTargetEditing(true);
+                        nodeGraph.stopVariableEditing(true);
                         nodeGraph.stopMessageEditing(true);
                         nodeGraph.stopParameterEditing(true);
                         nodeGraph.stopEventNameEditing(true);
@@ -996,6 +997,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         nodeGraph.stopCoordinateEditing(true);
                         nodeGraph.stopAmountEditing(true);
                         nodeGraph.stopStopTargetEditing(true);
+                        nodeGraph.stopVariableEditing(true);
                         nodeGraph.stopMessageEditing(true);
                         nodeGraph.stopParameterEditing(true);
                         nodeGraph.stopEventNameEditing(true);
@@ -1008,6 +1010,10 @@ public class PathmindVisualEditorScreen extends Screen {
         
         // THEN check if clicking on node body
         if (button == 0 && nodeGraph.handleStopTargetFieldClick((int) mouseX, (int) mouseY)) {
+            return true;
+        }
+
+        if (button == 0 && nodeGraph.handleVariableFieldClick((int) mouseX, (int) mouseY)) {
             return true;
         }
 
@@ -1038,6 +1044,12 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (nodeGraph.isPointInsideStopTargetField(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     nodeGraph.startStopTargetEditing(clickedNode);
+                    return true;
+                }
+
+                if (nodeGraph.isPointInsideVariableField(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.startVariableEditing(clickedNode);
                     return true;
                 }
 
@@ -1084,6 +1096,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopAmountEditing(true);
                 nodeGraph.stopCoordinateEditing(true);
                 nodeGraph.stopStopTargetEditing(true);
+                nodeGraph.stopVariableEditing(true);
                 nodeGraph.stopMessageEditing(true);
                 nodeGraph.stopParameterEditing(true);
                 nodeGraph.stopEventNameEditing(true);
@@ -1139,14 +1152,15 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeGraph.selectNode(null);
             nodeGraph.stopDraggingConnection();
             if (button == 0) {
-                nodeGraph.stopCoordinateEditing(true);
-                nodeGraph.stopAmountEditing(true);
-                nodeGraph.stopStopTargetEditing(true);
-                nodeGraph.stopMessageEditing(true);
-                nodeGraph.stopParameterEditing(true);
-                nodeGraph.stopEventNameEditing(true);
-                nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
-            }
+                    nodeGraph.stopCoordinateEditing(true);
+                    nodeGraph.stopAmountEditing(true);
+                    nodeGraph.stopStopTargetEditing(true);
+                    nodeGraph.stopVariableEditing(true);
+                    nodeGraph.stopMessageEditing(true);
+                    nodeGraph.stopParameterEditing(true);
+                    nodeGraph.stopEventNameEditing(true);
+                    nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
+                }
             return true;
         }
 
@@ -1487,6 +1501,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleVariableKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
         if (nodeGraph.handleEventNameKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -1575,6 +1593,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.textRenderer)) {
+            return true;
+        }
+
+        if (nodeGraph.handleVariableCharTyped(chr, modifiers, this.textRenderer)) {
             return true;
         }
 
@@ -1699,6 +1721,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopCoordinateEditing(true);
         nodeGraph.stopAmountEditing(true);
         nodeGraph.stopStopTargetEditing(true);
+        nodeGraph.stopVariableEditing(true);
         nodeGraph.stopMessageEditing(true);
 
         nodeGraph.stopParameterEditing(true);
@@ -2507,6 +2530,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopCoordinateEditing(true);
         nodeGraph.stopAmountEditing(true);
         nodeGraph.stopStopTargetEditing(true);
+        nodeGraph.stopVariableEditing(true);
         nodeGraph.stopMessageEditing(true);
 
         nodeGraph.stopParameterEditing(true);

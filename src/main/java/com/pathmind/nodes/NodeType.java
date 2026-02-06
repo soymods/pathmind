@@ -104,6 +104,7 @@ public enum NodeType {
     SENSOR_IS_RENDERED("pathmind.node.type.sensorIsRendered", 0xFF64B5F6, "pathmind.node.type.sensorIsRendered.desc"),
     SENSOR_KEY_PRESSED("pathmind.node.type.sensorKeyPressed", 0xFF64B5F6, "pathmind.node.type.sensorKeyPressed.desc"),
     SENSOR_CHAT_MESSAGE("pathmind.node.type.sensorChatMessage", 0xFF64B5F6, "pathmind.node.type.sensorChatMessage.desc"),
+    SENSOR_VARIABLE_IS("pathmind.node.type.sensorVariableIs", 0xFF64B5F6, "pathmind.node.type.sensorVariableIs.desc"),
 
     // Utility Commands
     SCREEN_CONTROL("pathmind.node.type.screenControl", 0xFF9E9E9E, "pathmind.node.type.screenControl.desc"),
@@ -227,6 +228,8 @@ public enum NodeType {
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
                 return NodeCategory.SENSORS;
+            case SENSOR_VARIABLE_IS:
+                return NodeCategory.VARIABLES;
             case GOTO:
             case GOAL:
             case PATH:
@@ -348,6 +351,7 @@ public enum NodeType {
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_VARIABLE_IS:
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
             case PARAM_ITEM:

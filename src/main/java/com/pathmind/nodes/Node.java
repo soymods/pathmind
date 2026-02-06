@@ -205,6 +205,13 @@ public class Node {
     private static final int STOP_TARGET_FIELD_TEXT_PADDING = 3;
     private static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
     private static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
+    private static final int VARIABLE_FIELD_MARGIN_HORIZONTAL = 8;
+    private static final int VARIABLE_FIELD_TOP_MARGIN = 6;
+    private static final int VARIABLE_FIELD_LABEL_HEIGHT = 0;
+    private static final int VARIABLE_FIELD_HEIGHT = 16;
+    private static final int VARIABLE_FIELD_TEXT_PADDING = 3;
+    private static final int VARIABLE_FIELD_BOTTOM_MARGIN = 6;
+    private static final int VARIABLE_FIELD_MIN_WIDTH = 80;
     private static final int BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL = 6;
     private static final int BOOK_TEXT_TOP_MARGIN = 6;
     private static final int BOOK_TEXT_BUTTON_HEIGHT = 16;
@@ -264,6 +271,7 @@ public class Node {
     private int coordinateFieldWidthOverride;
     private int amountFieldWidthOverride;
     private int stopTargetFieldWidthOverride;
+    private int variableFieldWidthOverride;
     private transient Random randomGenerator;
     private transient String randomSeedCache;
 
@@ -294,6 +302,7 @@ public class Node {
         this.coordinateFieldWidthOverride = 0;
         this.amountFieldWidthOverride = 0;
         this.stopTargetFieldWidthOverride = 0;
+        this.variableFieldWidthOverride = 0;
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -571,6 +580,7 @@ public class Node {
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_VARIABLE_IS:
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
             case SENSOR_GUI_FILLED:
@@ -804,6 +814,13 @@ public class Node {
             return parameterType == NodeType.PARAM_ENTITY
                 || parameterType == NodeType.PARAM_BLOCK
                 || parameterType == NodeType.PARAM_ITEM;
+        }
+        if (type == NodeType.SENSOR_VARIABLE_IS) {
+            NodeType parameterType = parameter.getType();
+            return parameter.isParameterNode()
+                || parameterType == NodeType.SENSOR_POSITION_OF
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                || parameterType == NodeType.VARIABLE;
         }
         if (parameter.getType() == NodeType.VARIABLE
             && type != NodeType.SET_VARIABLE
@@ -1102,6 +1119,9 @@ public class Node {
             for (int i = 0; i < slotCount; i++) {
                 top += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
             }
+            if (hasVariableInputField()) {
+                top += getVariableFieldDisplayHeight();
+            }
             if (hasCoordinateInputFields()) {
                 top += getCoordinateFieldDisplayHeight();
             }
@@ -1209,6 +1229,9 @@ public class Node {
         if (hasSchematicDropdownField()) {
             top += getSchematicFieldDisplayHeight();
         }
+        if (hasVariableInputField()) {
+            top += getVariableFieldDisplayHeight();
+        }
         if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
             if (usesMinimalNodePresentation()) {
                 int slotHeight = getParameterSlotHeight(slotIndex);
@@ -1270,6 +1293,9 @@ public class Node {
         }
         if (type == NodeType.SENSOR_VILLAGER_TRADE) {
             return "Villager Trade";
+        }
+        if (type == NodeType.SENSOR_VARIABLE_IS) {
+            return "Value";
         }
         if (type == NodeType.TRADE) {
             return "Villager Trade";
@@ -1411,6 +1437,10 @@ public class Node {
 
     public boolean hasStopTargetInputField() {
         return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN;
+    }
+
+    public boolean hasVariableInputField() {
+        return type == NodeType.SENSOR_VARIABLE_IS;
     }
 
     public int getAmountFieldDisplayHeight() {
@@ -1640,6 +1670,37 @@ public class Node {
 
     public int getStopTargetFieldLeft() {
         return x + Math.max(STOP_TARGET_FIELD_MARGIN_HORIZONTAL, (width - getStopTargetFieldWidth()) / 2);
+    }
+
+    public int getVariableFieldDisplayHeight() {
+        if (!hasVariableInputField()) {
+            return 0;
+        }
+        return VARIABLE_FIELD_TOP_MARGIN + VARIABLE_FIELD_HEIGHT + VARIABLE_FIELD_BOTTOM_MARGIN;
+    }
+
+    public int getVariableFieldLabelTop() {
+        return y + HEADER_HEIGHT + VARIABLE_FIELD_TOP_MARGIN;
+    }
+
+    public int getVariableFieldInputTop() {
+        return getVariableFieldLabelTop() + VARIABLE_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getVariableFieldLabelHeight() {
+        return VARIABLE_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getVariableFieldHeight() {
+        return VARIABLE_FIELD_HEIGHT;
+    }
+
+    public int getVariableFieldWidth() {
+        return Math.max(VARIABLE_FIELD_MIN_WIDTH, variableFieldWidthOverride);
+    }
+
+    public int getVariableFieldLeft() {
+        return x + Math.max(VARIABLE_FIELD_MARGIN_HORIZONTAL, (width - getVariableFieldWidth()) / 2);
     }
 
     public boolean isPointInsideParameterSlot(int pointX, int pointY) {
@@ -2524,6 +2585,9 @@ public class Node {
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "true"));
                 break;
+            case SENSOR_VARIABLE_IS:
+                parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
+                break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "64"));
@@ -3401,6 +3465,14 @@ public class Node {
         stopTargetFieldWidthOverride = paddedWidth;
     }
 
+    public void setVariableFieldTextWidth(int textWidth) {
+        if (!hasVariableInputField()) {
+            return;
+        }
+        int paddedWidth = Math.max(VARIABLE_FIELD_MIN_WIDTH, textWidth + (VARIABLE_FIELD_TEXT_PADDING * 2));
+        variableFieldWidthOverride = paddedWidth;
+    }
+
     public int getMessageFieldLeft() {
         return x + MESSAGE_FIELD_MARGIN_HORIZONTAL;
     }
@@ -3668,6 +3740,11 @@ public class Node {
                 + 2 * STOP_TARGET_FIELD_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, requiredWidth);
         }
+        if (hasVariableInputField()) {
+            int requiredWidth = Math.max(VARIABLE_FIELD_MIN_WIDTH, variableFieldWidthOverride)
+                + 2 * VARIABLE_FIELD_MARGIN_HORIZONTAL;
+            computedWidth = Math.max(computedWidth, requiredWidth);
+        }
         if (hasMessageInputFields()) {
             int maxMessageLength = 0;
             for (String line : messageLines) {
@@ -3742,6 +3819,9 @@ public class Node {
             } else {
                 if (hasSchematicDropdownField()) {
                     contentHeight += getSchematicFieldDisplayHeight();
+                }
+                if (hasVariableInputField()) {
+                    contentHeight += getVariableFieldDisplayHeight();
                 }
                 int slotCount = getParameterSlotCount();
                 for (int i = 0; i < slotCount; i++) {
@@ -5294,6 +5374,7 @@ public class Node {
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
             case SENSOR_TARGETED_BLOCK_FACE:
+            case SENSOR_VARIABLE_IS:
                 completeSensorEvaluation(future);
                 break;
             
@@ -14278,6 +14359,32 @@ public class Node {
                 result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds, anyPlayer, anyMessage);
                 break;
             }
+            case SENSOR_VARIABLE_IS: {
+                Node valueNode = getAttachedParameter(0);
+                if (valueNode == null) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null) {
+                        sendNodeErrorMessage(client, type.getDisplayName() + " requires a value parameter.");
+                    }
+                    result = false;
+                    break;
+                }
+                String variableName = getStringParameter("Variable", "");
+                if (variableName == null || variableName.trim().isEmpty()) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null) {
+                        sendNodeErrorMessage(client, "Variable name cannot be empty.");
+                    }
+                    result = false;
+                    break;
+                }
+                Node variableNode = new Node(NodeType.VARIABLE, 0, 0);
+                variableNode.setSocketsHidden(true);
+                variableNode.setParameterValueAndPropagate("Variable", variableName.trim());
+                Optional<Boolean> comparison = compareVariableNodes(variableNode, valueNode);
+                result = comparison.orElse(false);
+                break;
+            }
             default:
                 result = false;
                 break;
@@ -14307,7 +14414,8 @@ public class Node {
                  SENSOR_ITEM_IN_INVENTORY,
                  SENSOR_ITEM_IN_SLOT,
                  SENSOR_VILLAGER_TRADE,
-                 SENSOR_CHAT_MESSAGE -> true;
+                 SENSOR_CHAT_MESSAGE,
+                 SENSOR_VARIABLE_IS -> true;
             default -> false;
         };
     }

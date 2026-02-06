@@ -192,6 +192,15 @@ public class NodeGraph {
     private int stopTargetSelectionStart = -1;
     private int stopTargetSelectionEnd = -1;
     private int stopTargetSelectionAnchor = -1;
+    private Node variableEditingNode = null;
+    private String variableEditBuffer = "";
+    private String variableEditOriginalValue = "";
+    private long variableCaretLastToggleTime = 0L;
+    private boolean variableCaretVisible = true;
+    private int variableCaretPosition = 0;
+    private int variableSelectionStart = -1;
+    private int variableSelectionEnd = -1;
+    private int variableSelectionAnchor = -1;
     private Node schematicDropdownNode = null;
     private boolean schematicDropdownOpen = false;
     private java.util.List<String> schematicDropdownOptions = new java.util.ArrayList<>();
@@ -534,6 +543,9 @@ public class NodeGraph {
         }
         if (stopTargetEditingNode == node) {
             stopStopTargetEditing(false);
+        }
+        if (variableEditingNode == node) {
+            stopVariableEditing(false);
         }
         if (messageEditingNode == node) {
             stopMessageEditing(false);
@@ -1317,6 +1329,7 @@ public class NodeGraph {
         stopMessageEditing(true);
         stopParameterEditing(true);
         stopStopTargetEditing(true);
+        stopVariableEditing(true);
         stopMessageEditing(true);
         resetDropTargets();
 
@@ -1365,6 +1378,8 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopVariableEditing(true);
+        stopVariableEditing(true);
         stopEventNameEditing(true);
         stopParameterEditing(true);
         stopMessageEditing(true);
@@ -3226,6 +3241,9 @@ public class NodeGraph {
                 if (node.hasSchematicDropdownField()) {
                     renderSchematicDropdownField(context, textRenderer, node, isOverSidebar);
                 }
+                if (node.hasVariableInputField()) {
+                    renderVariableInputField(context, textRenderer, node, isOverSidebar);
+                }
                 if (node.hasParameterSlot()) {
                     int slotCount = node.getParameterSlotCount();
                     for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
@@ -4126,6 +4144,15 @@ public class NodeGraph {
         stopTargetEditingNode.recalculateDimensions();
     }
 
+    private void updateVariableFieldContentWidth(TextRenderer textRenderer) {
+        if (!isEditingVariableField() || variableEditingNode == null || textRenderer == null) {
+            return;
+        }
+        String value = variableEditBuffer == null ? "" : variableEditBuffer;
+        variableEditingNode.setVariableFieldTextWidth(textRenderer.getWidth(value));
+        variableEditingNode.recalculateDimensions();
+    }
+
     private void updateParameterFieldContentWidth(Node node, TextRenderer textRenderer, int editingIndex, String editingValue) {
         if (node == null || !(node.isParameterNode() || node.shouldRenderInlineParameters()) || textRenderer == null) {
             return;
@@ -4394,6 +4421,74 @@ public class NodeGraph {
         }
     }
 
+    private void renderVariableInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
+        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_LABEL;
+        int activeTextColor = UITheme.TEXT_LABEL;
+        int caretColor = UITheme.TEXT_LABEL;
+
+        boolean editing = isEditingVariableField() && variableEditingNode == node;
+        if (editing) {
+            updateVariableCaretBlink();
+        }
+
+        int fieldTop = node.getVariableFieldInputTop() - cameraY;
+        int fieldHeight = node.getVariableFieldHeight();
+        int fieldLeft = node.getVariableFieldLeft() - cameraX;
+        int fieldWidth = node.getVariableFieldWidth();
+
+        int fieldBottom = fieldTop + fieldHeight;
+        int backgroundColor = editing ? activeFieldBackground : fieldBackground;
+        int borderColor = editing ? activeFieldBorder : fieldBorder;
+        int valueColor = editing ? activeTextColor : textColor;
+
+        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+
+        String value;
+        if (editing) {
+            value = variableEditBuffer;
+        } else {
+            NodeParameter variableParam = node.getParameter("Variable");
+            value = variableParam != null ? variableParam.getStringValue() : "";
+        }
+
+        String display;
+        if (!editing && (value == null || value.isEmpty())) {
+            display = "variable";
+            valueColor = UITheme.TEXT_TERTIARY;
+        } else {
+            display = value == null ? "" : value;
+        }
+
+        display = editing
+            ? display
+            : trimTextToWidth(display, textRenderer, fieldWidth - 6);
+
+        int textX = fieldLeft + 3;
+        int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        if (editing && hasVariableSelection()) {
+            int start = variableSelectionStart;
+            int end = variableSelectionEnd;
+            if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
+                int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
+                int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
+                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
+            }
+        }
+        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+
+        if (editing && variableCaretVisible) {
+            int caretIndex = MathHelper.clamp(variableCaretPosition, 0, display.length());
+            int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
+            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
+            context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, caretColor);
+        }
+    }
+
     private void renderSchematicDropdownField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
@@ -4573,6 +4668,7 @@ public class NodeGraph {
         closeSchematicDropdown();
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopVariableEditing(true);
         stopMessageEditing(true);
         stopParameterEditing(true);
         stopEventNameEditing(true);
@@ -4809,6 +4905,7 @@ public class NodeGraph {
 
         stopCoordinateEditing(true);
         stopStopTargetEditing(true);
+        stopVariableEditing(true);
         stopMessageEditing(true);
         stopParameterEditing(true);
         stopEventNameEditing(true);
@@ -5029,6 +5126,7 @@ public class NodeGraph {
         stopMessageEditing(true);
         stopParameterEditing(true);
         stopEventNameEditing(true);
+        stopVariableEditing(true);
 
         stopTargetEditingNode = node;
         NodeParameter targetParam = node.getParameter("StartNumber");
@@ -5066,6 +5164,205 @@ public class NodeGraph {
         stopTargetSelectionAnchor = -1;
         stopTargetSelectionStart = -1;
         stopTargetSelectionEnd = -1;
+    }
+
+    public boolean isEditingVariableField() {
+        return variableEditingNode != null;
+    }
+
+    private void updateVariableCaretBlink() {
+        long now = System.currentTimeMillis();
+        if (now - variableCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
+            variableCaretVisible = !variableCaretVisible;
+            variableCaretLastToggleTime = now;
+        }
+    }
+
+    private void resetVariableCaretBlink() {
+        variableCaretVisible = true;
+        variableCaretLastToggleTime = System.currentTimeMillis();
+    }
+
+    public void startVariableEditing(Node node) {
+        if (node == null || !node.hasVariableInputField()) {
+            stopVariableEditing(false);
+            return;
+        }
+
+        closeSchematicDropdown();
+        if (isEditingVariableField()) {
+            if (variableEditingNode == node) {
+                return;
+            }
+            boolean changed = applyVariableEdit();
+            if (changed) {
+                notifyNodeParametersChanged(variableEditingNode);
+            }
+        }
+
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+        stopStopTargetEditing(true);
+        stopMessageEditing(true);
+        stopParameterEditing(true);
+        stopEventNameEditing(true);
+
+        variableEditingNode = node;
+        NodeParameter variableParam = node.getParameter("Variable");
+        variableEditBuffer = variableParam != null ? variableParam.getStringValue() : "";
+        variableEditOriginalValue = variableEditBuffer;
+        resetVariableCaretBlink();
+        variableCaretPosition = variableEditBuffer.length();
+        variableSelectionAnchor = -1;
+        variableSelectionStart = -1;
+        variableSelectionEnd = -1;
+        updateVariableFieldContentWidth(getClientTextRenderer());
+    }
+
+    public void stopVariableEditing(boolean commit) {
+        if (!isEditingVariableField()) {
+            return;
+        }
+
+        boolean changed = false;
+        if (commit) {
+            changed = applyVariableEdit();
+        } else {
+            revertVariableEdit();
+        }
+
+        if (commit && changed) {
+            notifyNodeParametersChanged(variableEditingNode);
+        }
+
+        variableEditingNode = null;
+        variableEditBuffer = "";
+        variableEditOriginalValue = "";
+        variableCaretVisible = true;
+        variableCaretPosition = 0;
+        variableSelectionAnchor = -1;
+        variableSelectionStart = -1;
+        variableSelectionEnd = -1;
+    }
+
+    private boolean applyVariableEdit() {
+        if (!isEditingVariableField()) {
+            return false;
+        }
+
+        String value = variableEditBuffer == null ? "" : variableEditBuffer;
+        NodeParameter variableParam = variableEditingNode.getParameter("Variable");
+        String previous = variableParam != null ? variableParam.getStringValue() : "";
+        variableEditingNode.setParameterValueAndPropagate("Variable", value);
+        variableEditingNode.recalculateDimensions();
+        return !Objects.equals(previous, value);
+    }
+
+    private void revertVariableEdit() {
+        if (!isEditingVariableField()) {
+            return;
+        }
+        variableEditingNode.setParameterValueAndPropagate("Variable", variableEditOriginalValue);
+        variableEditingNode.recalculateDimensions();
+    }
+
+    public boolean handleVariableKeyPressed(int keyCode, int modifiers) {
+        if (!isEditingVariableField()) {
+            return false;
+        }
+
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = isTextShortcutDown(modifiers);
+
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (deleteVariableSelection()) {
+                    return true;
+                }
+                if (controlHeld && variableCaretPosition > 0) {
+                    int deleteToPos = findPreviousWordBoundary(variableEditBuffer, variableCaretPosition);
+                    variableEditBuffer = variableEditBuffer.substring(0, deleteToPos)
+                        + variableEditBuffer.substring(variableCaretPosition);
+                    setVariableCaretPosition(deleteToPos);
+                    updateVariableFieldContentWidth(getClientTextRenderer());
+                } else if (variableCaretPosition > 0 && !variableEditBuffer.isEmpty()) {
+                    variableEditBuffer = variableEditBuffer.substring(0, variableCaretPosition - 1)
+                        + variableEditBuffer.substring(variableCaretPosition);
+                    setVariableCaretPosition(variableCaretPosition - 1);
+                    updateVariableFieldContentWidth(getClientTextRenderer());
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (deleteVariableSelection()) {
+                    return true;
+                }
+                if (variableCaretPosition < variableEditBuffer.length()) {
+                    variableEditBuffer = variableEditBuffer.substring(0, variableCaretPosition)
+                        + variableEditBuffer.substring(variableCaretPosition + 1);
+                    setVariableCaretPosition(variableCaretPosition);
+                    updateVariableFieldContentWidth(getClientTextRenderer());
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveVariableCaretTo(variableCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveVariableCaretTo(variableCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveVariableCaretTo(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveVariableCaretTo(variableEditBuffer.length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+                stopVariableEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_ESCAPE:
+                stopVariableEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllVariableText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copyVariableSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    cutVariableSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    TextRenderer textRenderer = getClientTextRenderer();
+                    if (textRenderer != null) {
+                        insertVariableText(getClipboardText(), textRenderer);
+                    }
+                    return true;
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    public boolean handleVariableCharTyped(char chr, int modifiers, TextRenderer textRenderer) {
+        if (!isEditingVariableField()) {
+            return false;
+        }
+        if (chr == '\n' || chr == '\r') {
+            return false;
+        }
+        return insertVariableText(String.valueOf(chr), textRenderer);
     }
 
     private boolean applyStopTargetEdit() {
@@ -5305,6 +5602,7 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopVariableEditing(true);
         stopMessageEditing(true);
         stopEventNameEditing(true);
         stopParameterEditing(true);
@@ -5964,6 +6262,12 @@ public class NodeGraph {
             && stopTargetSelectionStart != stopTargetSelectionEnd;
     }
 
+    private boolean hasVariableSelection() {
+        return variableSelectionStart >= 0
+            && variableSelectionEnd >= 0
+            && variableSelectionStart != variableSelectionEnd;
+    }
+
     private boolean hasMessageSelection() {
         return messageSelectionStart >= 0
             && messageSelectionEnd >= 0
@@ -5995,6 +6299,11 @@ public class NodeGraph {
     private void resetStopTargetSelectionRange() {
         stopTargetSelectionStart = -1;
         stopTargetSelectionEnd = -1;
+    }
+
+    private void resetVariableSelectionRange() {
+        variableSelectionStart = -1;
+        variableSelectionEnd = -1;
     }
 
     private void resetMessageSelectionRange() {
@@ -6335,6 +6644,35 @@ public class NodeGraph {
         resetStopTargetCaretBlink();
     }
 
+    private void setVariableCaretPosition(int position) {
+        variableCaretPosition = MathHelper.clamp(position, 0, variableEditBuffer.length());
+        variableSelectionAnchor = -1;
+        resetVariableSelectionRange();
+        resetVariableCaretBlink();
+    }
+
+    private void moveVariableCaretTo(int position, boolean extendSelection) {
+        position = MathHelper.clamp(position, 0, variableEditBuffer.length());
+        if (extendSelection) {
+            if (variableSelectionAnchor == -1) {
+                variableSelectionAnchor = variableCaretPosition;
+            }
+            int start = Math.min(variableSelectionAnchor, position);
+            int end = Math.max(variableSelectionAnchor, position);
+            if (start == end) {
+                resetVariableSelectionRange();
+            } else {
+                variableSelectionStart = start;
+                variableSelectionEnd = end;
+            }
+        } else {
+            variableSelectionAnchor = -1;
+            resetVariableSelectionRange();
+        }
+        variableCaretPosition = position;
+        resetVariableCaretBlink();
+    }
+
     private void setMessageCaretPosition(int position) {
         messageCaretPosition = MathHelper.clamp(position, 0, messageEditBuffer.length());
         messageSelectionAnchor = -1;
@@ -6415,6 +6753,17 @@ public class NodeGraph {
         return true;
     }
 
+    private boolean deleteVariableSelection() {
+        if (!hasVariableSelection()) {
+            return false;
+        }
+        variableEditBuffer = variableEditBuffer.substring(0, variableSelectionStart)
+            + variableEditBuffer.substring(variableSelectionEnd);
+        setVariableCaretPosition(variableSelectionStart);
+        updateVariableFieldContentWidth(getClientTextRenderer());
+        return true;
+    }
+
     private void selectAllAmountText() {
         if (!isEditingAmountField()) {
             return;
@@ -6445,6 +6794,21 @@ public class NodeGraph {
         resetStopTargetCaretBlink();
     }
 
+    private void selectAllVariableText() {
+        if (!isEditingVariableField()) {
+            return;
+        }
+        variableSelectionAnchor = 0;
+        if (variableEditBuffer.isEmpty()) {
+            resetVariableSelectionRange();
+        } else {
+            variableSelectionStart = 0;
+            variableSelectionEnd = variableEditBuffer.length();
+        }
+        variableCaretPosition = variableEditBuffer.length();
+        resetVariableCaretBlink();
+    }
+
     private void copyAmountSelection() {
         if (!hasAmountSelection()) {
             return;
@@ -6457,6 +6821,13 @@ public class NodeGraph {
             return;
         }
         setClipboardText(stopTargetEditBuffer.substring(stopTargetSelectionStart, stopTargetSelectionEnd));
+    }
+
+    private void copyVariableSelection() {
+        if (!hasVariableSelection()) {
+            return;
+        }
+        setClipboardText(variableEditBuffer.substring(variableSelectionStart, variableSelectionEnd));
     }
 
     private void cutAmountSelection() {
@@ -6473,6 +6844,14 @@ public class NodeGraph {
         }
         copyStopTargetSelection();
         deleteStopTargetSelection();
+    }
+
+    private void cutVariableSelection() {
+        if (!hasVariableSelection()) {
+            return;
+        }
+        copyVariableSelection();
+        deleteVariableSelection();
     }
 
     private boolean deleteMessageSelection() {
@@ -6706,6 +7085,56 @@ public class NodeGraph {
         stopTargetSelectionStart = originalSelectionStart;
         stopTargetSelectionEnd = originalSelectionEnd;
         stopTargetSelectionAnchor = originalSelectionAnchor;
+        return false;
+    }
+
+    private boolean insertVariableText(String text, TextRenderer textRenderer) {
+        if (!isEditingVariableField() || textRenderer == null || text == null || text.isEmpty()) {
+            return false;
+        }
+
+        String filtered = text.replace("\r", "").replace("\n", "");
+        if (filtered.isEmpty()) {
+            return false;
+        }
+
+        String originalBuffer = variableEditBuffer;
+        int originalCaret = variableCaretPosition;
+        int originalSelectionStart = variableSelectionStart;
+        int originalSelectionEnd = variableSelectionEnd;
+        int originalSelectionAnchor = variableSelectionAnchor;
+
+        String working = variableEditBuffer;
+        int caret = variableCaretPosition;
+
+        if (hasVariableSelection()) {
+            int start = variableSelectionStart;
+            int end = variableSelectionEnd;
+            working = working.substring(0, start) + working.substring(end);
+            caret = start;
+        }
+
+        boolean inserted = false;
+        for (int i = 0; i < filtered.length(); i++) {
+            char c = filtered.charAt(i);
+            String candidate = working.substring(0, caret) + c + working.substring(caret);
+            working = candidate;
+            caret++;
+            inserted = true;
+        }
+
+        if (inserted) {
+            variableEditBuffer = working;
+            setVariableCaretPosition(caret);
+            updateVariableFieldContentWidth(textRenderer);
+            return true;
+        }
+
+        variableEditBuffer = originalBuffer;
+        variableCaretPosition = originalCaret;
+        variableSelectionStart = originalSelectionStart;
+        variableSelectionEnd = originalSelectionEnd;
+        variableSelectionAnchor = originalSelectionAnchor;
         return false;
     }
 
@@ -7999,6 +8428,34 @@ public class NodeGraph {
             if (node != null && node.hasStopTargetInputField() && isPointInsideStopTargetField(node, screenX, screenY)) {
                 selectNode(node);
                 startStopTargetEditing(node);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isPointInsideVariableField(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasVariableInputField()) {
+            return false;
+        }
+
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = node.getVariableFieldLeft();
+        int fieldTop = node.getVariableFieldInputTop();
+        int fieldWidth = node.getVariableFieldWidth();
+        int fieldHeight = node.getVariableFieldHeight();
+
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    public boolean handleVariableFieldClick(int screenX, int screenY) {
+        for (int i = nodes.size() - 1; i >= 0; i--) {
+            Node node = nodes.get(i);
+            if (node != null && node.hasVariableInputField() && isPointInsideVariableField(node, screenX, screenY)) {
+                selectNode(node);
+                startVariableEditing(node);
                 return true;
             }
         }

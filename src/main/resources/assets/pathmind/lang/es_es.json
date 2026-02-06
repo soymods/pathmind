@@ -232,6 +232,8 @@
   "pathmind.node.type.sensorKeyPressed.desc": "Detecta si una tecla específica del teclado está actualmente pulsada",
   "pathmind.node.type.sensorChatMessage": "Mensaje de Chat",
   "pathmind.node.type.sensorChatMessage.desc": "Detecta si un jugador envió un mensaje de chat dentro de una ventana de tiempo",
+  "pathmind.node.type.sensorVariableIs": "Variable es",
+  "pathmind.node.type.sensorVariableIs.desc": "Detecta si una variable coincide con un valor",
 
   "pathmind.node.type.screenControl": "Control de Pantalla",
   "pathmind.node.type.screenControl.desc": "Abrir o cerrar pantallas del juego",

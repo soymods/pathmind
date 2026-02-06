@@ -19,7 +19,6 @@ public class ContextMenuSubmenu {
     private static final int MENU_WIDTH = UITheme.CONTEXT_MENU_WIDTH;
     private static final int ITEM_HEIGHT = UITheme.CONTEXT_MENU_ITEM_HEIGHT;
     private static final int PADDING = UITheme.CONTEXT_MENU_PADDING;
-    private static final int GROUP_INDENT = 6;
     private static final int MAX_VISIBLE_ITEMS = 15;
 
     private final NodeCategory category;
@@ -261,28 +260,6 @@ public class ContextMenuSubmenu {
         this.scale = Math.max(0.05f, scale);
         this.anchorX = anchorX;
         this.anchorY = anchorY;
-    }
-
-    private int toScreenX(int x) {
-        return Math.round(anchorX + (x - anchorX) * scale);
-    }
-
-    private int toScreenY(int y) {
-        return Math.round(anchorY + (y - anchorY) * scale);
-    }
-
-    private int fromScreenX(int screenX) {
-        if (scale == 0.0f) {
-            return screenX;
-        }
-        return Math.round(anchorX + (screenX - anchorX) / scale);
-    }
-
-    private int fromScreenY(int screenY) {
-        if (scale == 0.0f) {
-            return screenY;
-        }
-        return Math.round(anchorY + (screenY - anchorY) / scale);
     }
 
     /**

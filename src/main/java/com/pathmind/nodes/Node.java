@@ -312,12 +312,9 @@ public class Node {
         private String targetEntityId;
         private String message;
         private Double durationSeconds;
-        private Boolean booleanValue;
-        private String handName;
         private Integer slotIndex;
         private SlotSelectionType slotSelectionType;
         private String schematicName;
-        private Double rangeValue;
         private Float resolvedYaw;
         private Float resolvedPitch;
         private Double resolvedLookDistance;
@@ -12850,42 +12847,6 @@ public class Node {
         }
     }
 
-    private Vec3d resolveLookTargetFromOrientation(net.minecraft.client.MinecraftClient client, float yaw, float pitch, double distance) {
-        if (client == null || client.player == null || client.world == null) {
-            return null;
-        }
-        Vec3d eyePos = client.player.getEyePos();
-        double yawRad = Math.toRadians(yaw);
-        double pitchRad = Math.toRadians(pitch);
-        Vec3d direction = new Vec3d(
-            -Math.sin(yawRad) * Math.cos(pitchRad),
-            -Math.sin(pitchRad),
-            Math.cos(yawRad) * Math.cos(pitchRad)
-        );
-        double reachDistance = Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED);
-        double rayDistance = distance > 0.0 ? Math.min(distance, reachDistance) : reachDistance;
-        Vec3d end = eyePos.add(direction.multiply(reachDistance));
-        if (rayDistance != reachDistance) {
-            end = eyePos.add(direction.multiply(rayDistance));
-        }
-        HitResult hit = client.world.raycast(new RaycastContext(
-            eyePos,
-            end,
-            RaycastContext.ShapeType.OUTLINE,
-            RaycastContext.FluidHandling.NONE,
-            client.player
-        ));
-        if (hit == null || hit.getType() != HitResult.Type.BLOCK) {
-            return null;
-        }
-        BlockHitResult blockHit = (BlockHitResult) hit;
-        BlockPos pos = blockHit.getBlockPos();
-        if (pos == null) {
-            return null;
-        }
-        return Vec3d.ofCenter(pos);
-    }
-
     private BlockHitResult raycastBlockFromOrientation(net.minecraft.client.MinecraftClient client, float yaw, float pitch, double distance) {
         if (client == null || client.player == null || client.world == null) {
             return null;
@@ -14736,19 +14697,6 @@ public class Node {
         return false;
     }
 
-    private boolean isLightLevelBelow(int threshold) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null) {
-            return false;
-        }
-        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
-        if (world == null) {
-            return false;
-        }
-        BlockPos pos = client.player.getBlockPos();
-        return world.getLightLevel(pos) < threshold;
-    }
-
     private boolean isDaytime() {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.world == null) {
@@ -14837,38 +14785,6 @@ public class Node {
             return false;
         }
         return client.player.getHungerManager().getFoodLevel() < amount;
-    }
-
-    private boolean isEntityNearby(String entityId, double range) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || entityId == null || entityId.isEmpty()) {
-            return false;
-        }
-        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
-        if (world == null) {
-            return false;
-        }
-        Box searchBox = client.player.getBoundingBox().expand(range);
-        for (String candidateId : splitMultiValueList(entityId)) {
-            String sanitized = sanitizeResourceId(candidateId);
-            String normalized = sanitized != null && !sanitized.isEmpty()
-                ? normalizeResourceId(sanitized, "minecraft")
-                : candidateId;
-            Identifier identifier = Identifier.tryParse(normalized);
-            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
-                continue;
-            }
-            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-            List<Entity> entities = world.getOtherEntities(
-                client.player,
-                searchBox,
-                entity -> entity.getType() == entityType
-            );
-            if (!entities.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private boolean hasItemInInventory(String itemId) {

@@ -315,8 +315,4 @@ public class ContextMenu {
         return Math.round(menuX + (x - menuX) * scale);
     }
 
-    private void clampToScreen() {
-        menuX = baseMenuX;
-        menuY = baseMenuY;
-    }
 }

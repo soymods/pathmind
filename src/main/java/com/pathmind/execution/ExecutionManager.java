@@ -63,7 +63,6 @@ public class ExecutionManager {
     private Integer lastStartNodeNumber;
     private String lastStartPreset;
 
-    private static final long NODE_EXECUTION_DELAY_MS = 150L;
 
     private static class ChainController {
         final Node startNode;

@@ -616,20 +616,6 @@ public class NodeParameterOverlay {
         );
     }
 
-    /**
-     * Applies popup animation alpha to a base color.
-     *
-     * NOTE: When shader alpha is properly set via RenderStateBridge.setShaderColor(),
-     * you should use raw colors instead of this method to avoid dual alpha application.
-     * This method is only needed when rendering elements that bypass the shader alpha.
-     *
-     * @deprecated Prefer using shader-level alpha for consistent fade animations
-     */
-    @Deprecated
-    private int getPopupAnimatedColor(int baseColor) {
-        return popupAnimation.getAnimatedPopupColor(baseColor);
-    }
-
     private void setParameterValue(int index, String value) {
         if (index < 0 || index >= parameterValues.size()) {
             return;

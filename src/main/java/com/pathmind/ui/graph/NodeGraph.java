@@ -8509,14 +8509,6 @@ public class NodeGraph {
             || isNodeOverSidebarForRender(inputNode, inputScreenX, inputNode.getWidth());
     }
 
-    private boolean isConnectionInDraggedLayer(NodeConnection connection) {
-        if (connection == null) {
-            return false;
-        }
-        return isNodeInDraggedHierarchy(connection.getOutputNode())
-            || isNodeInDraggedHierarchy(connection.getInputNode());
-    }
-
     private boolean isNodeInDraggedHierarchy(Node node) {
         if (node == null) {
             return false;

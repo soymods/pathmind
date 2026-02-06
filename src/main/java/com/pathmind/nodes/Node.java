@@ -614,6 +614,9 @@ public class Node {
         if (type == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
             return false;
         }
+        if (type == NodeType.WAIT) {
+            return false;
+        }
         if (type == NodeType.OPEN_INVENTORY || type == NodeType.CLOSE_GUI) {
             return false;
         }
@@ -1399,6 +1402,9 @@ public class Node {
         if (type == NodeType.CHANGE_VARIABLE) {
             return true;
         }
+        if (type == NodeType.WAIT) {
+            return true;
+        }
         return false;
     }
 
@@ -1441,6 +1447,9 @@ public class Node {
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return "Seconds";
         }
+        if (type == NodeType.WAIT) {
+            return "Seconds";
+        }
         if (type == NodeType.CONTROL_REPEAT) {
             return "Times";
         }
@@ -1453,6 +1462,9 @@ public class Node {
         }
         if (type == NodeType.CONTROL_REPEAT) {
             return "Count";
+        }
+        if (type == NodeType.WAIT) {
+            return "Duration";
         }
         return "Amount";
     }

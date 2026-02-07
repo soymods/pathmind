@@ -6,6 +6,7 @@ import com.pathmind.util.DropdownLayoutHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.text.Text;
 
 import java.util.ArrayList;
@@ -95,7 +96,7 @@ public class InventorySlotSelector {
         return mode.id;
     }
 
-    public int render(DrawContext context, TextRenderer textRenderer, int x, int y, int width, int mouseX, int mouseY) {
+    public int render(DrawContext context, TextRenderer textRenderer, int x, int y, int width, int mouseX, int mouseY, float alpha) {
         this.renderX = x;
         this.renderY = y;
         this.renderWidth = width;
@@ -108,7 +109,7 @@ public class InventorySlotSelector {
             Text.literal("Interface Mode:"),
             x,
             sectionY,
-            UITheme.TEXT_PRIMARY
+            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         sectionY += textRenderer.fontHeight + 4;
 
@@ -122,25 +123,25 @@ public class InventorySlotSelector {
                               mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
         int buttonBg = hoverButton ? UITheme.BUTTON_DEFAULT_BG : UITheme.BACKGROUND_SECONDARY;
         int borderColor = dropdownOpen ? UITheme.ACCENT_DEFAULT : (hoverButton ? UITheme.TEXT_SECONDARY : UITheme.BORDER_SUBTLE);
-        context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, buttonBg);
-        DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonWidth, buttonHeight, borderColor);
+        context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, applyAlpha(buttonBg, alpha));
+        DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonWidth, buttonHeight, applyAlpha(borderColor, alpha));
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(mode.displayName),
             buttonX + MODE_BUTTON_TEXT_PADDING,
             buttonY + 6,
-            UITheme.TEXT_PRIMARY
+            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         context.drawTextWithShadow(
             textRenderer,
             Text.literal("▼"),
             buttonX + buttonWidth - 12,
             buttonY + 6,
-            UITheme.TEXT_PRIMARY
+            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         sectionY += MODE_BUTTON_HEIGHT + SECTION_SPACING;
 
-        int gridHeight = renderGrid(context, textRenderer, sectionY, width, mouseX, mouseY);
+        int gridHeight = renderGrid(context, textRenderer, sectionY, width, mouseX, mouseY, alpha);
         sectionY += gridHeight + INFO_TEXT_MARGIN;
 
         String selectionText = "Selected Slot: " + selectedSlotId;
@@ -152,12 +153,12 @@ public class InventorySlotSelector {
             Text.literal(selectionText),
             x,
             sectionY,
-            UITheme.TEXT_SECONDARY
+            applyAlpha(UITheme.TEXT_SECONDARY, alpha)
         );
         sectionY += textRenderer.fontHeight;
 
         if (dropdownOpen) {
-            renderDropdown(context, textRenderer, mouseX, mouseY);
+            renderDropdown(context, textRenderer, mouseX, mouseY, alpha);
         }
 
         lastRenderHeight = sectionY - y;
@@ -172,14 +173,14 @@ public class InventorySlotSelector {
         return header + gridHeight + footer;
     }
 
-    private int renderGrid(DrawContext context, TextRenderer textRenderer, int top, int width, int mouseX, int mouseY) {
+    private int renderGrid(DrawContext context, TextRenderer textRenderer, int top, int width, int mouseX, int mouseY, float alpha) {
         InventoryLayout layout = mode.getLayout();
         int backgroundWidth = Math.max(width, layout.width + GRID_PADDING * 2);
         int backgroundHeight = layout.height + GRID_PADDING * 2;
         int left = renderX;
 
-        context.fill(left, top, left + backgroundWidth, top + backgroundHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, left, top, backgroundWidth, backgroundHeight, UITheme.BORDER_DEFAULT);
+        context.fill(left, top, left + backgroundWidth, top + backgroundHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, left, top, backgroundWidth, backgroundHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         slotBoxes.clear();
         int slotLeft = left + GRID_PADDING;
@@ -203,14 +204,21 @@ public class InventorySlotSelector {
             if (selected) {
                 fill = UITheme.ACCENT_DEFAULT;
             }
-            context.fill(slotX, slotY, slotX + SLOT_SIZE, slotY + SLOT_SIZE, fill);
-            DrawContextBridge.drawBorder(context, slotX, slotY, SLOT_SIZE, SLOT_SIZE, selected ? UITheme.TEXT_PRIMARY : UITheme.BORDER_SUBTLE);
+            context.fill(slotX, slotY, slotX + SLOT_SIZE, slotY + SLOT_SIZE, applyAlpha(fill, alpha));
+            DrawContextBridge.drawBorder(
+                context,
+                slotX,
+                slotY,
+                SLOT_SIZE,
+                SLOT_SIZE,
+                applyAlpha(selected ? UITheme.TEXT_PRIMARY : UITheme.BORDER_SUBTLE, alpha)
+            );
 
             String label = String.valueOf(position.slotId);
             int textWidth = textRenderer.getWidth(label);
             int textX = slotX + (SLOT_SIZE - textWidth) / 2;
             int textY = slotY + 4;
-            context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, UITheme.TEXT_PRIMARY);
+            context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, applyAlpha(UITheme.TEXT_PRIMARY, alpha));
         }
 
         return backgroundHeight;
@@ -226,7 +234,7 @@ public class InventorySlotSelector {
         return selectedSlotIsPlayerSection == playerSection;
     }
 
-    private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+    private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float alpha) {
         int dropdownX = buttonX;
         int dropdownY = buttonY + buttonHeight;
         int dropdownWidth = buttonWidth;
@@ -243,9 +251,9 @@ public class InventorySlotSelector {
         dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, layout.maxScrollOffset));
         int dropdownHeight = layout.height;
 
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, UITheme.BORDER_DEFAULT);
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, UITheme.BORDER_DEFAULT);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
+        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         dropdownHoverIndex = -1;
         InventoryGuiMode[] modes = InventoryGuiMode.values();
@@ -263,13 +271,13 @@ public class InventorySlotSelector {
             if (hovered) {
                 bg = adjustColor(bg, 1.2f);
             }
-            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, bg);
+            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, alpha));
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(option.displayName),
                 dropdownX + MODE_BUTTON_TEXT_PADDING,
                 optionTop + 5,
-                UITheme.TEXT_PRIMARY
+                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -283,8 +291,8 @@ public class InventorySlotSelector {
             layout.visibleCount,
             dropdownScrollIndex,
             layout.maxScrollOffset,
-            UITheme.BORDER_DEFAULT,
-            UITheme.BORDER_HIGHLIGHT
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha),
+            applyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
         );
         DropdownLayoutHelper.drawOutline(
             context,
@@ -292,8 +300,17 @@ public class InventorySlotSelector {
             dropdownY,
             dropdownWidth,
             dropdownHeight,
-            UITheme.BORDER_DEFAULT
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha)
         );
+    }
+
+    private int applyAlpha(int color, float alpha) {
+        int a = (color >>> 24) & 0xFF;
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        int outA = MathHelper.clamp(Math.round(a * alpha), 0, 255);
+        return (outA << 24) | (r << 16) | (g << 8) | b;
     }
 
     public boolean mouseClicked(double mouseX, double mouseY) {

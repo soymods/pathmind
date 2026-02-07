@@ -42,6 +42,7 @@ import java.lang.reflect.Method;
  */
 public class VillagerTradeSelector {
     private static final Method VILLAGERDATA_WITH_PROFESSION = resolveWithProfessionMethod();
+    private static final String OPEN_GUI_CACHE_KEY = "open_gui";
     private static final int DROPDOWN_HEIGHT = 20;
     private static final int SEARCH_HEIGHT = 20;
     private static final int LIST_ROW_HEIGHT = 18;
@@ -550,8 +551,8 @@ public class VillagerTradeSelector {
         listScrollIndex = 0;
 
         if (selectedProfession == null || selectedProfession.entry == null) {
-            if (selectedProfession != null && "open_gui".equals(selectedProfession.id)) {
-                if (loadTradesFromOpenMerchantScreen()) {
+            if (selectedProfession != null && OPEN_GUI_CACHE_KEY.equals(selectedProfession.id)) {
+                if (loadCachedTrades() || loadTradesFromOpenMerchantScreen()) {
                     updateFilteredTrades();
                     if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
                         String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
@@ -743,6 +744,29 @@ public class VillagerTradeSelector {
                     return entry.getValue();
                 }
             }
+        }
+        return levelMap;
+    }
+
+    private static it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> resolveTradeLevels(
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> map,
+        VillagerProfession profession
+    ) {
+        if (map == null || map.isEmpty() || profession == null) {
+            return null;
+        }
+        Identifier id = Registries.VILLAGER_PROFESSION.getId(profession);
+        RegistryKey<VillagerProfession> key = id != null ? RegistryKey.of(RegistryKeys.VILLAGER_PROFESSION, id) : null;
+
+        it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> levelMap = null;
+        if (key != null) {
+            levelMap = map.get(key);
+        }
+        if ((levelMap == null || levelMap.isEmpty())) {
+            levelMap = map.get(profession);
+        }
+        if ((levelMap == null || levelMap.isEmpty()) && id != null) {
+            levelMap = map.get(id);
         }
         return levelMap;
     }
@@ -965,6 +989,119 @@ public class VillagerTradeSelector {
         TRADE_CACHE.put(selectedProfession.id, new ArrayList<>(trades));
     }
 
+    public static void cacheOpenMerchantTrades() {
+        List<TradeEntry> extracted = extractTradesFromOpenMerchantScreen();
+        if (extracted.isEmpty()) {
+            return;
+        }
+        TRADE_CACHE.put(OPEN_GUI_CACHE_KEY, new ArrayList<>(extracted));
+    }
+
+    public static void cacheAllProfessionTrades(MinecraftClient client) {
+        if (client == null) {
+            return;
+        }
+        net.minecraft.server.world.ServerWorld serverWorld = client.getServer() != null
+            ? client.getServer().getOverworld()
+            : null;
+        World fallbackWorld = client.world;
+        World activeWorld = serverWorld != null ? serverWorld : fallbackWorld;
+        if (activeWorld == null) {
+            return;
+        }
+
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> primary =
+            TradeOffers.PROFESSION_TO_LEVELED_TRADE;
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> secondary =
+            TradeOffers.REBALANCED_PROFESSION_TO_LEVELED_TRADE;
+
+        for (VillagerProfession profession : Registries.VILLAGER_PROFESSION) {
+            if (profession == null) {
+                continue;
+            }
+            Identifier id = Registries.VILLAGER_PROFESSION.getId(profession);
+            if (id == null) {
+                continue;
+            }
+            String professionId = id.getPath();
+            if (professionId == null || professionId.isEmpty()) {
+                continue;
+            }
+            it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> levelMap =
+                resolveTradeLevels(primary, profession);
+            if ((levelMap == null || levelMap.isEmpty()) && secondary != null && !secondary.isEmpty()) {
+                levelMap = resolveTradeLevels(secondary, profession);
+            }
+            if (levelMap == null || levelMap.isEmpty()) {
+                continue;
+            }
+
+            VillagerEntity villager = new VillagerEntity(EntityType.VILLAGER, activeWorld);
+            Random random = Random.create();
+            List<TradeEntry> entries = new ArrayList<>();
+
+            RegistryEntry<VillagerProfession> professionEntry = Registries.VILLAGER_PROFESSION.getEntry(profession);
+            for (it.unimi.dsi.fastutil.ints.Int2ObjectMap.Entry<TradeOffers.Factory[]> entry : levelMap.int2ObjectEntrySet()) {
+                int level = entry.getIntKey();
+                TradeOffers.Factory[] factories = entry.getValue();
+                if (factories == null) {
+                    continue;
+                }
+                VillagerData data = villager.getVillagerData().withProfession(professionEntry).withLevel(level);
+                villager.setVillagerData(data);
+
+                boolean levelHasOffers = false;
+                for (TradeOffers.Factory factory : factories) {
+                    if (factory == null) {
+                        continue;
+                    }
+                    TradeOffer offer = createOffer(factory, serverWorld, fallbackWorld, villager, random);
+                    if (offer == null) {
+                        continue;
+                    }
+                    ItemStack sell = offer.getSellItem();
+                    if (sell == null || sell.isEmpty()) {
+                        continue;
+                    }
+                    ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
+                    ItemStack buySecond = offer.getDisplayedSecondBuyItem();
+                    entries.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
+                    levelHasOffers = true;
+                }
+
+                if (!levelHasOffers && serverWorld != null) {
+                    TradeOfferList offers = villager.getOffers();
+                    if (offers != null) {
+                        offers.clear();
+                    }
+                    invokeFillRecipes(villager, serverWorld);
+                    offers = villager.getOffers();
+                    if (offers != null) {
+                        for (TradeOffer offer : offers) {
+                            if (offer == null) {
+                                continue;
+                            }
+                            ItemStack sell = offer.getSellItem();
+                            if (sell == null || sell.isEmpty()) {
+                                continue;
+                            }
+                            ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
+                            ItemStack buySecond = offer.getDisplayedSecondBuyItem();
+                            entries.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
+                        }
+                    }
+                }
+            }
+
+            if (!entries.isEmpty()) {
+                entries.sort(Comparator
+                    .comparingInt((TradeEntry entry) -> entry.level)
+                    .thenComparing(entry -> entry.displayText, String.CASE_INSENSITIVE_ORDER));
+                TRADE_CACHE.put(professionId, new ArrayList<>(entries));
+            }
+        }
+    }
+
     private boolean loadCachedTrades() {
         if (selectedProfession == null) {
             return false;
@@ -979,22 +1116,33 @@ public class VillagerTradeSelector {
     }
 
     private boolean loadTradesFromOpenMerchantScreen() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null) {
-            return false;
-        }
-        if (!(client.currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen)) {
-            return false;
-        }
-        net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
-        if (screenHandler == null) {
-            return false;
-        }
-        net.minecraft.village.TradeOfferList offers = screenHandler.getRecipes();
-        if (offers == null || offers.isEmpty()) {
+        List<TradeEntry> extracted = extractTradesFromOpenMerchantScreen();
+        if (extracted.isEmpty()) {
             return false;
         }
         trades.clear();
+        trades.addAll(extracted);
+        cacheTrades();
+        return true;
+    }
+
+    private static List<TradeEntry> extractTradesFromOpenMerchantScreen() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return List.of();
+        }
+        if (!(client.currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen)) {
+            return List.of();
+        }
+        net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+        if (screenHandler == null) {
+            return List.of();
+        }
+        net.minecraft.village.TradeOfferList offers = screenHandler.getRecipes();
+        if (offers == null || offers.isEmpty()) {
+            return List.of();
+        }
+        List<TradeEntry> extracted = new ArrayList<>();
         for (net.minecraft.village.TradeOffer offer : offers) {
             if (offer == null) {
                 continue;
@@ -1005,16 +1153,12 @@ public class VillagerTradeSelector {
             }
             ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
             ItemStack buySecond = offer.getDisplayedSecondBuyItem();
-            trades.add(TradeEntry.fromOffer(1, buyFirst, buySecond, sell));
+            extracted.add(TradeEntry.fromOffer(1, buyFirst, buySecond, sell));
         }
-        if (trades.isEmpty()) {
-            return false;
-        }
-        cacheTrades();
-        return true;
+        return extracted;
     }
 
-    private TradeOffer createOffer(TradeOffers.Factory factory, net.minecraft.server.world.ServerWorld serverWorld,
+    private static TradeOffer createOffer(TradeOffers.Factory factory, net.minecraft.server.world.ServerWorld serverWorld,
                                    World fallbackWorld, VillagerEntity villager, Random random) {
         if (factory == null || villager == null) {
             return null;
@@ -1051,7 +1195,7 @@ public class VillagerTradeSelector {
         return null;
     }
 
-    private void invokeFillRecipes(VillagerEntity villager, net.minecraft.server.world.ServerWorld serverWorld) {
+    private static void invokeFillRecipes(VillagerEntity villager, net.minecraft.server.world.ServerWorld serverWorld) {
         if (villager == null || serverWorld == null) {
             return;
         }

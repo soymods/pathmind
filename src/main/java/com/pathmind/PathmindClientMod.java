@@ -7,6 +7,7 @@ import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
+import com.pathmind.ui.control.VillagerTradeSelector;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.InputCompatibilityBridge;
@@ -18,6 +19,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.ingame.MerchantScreen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +41,9 @@ public class PathmindClientMod implements ClientModInitializer {
     private boolean stopGraphsKeyDown;
     private boolean playGraphsRawKeyDown;
     private boolean stopGraphsRawKeyDown;
+    private boolean merchantScreenOpen;
+    private boolean villagerTradeCacheWarmed;
+    private int villagerTradeCacheCooldownTicks;
 
     @Override
     public void onInitializeClient() {
@@ -62,6 +67,8 @@ public class PathmindClientMod implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             handleKeybinds(client);
             handleRecipeCacheWarmup(client);
+            handleMerchantTradeCache(client);
+            handleSingleplayerTradeCache(client);
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
@@ -69,6 +76,8 @@ public class PathmindClientMod implements ClientModInitializer {
             ChatMessageTracker.clear();
             recipeCacheWarmed = false;
             recipeCacheWarmupCooldownTicks = 0;
+            villagerTradeCacheWarmed = false;
+            villagerTradeCacheCooldownTicks = 60;
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
@@ -118,6 +127,32 @@ public class PathmindClientMod implements ClientModInitializer {
         if (baritoneAvailable) {
             ExecutionManager.getInstance().requestStopAll();
         }
+    }
+
+    private void handleMerchantTradeCache(MinecraftClient client) {
+        boolean isMerchantScreen = client != null && client.currentScreen instanceof MerchantScreen;
+        if (isMerchantScreen && !merchantScreenOpen) {
+            VillagerTradeSelector.cacheOpenMerchantTrades();
+        }
+        merchantScreenOpen = isMerchantScreen;
+    }
+
+    private void handleSingleplayerTradeCache(MinecraftClient client) {
+        if (villagerTradeCacheWarmed) {
+            return;
+        }
+        if (client == null || !client.isInSingleplayer()) {
+            return;
+        }
+        if (client.world == null || client.getServer() == null) {
+            return;
+        }
+        if (villagerTradeCacheCooldownTicks > 0) {
+            villagerTradeCacheCooldownTicks--;
+            return;
+        }
+        VillagerTradeSelector.cacheAllProfessionTrades(client);
+        villagerTradeCacheWarmed = true;
     }
 
     private void handleKeybinds(MinecraftClient client) {

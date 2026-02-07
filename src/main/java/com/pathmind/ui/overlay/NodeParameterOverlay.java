@@ -412,7 +412,7 @@ public class NodeParameterOverlay {
             int fieldWidth = popupWidth - 40;
             int fieldHeight = FIELD_HEIGHT;
             if (inventorySlotEditorActive && i == inventorySlotParamIndex && inventorySlotSelector != null) {
-                int selectorHeight = inventorySlotSelector.render(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY);
+                int selectorHeight = inventorySlotSelector.render(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, popupAlpha);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }

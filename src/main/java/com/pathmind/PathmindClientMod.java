@@ -9,6 +9,7 @@ import com.pathmind.ui.overlay.ActiveNodeOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.ChatMessageTracker;
+import com.pathmind.util.InputCompatibilityBridge;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -18,7 +19,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.client.util.InputUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.lwjgl.glfw.GLFW;
@@ -170,7 +170,7 @@ public class PathmindClientMod implements ClientModInitializer {
         if (client == null || client.getWindow() == null) {
             return false;
         }
-        return InputUtil.isKeyPressed(client.getWindow(), keyCode);
+        return InputCompatibilityBridge.isKeyPressed(client, keyCode);
     }
 
     private void handleRecipeCacheWarmup(MinecraftClient client) {

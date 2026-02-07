@@ -231,6 +231,7 @@ public class Node {
     private static final int EVENT_NAME_FIELD_BOTTOM_MARGIN = 6;
     private static final int BOOK_PAGE_MAX_CHARS = 256;
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
+    private static final Method CLIENT_WORLD_GET_ENTITY_BY_UUID = resolveClientWorldGetEntityByUuid();
     private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
     private static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
     private static final Pattern UNSAFE_RESOURCE_ID_PATTERN = Pattern.compile("[^a-z0-9_:/.-]");
@@ -5868,6 +5869,16 @@ public class Node {
 
     private boolean isWholeNumber(double value) {
         return Math.abs(value - Math.rint(value)) < 1.0E-9;
+    }
+
+    private static Method resolveClientWorldGetEntityByUuid() {
+        try {
+            Method method = net.minecraft.client.world.ClientWorld.class.getMethod("getEntity", java.util.UUID.class);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
     }
 
     
@@ -14270,7 +14281,7 @@ public class Node {
 
         try {
             java.util.UUID uuid = java.util.UUID.fromString(entry);
-            Entity entity = client.world.getEntity(uuid);
+            Entity entity = resolveEntityByUuid(client, uuid);
             if (entity == null || entity.isRemoved()) {
                 sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" item " + index + " is not available.");
                 if (future != null && !future.isDone()) {
@@ -14320,6 +14331,46 @@ public class Node {
             }
             return null;
         }
+    }
+
+    private Entity resolveEntityByUuid(net.minecraft.client.MinecraftClient client, java.util.UUID uuid) {
+        if (client == null || client.world == null || uuid == null) {
+            return null;
+        }
+        if (CLIENT_WORLD_GET_ENTITY_BY_UUID != null) {
+            try {
+                Object result = CLIENT_WORLD_GET_ENTITY_BY_UUID.invoke(client.world, uuid);
+                if (result instanceof Entity entity) {
+                    return entity;
+                }
+            } catch (IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
+                // fall through to manual search
+            }
+        }
+
+        if (client.player != null && uuid.equals(client.player.getUuid())) {
+            return client.player;
+        }
+        for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
+            if (player != null && uuid.equals(player.getUuid())) {
+                return player;
+            }
+        }
+
+        double searchRadius = 96.0;
+        if (client.options != null) {
+            int viewDistance = client.options.getViewDistance().getValue();
+            searchRadius = Math.max(searchRadius, viewDistance * 16.0);
+        }
+        Box searchBox = client.player != null
+            ? client.player.getBoundingBox().expand(searchRadius)
+            : new Box(-searchRadius, -searchRadius, -searchRadius, searchRadius, searchRadius, searchRadius);
+        List<Entity> matches = client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity != null && uuid.equals(entity.getUuid())
+        );
+        return matches.isEmpty() ? null : matches.get(0);
     }
 
     private List<Entity> findEntitiesByType(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, double range, String state) {

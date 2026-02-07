@@ -135,10 +135,8 @@ public class PathmindClientMod implements ClientModInitializer {
 
         ExecutionManager manager = ExecutionManager.getInstance();
         boolean editorOpen = PathmindScreens.isVisualEditorScreen(client.currentScreen);
-        boolean screenPauses = client.currentScreen != null && client.currentScreen.shouldPause();
-        manager.setSingleplayerPaused(
-            client.isInSingleplayer() && (client.isPaused() || screenPauses || editorOpen)
-        );
+        // Allow execution to continue while GUIs are open so key-pressed sensors can fire.
+        manager.setSingleplayerPaused(client.isInSingleplayer() && editorOpen);
 
         if (client.world == null) {
             if (!PathmindScreens.isVisualEditorScreen(client.currentScreen)) {

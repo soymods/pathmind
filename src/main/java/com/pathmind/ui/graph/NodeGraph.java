@@ -208,6 +208,7 @@ public class NodeGraph {
     private int schematicDropdownHoverIndex = -1;
     private static final int SCHEMATIC_DROPDOWN_MAX_ROWS = 8;
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
+    private static final int RANDOM_ROUNDING_DROPDOWN_MAX_ROWS = 4;
     private Node parameterDropdownNode = null;
     private int parameterDropdownIndex = -1;
     private boolean parameterDropdownOpen = false;
@@ -222,6 +223,10 @@ public class NodeGraph {
     private Node parameterDropdownSuppressedNode = null;
     private int parameterDropdownSuppressedIndex = -1;
     private String parameterDropdownSuppressedQuery = "";
+    private Node randomRoundingDropdownNode = null;
+    private boolean randomRoundingDropdownOpen = false;
+    private int randomRoundingDropdownHoverIndex = -1;
+    private int randomRoundingDropdownScrollOffset = 0;
     private Node modeDropdownNode = null;
     private boolean modeDropdownOpen = false;
     private int modeDropdownHoverIndex = -1;
@@ -2489,6 +2494,9 @@ public class NodeGraph {
             if (parameterDropdownOpen) {
                 renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
             }
+            if (randomRoundingDropdownOpen) {
+                renderRandomRoundingDropdownList(context, textRenderer, mouseX, mouseY);
+            }
             if (modeDropdownOpen) {
                 renderModeDropdownList(context, textRenderer, mouseX, mouseY);
             }
@@ -2704,7 +2712,7 @@ public class NodeGraph {
                 textX = 0;
                 textY = 0;
             }
-            if (!isOperator) {
+            if (!isOperator && !isComparisonOperator(node)) {
                 drawNodeText(context, textRenderer, label, textX, textY, titleColor);
             }
         } else if (node.getType() != NodeType.START
@@ -2836,9 +2844,6 @@ public class NodeGraph {
             } else {
                 display = value;
             }
-            display = editingEventName
-                ? display
-                : trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
             int textX = boxLeft + 4;
@@ -2851,7 +2856,11 @@ public class NodeGraph {
                     context.fill(selectionStartX, boxTop + 2, selectionEndX, boxBottom - 2, UITheme.TEXT_SELECTION_BG);
                 }
             }
-            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+            if (!editingEventName) {
+                renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
+            } else {
+                drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+            }
 
             if (editingEventName && eventNameCaretVisible) {
                 int caretIndex = MathHelper.clamp(eventNameCaretPosition, 0, display.length());
@@ -2936,19 +2945,14 @@ public class NodeGraph {
                 caretX = Math.min(caretX, boxRight - 2);
                 context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
             }
-        } else if (!simpleStyle && (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT)) {
+        } else if (!simpleStyle && isComparisonOperator(node)) {
             int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_BG, 0.7f) : UITheme.NODE_OPERATOR_BG;
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
             int titleColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_TITLE, 0.9f) : UITheme.NODE_OPERATOR_TITLE;
-            drawNodeText(
-                context,
-                textRenderer,
-                Text.literal(node.getType() == NodeType.OPERATOR_EQUALS ? "Equals" : "Not"),
-                x + 6,
-                y + 4,
-                titleColor
-            );
+            if (titleColor != 0) {
+                // Intentionally skip title text for operator nodes to keep the symbol clean.
+            }
 
             renderParameterSlot(context, textRenderer, node, isOverSidebar, 0);
             renderParameterSlot(context, textRenderer, node, isOverSidebar, 1);
@@ -2959,7 +2963,7 @@ public class NodeGraph {
             int leftSlotHeight = node.getParameterSlotHeight(0);
             int rightSlotHeight = node.getParameterSlotHeight(1);
             int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
-            String operatorText = node.getType() == NodeType.OPERATOR_EQUALS ? "=" : "!=";
+            String operatorText = getOperatorSymbol(node, false);
             int operatorWidth = textRenderer.getWidth(operatorText);
             int operatorX = gapCenterX - operatorWidth / 2;
             int leftSlotTop = node.getParameterSlotTop(0) - cameraY;
@@ -2969,6 +2973,20 @@ public class NodeGraph {
             int operatorCenterY = (leftCenterY + rightCenterY) / 2;
             int operatorY = operatorCenterY - textRenderer.fontHeight / 2;
             int operatorColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_SYMBOL, 0.85f) : UITheme.NODE_OPERATOR_SYMBOL;
+            if (node.getType() == NodeType.OPERATOR_GREATER || node.getType() == NodeType.OPERATOR_LESS) {
+                int buttonPaddingX = 3;
+                int buttonPaddingY = 4;
+                int maxSymbolWidth = textRenderer.getWidth(">=");
+                int buttonWidth = maxSymbolWidth + buttonPaddingX * 2;
+                int buttonHeight = textRenderer.fontHeight + buttonPaddingY * 2;
+                int buttonLeft = gapCenterX - buttonWidth / 2;
+                int buttonTop = operatorY - buttonPaddingY;
+                int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY;
+                int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+                context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
+                DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
+                operatorX = buttonLeft + (buttonWidth - operatorWidth) / 2;
+            }
             drawNodeText(
                 context,
                 textRenderer,
@@ -3020,9 +3038,6 @@ public class NodeGraph {
             } else {
                 display = value;
             }
-            display = editingEventName
-                ? display
-                : trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
             int textX = boxLeft + 4;
@@ -3035,7 +3050,11 @@ public class NodeGraph {
                     context.fill(selectionStartX, boxTop + 2, selectionEndX, boxBottom - 2, UITheme.TEXT_SELECTION_BG);
                 }
             }
-            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+            if (!editingEventName) {
+                renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
+            } else {
+                drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+            }
 
             if (editingEventName && eventNameCaretVisible) {
                 int caretIndex = MathHelper.clamp(eventNameCaretPosition, 0, display.length());
@@ -3045,7 +3064,7 @@ public class NodeGraph {
             }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else {
-            if (node.isParameterNode() || node.shouldRenderInlineParameters()) {
+            if ((node.isParameterNode() && node.getType() != NodeType.OPERATOR_MOD) || node.shouldRenderInlineParameters()) {
                 if (shouldShowParameters(node)) {
                     int paramBgColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR; // Grey when over sidebar
                     context.fill(x + 3, y + 16, x + width - 3, y + height - 3, paramBgColor);
@@ -3237,6 +3256,9 @@ public class NodeGraph {
                         }
 
                         paramY += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
+                    }
+                    if (node.hasRandomRoundingField()) {
+                        renderRandomRoundingField(context, textRenderer, node, isOverSidebar);
                     }
                     if (node.hasPopupEditButton()) {
                         renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -3634,7 +3656,7 @@ public class NodeGraph {
         }
 
         if (node.usesMinimalNodePresentation()
-            && (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT)
+            && isComparisonOperator(node)
             && slotIndex == 0) {
             int leftSlotX = node.getParameterSlotLeft(0) - cameraX;
             int rightSlotX = node.getParameterSlotLeft(1) - cameraX;
@@ -3642,7 +3664,7 @@ public class NodeGraph {
             int leftSlotHeight = node.getParameterSlotHeight(0);
             int rightSlotHeight = node.getParameterSlotHeight(1);
             int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
-            String operatorText = node.getType() == NodeType.OPERATOR_EQUALS ? "=" : "=/";
+            String operatorText = getOperatorSymbol(node, true);
             int operatorWidth = textRenderer.getWidth(operatorText);
             int operatorX = gapCenterX - operatorWidth / 2;
             int leftSlotTop = node.getParameterSlotTop(0) - cameraY;
@@ -3652,6 +3674,20 @@ public class NodeGraph {
             int operatorCenterY = (leftCenterY + rightCenterY) / 2;
             int operatorY = operatorCenterY - textRenderer.fontHeight / 2;
             int operatorColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_SYMBOL, 0.85f) : UITheme.NODE_OPERATOR_SYMBOL;
+            if (node.getType() == NodeType.OPERATOR_GREATER || node.getType() == NodeType.OPERATOR_LESS) {
+                int buttonPaddingX = 3;
+                int buttonPaddingY = 4;
+                int maxSymbolWidth = textRenderer.getWidth(">=");
+                int buttonWidth = maxSymbolWidth + buttonPaddingX * 2;
+                int buttonHeight = textRenderer.fontHeight + buttonPaddingY * 2;
+                int buttonLeft = gapCenterX - buttonWidth / 2;
+                int buttonTop = operatorY - buttonPaddingY;
+                int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY;
+                int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+                context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
+                DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
+                operatorX = buttonLeft + (buttonWidth - operatorWidth) / 2;
+            }
             drawNodeText(
                 context,
                 textRenderer,
@@ -3661,6 +3697,109 @@ public class NodeGraph {
                 operatorColor
             );
         }
+    }
+
+    private boolean isComparisonOperator(Node node) {
+        if (node == null || node.getType() == null) {
+            return false;
+        }
+        switch (node.getType()) {
+            case OPERATOR_EQUALS:
+            case OPERATOR_NOT:
+            case OPERATOR_GREATER:
+            case OPERATOR_LESS:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean isOperatorInclusive(Node node) {
+        if (node == null) {
+            return false;
+        }
+        NodeParameter param = node.getParameter("Inclusive");
+        if (param == null) {
+            return false;
+        }
+        if (param.getType() == ParameterType.BOOLEAN) {
+            return param.getBoolValue();
+        }
+        String value = param.getStringValue();
+        return value != null && Boolean.parseBoolean(value.trim());
+    }
+
+    private String getOperatorSymbol(Node node, boolean minimalStyle) {
+        if (node == null || node.getType() == null) {
+            return "";
+        }
+        switch (node.getType()) {
+            case OPERATOR_EQUALS:
+                return "=";
+            case OPERATOR_NOT:
+                return minimalStyle ? "=/" : "!=";
+            case OPERATOR_GREATER:
+                return isOperatorInclusive(node) ? ">=" : ">";
+            case OPERATOR_LESS:
+                return isOperatorInclusive(node) ? "<=" : "<";
+            default:
+                return "";
+        }
+    }
+
+    private boolean isOperatorToggleHit(Node node, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!isComparisonOperator(node)) {
+            return false;
+        }
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int leftSlotX = node.getParameterSlotLeft(0);
+        int rightSlotX = node.getParameterSlotLeft(1);
+        int leftSlotWidth = node.getParameterSlotWidth(0);
+        int leftSlotHeight = node.getParameterSlotHeight(0);
+        int rightSlotHeight = node.getParameterSlotHeight(1);
+        int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
+
+        int leftSlotTop = node.getParameterSlotTop(0);
+        int rightSlotTop = node.getParameterSlotTop(1);
+        int leftCenterY = leftSlotTop + leftSlotHeight / 2;
+        int rightCenterY = rightSlotTop + rightSlotHeight / 2;
+        int operatorCenterY = (leftCenterY + rightCenterY) / 2;
+
+        String operatorText = getOperatorSymbol(node, node.usesMinimalNodePresentation());
+        int textWidth = textRenderer.getWidth(operatorText);
+        int textHeight = textRenderer.fontHeight;
+        int padding = 4;
+        int hitLeft = gapCenterX - textWidth / 2 - padding;
+        int hitRight = gapCenterX + textWidth / 2 + padding;
+        int hitTop = operatorCenterY - textHeight / 2 - padding;
+        int hitBottom = operatorCenterY + textHeight / 2 + padding;
+
+        return worldMouseX >= hitLeft && worldMouseX <= hitRight && worldMouseY >= hitTop && worldMouseY <= hitBottom;
+    }
+
+    public boolean handleOperatorToggleClick(TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (textRenderer == null) {
+            return false;
+        }
+        Node node = getNodeAt(mouseX, mouseY);
+        if (node == null || node.getType() == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.OPERATOR_GREATER && node.getType() != NodeType.OPERATOR_LESS) {
+            return false;
+        }
+        if (!isOperatorToggleHit(node, textRenderer, mouseX, mouseY)) {
+            return false;
+        }
+        NodeParameter param = node.getParameter("Inclusive");
+        if (param == null) {
+            return false;
+        }
+        boolean next = !isOperatorInclusive(node);
+        param.setStringValueFromUser(Boolean.toString(next));
+        node.recalculateDimensions();
+        return true;
     }
 
     private void renderCoordinateInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -3868,6 +4007,135 @@ public class NodeGraph {
         }
     }
 
+    private void renderRandomRoundingField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+        int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+
+        boolean enabled = node.isRandomRoundingEnabled();
+        boolean open = randomRoundingDropdownOpen && randomRoundingDropdownNode == node;
+
+        int labelTop = node.getRandomRoundingFieldLabelTop() - cameraY;
+        int labelHeight = node.getRandomRoundingFieldLabelHeight();
+        int fieldTop = node.getRandomRoundingFieldInputTop() - cameraY;
+        int fieldHeight = node.getRandomRoundingFieldHeight();
+        int fieldLeft = node.getRandomRoundingFieldLeft() - cameraX;
+        int fieldWidth = node.getRandomRoundingFieldWidth();
+        int fieldRight = fieldLeft + fieldWidth;
+
+        int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
+        drawNodeText(context, textRenderer, Text.literal("Rounding"), fieldLeft + 2, labelY, baseLabelColor);
+
+        int fieldBottom = fieldTop + fieldHeight;
+        int disabledBg = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.BUTTON_DEFAULT_BG;
+        int backgroundColor = enabled ? (open ? activeFieldBackground : fieldBackground) : disabledBg;
+        int borderColor = enabled && open ? activeFieldBorder : fieldBorder;
+        int valueColor = enabled ? textColor : UITheme.TEXT_SECONDARY;
+
+        context.fill(fieldLeft, fieldTop, fieldRight, fieldBottom, backgroundColor);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
+
+        String value = node.getRandomRoundingModeDisplay();
+        String arrow = open ? "v" : "^";
+        int arrowWidth = textRenderer.getWidth(arrow);
+        int arrowX = fieldRight - arrowWidth - 4;
+        int valueStartX = fieldLeft + 4;
+        int maxValueWidth = Math.max(0, arrowX - valueStartX - 4);
+        String display = trimTextToWidth(value, textRenderer, maxValueWidth);
+        int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal(display), valueStartX, textY, valueColor);
+        drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, textY, valueColor);
+
+        if (node.hasRandomRoundingToggle()) {
+            int toggleLeft = node.getRandomRoundingToggleLeft() - cameraX;
+            int toggleTop = node.getRandomRoundingToggleTop() - cameraY;
+            int toggleWidth = node.getRandomRoundingToggleWidth();
+            int toggleHeight = node.getRandomRoundingToggleHeight();
+            int toggleBorder = enabled ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
+            int toggleBg = enabled ? UITheme.AMOUNT_TOGGLE_ON : UITheme.BACKGROUND_TERTIARY;
+            context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, toggleBg);
+            DrawContextBridge.drawBorderInLayer(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
+            int knobWidth = toggleHeight - 2;
+            int knobLeft = enabled ? toggleLeft + toggleWidth - knobWidth - 1 : toggleLeft + 1;
+            context.fill(knobLeft, toggleTop + 1, knobLeft + knobWidth, toggleTop + toggleHeight - 1, UITheme.TOGGLE_KNOB);
+        }
+    }
+
+    private void renderRandomRoundingDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!randomRoundingDropdownOpen || randomRoundingDropdownNode == null) {
+            return;
+        }
+        Node node = randomRoundingDropdownNode;
+        List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
+        int optionCount = Math.max(1, options.size());
+        float zoom = getZoomScale();
+        int transformedMouseX = Math.round(mouseX / zoom);
+        int transformedMouseY = Math.round(mouseY / zoom);
+
+        int rowHeight = SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        int dropdownWidth = node.getRandomRoundingFieldWidth();
+        int listTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
+        int listLeft = node.getRandomRoundingFieldLeft() - cameraX;
+        int listRight = listLeft + dropdownWidth;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            rowHeight,
+            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        int listHeight = layout.height;
+        int listBottom = listTop + listHeight;
+
+        context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
+
+        randomRoundingDropdownScrollOffset = MathHelper.clamp(randomRoundingDropdownScrollOffset, 0, layout.maxScrollOffset);
+        randomRoundingDropdownHoverIndex = -1;
+        if (transformedMouseX >= listLeft && transformedMouseX <= listRight
+            && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
+            int row = (transformedMouseY - listTop) / rowHeight;
+            if (row >= 0 && row < layout.visibleCount) {
+                randomRoundingDropdownHoverIndex = randomRoundingDropdownScrollOffset + row;
+            }
+        }
+
+        int visibleCount = layout.visibleCount;
+        for (int row = 0; row < visibleCount; row++) {
+            int optionIndex = randomRoundingDropdownScrollOffset + row;
+            String optionLabel = options.isEmpty() ? "No options" : options.get(optionIndex).label();
+            int rowTop = listTop + row * rowHeight;
+            int rowBottom = rowTop + rowHeight;
+            boolean hovered = options.isEmpty() ? row == 0 && randomRoundingDropdownHoverIndex >= 0 : optionIndex == randomRoundingDropdownHoverIndex;
+            if (hovered) {
+                context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.BACKGROUND_TERTIARY);
+            }
+            int textPadding = 5;
+            int maxTextWidth = dropdownWidth - (textPadding * 2);
+            String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
+            int textOffsetY = 4;
+            drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + textPadding, rowTop + textOffsetY, UITheme.TEXT_PRIMARY);
+        }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            listLeft,
+            listTop,
+            dropdownWidth,
+            listHeight,
+            optionCount,
+            layout.visibleCount,
+            randomRoundingDropdownScrollOffset,
+            layout.maxScrollOffset,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_HIGHLIGHT
+        );
+    }
+
     private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
         int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
@@ -3959,6 +4227,38 @@ public class NodeGraph {
                 context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, UITheme.CARET_COLOR);
             }
         }
+    }
+
+    private void renderEventNamePreview(DrawContext context, TextRenderer textRenderer, String value, int x, int y,
+                                        int baseColor, int maxWidth) {
+        if (value == null || value.isEmpty()) {
+            drawNodeText(context, textRenderer, Text.literal("enter name"), x, y, baseColor);
+            return;
+        }
+        if (textRenderer.getWidth(value) <= maxWidth) {
+            drawNodeText(context, textRenderer, Text.literal(value), x, y, baseColor);
+            return;
+        }
+
+        String trimmed = trimTextToWidth(value, textRenderer, maxWidth);
+        drawNodeText(context, textRenderer, Text.literal(trimmed), x, y, baseColor);
+        int trimmedWidth = textRenderer.getWidth(trimmed);
+
+        String tail = "..";
+        int tailWidth = textRenderer.getWidth(tail);
+        if (trimmedWidth + tailWidth + 4 >= maxWidth) {
+            return;
+        }
+
+        String suffix = value.substring(Math.max(0, value.length() - 4));
+        String tailText = tail + suffix;
+        int tailTextWidth = textRenderer.getWidth(tailText);
+        if (trimmedWidth + tailTextWidth + 4 > maxWidth) {
+            return;
+        }
+        int tailX = x + maxWidth - tailTextWidth;
+        int hintColor = toGrayscale(baseColor, 0.85f);
+        drawNodeText(context, textRenderer, Text.literal(tailText), tailX, y, hintColor);
     }
 
     private InlineVariableRender buildInlineVariableRender(String rawText, Set<String> variableNames, int baseColor, int highlightColor) {
@@ -4763,12 +5063,14 @@ public class NodeGraph {
         }
 
         closeSchematicDropdown();
+        closeRandomRoundingDropdown();
         closeAmountSignDropdown();
         closeAmountSignDropdown();
         closeAmountSignDropdown();
         closeAmountSignDropdown();
         closeAmountSignDropdown();
         closeAmountSignDropdown();
+        closeRandomRoundingDropdown();
         stopAmountEditing(true);
         stopStopTargetEditing(true);
         stopVariableEditing(true);
@@ -5913,6 +6215,7 @@ public class NodeGraph {
         closeModeDropdown();
         closeSchematicDropdown();
         closeAmountSignDropdown();
+        closeRandomRoundingDropdown();
         if (isEditingParameterField()) {
             if (parameterEditingNode == node && parameterEditingIndex == index) {
                 clearParameterDropdownSuppression();
@@ -7637,6 +7940,14 @@ public class NodeGraph {
         return java.util.Arrays.asList("+", "-", "*", "/", "%");
     }
 
+    private List<ParameterDropdownOption> getRandomRoundingDropdownOptions() {
+        List<ParameterDropdownOption> options = new ArrayList<>(3);
+        options.add(new ParameterDropdownOption("Round", "round"));
+        options.add(new ParameterDropdownOption("Floor", "floor"));
+        options.add(new ParameterDropdownOption("Ceil", "ceil"));
+        return options;
+    }
+
     private ParameterSegment getParameterSegment(String value, int caret) {
         String working = value != null ? value : "";
         int clamped = MathHelper.clamp(caret, 0, working.length());
@@ -8178,6 +8489,38 @@ public class NodeGraph {
         return true;
     }
 
+    public boolean handleRandomRoundingDropdownScroll(double screenX, double screenY, double verticalAmount) {
+        if (!randomRoundingDropdownOpen || randomRoundingDropdownNode == null) {
+            return false;
+        }
+        if (!isPointInsideRandomRoundingDropdownList((int) screenX, (int) screenY)) {
+            return false;
+        }
+        int listTop = randomRoundingDropdownNode.getRandomRoundingFieldInputTop()
+            + randomRoundingDropdownNode.getRandomRoundingFieldHeight() + 2;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            getRandomRoundingDropdownOptions().size(),
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        if (layout.maxScrollOffset <= 0) {
+            return false;
+        }
+        int delta = (int) Math.signum(verticalAmount);
+        if (delta == 0) {
+            return false;
+        }
+        randomRoundingDropdownScrollOffset = MathHelper.clamp(
+            randomRoundingDropdownScrollOffset - delta,
+            0,
+            layout.maxScrollOffset
+        );
+        return true;
+    }
+
     public boolean handleModeFieldClick(Node node, int screenX, int screenY) {
         if (node == null || !node.shouldRenderInlineParameters() || !node.supportsModeSelection()) {
             return false;
@@ -8339,6 +8682,7 @@ public class NodeGraph {
         }
         closeParameterDropdown();
         closeSchematicDropdown();
+        closeRandomRoundingDropdown();
         modeDropdownNode = node;
         modeDropdownScrollOffset = 0;
         modeDropdownHoverIndex = -1;
@@ -8518,6 +8862,34 @@ public class NodeGraph {
         return inside && node.isAmountInputEnabled();
     }
 
+    private boolean isPointInsideRandomRoundingField(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasRandomRoundingField()) {
+            return false;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = node.getRandomRoundingFieldLeft();
+        int fieldTop = node.getRandomRoundingFieldInputTop();
+        int fieldWidth = node.getRandomRoundingFieldWidth();
+        int fieldHeight = node.getRandomRoundingFieldHeight();
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    private boolean isPointInsideRandomRoundingToggle(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasRandomRoundingToggle()) {
+            return false;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int left = node.getRandomRoundingToggleLeft() - 3;
+        int top = node.getRandomRoundingToggleTop() - 3;
+        int width = node.getRandomRoundingToggleWidth() + 6;
+        int height = node.getRandomRoundingToggleHeight() + 6;
+        return worldX >= left && worldX <= left + width
+            && worldY >= top && worldY <= top + height;
+    }
+
     private boolean isPointInsideAmountToggle(Node node, int screenX, int screenY) {
         if (node == null || !node.hasAmountToggle()) {
             return false;
@@ -8569,6 +8941,60 @@ public class NodeGraph {
             && worldY >= listTop && worldY <= listTop + listHeight;
     }
 
+    private boolean isPointInsideRandomRoundingDropdownList(int screenX, int screenY) {
+        if (!randomRoundingDropdownOpen || randomRoundingDropdownNode == null) {
+            return false;
+        }
+        Node node = randomRoundingDropdownNode;
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int listTopScreen = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            getRandomRoundingDropdownOptions().size(),
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
+            listTopScreen,
+            screenHeight
+        );
+        int listHeight = layout.height;
+        int listLeft = node.getRandomRoundingFieldLeft();
+        int listWidth = node.getRandomRoundingFieldWidth();
+        int worldListTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2;
+        return worldX >= listLeft && worldX <= listLeft + listWidth
+            && worldY >= worldListTop && worldY <= worldListTop + listHeight;
+    }
+
+    private int getRandomRoundingDropdownIndexAt(Node node, int screenX, int screenY) {
+        if (node == null) {
+            return -1;
+        }
+        List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
+        if (options.isEmpty()) {
+            return -1;
+        }
+        int worldY = screenToWorldY(screenY);
+        int worldListTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2;
+        int listTopScreen = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            options.size(),
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
+            listTopScreen,
+            screenHeight
+        );
+        int row = (worldY - worldListTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        if (row < 0 || row >= layout.visibleCount) {
+            return -1;
+        }
+        int index = randomRoundingDropdownScrollOffset + row;
+        if (index < 0 || index >= options.size()) {
+            return -1;
+        }
+        return index;
+    }
+
     public boolean handleAmountToggleClick(Node node, int mouseX, int mouseY) {
         if (!isPointInsideAmountToggle(node, mouseX, mouseY)) {
             return false;
@@ -8580,6 +9006,71 @@ public class NodeGraph {
         }
         node.recalculateDimensions();
         notifyNodeParametersChanged(node);
+        return true;
+    }
+
+    public boolean handleRandomRoundingToggleClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideRandomRoundingToggle(node, mouseX, mouseY)) {
+            return false;
+        }
+        boolean newState = !node.isRandomRoundingEnabled();
+        node.setRandomRoundingEnabled(newState);
+        if (!newState && randomRoundingDropdownOpen && randomRoundingDropdownNode == node) {
+            closeRandomRoundingDropdown();
+        }
+        node.recalculateDimensions();
+        notifyNodeParametersChanged(node);
+        return true;
+    }
+
+    public boolean handleRandomRoundingDropdownClick(Node node, int mouseX, int mouseY) {
+        if (randomRoundingDropdownOpen) {
+            if (node == null || node != randomRoundingDropdownNode) {
+                if (isPointInsideRandomRoundingDropdownList(mouseX, mouseY)) {
+                    int index = getRandomRoundingDropdownIndexAt(randomRoundingDropdownNode, mouseX, mouseY);
+                    if (index >= 0) {
+                        List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
+                        if (index < options.size()) {
+                            randomRoundingDropdownNode.setRandomRoundingMode(options.get(index).value());
+                            randomRoundingDropdownNode.recalculateDimensions();
+                            notifyNodeParametersChanged(randomRoundingDropdownNode);
+                        }
+                    }
+                    closeRandomRoundingDropdown();
+                    return true;
+                }
+                closeRandomRoundingDropdown();
+                return false;
+            }
+            if (isPointInsideRandomRoundingField(node, mouseX, mouseY)) {
+                closeRandomRoundingDropdown();
+                return true;
+            }
+            if (isPointInsideRandomRoundingDropdownList(mouseX, mouseY)) {
+                int index = getRandomRoundingDropdownIndexAt(node, mouseX, mouseY);
+                if (index >= 0) {
+                    List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
+                    if (index < options.size()) {
+                        node.setRandomRoundingMode(options.get(index).value());
+                        node.recalculateDimensions();
+                        notifyNodeParametersChanged(node);
+                    }
+                }
+                closeRandomRoundingDropdown();
+                return true;
+            }
+            closeRandomRoundingDropdown();
+            return false;
+        }
+
+        if (node == null || !node.hasRandomRoundingField()) {
+            return false;
+        }
+        if (!isPointInsideRandomRoundingField(node, mouseX, mouseY)) {
+            return false;
+        }
+        stopParameterEditing(true);
+        openRandomRoundingDropdown(node);
         return true;
     }
 
@@ -8914,6 +9405,20 @@ public class NodeGraph {
         amountSignDropdownNode = null;
         amountSignDropdownHoverIndex = -1;
         amountSignDropdownScrollOffset = 0;
+    }
+
+    private void openRandomRoundingDropdown(Node node) {
+        randomRoundingDropdownNode = node;
+        randomRoundingDropdownOpen = true;
+        randomRoundingDropdownScrollOffset = 0;
+        randomRoundingDropdownHoverIndex = -1;
+    }
+
+    private void closeRandomRoundingDropdown() {
+        randomRoundingDropdownOpen = false;
+        randomRoundingDropdownNode = null;
+        randomRoundingDropdownHoverIndex = -1;
+        randomRoundingDropdownScrollOffset = 0;
     }
 
     private void applySchematicSelection(Node node, String value) {

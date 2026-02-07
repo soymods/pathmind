@@ -153,7 +153,7 @@ public class Node {
     private static final int PARAMETER_SLOT_MIN_CONTENT_WIDTH = 88;
     private static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
     private static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
-    private static final int OPERATOR_SLOT_GAP = 8;
+    private static final int OPERATOR_SLOT_GAP = 14;
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
     private static final int PARAMETER_FIELD_PADDING = 12;
     private static final int PLAYER_ARMOR_SLOT_COUNT = 4;
@@ -183,6 +183,13 @@ public class Node {
     private static final int AMOUNT_TOGGLE_SPACING = 6;
     private static final int AMOUNT_SIGN_TOGGLE_WIDTH = 28;
     private static final int AMOUNT_SIGN_TOGGLE_HEIGHT = 16;
+    private static final int RANDOM_ROUNDING_FIELD_TOP_MARGIN = 6;
+    private static final int RANDOM_ROUNDING_FIELD_LABEL_HEIGHT = 10;
+    private static final int RANDOM_ROUNDING_FIELD_HEIGHT = 16;
+    private static final int RANDOM_ROUNDING_FIELD_BOTTOM_MARGIN = 6;
+    private static final int RANDOM_ROUNDING_TOGGLE_WIDTH = 18;
+    private static final int RANDOM_ROUNDING_TOGGLE_HEIGHT = 10;
+    private static final int RANDOM_ROUNDING_TOGGLE_SPACING = 6;
     private static final int MESSAGE_FIELD_MARGIN_HORIZONTAL = 6;
     private static final int MESSAGE_FIELD_TOP_MARGIN = 6;
     private static final int MESSAGE_FIELD_LABEL_HEIGHT = 10;
@@ -547,10 +554,22 @@ public class Node {
         return isSensorType(type);
     }
 
+    private boolean isBooleanNotOperator() {
+        return type == NodeType.OPERATOR_BOOLEAN_NOT;
+    }
+
+    private boolean isComparisonOperator() {
+        return type == NodeType.OPERATOR_EQUALS
+            || type == NodeType.OPERATOR_NOT
+            || type == NodeType.OPERATOR_GREATER
+            || type == NodeType.OPERATOR_LESS;
+    }
+
     public boolean isParameterNode() {
         return type.getCategory() == NodeCategory.PARAMETERS
             || type == NodeType.VARIABLE
             || type == NodeType.OPERATOR_RANDOM
+            || type == NodeType.OPERATOR_MOD
             || type == NodeType.LIST_ITEM;
     }
 
@@ -585,6 +604,9 @@ public class Node {
             case SENSOR_VARIABLE_IS:
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
+            case OPERATOR_BOOLEAN_NOT:
+            case OPERATOR_GREATER:
+            case OPERATOR_LESS:
             case SENSOR_GUI_FILLED:
             case SENSOR_TARGETED_BLOCK_FACE:
                 return true;
@@ -598,6 +620,7 @@ public class Node {
             && (nodeType.getCategory() == NodeCategory.PARAMETERS
                 || nodeType == NodeType.VARIABLE
                 || nodeType == NodeType.OPERATOR_RANDOM
+                || nodeType == NodeType.OPERATOR_MOD
                 || nodeType == NodeType.LIST_ITEM
                 || nodeType == NodeType.SENSOR_POSITION_OF);
     }
@@ -646,7 +669,7 @@ public class Node {
         if (hasBooleanToggle()) {
             return false;
         }
-        return !isParameterNode()
+        return (!isParameterNode() || type == NodeType.OPERATOR_MOD)
             && type != NodeType.START
             && type != NodeType.EVENT_CALL
             && type != NodeType.EVENT_FUNCTION
@@ -671,8 +694,7 @@ public class Node {
             || type == NodeType.CROUCH
             || type == NodeType.JUMP
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || type == NodeType.OPERATOR_EQUALS
-            || type == NodeType.OPERATOR_NOT
+            || isComparisonOperator()
             || type == NodeType.OPEN_INVENTORY
             || type == NodeType.CLOSE_GUI;
     }
@@ -689,8 +711,18 @@ public class Node {
             || (!parameterNode.isParameterNode()
                 && parameterNode.getType() != NodeType.SENSOR_POSITION_OF
                 && parameterNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
-                && parameterNode.getType() != NodeType.VARIABLE)) {
+                && parameterNode.getType() != NodeType.VARIABLE
+                && !(type == NodeType.OPERATOR_BOOLEAN_NOT && parameterNode.isSensorNode()))) {
             return false;
+        }
+        if (type == NodeType.OPERATOR_MOD) {
+            if (!canAcceptParameterAt(slotIndex)) {
+                return false;
+            }
+            return parameterNode.isParameterNode()
+                || parameterNode.getType() == NodeType.VARIABLE
+                || parameterNode.getType() == NodeType.SENSOR_POSITION_OF
+                || parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE;
         }
         if (!canAcceptParameterAt(slotIndex)) {
             return false;
@@ -708,7 +740,10 @@ public class Node {
         if (type == NodeType.CHANGE_VARIABLE) {
             return slotIndex == 0;
         }
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (type == NodeType.OPERATOR_MOD) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
+        if (isComparisonOperator()) {
             return slotIndex == 0 || slotIndex == 1;
         }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
@@ -742,25 +777,34 @@ public class Node {
         if (parameter == null) {
             return false;
         }
+        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
+            if (slotIndex != 0) {
+                return false;
+            }
+            return parameter.isSensorNode()
+                || parameter.getType() == NodeType.PARAM_BOOLEAN
+                || parameter.getType() == NodeType.VARIABLE;
+        }
+        if (type == NodeType.OPERATOR_MOD) {
+            NodeType parameterType = parameter.getType();
+            return parameter.isParameterNode()
+                || parameterType == NodeType.VARIABLE
+                || parameterType == NodeType.SENSOR_POSITION_OF
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE;
+        }
         if (parameter.getType() == NodeType.VARIABLE
             && type != NodeType.SET_VARIABLE
             && type != NodeType.CHANGE_VARIABLE
             && type != NodeType.OPERATOR_EQUALS
-            && type != NodeType.OPERATOR_NOT) {
+            && type != NodeType.OPERATOR_NOT
+            && type != NodeType.OPERATOR_GREATER
+            && type != NodeType.OPERATOR_LESS) {
             return true;
         }
         if (type == NodeType.SET_VARIABLE) {
             NodeType parameterType = parameter.getType();
-            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
-            Node otherParameter = getAttachedParameter(otherSlotIndex);
-            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
-            boolean otherIsValue = otherParameter != null && otherParameter.getType() != NodeType.VARIABLE;
-
-            if (parameterType == NodeType.VARIABLE) {
-                return !otherIsVariable;
-            }
-            if (otherIsValue) {
-                return false;
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
             }
             return (parameter.isParameterNode()
                 || parameterType == NodeType.SENSOR_POSITION_OF
@@ -770,7 +814,7 @@ public class Node {
             NodeType parameterType = parameter.getType();
             return slotIndex == 0 && parameterType == NodeType.VARIABLE;
         }
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (isComparisonOperator()) {
             NodeType parameterType = parameter.getType();
             int otherSlotIndex = slotIndex == 0 ? 1 : 0;
             Node otherParameter = getAttachedParameter(otherSlotIndex);
@@ -809,6 +853,21 @@ public class Node {
         if (parameter == null) {
             return false;
         }
+        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
+            if (slotIndex != 0) {
+                return false;
+            }
+            return parameter.isSensorNode()
+                || parameter.getType() == NodeType.PARAM_BOOLEAN
+                || parameter.getType() == NodeType.VARIABLE;
+        }
+        if (type == NodeType.OPERATOR_MOD) {
+            NodeType parameterType = parameter.getType();
+            return parameter.isParameterNode()
+                || parameterType == NodeType.VARIABLE
+                || parameterType == NodeType.SENSOR_POSITION_OF
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE;
+        }
         if (type == NodeType.SENSOR_POSITION_OF) {
             if (slotIndex != 0) {
                 return false;
@@ -835,21 +894,15 @@ public class Node {
             && type != NodeType.SET_VARIABLE
             && type != NodeType.CHANGE_VARIABLE
             && type != NodeType.OPERATOR_EQUALS
-            && type != NodeType.OPERATOR_NOT) {
+            && type != NodeType.OPERATOR_NOT
+            && type != NodeType.OPERATOR_GREATER
+            && type != NodeType.OPERATOR_LESS) {
             return true;
         }
         if (type == NodeType.SET_VARIABLE) {
             NodeType parameterType = parameter.getType();
-            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
-            Node otherParameter = getAttachedParameter(otherSlotIndex);
-            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
-            boolean otherIsValue = otherParameter != null && otherParameter.getType() != NodeType.VARIABLE;
-
-            if (parameterType == NodeType.VARIABLE) {
-                return !otherIsVariable;
-            }
-            if (otherIsValue) {
-                return false;
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
             }
             return (parameter.isParameterNode()
                 || parameterType == NodeType.SENSOR_POSITION_OF
@@ -857,9 +910,14 @@ public class Node {
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
-            return slotIndex == 0 && parameterType == NodeType.VARIABLE;
+            if (slotIndex == 0) {
+                return parameterType == NodeType.VARIABLE;
+            }
+            return parameterType == NodeType.PARAM_AMOUNT
+                || parameterType == NodeType.OPERATOR_RANDOM
+                || parameterType == NodeType.OPERATOR_MOD;
         }
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (isComparisonOperator()) {
             NodeType parameterType = parameter.getType();
             int otherSlotIndex = slotIndex == 0 ? 1 : 0;
             Node otherParameter = getAttachedParameter(otherSlotIndex);
@@ -1186,8 +1244,23 @@ public class Node {
         if (type == NodeType.SET_VARIABLE) {
             return 2;
         }
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (type == NodeType.CHANGE_VARIABLE) {
             return 2;
+        }
+        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
+            return 1;
+        }
+        if (type == NodeType.OPERATOR_MOD) {
+            return 2;
+        }
+        if (isComparisonOperator()) {
+            return 2;
+        }
+        if (type == NodeType.EVENT_CALL) {
+            return 1;
+        }
+        if (type == NodeType.RETURN) {
+            return 1;
         }
         if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
             return 2;
@@ -1212,7 +1285,7 @@ public class Node {
     }
 
     public int getParameterSlotLeft(int slotIndex) {
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (isComparisonOperator()) {
             int slotWidth = getParameterSlotWidth(slotIndex);
             int baseLeft = x + PARAMETER_SLOT_MARGIN_HORIZONTAL;
             if (usesMinimalNodePresentation()) {
@@ -1241,7 +1314,7 @@ public class Node {
         if (hasVariableInputField()) {
             top += getVariableFieldDisplayHeight();
         }
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (isComparisonOperator()) {
             if (usesMinimalNodePresentation()) {
                 int slotHeight = getParameterSlotHeight(slotIndex);
                 return y + Math.max(0, (height - slotHeight) / 2);
@@ -1260,24 +1333,20 @@ public class Node {
     }
 
     public String getParameterSlotLabel(int slotIndex) {
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (isComparisonOperator()) {
             return "";
         }
         if (type == NodeType.SET_VARIABLE) {
-            Node slot0 = getAttachedParameter(0);
-            Node slot1 = getAttachedParameter(1);
-            boolean slot0Variable = slot0 != null && slot0.getType() == NodeType.VARIABLE;
-            boolean slot1Variable = slot1 != null && slot1.getType() == NodeType.VARIABLE;
-            if (slot0Variable && !slot1Variable) {
-                return slotIndex == 0 ? "Output" : "Input";
-            }
-            if (slot1Variable && !slot0Variable) {
-                return slotIndex == 1 ? "Output" : "Input";
-            }
-            return slotIndex == 0 ? "Input" : "Output";
+            return slotIndex == 0 ? "Variable" : "Value";
         }
         if (type == NodeType.CHANGE_VARIABLE) {
-            return "Variable";
+            return slotIndex == 0 ? "Variable" : "Amount";
+        }
+        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
+            return "Value";
+        }
+        if (type == NodeType.OPERATOR_MOD) {
+            return slotIndex == 0 ? "Value" : "Modulo";
         }
         if (type == NodeType.BUILD) {
             return "Position";
@@ -1321,7 +1390,7 @@ public class Node {
     }
 
     public int getParameterSlotWidth(int slotIndex) {
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (isComparisonOperator()) {
             int widthWithMargins = this.width - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
             if (usesMinimalNodePresentation()) {
                 widthWithMargins = Math.max(0, this.width - MINIMAL_NODE_TAB_WIDTH - 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL);
@@ -1350,7 +1419,7 @@ public class Node {
         if (slotCount <= 0) {
             return y + HEADER_HEIGHT;
         }
-        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+        if (isComparisonOperator()) {
             int leftHeight = getParameterSlotHeight(0);
             int rightHeight = getParameterSlotHeight(1);
             int maxHeight = Math.max(leftHeight, rightHeight);
@@ -1441,6 +1510,10 @@ public class Node {
             return true;
         }
         return false;
+    }
+
+    public boolean hasRandomRoundingField() {
+        return type == NodeType.OPERATOR_RANDOM;
     }
 
     public boolean hasSchematicDropdownField() {
@@ -1604,6 +1677,106 @@ public class Node {
         return AMOUNT_SIGN_TOGGLE_HEIGHT;
     }
 
+    public int getRandomRoundingFieldDisplayHeight() {
+        if (!hasRandomRoundingField()) {
+            return 0;
+        }
+        return RANDOM_ROUNDING_FIELD_TOP_MARGIN + RANDOM_ROUNDING_FIELD_LABEL_HEIGHT
+            + RANDOM_ROUNDING_FIELD_HEIGHT + RANDOM_ROUNDING_FIELD_BOTTOM_MARGIN;
+    }
+
+    public int getRandomRoundingFieldLabelTop() {
+        return y + HEADER_HEIGHT + getParameterDisplayHeight() + RANDOM_ROUNDING_FIELD_TOP_MARGIN;
+    }
+
+    public int getRandomRoundingFieldInputTop() {
+        return getRandomRoundingFieldLabelTop() + RANDOM_ROUNDING_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getRandomRoundingFieldLabelHeight() {
+        return RANDOM_ROUNDING_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getRandomRoundingFieldHeight() {
+        return RANDOM_ROUNDING_FIELD_HEIGHT;
+    }
+
+    public int getRandomRoundingFieldWidth() {
+        int width = Math.max(20, this.width - 10);
+        if (hasRandomRoundingToggle()) {
+            width = Math.max(40, width - (RANDOM_ROUNDING_TOGGLE_WIDTH + RANDOM_ROUNDING_TOGGLE_SPACING));
+        }
+        return width;
+    }
+
+    public int getRandomRoundingFieldLeft() {
+        return x + 5;
+    }
+
+    public boolean hasRandomRoundingToggle() {
+        return type == NodeType.OPERATOR_RANDOM;
+    }
+
+    public int getRandomRoundingToggleLeft() {
+        return getRandomRoundingFieldLeft() + getRandomRoundingFieldWidth() + RANDOM_ROUNDING_TOGGLE_SPACING;
+    }
+
+    public int getRandomRoundingToggleTop() {
+        return getRandomRoundingFieldInputTop() + (getRandomRoundingFieldHeight() - RANDOM_ROUNDING_TOGGLE_HEIGHT) / 2;
+    }
+
+    public int getRandomRoundingToggleWidth() {
+        return RANDOM_ROUNDING_TOGGLE_WIDTH;
+    }
+
+    public int getRandomRoundingToggleHeight() {
+        return RANDOM_ROUNDING_TOGGLE_HEIGHT;
+    }
+
+    public boolean isRandomRoundingEnabled() {
+        ensureRandomRoundingParameters();
+        NodeParameter useParam = getParameter("UseRounding");
+        return useParam != null && useParam.getBoolValue();
+    }
+
+    public void setRandomRoundingEnabled(boolean enabled) {
+        ensureRandomRoundingParameters();
+        NodeParameter useParam = getParameter("UseRounding");
+        if (useParam != null) {
+            useParam.setStringValue(Boolean.toString(enabled));
+        }
+    }
+
+    public String getRandomRoundingMode() {
+        ensureRandomRoundingParameters();
+        NodeParameter modeParam = getParameter("Rounding");
+        String value = modeParam != null ? modeParam.getStringValue() : null;
+        if (value == null || value.trim().isEmpty()) {
+            return "round";
+        }
+        return normalizeRoundingMode(value);
+    }
+
+    public String getRandomRoundingModeDisplay() {
+        String mode = getRandomRoundingMode();
+        return switch (mode) {
+            case "floor" -> "Floor";
+            case "ceil" -> "Ceil";
+            default -> "Round";
+        };
+    }
+
+    public void setRandomRoundingMode(String mode) {
+        ensureRandomRoundingParameters();
+        NodeParameter modeParam = getParameter("Rounding");
+        String normalized = normalizeRoundingMode(mode);
+        if (modeParam == null) {
+            parameters.add(new NodeParameter("Rounding", ParameterType.STRING, normalized));
+        } else {
+            modeParam.setStringValueFromUser(normalized);
+        }
+    }
+
     public String getAmountOperation() {
         NodeParameter param = getParameter("Operation");
         String value = param != null ? param.getStringValue() : null;
@@ -1678,6 +1851,43 @@ public class Node {
         if (getParameter("UseAmount") == null) {
             parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
         }
+    }
+
+    private void ensureRandomRoundingParameters() {
+        if (!hasRandomRoundingField()) {
+            return;
+        }
+        if (getParameter("Rounding") == null) {
+            parameters.add(new NodeParameter("Rounding", ParameterType.STRING, "round"));
+        }
+        if (getParameter("UseRounding") == null) {
+            parameters.add(new NodeParameter("UseRounding", ParameterType.BOOLEAN, "false"));
+        }
+    }
+
+    private boolean isRandomRoundingParameter(NodeParameter parameter) {
+        if (parameter == null || type != NodeType.OPERATOR_RANDOM) {
+            return false;
+        }
+        String name = parameter.getName();
+        return "Rounding".equalsIgnoreCase(name) || "UseRounding".equalsIgnoreCase(name);
+    }
+
+    private String normalizeRoundingMode(String value) {
+        if (value == null) {
+            return "round";
+        }
+        String trimmed = value.trim().toLowerCase(Locale.ROOT);
+        if (trimmed.isEmpty()) {
+            return "round";
+        }
+        if (trimmed.startsWith("flo") || "down".equals(trimmed)) {
+            return "floor";
+        }
+        if (trimmed.startsWith("cei") || "up".equals(trimmed)) {
+            return "ceil";
+        }
+        return "round";
     }
 
     public int getSchematicFieldDisplayHeight() {
@@ -2619,6 +2829,16 @@ public class Node {
                 parameters.add(new NodeParameter("Min", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("Max", ParameterType.DOUBLE, "1.0"));
                 parameters.add(new NodeParameter("Seed", ParameterType.STRING, "Any"));
+                parameters.add(new NodeParameter("Rounding", ParameterType.STRING, "round"));
+                parameters.add(new NodeParameter("UseRounding", ParameterType.BOOLEAN, "false"));
+                break;
+            case OPERATOR_MOD:
+                break;
+            case OPERATOR_BOOLEAN_NOT:
+                break;
+            case OPERATOR_GREATER:
+            case OPERATOR_LESS:
+                parameters.add(new NodeParameter("Inclusive", ParameterType.BOOLEAN, "false"));
                 break;
             case CHANGE_VARIABLE:
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
@@ -2963,6 +3183,9 @@ public class Node {
         if (parameter == null) {
             return "";
         }
+        if (isRandomRoundingParameter(parameter)) {
+            return "";
+        }
         if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
             return "";
         }
@@ -3035,8 +3258,21 @@ public class Node {
             case OPERATOR_RANDOM: {
                 double min = getDoubleParameter("Min", 0.0);
                 double max = getDoubleParameter("Max", 1.0);
-                double randomValue = generateRandomValue(min, max);
+                double randomValue = generateRandomValueWithRounding(min, max);
                 String value = Double.toString(randomValue);
+                values.put("Amount", value);
+                values.put(normalizeParameterKey("Amount"), value);
+                values.put("Count", value);
+                values.put(normalizeParameterKey("Count"), value);
+                values.put("Threshold", value);
+                values.put(normalizeParameterKey("Threshold"), value);
+                values.put("Value", value);
+                values.put(normalizeParameterKey("Value"), value);
+                break;
+            }
+            case OPERATOR_MOD: {
+                double modValue = resolveModValue().orElse(0.0);
+                String value = Double.toString(modValue);
                 values.put("Amount", value);
                 values.put(normalizeParameterKey("Amount"), value);
                 values.put("Count", value);
@@ -3704,9 +3940,12 @@ public class Node {
         }
 
         int maxTextLength = Math.max(type.getDisplayName().length(), 1);
-        if (isParameterNode() || shouldRenderInlineParameters()) {
+        if ((isParameterNode() && type != NodeType.OPERATOR_MOD) || shouldRenderInlineParameters()) {
             for (NodeParameter param : parameters) {
                 String paramText = getParameterLabel(param);
+                if (paramText == null || paramText.isEmpty()) {
+                    continue;
+                }
                 if (paramText.length() > maxTextLength) {
                     maxTextLength = paramText.length();
                 }
@@ -3721,10 +3960,13 @@ public class Node {
         }
 
         int computedWidth = maxTextLength * CHAR_PIXEL_WIDTH + 24; // padding and border allowance
-        if (isParameterNode() || shouldRenderInlineParameters()) {
+        if ((isParameterNode() && type != NodeType.OPERATOR_MOD) || shouldRenderInlineParameters()) {
             int maxParameterWidth = 0;
             for (NodeParameter param : parameters) {
                 if (param == null) {
+                    continue;
+                }
+                if (getParameterLabel(param).isEmpty()) {
                     continue;
                 }
                 String label = getParameterDisplayName(param);
@@ -3757,7 +3999,7 @@ public class Node {
                     }
                 }
             }
-            if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+            if (isComparisonOperator()) {
                 int slotWidth = parameterContentWidth + 2 * PARAMETER_SLOT_INNER_PADDING;
                 int requiredWidth = (slotWidth * 2) + OPERATOR_SLOT_GAP + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
                 computedWidth = Math.max(computedWidth, requiredWidth);
@@ -3795,6 +4037,13 @@ public class Node {
             }
             int amountWidth = amountContentWidth + 2 * PARAMETER_SLOT_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, amountWidth);
+        }
+        if (hasRandomRoundingField()) {
+            int requiredWidth = 40 + 10;
+            if (hasRandomRoundingToggle()) {
+                requiredWidth += RANDOM_ROUNDING_TOGGLE_WIDTH + RANDOM_ROUNDING_TOGGLE_SPACING;
+            }
+            computedWidth = Math.max(computedWidth, requiredWidth);
         }
         if (hasSensorSlot()) {
             int sensorContentWidth = SENSOR_SLOT_MIN_CONTENT_WIDTH;
@@ -3854,7 +4103,7 @@ public class Node {
         int contentHeight = HEADER_HEIGHT;
         boolean hasSlots = hasSensorSlot() || hasActionSlot();
 
-        if (isParameterNode()) {
+        if (isParameterNode() && type != NodeType.OPERATOR_MOD) {
             int parameterLineCount = getVisibleParameterLineCount();
 
             if (parameterLineCount > 0) {
@@ -3864,6 +4113,9 @@ public class Node {
                 }
                 if (hasBooleanToggle()) {
                     contentHeight += getBooleanToggleAreaHeight();
+                }
+                if (hasRandomRoundingField()) {
+                    contentHeight += getRandomRoundingFieldDisplayHeight();
                 }
                 if (hasSlots) {
                     contentHeight += SLOT_AREA_PADDING_TOP;
@@ -3885,7 +4137,7 @@ public class Node {
         } else if (type == NodeType.EVENT_FUNCTION || type == NodeType.EVENT_CALL) {
             contentHeight += EVENT_NAME_FIELD_TOP_MARGIN + EVENT_NAME_FIELD_HEIGHT + EVENT_NAME_FIELD_BOTTOM_MARGIN;
         } else if (hasParameterSlot()) {
-            if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+            if (isComparisonOperator()) {
                 int leftHeight = getParameterSlotHeight(0);
                 int rightHeight = getParameterSlotHeight(1);
                 int maxHeight = Math.max(leftHeight, rightHeight);
@@ -4870,7 +5122,29 @@ public class Node {
         if (node != null && node.getType() == NodeType.OPERATOR_RANDOM) {
             double min = node.getDoubleParameter("Min", 0.0);
             double max = node.getDoubleParameter("Max", 1.0);
-            return (int) Math.round(node.generateRandomValue(min, max));
+            return (int) Math.round(node.generateRandomValueWithRounding(min, max));
+        }
+        if (node != null && node.getType() == NodeType.OPERATOR_MOD) {
+            return (int) Math.round(node.resolveModValue().orElse((double) defaultValue));
+        }
+        if (node != null && node.getType() == NodeType.VARIABLE) {
+            String variableName = getParameterString(node, "Variable");
+            Node resolved = node.resolveVariableValueNode(node, 0, null);
+            if (resolved == null) {
+                return defaultValue;
+            }
+            if (resolved.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+                return parseNodeInt(resolved, name, defaultValue);
+            }
+            Optional<Double> value = node.resolveComparableNumber(resolved);
+            if (value.isPresent()) {
+                return (int) Math.round(value.get());
+            }
+            net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+            if (client != null && variableName != null && !variableName.trim().isEmpty()) {
+                node.sendNodeErrorMessage(client, "Variable \"" + variableName.trim() + "\" is not a numeric value.");
+            }
+            return defaultValue;
         }
         String value = getParameterString(node, name);
         if (value == null || value.isEmpty()) {
@@ -4887,7 +5161,29 @@ public class Node {
         if (node != null && node.getType() == NodeType.OPERATOR_RANDOM) {
             double min = node.getDoubleParameter("Min", 0.0);
             double max = node.getDoubleParameter("Max", 1.0);
-            return node.generateRandomValue(min, max);
+            return node.generateRandomValueWithRounding(min, max);
+        }
+        if (node != null && node.getType() == NodeType.OPERATOR_MOD) {
+            return node.resolveModValue().orElse(defaultValue);
+        }
+        if (node != null && node.getType() == NodeType.VARIABLE) {
+            String variableName = getParameterString(node, "Variable");
+            Node resolved = node.resolveVariableValueNode(node, 0, null);
+            if (resolved == null) {
+                return defaultValue;
+            }
+            if (resolved.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+                return parseNodeDouble(resolved, name, defaultValue);
+            }
+            Optional<Double> value = node.resolveComparableNumber(resolved);
+            if (value.isPresent()) {
+                return value.get();
+            }
+            net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+            if (client != null && variableName != null && !variableName.trim().isEmpty()) {
+                node.sendNodeErrorMessage(client, "Variable \"" + variableName.trim() + "\" is not a numeric value.");
+            }
+            return defaultValue;
         }
         String value = getParameterString(node, name);
         if (value == null || value.isEmpty()) {
@@ -4940,6 +5236,37 @@ public class Node {
             return lower + Math.random() * range;
         }
         return lower + generator.nextDouble() * range;
+    }
+
+    private double generateRandomValueWithRounding(double min, double max) {
+        double value = generateRandomValue(min, max);
+        if (!isRandomRoundingEnabled()) {
+            return value;
+        }
+        String mode = getRandomRoundingMode();
+        return switch (mode) {
+            case "floor" -> Math.floor(value);
+            case "ceil" -> Math.ceil(value);
+            default -> (double) Math.round(value);
+        };
+    }
+
+    private Optional<Double> resolveModValue() {
+        Node left = getAttachedParameter(0);
+        Node right = getAttachedParameter(1);
+        if (left == null || right == null) {
+            return Optional.empty();
+        }
+        Optional<Double> leftNumber = resolveComparableNumberWithVariables(left, 0);
+        Optional<Double> rightNumber = resolveComparableNumberWithVariables(right, 1);
+        if (leftNumber.isEmpty() || rightNumber.isEmpty()) {
+            return Optional.empty();
+        }
+        double divisor = rightNumber.get();
+        if (divisor == 0.0) {
+            return Optional.empty();
+        }
+        return Optional.of(leftNumber.get() % divisor);
     }
 
     private Random getRandomGenerator() {
@@ -5494,21 +5821,14 @@ public class Node {
     private void executeSetVariableCommand(CompletableFuture<Void> future) {
         Node slot0 = getAttachedParameter(0);
         Node slot1 = getAttachedParameter(1);
-        Node variableNode = null;
-        Node valueNode = null;
-
-        if (slot0 != null && slot0.getType() == NodeType.VARIABLE) {
-            variableNode = slot0;
-            valueNode = slot1;
-        } else if (slot1 != null && slot1.getType() == NodeType.VARIABLE) {
-            variableNode = slot1;
-            valueNode = slot0;
-        }
+        Node variableNode = slot0;
+        Node valueNode = slot1;
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (variableNode == null || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
+        if (variableNode == null || variableNode.getType() != NodeType.VARIABLE
+            || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
             if (client != null) {
-                sendNodeErrorMessage(client, "Set requires an input value and an output variable.");
+                sendNodeErrorMessage(client, "Set Variable requires a variable input and a value parameter.");
             }
             future.complete(null);
             return;
@@ -14057,7 +14377,11 @@ public class Node {
             return defaultValue;
         }
         String value = param.getStringValue();
-        return value != null ? value : defaultValue;
+        if (value == null) {
+            return defaultValue;
+        }
+        String resolved = resolveRuntimeVariablesInText(value);
+        return resolved != null ? resolved : defaultValue;
     }
 
     private static String getParameterString(Node node, String name) {
@@ -14068,7 +14392,11 @@ public class Node {
         if (parameter == null) {
             return null;
         }
-        return parameter.getStringValue();
+        String value = parameter.getStringValue();
+        if (value == null) {
+            return null;
+        }
+        return node.resolveRuntimeVariablesInText(value);
     }
 
     private String getBlockParameterValue(Node node) {
@@ -14507,6 +14835,15 @@ public class Node {
             case OPERATOR_NOT:
                 result = evaluateOperatorNot();
                 break;
+            case OPERATOR_BOOLEAN_NOT:
+                result = evaluateOperatorBooleanNot();
+                break;
+            case OPERATOR_GREATER:
+                result = evaluateOperatorGreater();
+                break;
+            case OPERATOR_LESS:
+                result = evaluateOperatorLess();
+                break;
             case SENSOR_TOUCHING_BLOCK: {
                 String blockId = getStringParameter("Block", "stone");
                 Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
@@ -14575,7 +14912,7 @@ public class Node {
                 break;
             case SENSOR_HEALTH_BELOW: {
                 double amount = MathHelper.clamp(getDoubleParameter("Amount", 10.0), 0.0, 40.0);
-                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT, NodeType.OPERATOR_RANDOM);
+                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT, NodeType.OPERATOR_RANDOM, NodeType.OPERATOR_MOD);
                 if (amountParameter != null) {
                     amount = MathHelper.clamp(parseNodeDouble(amountParameter, "Amount", amount), 0.0, 40.0);
                 }
@@ -14584,7 +14921,7 @@ public class Node {
             }
             case SENSOR_HUNGER_BELOW: {
                 int amount = MathHelper.clamp(getIntParameter("Amount", 10), 0, 20);
-                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT, NodeType.OPERATOR_RANDOM);
+                Node amountParameter = getAttachedParameterOfType(NodeType.PARAM_AMOUNT, NodeType.OPERATOR_RANDOM, NodeType.OPERATOR_MOD);
                 if (amountParameter != null) {
                     double parsed = parseNodeDouble(amountParameter, "Amount", amount);
                     amount = MathHelper.clamp((int) Math.round(parsed), 0, 20);
@@ -14600,7 +14937,9 @@ public class Node {
                 Node parameterNode = null;
                 Node attached = getAttachedParameter();
                 if (attached != null && attached.isParameterNode()) {
-                    if (attached.getType() == NodeType.PARAM_AMOUNT || attached.getType() == NodeType.OPERATOR_RANDOM) {
+                    if (attached.getType() == NodeType.PARAM_AMOUNT
+                        || attached.getType() == NodeType.OPERATOR_RANDOM
+                        || attached.getType() == NodeType.OPERATOR_MOD) {
                         amountNode = attached;
                     } else if (attached.getType() == NodeType.PARAM_ITEM) {
                         parameterNode = attached;
@@ -14943,6 +15282,21 @@ public class Node {
         return result.map(value -> !value).orElse(false);
     }
 
+    private boolean evaluateOperatorBooleanNot() {
+        Optional<Boolean> result = evaluateOperatorBooleanOperand();
+        return result.map(value -> !value).orElse(false);
+    }
+
+    private boolean evaluateOperatorGreater() {
+        Optional<Boolean> result = evaluateOperatorOrdering(true);
+        return result.orElse(false);
+    }
+
+    private boolean evaluateOperatorLess() {
+        Optional<Boolean> result = evaluateOperatorOrdering(false);
+        return result.orElse(false);
+    }
+
     private Optional<Boolean> evaluateOperatorComparison() {
         Node left = getAttachedParameter(0);
         Node right = getAttachedParameter(1);
@@ -14955,6 +15309,65 @@ public class Node {
             return compareVariableNodes(left, right);
         }
         return compareParameterNodes(left, right);
+    }
+
+    private Optional<Boolean> evaluateOperatorOrdering(boolean greater) {
+        Node left = getAttachedParameter(0);
+        Node right = getAttachedParameter(1);
+        if (left == null || right == null) {
+            return Optional.empty();
+        }
+        Optional<Double> leftNumber = resolveComparableNumberWithVariables(left, 0);
+        Optional<Double> rightNumber = resolveComparableNumberWithVariables(right, 1);
+        if (leftNumber.isEmpty() || rightNumber.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean inclusive = getBooleanParameter("Inclusive", false);
+        double l = leftNumber.get();
+        double r = rightNumber.get();
+        if (greater) {
+            return Optional.of(inclusive ? l >= r : l > r);
+        }
+        return Optional.of(inclusive ? l <= r : l < r);
+    }
+
+    private Optional<Boolean> evaluateOperatorBooleanOperand() {
+        Node operand = getAttachedParameter(0);
+        if (operand == null) {
+            return Optional.empty();
+        }
+        if (operand.isSensorNode()) {
+            return Optional.of(operand.evaluateSensor());
+        }
+        if (operand.getType() == NodeType.VARIABLE) {
+            Node resolved = resolveVariableValueNode(operand, 0, null);
+            if (resolved == null) {
+                return Optional.empty();
+            }
+            return resolveBooleanFromNode(resolved);
+        }
+        return resolveBooleanFromNode(operand);
+    }
+
+    private Optional<Boolean> resolveBooleanFromNode(Node node) {
+        if (node == null) {
+            return Optional.empty();
+        }
+        if (node.getType() == NodeType.PARAM_BOOLEAN) {
+            NodeParameter parameter = node.getParameter("Toggle");
+            if (parameter == null) {
+                return Optional.empty();
+            }
+            if (parameter.getType() == ParameterType.BOOLEAN) {
+                return Optional.of(parameter.getBoolValue());
+            }
+            String value = parameter.getStringValue();
+            if (value == null) {
+                return Optional.empty();
+            }
+            return Optional.of(Boolean.parseBoolean(value.trim()));
+        }
+        return Optional.empty();
     }
 
     private Optional<Boolean> compareVariableNodes(Node left, Node right) {
@@ -15097,12 +15510,27 @@ public class Node {
         switch (node.getType()) {
             case PARAM_AMOUNT:
             case OPERATOR_RANDOM:
+            case OPERATOR_MOD:
                 return Optional.of(parseNodeDouble(node, "Amount", 0.0));
             case PARAM_INVENTORY_SLOT:
                 return resolveInventorySlotCount(node).map(count -> (double) count);
             default:
                 return Optional.empty();
         }
+    }
+
+    private Optional<Double> resolveComparableNumberWithVariables(Node node, int slotIndex) {
+        if (node == null) {
+            return Optional.empty();
+        }
+        if (node.getType() == NodeType.VARIABLE) {
+            Node resolved = resolveVariableValueNode(node, slotIndex, null);
+            if (resolved == null) {
+                return Optional.empty();
+            }
+            return resolveComparableNumber(resolved);
+        }
+        return resolveComparableNumber(node);
     }
 
     private Optional<Integer> resolveInventorySlotCount(Node slotNode) {

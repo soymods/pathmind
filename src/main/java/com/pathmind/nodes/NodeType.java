@@ -23,6 +23,10 @@ public enum NodeType {
     // Operator nodes
     OPERATOR_EQUALS("pathmind.node.type.operatorEquals", 0xFF00C853, "pathmind.node.type.operatorEquals.desc"),
     OPERATOR_NOT("pathmind.node.type.operatorNot", 0xFF00C853, "pathmind.node.type.operatorNot.desc"),
+    OPERATOR_BOOLEAN_NOT("pathmind.node.type.operatorBooleanNot", 0xFF00C853, "pathmind.node.type.operatorBooleanNot.desc"),
+    OPERATOR_GREATER("pathmind.node.type.operatorGreater", 0xFF00C853, "pathmind.node.type.operatorGreater.desc"),
+    OPERATOR_LESS("pathmind.node.type.operatorLess", 0xFF00C853, "pathmind.node.type.operatorLess.desc"),
+    OPERATOR_MOD("pathmind.node.type.operatorMod", 0xFF00C853, "pathmind.node.type.operatorMod.desc"),
     OPERATOR_RANDOM("pathmind.node.type.operatorRandom", 0xFF00C853, "pathmind.node.type.operatorRandom.desc"),
 
     // Navigation Commands
@@ -51,6 +55,7 @@ public enum NodeType {
     CONTROL_FOREVER("pathmind.node.type.controlForever", 0xFFFFC107, "pathmind.node.type.controlForever.desc"),
     CONTROL_IF("pathmind.node.type.controlIf", 0xFFFFC107, "pathmind.node.type.controlIf.desc"),
     CONTROL_IF_ELSE("pathmind.node.type.controlIfElse", 0xFFFFC107, "pathmind.node.type.controlIfElse.desc"),
+    RETURN("pathmind.node.type.return", 0xFFFFC107, "pathmind.node.type.return.desc"),
 
     // Player movement commands
     LOOK("pathmind.node.type.look", 0xFF03A9F4, "pathmind.node.type.look.desc"),
@@ -201,6 +206,10 @@ public enum NodeType {
                 return NodeCategory.VARIABLES;
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
+            case OPERATOR_BOOLEAN_NOT:
+            case OPERATOR_GREATER:
+            case OPERATOR_LESS:
+            case OPERATOR_MOD:
             case OPERATOR_RANDOM:
                 return NodeCategory.OPERATORS;
             case CONTROL_REPEAT:
@@ -208,6 +217,7 @@ public enum NodeType {
             case CONTROL_FOREVER:
             case CONTROL_IF:
             case CONTROL_IF_ELSE:
+            case RETURN:
                 return NodeCategory.LOGIC;
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
@@ -380,6 +390,8 @@ public enum NodeType {
             case PARAM_MESSAGE:
             case VARIABLE:
             case OPERATOR_RANDOM:
+            case OPERATOR_MOD:
+            case OPERATOR_BOOLEAN_NOT:
             case CREATE_LIST:
             case LIST_ITEM:
                 return true;

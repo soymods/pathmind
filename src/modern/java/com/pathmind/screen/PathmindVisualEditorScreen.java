@@ -869,10 +869,16 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.handleParameterDropdownClick(mouseX, mouseY)) {
             return true;
         }
+        if (nodeGraph.handleRandomRoundingDropdownClick(null, (int) mouseX, (int) mouseY)) {
+            return true;
+        }
         if (nodeGraph.handleModeDropdownClick(mouseX, mouseY)) {
             return true;
         }
         if (button == 0 && nodeGraph.handleAmountSignDropdownClick(null, (int)mouseX, (int)mouseY)) {
+            return true;
+        }
+        if (button == 0 && nodeGraph.handleOperatorToggleClick(textRenderer, (int)mouseX, (int)mouseY)) {
             return true;
         }
 
@@ -1046,6 +1052,16 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (nodeGraph.isPointInsideVariableField(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     nodeGraph.startVariableEditing(clickedNode);
+                    return true;
+                }
+
+                if (nodeGraph.handleRandomRoundingToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
+                if (nodeGraph.handleRandomRoundingDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
                     return true;
                 }
 
@@ -1691,6 +1707,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleParameterDropdownScroll(mouseX, mouseY, verticalAmount)) {
+            return true;
+        }
+        if (nodeGraph.handleRandomRoundingDropdownScroll(mouseX, mouseY, verticalAmount)) {
             return true;
         }
         if (nodeGraph.handleModeDropdownScroll(mouseX, mouseY, verticalAmount)) {

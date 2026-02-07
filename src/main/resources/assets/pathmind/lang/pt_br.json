@@ -93,6 +93,10 @@
   "pathmind.node.type.setVariable.desc": "Atribui um valor de parâmetro a uma variável em tempo de execução",
   "pathmind.node.type.changeVariable": "Alterar",
   "pathmind.node.type.changeVariable.desc": "Ajusta o valor de uma variável para cima ou para baixo em tempo de execução",
+  "pathmind.node.type.createList": "Criar Lista",
+  "pathmind.node.type.createList.desc": "Cria uma lista de entidades próximas ordenadas por distância",
+  "pathmind.node.type.listItem": "Item da Lista",
+  "pathmind.node.type.listItem.desc": "Seleciona uma entrada de uma lista nomeada",
 
   "pathmind.node.type.operatorEquals": "Igual",
   "pathmind.node.type.operatorEquals.desc": "Verifica se uma variável é igual a um valor de parâmetro",

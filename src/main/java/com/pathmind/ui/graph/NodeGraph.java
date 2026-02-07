@@ -231,6 +231,11 @@ public class NodeGraph {
     private int modeDropdownFieldWidth = 0;
     private int modeDropdownFieldHeight = 0;
     private final java.util.List<ModeDropdownOption> modeDropdownOptions = new java.util.ArrayList<>();
+    private Node amountSignDropdownNode = null;
+    private boolean amountSignDropdownOpen = false;
+    private int amountSignDropdownHoverIndex = -1;
+    private int amountSignDropdownScrollOffset = 0;
+    private static final int AMOUNT_SIGN_DROPDOWN_MAX_ROWS = 5;
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
     private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
     private boolean workspaceDirty = false;
@@ -2487,6 +2492,9 @@ public class NodeGraph {
             if (modeDropdownOpen) {
                 renderModeDropdownList(context, textRenderer, mouseX, mouseY);
             }
+            if (amountSignDropdownOpen) {
+                renderAmountSignDropdownList(context, textRenderer, mouseX, mouseY);
+            }
         }
 
         MatrixStackBridge.pop(matrices);
@@ -3829,7 +3837,8 @@ public class NodeGraph {
             int toggleTop = node.getAmountSignToggleTop() - cameraY;
             int toggleWidth = node.getAmountSignToggleWidth();
             int toggleHeight = node.getAmountSignToggleHeight();
-            boolean positive = node.isAmountSignPositive();
+            boolean open = amountSignDropdownOpen && amountSignDropdownNode == node;
+            String operation = node.getAmountOperation();
 
             int signBorderColor;
             int signFillColor;
@@ -3839,19 +3848,23 @@ public class NodeGraph {
                 signFillColor = UITheme.BACKGROUND_SECONDARY;
                 signTextColor = UITheme.TEXT_TERTIARY;
             } else {
-                signBorderColor = positive ? UITheme.TOGGLE_ON_BORDER : UITheme.TOGGLE_OFF_BORDER;
-                signFillColor = positive ? UITheme.BOOL_TOGGLE_ON_FILL : UITheme.BOOL_TOGGLE_OFF_FILL;
+                signBorderColor = open ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_DEFAULT;
+                signFillColor = open ? UITheme.NODE_INPUT_BG_ACTIVE : UITheme.BACKGROUND_TERTIARY;
                 signTextColor = UITheme.TEXT_PRIMARY;
             }
 
             context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, signFillColor);
             DrawContextBridge.drawBorderInLayer(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, signBorderColor);
 
-            String label = positive ? "+" : "-";
-            int textWidth = textRenderer.getWidth(label);
-            int signTextX = toggleLeft + Math.max(2, (toggleWidth - textWidth) / 2);
+            String label = operation == null || operation.isEmpty() ? "+" : operation;
+            String arrow = open ? "v" : "^";
+            int labelWidth = textRenderer.getWidth(label);
+            int arrowWidth = textRenderer.getWidth(arrow);
+            int signTextX = toggleLeft + 3;
+            int arrowX = toggleLeft + toggleWidth - arrowWidth - 3;
             int signTextY = toggleTop + (toggleHeight - textRenderer.fontHeight) / 2 + 1;
             drawNodeText(context, textRenderer, Text.literal(label), signTextX, signTextY, signTextColor);
+            drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, signTextY, signTextColor);
         }
     }
 
@@ -4452,13 +4465,15 @@ public class NodeGraph {
         if (editing) {
             value = variableEditBuffer;
         } else {
-            NodeParameter variableParam = node.getParameter("Variable");
+            String keyName = node.getVariableFieldParameterKey();
+            NodeParameter variableParam = node.getParameter(keyName);
             value = variableParam != null ? variableParam.getStringValue() : "";
         }
 
         String display;
         if (!editing && (value == null || value.isEmpty())) {
-            display = "variable";
+            String keyName = node.getVariableFieldParameterKey();
+            display = "List".equalsIgnoreCase(keyName) ? "list" : "variable";
             valueColor = UITheme.TEXT_TERTIARY;
         } else {
             display = value == null ? "" : value;
@@ -4615,6 +4630,88 @@ public class NodeGraph {
         );
     }
 
+    private void renderAmountSignDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (!amountSignDropdownOpen || amountSignDropdownNode == null) {
+            return;
+        }
+
+        Node node = amountSignDropdownNode;
+        boolean isOverSidebar = node.getX() < sidebarWidthForRendering;
+        int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+
+        java.util.List<String> options = getAmountSignDropdownOptions();
+        int optionCount = options.size();
+        int listTop = node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2 - cameraY;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            optionCount,
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            AMOUNT_SIGN_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        amountSignDropdownScrollOffset = MathHelper.clamp(amountSignDropdownScrollOffset, 0, layout.maxScrollOffset);
+
+        int listHeight = layout.height;
+        int listBottom = listTop + listHeight;
+        int listLeft = node.getAmountSignToggleLeft() - cameraX;
+        int listRight = listLeft + node.getAmountSignToggleWidth();
+
+        context.fill(listLeft, listTop, listRight, listBottom, fieldBackground);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getAmountSignToggleWidth(), listHeight, fieldBorder);
+
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        amountSignDropdownHoverIndex = -1;
+        if (worldMouseX >= node.getAmountSignToggleLeft()
+            && worldMouseX <= node.getAmountSignToggleLeft() + node.getAmountSignToggleWidth()
+            && worldMouseY >= node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2
+            && worldMouseY <= node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2 + listHeight) {
+            int row = (worldMouseY - (node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2)) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+            if (row >= 0 && row < visibleCount) {
+                amountSignDropdownHoverIndex = amountSignDropdownScrollOffset + row;
+            }
+        }
+
+        for (int row = 0; row < visibleCount; row++) {
+            int optionIndex = amountSignDropdownScrollOffset + row;
+            String optionLabel = options.get(optionIndex);
+            int rowTop = listTop + row * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+            int rowBottom = rowTop + SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+            boolean hovered = optionIndex == amountSignDropdownHoverIndex;
+            if (hovered) {
+                context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.DROP_ROW_HIGHLIGHT);
+            }
+            int textX = listLeft + Math.max(2, (node.getAmountSignToggleWidth() - textRenderer.getWidth(optionLabel)) / 2);
+            drawNodeText(context, textRenderer, Text.literal(optionLabel), textX, rowTop + 4, textColor);
+        }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            listLeft,
+            listTop,
+            node.getAmountSignToggleWidth(),
+            listHeight,
+            optionCount,
+            layout.visibleCount,
+            amountSignDropdownScrollOffset,
+            layout.maxScrollOffset,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_HIGHLIGHT
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            listLeft,
+            listTop,
+            node.getAmountSignToggleWidth(),
+            listHeight,
+            UITheme.BORDER_DEFAULT
+        );
+    }
+
     public boolean isEditingCoordinateField() {
         return coordinateEditingNode != null && coordinateEditingAxis >= 0;
     }
@@ -4666,6 +4763,12 @@ public class NodeGraph {
         }
 
         closeSchematicDropdown();
+        closeAmountSignDropdown();
+        closeAmountSignDropdown();
+        closeAmountSignDropdown();
+        closeAmountSignDropdown();
+        closeAmountSignDropdown();
+        closeAmountSignDropdown();
         stopAmountEditing(true);
         stopStopTargetEditing(true);
         stopVariableEditing(true);
@@ -5208,7 +5311,8 @@ public class NodeGraph {
         stopEventNameEditing(true);
 
         variableEditingNode = node;
-        NodeParameter variableParam = node.getParameter("Variable");
+        String keyName = node.getVariableFieldParameterKey();
+        NodeParameter variableParam = node.getParameter(keyName);
         variableEditBuffer = variableParam != null ? variableParam.getStringValue() : "";
         variableEditOriginalValue = variableEditBuffer;
         resetVariableCaretBlink();
@@ -5251,9 +5355,10 @@ public class NodeGraph {
         }
 
         String value = variableEditBuffer == null ? "" : variableEditBuffer;
-        NodeParameter variableParam = variableEditingNode.getParameter("Variable");
+        String keyName = variableEditingNode.getVariableFieldParameterKey();
+        NodeParameter variableParam = variableEditingNode.getParameter(keyName);
         String previous = variableParam != null ? variableParam.getStringValue() : "";
-        variableEditingNode.setParameterValueAndPropagate("Variable", value);
+        variableEditingNode.setParameterValueAndPropagate(keyName, value);
         variableEditingNode.recalculateDimensions();
         return !Objects.equals(previous, value);
     }
@@ -5262,7 +5367,8 @@ public class NodeGraph {
         if (!isEditingVariableField()) {
             return;
         }
-        variableEditingNode.setParameterValueAndPropagate("Variable", variableEditOriginalValue);
+        String keyName = variableEditingNode.getVariableFieldParameterKey();
+        variableEditingNode.setParameterValueAndPropagate(keyName, variableEditOriginalValue);
         variableEditingNode.recalculateDimensions();
     }
 
@@ -5806,6 +5912,7 @@ public class NodeGraph {
 
         closeModeDropdown();
         closeSchematicDropdown();
+        closeAmountSignDropdown();
         if (isEditingParameterField()) {
             if (parameterEditingNode == node && parameterEditingIndex == index) {
                 clearParameterDropdownSuppression();
@@ -6982,10 +7089,13 @@ public class NodeGraph {
         if (!isEditingAmountField() || textRenderer == null || text == null || text.isEmpty()) {
             return false;
         }
+        boolean allowSigned = amountEditingNode != null && amountEditingNode.getType() == NodeType.CHANGE_VARIABLE;
         StringBuilder filtered = new StringBuilder();
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
             if (c >= '0' && c <= '9') {
+                filtered.append(c);
+            } else if (allowSigned && (c == '-' || c == '.')) {
                 filtered.append(c);
             }
         }
@@ -7013,6 +7123,9 @@ public class NodeGraph {
         for (int i = 0; i < filtered.length(); i++) {
             char c = filtered.charAt(i);
             String candidate = working.substring(0, caret) + c + working.substring(caret);
+            if (allowSigned && !isValidSignedAmountInput(candidate)) {
+                continue;
+            }
             working = candidate;
             caret++;
             inserted = true;
@@ -7031,6 +7144,35 @@ public class NodeGraph {
         amountSelectionEnd = originalSelectionEnd;
         amountSelectionAnchor = originalSelectionAnchor;
         return false;
+    }
+
+    private boolean isValidSignedAmountInput(String value) {
+        if (value == null || value.isEmpty()) {
+            return true;
+        }
+        int index = 0;
+        if (value.charAt(0) == '-') {
+            if (value.length() == 1) {
+                return true;
+            }
+            index = 1;
+        }
+        boolean dotSeen = false;
+        boolean digitSeen = false;
+        for (; index < value.length(); index++) {
+            char c = value.charAt(index);
+            if (c == '.') {
+                if (dotSeen) {
+                    return false;
+                }
+                dotSeen = true;
+            } else if (c >= '0' && c <= '9') {
+                digitSeen = true;
+            } else {
+                return false;
+            }
+        }
+        return digitSeen || dotSeen;
     }
 
     private boolean insertStopTargetText(String text, TextRenderer textRenderer) {
@@ -7241,6 +7383,16 @@ public class NodeGraph {
         }
 
         String filtered = text.replace("\r", "").replace("\n", "");
+        if (isListIndexParameter(parameterEditingNode, parameterEditingIndex)) {
+            StringBuilder digitsOnly = new StringBuilder();
+            for (int i = 0; i < filtered.length(); i++) {
+                char c = filtered.charAt(i);
+                if (c >= '0' && c <= '9') {
+                    digitsOnly.append(c);
+                }
+            }
+            filtered = digitsOnly.toString();
+        }
         if (filtered.isEmpty()) {
             return false;
         }
@@ -7286,6 +7438,14 @@ public class NodeGraph {
         parameterSelectionEnd = originalSelectionEnd;
         parameterSelectionAnchor = originalSelectionAnchor;
         return false;
+    }
+
+    private boolean isListIndexParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.LIST_ITEM || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        return param != null && "Index".equalsIgnoreCase(param.getName());
     }
 
     private boolean isBlockItemParameter(Node node, int index) {
@@ -7471,6 +7631,10 @@ public class NodeGraph {
     }
 
     private record ModeDropdownOption(String label, com.pathmind.nodes.NodeMode mode) {
+    }
+
+    private java.util.List<String> getAmountSignDropdownOptions() {
+        return java.util.Arrays.asList("+", "-", "*", "/", "%");
     }
 
     private ParameterSegment getParameterSegment(String value, int caret) {
@@ -8382,6 +8546,29 @@ public class NodeGraph {
             && worldY >= top && worldY <= top + height;
     }
 
+    private boolean isPointInsideAmountSignDropdownList(int screenX, int screenY) {
+        if (!amountSignDropdownOpen || amountSignDropdownNode == null) {
+            return false;
+        }
+        Node node = amountSignDropdownNode;
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int listTop = node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2;
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            getAmountSignDropdownOptions().size(),
+            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
+            AMOUNT_SIGN_DROPDOWN_MAX_ROWS,
+            listTop,
+            screenHeight
+        );
+        int listHeight = layout.height;
+        int listLeft = node.getAmountSignToggleLeft();
+        int listWidth = node.getAmountSignToggleWidth();
+        return worldX >= listLeft && worldX <= listLeft + listWidth
+            && worldY >= listTop && worldY <= listTop + listHeight;
+    }
+
     public boolean handleAmountToggleClick(Node node, int mouseX, int mouseY) {
         if (!isPointInsideAmountToggle(node, mouseX, mouseY)) {
             return false;
@@ -8396,13 +8583,37 @@ public class NodeGraph {
         return true;
     }
 
-    public boolean handleAmountSignToggleClick(Node node, int mouseX, int mouseY) {
-        if (!isPointInsideAmountSignToggle(node, mouseX, mouseY)) {
+    public boolean handleAmountSignDropdownClick(Node node, int mouseX, int mouseY) {
+        if (amountSignDropdownOpen) {
+            if (node == null && amountSignDropdownNode != null
+                && isPointInsideAmountSignToggle(amountSignDropdownNode, mouseX, mouseY)) {
+                closeAmountSignDropdown();
+                return true;
+            }
+            if (node == amountSignDropdownNode && isPointInsideAmountSignToggle(node, mouseX, mouseY)) {
+                closeAmountSignDropdown();
+                return true;
+            }
+            if (isPointInsideAmountSignDropdownList(mouseX, mouseY)) {
+                if (amountSignDropdownNode != null && amountSignDropdownHoverIndex >= 0) {
+                    java.util.List<String> options = getAmountSignDropdownOptions();
+                    if (amountSignDropdownHoverIndex < options.size()) {
+                        amountSignDropdownNode.setAmountOperation(options.get(amountSignDropdownHoverIndex));
+                        amountSignDropdownNode.recalculateDimensions();
+                        notifyNodeParametersChanged(amountSignDropdownNode);
+                    }
+                }
+                closeAmountSignDropdown();
+                return true;
+            }
+            closeAmountSignDropdown();
             return false;
         }
-        node.setAmountSignPositive(!node.isAmountSignPositive());
-        node.recalculateDimensions();
-        notifyNodeParametersChanged(node);
+
+        if (node == null || !isPointInsideAmountSignToggle(node, mouseX, mouseY)) {
+            return false;
+        }
+        openAmountSignDropdown(node);
         return true;
     }
 
@@ -8689,6 +8900,20 @@ public class NodeGraph {
         schematicDropdownNode = null;
         schematicDropdownHoverIndex = -1;
         schematicDropdownScrollOffset = 0;
+    }
+
+    private void openAmountSignDropdown(Node node) {
+        amountSignDropdownNode = node;
+        amountSignDropdownOpen = true;
+        amountSignDropdownScrollOffset = 0;
+        amountSignDropdownHoverIndex = -1;
+    }
+
+    private void closeAmountSignDropdown() {
+        amountSignDropdownOpen = false;
+        amountSignDropdownNode = null;
+        amountSignDropdownHoverIndex = -1;
+        amountSignDropdownScrollOffset = 0;
     }
 
     private void applySchematicSelection(Node node, String value) {

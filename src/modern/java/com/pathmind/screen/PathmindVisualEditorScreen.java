@@ -872,6 +872,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.handleModeDropdownClick(mouseX, mouseY)) {
             return true;
         }
+        if (button == 0 && nodeGraph.handleAmountSignDropdownClick(null, (int)mouseX, (int)mouseY)) {
+            return true;
+        }
 
         // Check if clicking home button
         if (isHomeButtonClicked((int)mouseX, (int)mouseY, button)) {
@@ -1051,7 +1054,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
-                if (nodeGraph.handleAmountSignToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                if (button == 0 && nodeGraph.handleAmountSignDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     return true;
                 }

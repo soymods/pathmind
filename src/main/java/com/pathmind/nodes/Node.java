@@ -181,7 +181,7 @@ public class Node {
     private static final int AMOUNT_TOGGLE_WIDTH = 18;
     private static final int AMOUNT_TOGGLE_HEIGHT = 10;
     private static final int AMOUNT_TOGGLE_SPACING = 6;
-    private static final int AMOUNT_SIGN_TOGGLE_WIDTH = 22;
+    private static final int AMOUNT_SIGN_TOGGLE_WIDTH = 28;
     private static final int AMOUNT_SIGN_TOGGLE_HEIGHT = 16;
     private static final int MESSAGE_FIELD_MARGIN_HORIZONTAL = 6;
     private static final int MESSAGE_FIELD_TOP_MARGIN = 6;
@@ -549,7 +549,8 @@ public class Node {
     public boolean isParameterNode() {
         return type.getCategory() == NodeCategory.PARAMETERS
             || type == NodeType.VARIABLE
-            || type == NodeType.OPERATOR_RANDOM;
+            || type == NodeType.OPERATOR_RANDOM
+            || type == NodeType.LIST_ITEM;
     }
 
     public boolean shouldRenderInlineParameters() {
@@ -596,6 +597,7 @@ public class Node {
             && (nodeType.getCategory() == NodeCategory.PARAMETERS
                 || nodeType == NodeType.VARIABLE
                 || nodeType == NodeType.OPERATOR_RANDOM
+                || nodeType == NodeType.LIST_ITEM
                 || nodeType == NodeType.SENSOR_POSITION_OF);
     }
 
@@ -813,6 +815,12 @@ public class Node {
             NodeType parameterType = parameter.getType();
             return parameterType == NodeType.PARAM_ENTITY
                 || parameterType == NodeType.PARAM_BLOCK
+                || parameterType == NodeType.PARAM_ITEM;
+        }
+        if (type == NodeType.CREATE_LIST) {
+            NodeType parameterType = parameter.getType();
+            return parameterType == NodeType.PARAM_ENTITY
+                || parameterType == NodeType.PARAM_PLAYER
                 || parameterType == NodeType.PARAM_ITEM;
         }
         if (type == NodeType.SENSOR_VARIABLE_IS) {
@@ -1294,6 +1302,9 @@ public class Node {
         if (type == NodeType.SENSOR_VILLAGER_TRADE) {
             return "Villager Trade";
         }
+        if (type == NodeType.CREATE_LIST) {
+            return "Target";
+        }
         if (type == NodeType.SENSOR_VARIABLE_IS) {
             return "Value";
         }
@@ -1440,7 +1451,16 @@ public class Node {
     }
 
     public boolean hasVariableInputField() {
-        return type == NodeType.SENSOR_VARIABLE_IS;
+        return type == NodeType.SENSOR_VARIABLE_IS
+            || type == NodeType.CREATE_LIST;
+    }
+
+    public String getVariableFieldParameterKey() {
+        return switch (type) {
+            case CREATE_LIST -> "List";
+            case SENSOR_VARIABLE_IS -> "Variable";
+            default -> "Variable";
+        };
     }
 
     public int getAmountFieldDisplayHeight() {
@@ -1583,18 +1603,67 @@ public class Node {
         return AMOUNT_SIGN_TOGGLE_HEIGHT;
     }
 
-    public boolean isAmountSignPositive() {
-        NodeParameter param = getParameter("Increase");
-        if (param == null || param.getStringValue() == null || param.getStringValue().isEmpty()) {
-            return true;
+    public String getAmountOperation() {
+        NodeParameter param = getParameter("Operation");
+        String value = param != null ? param.getStringValue() : null;
+        if (value == null || value.trim().isEmpty()) {
+            NodeParameter legacy = getParameter("Increase");
+            if (legacy != null) {
+                String op = legacy.getBoolValue() ? "+" : "-";
+                if (param == null) {
+                    parameters.add(new NodeParameter("Operation", ParameterType.STRING, op));
+                } else {
+                    param.setStringValue(op);
+                }
+                return op;
+            }
+            return "+";
         }
-        return param.getBoolValue();
+        return normalizeOperation(value);
     }
 
-    public void setAmountSignPositive(boolean positive) {
-        NodeParameter param = getParameter("Increase");
-        if (param != null) {
-            param.setStringValueFromUser(Boolean.toString(positive));
+    public void setAmountOperation(String operation) {
+        String normalized = normalizeOperation(operation);
+        NodeParameter param = getParameter("Operation");
+        if (param == null) {
+            parameters.add(new NodeParameter("Operation", ParameterType.STRING, normalized));
+        } else {
+            param.setStringValueFromUser(normalized);
+        }
+    }
+
+    private String normalizeOperation(String value) {
+        if (value == null) {
+            return "+";
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return "+";
+        }
+        String lowered = trimmed.toLowerCase(Locale.ROOT);
+        switch (lowered) {
+            case "+":
+            case "add":
+            case "plus":
+                return "+";
+            case "-":
+            case "subtract":
+            case "minus":
+                return "-";
+            case "*":
+            case "x":
+            case "multiply":
+            case "times":
+                return "*";
+            case "/":
+            case "divide":
+                return "/";
+            case "%":
+            case "mod":
+            case "modulo":
+                return "%";
+            default:
+                return "+";
         }
     }
 
@@ -2538,6 +2607,13 @@ public class Node {
             case VARIABLE:
                 parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
                 break;
+            case CREATE_LIST:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                break;
+            case LIST_ITEM:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                parameters.add(new NodeParameter("Index", ParameterType.INTEGER, "1"));
+                break;
             case OPERATOR_RANDOM:
                 parameters.add(new NodeParameter("Min", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("Max", ParameterType.DOUBLE, "1.0"));
@@ -2545,7 +2621,7 @@ public class Node {
                 break;
             case CHANGE_VARIABLE:
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
-                parameters.add(new NodeParameter("Increase", ParameterType.BOOLEAN, "true"));
+                parameters.add(new NodeParameter("Operation", ParameterType.STRING, "+"));
                 break;
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
@@ -4043,6 +4119,15 @@ public class Node {
             handled = applyParameterValuesFromMap(adjustedValues);
         }
 
+        if (parameterNode.getType() == NodeType.LIST_ITEM) {
+            Entity resolved = resolveListItemEntity(parameterNode, runtimeParameterData, future);
+            if (resolved != null) {
+                handled = true;
+            } else if (future != null && future.isDone()) {
+                return ParameterHandlingResult.COMPLETE;
+            }
+        }
+
         if (usages.contains(ParameterUsage.POSITION)) {
             Optional<Vec3d> targetVec = resolvePositionTarget(parameterNode, runtimeParameterData, future);
             if (targetVec.isPresent()) {
@@ -5377,6 +5462,9 @@ public class Node {
             case SENSOR_VARIABLE_IS:
                 completeSensorEvaluation(future);
                 break;
+            case CREATE_LIST:
+                executeCreateListCommand(future);
+                break;
             
             // Legacy nodes
             case PATH:
@@ -5512,18 +5600,21 @@ public class Node {
             snapshot.applyParameterValuesFromMap(values);
         }
 
-        int step = Math.abs(getIntParameter("Amount", 1));
-        if (step == 0) {
+        double amount = getDoubleParameter("Amount", 1.0);
+        String operation = getAmountOperation();
+        if ((operation.equals("/") || operation.equals("%")) && Math.abs(amount) < 1.0E-9) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Change Variable cannot divide by 0.");
+            }
             future.complete(null);
             return;
         }
-        if (!isAmountSignPositive()) {
-            step = -step;
-        }
 
-        if (!applyNumericIncrement(snapshot, step)) {
+        String[] error = new String[1];
+        if (!applyNumericOperation(snapshot, amount, operation, error)) {
             if (client != null) {
-                sendNodeErrorMessage(client, "Change Variable supports variables with a single numeric value.");
+                sendNodeErrorMessage(client, error[0] != null ? error[0]
+                    : "Change Variable supports variables with a single numeric value.");
             }
             future.complete(null);
             return;
@@ -5535,7 +5626,148 @@ public class Node {
         future.complete(null);
     }
 
-    private boolean applyNumericIncrement(Node snapshot, int step) {
+    private void executeCreateListCommand(CompletableFuture<Void> future) {
+        Node parameterNode = getAttachedParameter(0);
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (parameterNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Create List requires an entity, player, or item parameter.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        NodeType parameterType = parameterNode.getType();
+        if (parameterType != NodeType.PARAM_ENTITY
+            && parameterType != NodeType.PARAM_PLAYER
+            && parameterType != NodeType.PARAM_ITEM) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Create List requires an entity, player, or item parameter.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        String listName = getStringParameter("List", "");
+        if (listName == null || listName.trim().isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "List name cannot be empty.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        if (client == null || client.player == null || client.world == null) {
+            future.complete(null);
+            return;
+        }
+
+        List<Entity> matches = new ArrayList<>();
+        if (parameterType == NodeType.PARAM_ENTITY) {
+            String state = getEntityParameterState(parameterNode);
+            double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+            String rawEntity = getParameterString(parameterNode, "Entity");
+            if (isAnySelectionValue(rawEntity)) {
+                double searchRadius = Math.max(1.0, range);
+                Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+                matches.addAll(client.world.getOtherEntities(
+                    client.player,
+                    searchBox,
+                    entity -> entity != null && !entity.isRemoved() && EntityStateOptions.matchesState(entity, state)
+                ));
+            } else {
+                List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
+                if (entityIds.isEmpty()) {
+                    sendNodeErrorMessage(client, "No entity selected for " + type.getDisplayName() + ".");
+                    future.complete(null);
+                    return;
+                }
+
+                for (String candidateId : entityIds) {
+                    Identifier identifier = Identifier.tryParse(candidateId);
+                    if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                        continue;
+                    }
+                    EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+                    matches.addAll(findEntitiesByType(client, entityType, range, state));
+                }
+            }
+        } else if (parameterType == NodeType.PARAM_PLAYER) {
+            String playerName = getParameterString(parameterNode, "Player");
+            if (isAnyPlayerValue(playerName)) {
+                matches.addAll(client.world.getPlayers());
+            } else {
+                for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
+                    if (player == null) {
+                        continue;
+                    }
+                    if (playerName != null && playerName.equalsIgnoreCase(
+                        GameProfileCompatibilityBridge.getName(player.getGameProfile()))) {
+                        matches.add(player);
+                    }
+                }
+            }
+
+            if (matches.isEmpty()) {
+                String message = isAnyPlayerValue(playerName)
+                    ? "No players nearby for " + type.getDisplayName() + "."
+                    : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                sendNodeErrorMessage(client, message);
+                future.complete(null);
+                return;
+            }
+        } else if (parameterType == NodeType.PARAM_ITEM) {
+            List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+            if (itemIds.isEmpty()) {
+                sendNodeErrorMessage(client, "No item selected for " + type.getDisplayName() + ".");
+                future.complete(null);
+                return;
+            }
+
+            double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+            for (String candidateId : itemIds) {
+                Identifier identifier = Identifier.tryParse(candidateId);
+                if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                    continue;
+                }
+                Item item = Registries.ITEM.get(identifier);
+                matches.addAll(findItemsByType(client, item, range));
+            }
+        }
+
+        if (matches.isEmpty()) {
+            sendNodeErrorMessage(client, "No matching targets found nearby for " + type.getDisplayName() + ".");
+            future.complete(null);
+            return;
+        }
+
+        matches.sort(Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)));
+        List<String> entries = new ArrayList<>();
+        for (Entity entity : matches) {
+            if (entity != null && !entity.isRemoved()) {
+                entries.add(entity.getUuidAsString());
+            }
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        if (startNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "No active node tree available for list creation.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        manager.setRuntimeList(startNode, listName.trim(),
+            new ExecutionManager.RuntimeList(parameterType, entries));
+        future.complete(null);
+    }
+
+    private boolean applyNumericOperation(Node snapshot, double amount, String operation, String[] error) {
         if (snapshot == null) {
             return false;
         }
@@ -5554,12 +5786,88 @@ public class Node {
         if (numericParam == null) {
             return false;
         }
+        String op = normalizeOperation(operation);
         if (numericParam.getType() == ParameterType.INTEGER) {
-            numericParam.setIntValue(numericParam.getIntValue() + step);
+            if (!isWholeNumber(amount)) {
+                if (error != null && error.length > 0) {
+                    error[0] = "Change Variable requires a whole number for integer values.";
+                }
+                return false;
+            }
+            int step = (int) Math.round(amount);
+            int current = numericParam.getIntValue();
+            switch (op) {
+                case "+":
+                    numericParam.setIntValue(current + step);
+                    break;
+                case "-":
+                    numericParam.setIntValue(current - step);
+                    break;
+                case "*":
+                    numericParam.setIntValue(current * step);
+                    break;
+                case "/":
+                    if (step == 0) {
+                        if (error != null && error.length > 0) {
+                            error[0] = "Change Variable cannot divide by 0.";
+                        }
+                        return false;
+                    }
+                    numericParam.setIntValue(current / step);
+                    break;
+                case "%":
+                    if (step == 0) {
+                        if (error != null && error.length > 0) {
+                            error[0] = "Change Variable cannot divide by 0.";
+                        }
+                        return false;
+                    }
+                    numericParam.setIntValue(current % step);
+                    break;
+                default:
+                    numericParam.setIntValue(current + step);
+                    break;
+            }
         } else {
-            numericParam.setDoubleValue(numericParam.getDoubleValue() + step);
+            double current = numericParam.getDoubleValue();
+            switch (op) {
+                case "+":
+                    numericParam.setDoubleValue(current + amount);
+                    break;
+                case "-":
+                    numericParam.setDoubleValue(current - amount);
+                    break;
+                case "*":
+                    numericParam.setDoubleValue(current * amount);
+                    break;
+                case "/":
+                    if (Math.abs(amount) < 1.0E-9) {
+                        if (error != null && error.length > 0) {
+                            error[0] = "Change Variable cannot divide by 0.";
+                        }
+                        return false;
+                    }
+                    numericParam.setDoubleValue(current / amount);
+                    break;
+                case "%":
+                    if (Math.abs(amount) < 1.0E-9) {
+                        if (error != null && error.length > 0) {
+                            error[0] = "Change Variable cannot divide by 0.";
+                        }
+                        return false;
+                    }
+                    numericParam.setDoubleValue(current % amount);
+                    break;
+                default:
+                    numericParam.setDoubleValue(current + amount);
+                    break;
+            }
         }
         return true;
+    }
+
+    private boolean isWholeNumber(double value) {
+        return Math.abs(value - Math.rint(value)) < 1.0E-9;
     }
 
     
@@ -5955,6 +6263,17 @@ public class Node {
                     runtimeParameterData.targetEntity = nearest;
                 }
                 return nearest.getBlockPos();
+            }
+            case LIST_ITEM: {
+                Entity target = resolveListItemEntity(parameterNode, runtimeParameterData, future);
+                if (target == null) {
+                    return null;
+                }
+                if (runtimeParameterData != null) {
+                    runtimeParameterData.targetBlockPos = target.getBlockPos();
+                    runtimeParameterData.targetEntity = target;
+                }
+                return target.getBlockPos();
             }
             case PARAM_PLAYER: {
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
@@ -9520,6 +9839,7 @@ public class Node {
             case PARAM_CLOSEST:
             case PARAM_DIRECTION:
             case PARAM_ROTATION:
+            case LIST_ITEM:
                 return true;
             default:
                 return false;
@@ -13887,6 +14207,148 @@ public class Node {
         }
         Entity nearest = Collections.min(matches, Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)));
         return Optional.of(nearest);
+    }
+
+    private Entity resolveListItemEntity(Node listNode, RuntimeParameterData data, CompletableFuture<Void> future) {
+        if (listNode == null) {
+            return null;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null) {
+            return null;
+        }
+
+        String listName = getParameterString(listNode, "List");
+        if (listName == null || listName.trim().isEmpty()) {
+            sendNodeErrorMessage(client, "List name cannot be empty.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        ExecutionManager.RuntimeList list = manager.getRuntimeList(startNode, listName.trim());
+        if (list == null || list.getEntries().isEmpty()) {
+            sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" is empty or missing.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        int index = parseNodeInt(listNode, "Index", 1);
+        if (index <= 0) {
+            sendNodeErrorMessage(client, "List item index must be 1 or greater.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        int listIndex = index - 1;
+        if (listIndex >= list.getEntries().size()) {
+            sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" has no item " + index + ".");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        String entry = list.getEntries().get(listIndex);
+        if (entry == null || entry.isEmpty()) {
+            sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" has no item " + index + ".");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        try {
+            java.util.UUID uuid = java.util.UUID.fromString(entry);
+            Entity entity = client.world.getEntity(uuid);
+            if (entity == null || entity.isRemoved()) {
+                sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" item " + index + " is not available.");
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return null;
+            }
+            if (data != null) {
+                data.targetEntity = entity;
+                Identifier entityId = Registries.ENTITY_TYPE.getId(entity.getType());
+                if (entityId != null) {
+                    data.targetEntityId = entityId.toString();
+                }
+            }
+
+            NodeType elementType = list.getElementType();
+            if (elementType == NodeType.PARAM_ITEM && entity instanceof ItemEntity itemEntity) {
+                ItemStack stack = itemEntity.getStack();
+                if (stack != null && !stack.isEmpty()) {
+                    Item item = stack.getItem();
+                    Identifier itemId = Registries.ITEM.getId(item);
+                    if (itemId != null) {
+                        if (data != null) {
+                            data.targetItem = item;
+                            data.targetItemId = itemId.toString();
+                        }
+                        setParameterValueAndPropagate("Item", itemId.toString());
+                    }
+                }
+            } else if (elementType == NodeType.PARAM_PLAYER && entity instanceof AbstractClientPlayerEntity player) {
+                String name = GameProfileCompatibilityBridge.getName(player.getGameProfile());
+                if (name != null && !name.trim().isEmpty()) {
+                    setParameterValueAndPropagate("Player", name);
+                }
+            } else if (elementType == NodeType.PARAM_ENTITY) {
+                Identifier typeId = Registries.ENTITY_TYPE.getId(entity.getType());
+                if (typeId != null) {
+                    setParameterValueAndPropagate("Entity", typeId.toString());
+                }
+            }
+
+            return entity;
+        } catch (IllegalArgumentException ex) {
+            sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" item " + index + " is not available.");
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+    }
+
+    private List<Entity> findEntitiesByType(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, double range, String state) {
+        if (client == null || client.player == null || client.world == null || entityType == null) {
+            return Collections.emptyList();
+        }
+        double searchRadius = Math.max(1.0, range);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+        return client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity.getType() == entityType && EntityStateOptions.matchesState(entity, state)
+        );
+    }
+
+    private List<ItemEntity> findItemsByType(net.minecraft.client.MinecraftClient client, Item item, double range) {
+        if (client == null || client.player == null || client.world == null || item == null) {
+            return Collections.emptyList();
+        }
+        double searchRadius = Math.max(1.0, range);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+        return client.world.getEntitiesByClass(
+            ItemEntity.class,
+            searchBox,
+            entity -> entity != null
+                && !entity.isRemoved()
+                && !entity.getStack().isEmpty()
+                && entity.getStack().isOf(item)
+        );
     }
 
     private Optional<Direction> getTargetedBlockFace() {

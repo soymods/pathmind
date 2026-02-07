@@ -17,6 +17,8 @@ public enum NodeType {
     VARIABLE("pathmind.node.type.variable", 0xFFFF9800, "pathmind.node.type.variable.desc"),
     SET_VARIABLE("pathmind.node.type.setVariable", 0xFFFF9800, "pathmind.node.type.setVariable.desc"),
     CHANGE_VARIABLE("pathmind.node.type.changeVariable", 0xFFFF9800, "pathmind.node.type.changeVariable.desc"),
+    CREATE_LIST("pathmind.node.type.createList", 0xFFFF9800, "pathmind.node.type.createList.desc"),
+    LIST_ITEM("pathmind.node.type.listItem", 0xFFFF9800, "pathmind.node.type.listItem.desc"),
 
     // Operator nodes
     OPERATOR_EQUALS("pathmind.node.type.operatorEquals", 0xFF00C853, "pathmind.node.type.operatorEquals.desc"),
@@ -194,6 +196,8 @@ public enum NodeType {
             case VARIABLE:
             case SET_VARIABLE:
             case CHANGE_VARIABLE:
+            case CREATE_LIST:
+            case LIST_ITEM:
                 return NodeCategory.VARIABLES;
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
@@ -376,6 +380,8 @@ public enum NodeType {
             case PARAM_MESSAGE:
             case VARIABLE:
             case OPERATOR_RANDOM:
+            case CREATE_LIST:
+            case LIST_ITEM:
                 return true;
             default:
                 return false;

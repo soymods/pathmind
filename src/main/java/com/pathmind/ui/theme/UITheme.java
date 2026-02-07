@@ -224,8 +224,8 @@ public final class UITheme {
     /** Green accent for action drop targets */
     public static final int DROP_ACCENT_GREEN = 0xFF8BC34A;
 
-    /** Green-tinted dropdown hover row */
-    public static final int DROP_ROW_HIGHLIGHT = 0xFF1E2A1E;
+    /** Gray-tinted dropdown hover row */
+    public static final int DROP_ROW_HIGHLIGHT = 0xFF2B2B2B;
 
     /** Schematic active border accent */
     public static final int SCHEMATIC_ACTIVE_BORDER = 0xFF9CCC65;

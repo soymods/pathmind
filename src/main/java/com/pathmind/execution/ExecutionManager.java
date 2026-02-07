@@ -68,11 +68,13 @@ public class ExecutionManager {
         final Node startNode;
         volatile boolean cancelRequested;
         final Map<String, RuntimeVariable> runtimeVariables;
+        final Map<String, RuntimeList> runtimeLists;
 
         ChainController(Node startNode) {
             this.startNode = startNode;
             this.cancelRequested = false;
             this.runtimeVariables = new ConcurrentHashMap<>();
+            this.runtimeLists = new ConcurrentHashMap<>();
         }
     }
 
@@ -91,6 +93,24 @@ public class ExecutionManager {
 
         public Map<String, String> getValues() {
             return Collections.unmodifiableMap(values);
+        }
+    }
+
+    public static final class RuntimeList {
+        private final NodeType elementType;
+        private final List<String> entries;
+
+        public RuntimeList(NodeType elementType, List<String> entries) {
+            this.elementType = elementType;
+            this.entries = entries == null ? Collections.emptyList() : new ArrayList<>(entries);
+        }
+
+        public NodeType getElementType() {
+            return elementType;
+        }
+
+        public List<String> getEntries() {
+            return Collections.unmodifiableList(entries);
         }
     }
 
@@ -213,6 +233,29 @@ public class ExecutionManager {
             return null;
         }
         return controller.runtimeVariables.get(name.trim());
+    }
+
+    public boolean setRuntimeList(Node startNode, String name, RuntimeList list) {
+        if (startNode == null || name == null || name.trim().isEmpty() || list == null) {
+            return false;
+        }
+        ChainController controller = activeChains.get(startNode);
+        if (controller == null) {
+            return false;
+        }
+        controller.runtimeLists.put(name.trim(), list);
+        return true;
+    }
+
+    public RuntimeList getRuntimeList(Node startNode, String name) {
+        if (startNode == null || name == null || name.trim().isEmpty()) {
+            return null;
+        }
+        ChainController controller = activeChains.get(startNode);
+        if (controller == null) {
+            return null;
+        }
+        return controller.runtimeLists.get(name.trim());
     }
 
     public List<RuntimeVariableEntry> getRuntimeVariableEntries() {

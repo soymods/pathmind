@@ -151,9 +151,11 @@
   "pathmind.node.type.controlForever": "Forever",
   "pathmind.node.type.controlForever.desc": "Loop enclosed nodes indefinitely",
   "pathmind.node.type.controlIf": "If",
+  "pathmind.node.type.return": "Return",
   "pathmind.node.type.controlIf.desc": "Run the next branch only when a condition is true",
   "pathmind.node.type.controlIfElse": "If Else",
   "pathmind.node.type.controlIfElse.desc": "Run one of two branches depending on a condition",
+  "pathmind.node.type.return.desc": "Stops current function",
 
   "pathmind.node.type.look": "Look",
   "pathmind.node.type.look.desc": "Adjusts the player's view direction",

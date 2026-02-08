@@ -4,6 +4,7 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.util.VillagerDataCompatibilityBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -1047,7 +1048,8 @@ public class VillagerTradeSelector {
                 if (factories == null) {
                     continue;
                 }
-                VillagerData data = villager.getVillagerData().withProfession(professionEntry).withLevel(level);
+                VillagerData data = VillagerDataCompatibilityBridge.withProfession(
+                    villager.getVillagerData(), professionEntry).withLevel(level);
                 villager.setVillagerData(data);
 
                 boolean levelHasOffers = false;

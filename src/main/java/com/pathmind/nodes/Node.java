@@ -601,7 +601,6 @@ public class Node {
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
-            case SENSOR_VARIABLE_IS:
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
             case OPERATOR_BOOLEAN_NOT:
@@ -882,13 +881,6 @@ public class Node {
             return parameterType == NodeType.PARAM_ENTITY
                 || parameterType == NodeType.PARAM_PLAYER
                 || parameterType == NodeType.PARAM_ITEM;
-        }
-        if (type == NodeType.SENSOR_VARIABLE_IS) {
-            NodeType parameterType = parameter.getType();
-            return parameter.isParameterNode()
-                || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                || parameterType == NodeType.VARIABLE;
         }
         if (parameter.getType() == NodeType.VARIABLE
             && type != NodeType.SET_VARIABLE
@@ -1375,9 +1367,6 @@ public class Node {
         if (type == NodeType.CREATE_LIST) {
             return "Target";
         }
-        if (type == NodeType.SENSOR_VARIABLE_IS) {
-            return "Value";
-        }
         if (type == NodeType.TRADE) {
             return "Villager Trade";
         }
@@ -1525,14 +1514,12 @@ public class Node {
     }
 
     public boolean hasVariableInputField() {
-        return type == NodeType.SENSOR_VARIABLE_IS
-            || type == NodeType.CREATE_LIST;
+        return type == NodeType.CREATE_LIST;
     }
 
     public String getVariableFieldParameterKey() {
         return switch (type) {
             case CREATE_LIST -> "List";
-            case SENSOR_VARIABLE_IS -> "Variable";
             default -> "Variable";
         };
     }
@@ -2881,9 +2868,6 @@ public class Node {
             case SENSOR_CHAT_MESSAGE:
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "true"));
-                break;
-            case SENSOR_VARIABLE_IS:
-                parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
                 break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
@@ -5787,7 +5771,6 @@ public class Node {
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
             case SENSOR_TARGETED_BLOCK_FACE:
-            case SENSOR_VARIABLE_IS:
                 completeSensorEvaluation(future);
                 break;
             case CREATE_LIST:
@@ -15211,32 +15194,6 @@ public class Node {
                 result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds, anyPlayer, anyMessage);
                 break;
             }
-            case SENSOR_VARIABLE_IS: {
-                Node valueNode = getAttachedParameter(0);
-                if (valueNode == null) {
-                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-                    if (client != null) {
-                        sendNodeErrorMessage(client, type.getDisplayName() + " requires a value parameter.");
-                    }
-                    result = false;
-                    break;
-                }
-                String variableName = getStringParameter("Variable", "");
-                if (variableName == null || variableName.trim().isEmpty()) {
-                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-                    if (client != null) {
-                        sendNodeErrorMessage(client, "Variable name cannot be empty.");
-                    }
-                    result = false;
-                    break;
-                }
-                Node variableNode = new Node(NodeType.VARIABLE, 0, 0);
-                variableNode.setSocketsHidden(true);
-                variableNode.setParameterValueAndPropagate("Variable", variableName.trim());
-                Optional<Boolean> comparison = compareVariableNodes(variableNode, valueNode);
-                result = comparison.orElse(false);
-                break;
-            }
             default:
                 result = false;
                 break;
@@ -15266,8 +15223,7 @@ public class Node {
                  SENSOR_ITEM_IN_INVENTORY,
                  SENSOR_ITEM_IN_SLOT,
                  SENSOR_VILLAGER_TRADE,
-                 SENSOR_CHAT_MESSAGE,
-                 SENSOR_VARIABLE_IS -> true;
+                 SENSOR_CHAT_MESSAGE -> true;
             default -> false;
         };
     }

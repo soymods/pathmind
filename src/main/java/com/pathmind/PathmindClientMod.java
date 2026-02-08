@@ -180,9 +180,12 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
 
+        // Don't handle k/j keybinds when chat or Pathmind GUI is open
+        boolean chatOrGuiOpen = shouldIgnoreKeybinds(client);
+
         boolean stopDown = PathmindKeybinds.STOP_GRAPHS.isPressed();
         boolean stopRawDown = isKeyDownRaw(client, GLFW.GLFW_KEY_J);
-        if ((stopDown && !stopGraphsKeyDown) || (stopRawDown && !stopGraphsRawKeyDown)) {
+        if (!chatOrGuiOpen && ((stopDown && !stopGraphsKeyDown) || (stopRawDown && !stopGraphsRawKeyDown))) {
             ExecutionManager.getInstance().requestStopAll();
         }
         stopGraphsKeyDown = stopDown;
@@ -194,7 +197,7 @@ public class PathmindClientMod implements ClientModInitializer {
 
         boolean playDown = PathmindKeybinds.PLAY_GRAPHS.isPressed();
         boolean playRawDown = isKeyDownRaw(client, GLFW.GLFW_KEY_K);
-        if ((playDown && !playGraphsKeyDown) || (playRawDown && !playGraphsRawKeyDown)) {
+        if (!chatOrGuiOpen && ((playDown && !playGraphsKeyDown) || (playRawDown && !playGraphsRawKeyDown))) {
             ExecutionManager.getInstance().playAllGraphs();
         }
         playGraphsKeyDown = playDown;
@@ -206,6 +209,21 @@ public class PathmindClientMod implements ClientModInitializer {
             return false;
         }
         return InputCompatibilityBridge.isKeyPressed(client, keyCode);
+    }
+
+    private boolean shouldIgnoreKeybinds(MinecraftClient client) {
+        if (client == null || client.currentScreen == null) {
+            return false;
+        }
+        // Check if chat screen is open
+        if (client.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen) {
+            return true;
+        }
+        // Check if Pathmind visual editor is open
+        if (PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
+            return true;
+        }
+        return false;
     }
 
     private void handleRecipeCacheWarmup(MinecraftClient client) {

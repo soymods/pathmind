@@ -380,6 +380,14 @@ public class Node {
         return keySet;
     }
 
+    /** Sends a chat message error to the player (e.g. for invalid numeric/variable input). */
+    public void sendNodeErrorMessageToPlayer(String message) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client != null) {
+            sendNodeErrorMessage(client, message);
+        }
+    }
+
     private void sendNodeErrorMessage(net.minecraft.client.MinecraftClient client, String message) {
         if (client == null || message == null || message.isEmpty()) {
             return;
@@ -5137,6 +5145,21 @@ public class Node {
         try {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException e) {
+            net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+            if (client != null) {
+                String raw = getParameterStringRaw(node, name);
+                if (raw != null) {
+                    String trimmed = raw.trim();
+                    if (trimmed.startsWith("~")) {
+                        String varName = trimmed.substring(1).trim();
+                        if (!varName.isEmpty() && isRawInlineVariableName(varName)) {
+                            node.sendNodeErrorMessage(client, "Variable \"" + varName + "\" is not a numeric value.");
+                            return defaultValue;
+                        }
+                    }
+                }
+                node.sendNodeErrorMessage(client, "Please enter a number or a variable (~variable_name).");
+            }
             return defaultValue;
         }
     }
@@ -5176,6 +5199,21 @@ public class Node {
         try {
             return Double.parseDouble(value.trim());
         } catch (NumberFormatException e) {
+            net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+            if (client != null) {
+                String raw = getParameterStringRaw(node, name);
+                if (raw != null) {
+                    String trimmed = raw.trim();
+                    if (trimmed.startsWith("~")) {
+                        String varName = trimmed.substring(1).trim();
+                        if (!varName.isEmpty() && isRawInlineVariableName(varName)) {
+                            node.sendNodeErrorMessage(client, "Variable \"" + varName + "\" is not a numeric value.");
+                            return defaultValue;
+                        }
+                    }
+                }
+                node.sendNodeErrorMessage(client, "Please enter a number or a variable (~variable_name).");
+            }
             return defaultValue;
         }
     }
@@ -14380,6 +14418,31 @@ public class Node {
             return null;
         }
         return node.resolveRuntimeVariablesInText(value);
+    }
+
+    /** Returns the raw parameter value without resolving ~variable references (for error messages). */
+    private static String getParameterStringRaw(Node node, String name) {
+        if (node == null || name == null) {
+            return null;
+        }
+        NodeParameter parameter = node.getParameter(name);
+        if (parameter == null) {
+            return null;
+        }
+        return parameter.getStringValue();
+    }
+
+    private static boolean isRawInlineVariableName(String s) {
+        if (s == null || s.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!Character.isLetterOrDigit(c) && c != '_' && c != '-') {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String getBlockParameterValue(Node node) {

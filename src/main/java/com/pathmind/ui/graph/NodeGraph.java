@@ -2844,12 +2844,31 @@ public class NodeGraph {
             } else {
                 display = value;
             }
+            int eventNameVariableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+            Set<String> eventNameVariableNames = collectRuntimeVariableNames(node);
+            InlineVariableRender eventNameRenderData = null;
+            if (!eventNameVariableNames.isEmpty() && value.indexOf('~') >= 0) {
+                InlineVariableRender candidate = buildInlineVariableRender(value, eventNameVariableNames, isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT, eventNameVariableHighlightColor);
+                if (editingEventName) {
+                    eventNameRenderData = candidate;
+                    display = eventNameRenderData.displayText;
+                } else if (textRenderer.getWidth(candidate.displayText) <= boxRight - boxLeft - 8) {
+                    eventNameRenderData = candidate;
+                    display = eventNameRenderData.displayText;
+                }
+            }
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
             int textX = boxLeft + 4;
             if (editingEventName && hasEventNameSelection()) {
-                int start = MathHelper.clamp(eventNameSelectionStart, 0, display.length());
-                int end = MathHelper.clamp(eventNameSelectionEnd, 0, display.length());
+                int start = eventNameSelectionStart;
+                int end = eventNameSelectionEnd;
+                if (eventNameRenderData != null) {
+                    start = eventNameRenderData.toDisplayIndex(start);
+                    end = eventNameRenderData.toDisplayIndex(end);
+                }
+                start = MathHelper.clamp(start, 0, display.length());
+                end = MathHelper.clamp(end, 0, display.length());
                 if (start != end) {
                     int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                     int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
@@ -2857,13 +2876,25 @@ public class NodeGraph {
                 }
             }
             if (!editingEventName) {
-                renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
+                if (eventNameRenderData != null && shouldRenderNodeText()) {
+                    eventNameRenderData.draw(context, textRenderer, textX, textY);
+                } else {
+                    renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
+                }
             } else {
-                drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+                if (eventNameRenderData != null && shouldRenderNodeText()) {
+                    eventNameRenderData.draw(context, textRenderer, textX, textY);
+                } else {
+                    drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+                }
             }
 
             if (editingEventName && eventNameCaretVisible) {
-                int caretIndex = MathHelper.clamp(eventNameCaretPosition, 0, display.length());
+                int caretIndex = eventNameCaretPosition;
+                if (eventNameRenderData != null) {
+                    caretIndex = eventNameRenderData.toDisplayIndex(caretIndex);
+                }
+                caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
                 int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, boxRight - 2);
                 context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
@@ -3230,11 +3261,30 @@ public class NodeGraph {
                         String displayValue = editingThis
                             ? value
                             : trimTextToWidth(value, textRenderer, maxValueWidth);
+                        int paramVariableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+                        Set<String> paramVariableNames = collectRuntimeVariableNames(node);
+                        InlineVariableRender paramRenderData = null;
+                        if (!paramVariableNames.isEmpty() && value != null && value.indexOf('~') >= 0) {
+                            InlineVariableRender candidate = buildInlineVariableRender(value, paramVariableNames, valueColor, paramVariableHighlightColor);
+                            if (editingThis) {
+                                paramRenderData = candidate;
+                                displayValue = paramRenderData.displayText;
+                            } else if (textRenderer.getWidth(candidate.displayText) <= maxValueWidth) {
+                                paramRenderData = candidate;
+                                displayValue = paramRenderData.displayText;
+                            }
+                        }
                         int valueY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
 
                         if (editingThis && hasParameterSelection()) {
-                            int start = MathHelper.clamp(parameterSelectionStart, 0, displayValue.length());
-                            int end = MathHelper.clamp(parameterSelectionEnd, 0, displayValue.length());
+                            int start = parameterSelectionStart;
+                            int end = parameterSelectionEnd;
+                            if (paramRenderData != null) {
+                                start = paramRenderData.toDisplayIndex(start);
+                                end = paramRenderData.toDisplayIndex(end);
+                            }
+                            start = MathHelper.clamp(start, 0, displayValue.length());
+                            end = MathHelper.clamp(end, 0, displayValue.length());
                             if (start != end) {
                                 int selectionStartX = valueStartX + textRenderer.getWidth(displayValue.substring(0, start));
                                 int selectionEndX = valueStartX + textRenderer.getWidth(displayValue.substring(0, end));
@@ -3242,10 +3292,18 @@ public class NodeGraph {
                             }
                         }
 
-                        drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, valueY, valueColor);
+                        if (paramRenderData != null && shouldRenderNodeText()) {
+                            paramRenderData.draw(context, textRenderer, valueStartX, valueY);
+                        } else {
+                            drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, valueY, valueColor);
+                        }
 
                         if (editingThis && parameterCaretVisible) {
-                            int caretIndex = MathHelper.clamp(parameterCaretPosition, 0, displayValue.length());
+                            int caretIndex = parameterCaretPosition;
+                            if (paramRenderData != null) {
+                                caretIndex = paramRenderData.toDisplayIndex(caretIndex);
+                            }
+                            caretIndex = MathHelper.clamp(caretIndex, 0, displayValue.length());
                             int caretX = valueStartX + textRenderer.getWidth(displayValue.substring(0, caretIndex));
                             caretX = Math.min(caretX, fieldRight - 2);
                             context.fill(caretX, fieldTop + 2, caretX + 1, fieldTop + fieldHeight - 2, UITheme.CARET_COLOR);
@@ -3852,26 +3910,54 @@ public class NodeGraph {
                 NodeParameter parameter = node.getParameter(axisLabel);
                 value = parameter != null ? parameter.getStringValue() : "";
             }
+            if (value == null) {
+                value = "";
+            }
 
             String display = editingAxis
                 ? value
                 : trimTextToWidth(value, textRenderer, fieldWidth - 6);
+            int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+            Set<String> coordVariableNames = collectRuntimeVariableNames(node);
+            InlineVariableRender coordRenderData = null;
+            if (!coordVariableNames.isEmpty() && value.indexOf('~') >= 0) {
+                InlineVariableRender candidate = buildInlineVariableRender(value, coordVariableNames, valueColor, variableHighlightColor);
+                if (editingAxis) {
+                    coordRenderData = candidate;
+                    display = coordRenderData.displayText;
+                } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
+                    coordRenderData = candidate;
+                    display = coordRenderData.displayText;
+                }
+            }
 
             int textX = fieldX + 3;
             int textY = inputTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
             if (editingAxis && hasCoordinateSelection()) {
                 int start = coordinateSelectionStart;
                 int end = coordinateSelectionEnd;
+                if (coordRenderData != null) {
+                    start = coordRenderData.toDisplayIndex(start);
+                    end = coordRenderData.toDisplayIndex(end);
+                }
                 if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
                     int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                     int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
                     context.fill(selectionStartX, inputTop + 2, selectionEndX, inputBottom - 2, UITheme.TEXT_SELECTION_BG);
                 }
             }
-            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+            if (coordRenderData != null && shouldRenderNodeText()) {
+                coordRenderData.draw(context, textRenderer, textX, textY);
+            } else {
+                drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+            }
 
             if (editingAxis && coordinateCaretVisible) {
-                int caretIndex = MathHelper.clamp(coordinateCaretPosition, 0, display.length());
+                int caretIndex = coordinateCaretPosition;
+                if (coordRenderData != null) {
+                    caretIndex = coordRenderData.toDisplayIndex(caretIndex);
+                }
+                caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
                 int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, fieldX + fieldWidth - 2);
                 context.fill(caretX, inputTop + 2, caretX + 1, inputBottom - 2, UITheme.CARET_COLOR);
@@ -3933,22 +4019,47 @@ public class NodeGraph {
             display = node.getType() == NodeType.MOVE_ITEM ? "Any" : "0";
             valueColor = UITheme.TEXT_TERTIARY;
         }
+        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+        Set<String> amountVariableNames = collectRuntimeVariableNames(node);
+        InlineVariableRender amountRenderData = null;
+        if (amountEnabled && !showPlaceholder && !amountVariableNames.isEmpty() && value != null && value.indexOf('~') >= 0) {
+            InlineVariableRender candidate = buildInlineVariableRender(value, amountVariableNames, valueColor, variableHighlightColor);
+            if (editing && amountEnabled) {
+                amountRenderData = candidate;
+                display = amountRenderData.displayText;
+            } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
+                amountRenderData = candidate;
+                display = amountRenderData.displayText;
+            }
+        }
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
         if (editing && amountEnabled && hasAmountSelection()) {
             int start = amountSelectionStart;
             int end = amountSelectionEnd;
+            if (amountRenderData != null) {
+                start = amountRenderData.toDisplayIndex(start);
+                end = amountRenderData.toDisplayIndex(end);
+            }
             if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
                 int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                 int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
                 context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
             }
         }
-        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+        if (amountRenderData != null && shouldRenderNodeText()) {
+            amountRenderData.draw(context, textRenderer, textX, textY);
+        } else {
+            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+        }
 
         if (editing && amountEnabled && amountCaretVisible) {
-            int caretIndex = MathHelper.clamp(amountCaretPosition, 0, display.length());
+            int caretIndex = amountCaretPosition;
+            if (amountRenderData != null) {
+                caretIndex = amountRenderData.toDisplayIndex(caretIndex);
+            }
+            caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
             int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, UITheme.CARET_COLOR);
@@ -4312,6 +4423,47 @@ public class NodeGraph {
 
     private boolean isInlineVariableChar(char character) {
         return Character.isLetterOrDigit(character) || character == '_' || character == '-';
+    }
+
+    /** Returns true if value is empty, a valid number, or a single ~variable_name reference (known variable). */
+    private boolean isNumericOrVariableReference(String value, Node node, boolean allowDecimal, boolean requireCoordinateValid) {
+        if (value == null) {
+            value = "";
+        }
+        value = value.trim();
+        if (value.isEmpty()) {
+            return true;
+        }
+        if (requireCoordinateValid && "-".equals(value)) {
+            return true;
+        }
+        if (value.startsWith("~")) {
+            String name = value.substring(1).trim();
+            if (name.isEmpty()) {
+                return false;
+            }
+            for (int i = 0; i < name.length(); i++) {
+                if (!isInlineVariableChar(name.charAt(i))) {
+                    return false;
+                }
+            }
+            return collectRuntimeVariableNames(node).contains(name);
+        }
+        if (allowDecimal) {
+            try {
+                Double.parseDouble(value);
+                return !requireCoordinateValid || isValidCoordinateValue(value);
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        } else {
+            try {
+                Integer.parseInt(value);
+                return !requireCoordinateValid || isValidCoordinateValue(value);
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
     }
 
     private Set<String> collectRuntimeVariableNames(Node node) {
@@ -4700,34 +4852,62 @@ public class NodeGraph {
             NodeParameter targetParam = node.getParameter("StartNumber");
             value = targetParam != null ? targetParam.getStringValue() : "";
         }
+        if (value == null) {
+            value = "";
+        }
 
         String display;
-        if (!editing && (value == null || value.isEmpty())) {
+        if (!editing && value.isEmpty()) {
             display = "start #";
             valueColor = UITheme.TEXT_TERTIARY;
         } else {
-            display = value == null ? "" : value;
+            display = value;
         }
 
         display = editing
             ? display
             : trimTextToWidth(display, textRenderer, fieldWidth - 6);
+        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+        Set<String> stopTargetVariableNames = collectRuntimeVariableNames(node);
+        InlineVariableRender stopTargetRenderData = null;
+        if (!stopTargetVariableNames.isEmpty() && value.indexOf('~') >= 0) {
+            InlineVariableRender candidate = buildInlineVariableRender(value, stopTargetVariableNames, valueColor, variableHighlightColor);
+            if (editing) {
+                stopTargetRenderData = candidate;
+                display = stopTargetRenderData.displayText;
+            } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
+                stopTargetRenderData = candidate;
+                display = stopTargetRenderData.displayText;
+            }
+        }
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
         if (editing && hasStopTargetSelection()) {
             int start = stopTargetSelectionStart;
             int end = stopTargetSelectionEnd;
+            if (stopTargetRenderData != null) {
+                start = stopTargetRenderData.toDisplayIndex(start);
+                end = stopTargetRenderData.toDisplayIndex(end);
+            }
             if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
                 int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                 int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
                 context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_DANGER_BG);
             }
         }
-        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+        if (stopTargetRenderData != null && shouldRenderNodeText()) {
+            stopTargetRenderData.draw(context, textRenderer, textX, textY);
+        } else {
+            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+        }
 
         if (editing && stopTargetCaretVisible) {
-            int caretIndex = MathHelper.clamp(stopTargetCaretPosition, 0, display.length());
+            int caretIndex = stopTargetCaretPosition;
+            if (stopTargetRenderData != null) {
+                caretIndex = stopTargetRenderData.toDisplayIndex(caretIndex);
+            }
+            caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
             int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, caretColor);
@@ -4769,35 +4949,63 @@ public class NodeGraph {
             NodeParameter variableParam = node.getParameter(keyName);
             value = variableParam != null ? variableParam.getStringValue() : "";
         }
+        if (value == null) {
+            value = "";
+        }
 
         String display;
-        if (!editing && (value == null || value.isEmpty())) {
+        if (!editing && value.isEmpty()) {
             String keyName = node.getVariableFieldParameterKey();
             display = "List".equalsIgnoreCase(keyName) ? "list" : "variable";
             valueColor = UITheme.TEXT_TERTIARY;
         } else {
-            display = value == null ? "" : value;
+            display = value;
         }
 
         display = editing
             ? display
             : trimTextToWidth(display, textRenderer, fieldWidth - 6);
+        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+        Set<String> variableFieldVariableNames = collectRuntimeVariableNames(node);
+        InlineVariableRender variableFieldRenderData = null;
+        if (!variableFieldVariableNames.isEmpty() && value.indexOf('~') >= 0) {
+            InlineVariableRender candidate = buildInlineVariableRender(value, variableFieldVariableNames, valueColor, variableHighlightColor);
+            if (editing) {
+                variableFieldRenderData = candidate;
+                display = variableFieldRenderData.displayText;
+            } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
+                variableFieldRenderData = candidate;
+                display = variableFieldRenderData.displayText;
+            }
+        }
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
         if (editing && hasVariableSelection()) {
             int start = variableSelectionStart;
             int end = variableSelectionEnd;
+            if (variableFieldRenderData != null) {
+                start = variableFieldRenderData.toDisplayIndex(start);
+                end = variableFieldRenderData.toDisplayIndex(end);
+            }
             if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
                 int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                 int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
                 context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
             }
         }
-        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+        if (variableFieldRenderData != null && shouldRenderNodeText()) {
+            variableFieldRenderData.draw(context, textRenderer, textX, textY);
+        } else {
+            drawNodeText(context, textRenderer, Text.literal(display), textX, textY, valueColor);
+        }
 
         if (editing && variableCaretVisible) {
-            int caretIndex = MathHelper.clamp(variableCaretPosition, 0, display.length());
+            int caretIndex = variableCaretPosition;
+            if (variableFieldRenderData != null) {
+                caretIndex = variableFieldRenderData.toDisplayIndex(caretIndex);
+            }
+            caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
             int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, caretColor);
@@ -5133,8 +5341,12 @@ public class NodeGraph {
         if (!isEditingCoordinateField()) {
             return false;
         }
-        String value = coordinateEditBuffer;
-        if (value == null || value.isEmpty() || "-".equals(value)) {
+        String value = coordinateEditBuffer == null ? "" : coordinateEditBuffer.trim();
+        if (!value.isEmpty() && !"-".equals(value) && !isNumericOrVariableReference(value, coordinateEditingNode, false, true)) {
+            coordinateEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
+            return false;
+        }
+        if (value.isEmpty() || "-".equals(value)) {
             value = "0";
         }
         String axisName = COORDINATE_AXES[coordinateEditingAxis];
@@ -5266,12 +5478,10 @@ public class NodeGraph {
         if (!isEditingCoordinateField()) {
             return false;
         }
-
-        if ((chr >= '0' && chr <= '9') || chr == '-') {
-            return insertCoordinateText(String.valueOf(chr), textRenderer);
+        if (chr == '\n' || chr == '\r') {
+            return false;
         }
-
-        return false;
+        return insertCoordinateText(String.valueOf(chr), textRenderer);
     }
 
     public boolean isEditingAmountField() {
@@ -5362,8 +5572,12 @@ public class NodeGraph {
             return false;
         }
 
-        String value = amountEditBuffer;
-        if (value == null || value.isEmpty()) {
+        String value = amountEditBuffer == null ? "" : amountEditBuffer.trim();
+        if (!value.isEmpty() && !isNumericOrVariableReference(value, amountEditingNode, true, false)) {
+            amountEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
+            return false;
+        }
+        if (value.isEmpty()) {
             if (amountEditingNode.getType() == NodeType.MOVE_ITEM) {
                 value = "0";
             } else {
@@ -5484,12 +5698,10 @@ public class NodeGraph {
         if (!isEditingAmountField()) {
             return false;
         }
-
-        if (chr >= '0' && chr <= '9') {
-            return insertAmountText(String.valueOf(chr), textRenderer);
+        if (chr == '\n' || chr == '\r') {
+            return false;
         }
-
-        return false;
+        return insertAmountText(String.valueOf(chr), textRenderer);
     }
 
     public boolean isEditingStopTargetField() {
@@ -5778,7 +5990,11 @@ public class NodeGraph {
             return false;
         }
 
-        String value = stopTargetEditBuffer == null ? "" : stopTargetEditBuffer;
+        String value = stopTargetEditBuffer == null ? "" : stopTargetEditBuffer.trim();
+        if (!value.isEmpty() && !isNumericOrVariableReference(value, stopTargetEditingNode, false, false)) {
+            stopTargetEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
+            return false;
+        }
         NodeParameter targetParam = stopTargetEditingNode.getParameter("StartNumber");
         String previous = targetParam != null ? targetParam.getStringValue() : "";
         stopTargetEditingNode.setParameterValueAndPropagate("StartNumber", value);
@@ -5888,12 +6104,10 @@ public class NodeGraph {
         if (!isEditingStopTargetField()) {
             return false;
         }
-
-        if (chr >= '0' && chr <= '9') {
-            return insertStopTargetText(String.valueOf(chr), textRenderer);
+        if (chr == '\n' || chr == '\r') {
+            return false;
         }
-
-        return false;
+        return insertStopTargetText(String.valueOf(chr), textRenderer);
     }
 
     public boolean isEditingMessageField() {
@@ -6891,26 +7105,13 @@ public class NodeGraph {
         if (!isEditingCoordinateField() || textRenderer == null || text == null || text.isEmpty()) {
             return false;
         }
-        StringBuilder filtered = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (Character.isDigit(c) || c == '-') {
-                filtered.append(c);
-            }
-        }
-        if (filtered.length() == 0) {
+        String filtered = text.replace("\r", "").replace("\n", "");
+        if (filtered.isEmpty()) {
             return false;
         }
 
-        String originalBuffer = coordinateEditBuffer;
-        int originalCaret = coordinateCaretPosition;
-        int originalSelectionStart = coordinateSelectionStart;
-        int originalSelectionEnd = coordinateSelectionEnd;
-        int originalSelectionAnchor = coordinateSelectionAnchor;
-
         String working = coordinateEditBuffer;
         int caret = coordinateCaretPosition;
-
         if (hasCoordinateSelection()) {
             int start = coordinateSelectionStart;
             int end = coordinateSelectionEnd;
@@ -6918,31 +7119,10 @@ public class NodeGraph {
             caret = start;
         }
 
-        boolean inserted = false;
-        for (int i = 0; i < filtered.length(); i++) {
-            char c = filtered.charAt(i);
-            String candidate = working.substring(0, caret) + c + working.substring(caret);
-            if (!isValidCoordinateValue(candidate)) {
-                continue;
-            }
-            working = candidate;
-            caret++;
-            inserted = true;
-        }
-
-        if (inserted) {
-            coordinateEditBuffer = working;
-            setCoordinateCaretPosition(caret);
-            updateCoordinateFieldContentWidth(textRenderer);
-            return true;
-        }
-
-        coordinateEditBuffer = originalBuffer;
-        coordinateCaretPosition = originalCaret;
-        coordinateSelectionStart = originalSelectionStart;
-        coordinateSelectionEnd = originalSelectionEnd;
-        coordinateSelectionAnchor = originalSelectionAnchor;
-        return false;
+        coordinateEditBuffer = working.substring(0, caret) + filtered + working.substring(caret);
+        setCoordinateCaretPosition(caret + filtered.length());
+        updateCoordinateFieldContentWidth(textRenderer);
+        return true;
     }
 
     private int findPreviousWordBoundary(String text, int fromPosition) {
@@ -7392,29 +7572,13 @@ public class NodeGraph {
         if (!isEditingAmountField() || textRenderer == null || text == null || text.isEmpty()) {
             return false;
         }
-        boolean allowSigned = amountEditingNode != null && amountEditingNode.getType() == NodeType.CHANGE_VARIABLE;
-        StringBuilder filtered = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= '0' && c <= '9') {
-                filtered.append(c);
-            } else if (allowSigned && (c == '-' || c == '.')) {
-                filtered.append(c);
-            }
-        }
-        if (filtered.length() == 0) {
+        String filtered = text.replace("\r", "").replace("\n", "");
+        if (filtered.isEmpty()) {
             return false;
         }
 
-        String originalBuffer = amountEditBuffer;
-        int originalCaret = amountCaretPosition;
-        int originalSelectionStart = amountSelectionStart;
-        int originalSelectionEnd = amountSelectionEnd;
-        int originalSelectionAnchor = amountSelectionAnchor;
-
         String working = amountEditBuffer;
         int caret = amountCaretPosition;
-
         if (hasAmountSelection()) {
             int start = amountSelectionStart;
             int end = amountSelectionEnd;
@@ -7422,31 +7586,10 @@ public class NodeGraph {
             caret = start;
         }
 
-        boolean inserted = false;
-        for (int i = 0; i < filtered.length(); i++) {
-            char c = filtered.charAt(i);
-            String candidate = working.substring(0, caret) + c + working.substring(caret);
-            if (allowSigned && !isValidSignedAmountInput(candidate)) {
-                continue;
-            }
-            working = candidate;
-            caret++;
-            inserted = true;
-        }
-
-        if (inserted) {
-            amountEditBuffer = working;
-            setAmountCaretPosition(caret);
-            updateAmountFieldContentWidth(textRenderer);
-            return true;
-        }
-
-        amountEditBuffer = originalBuffer;
-        amountCaretPosition = originalCaret;
-        amountSelectionStart = originalSelectionStart;
-        amountSelectionEnd = originalSelectionEnd;
-        amountSelectionAnchor = originalSelectionAnchor;
-        return false;
+        amountEditBuffer = working.substring(0, caret) + filtered + working.substring(caret);
+        setAmountCaretPosition(caret + filtered.length());
+        updateAmountFieldContentWidth(textRenderer);
+        return true;
     }
 
     private boolean isValidSignedAmountInput(String value) {
@@ -7482,26 +7625,13 @@ public class NodeGraph {
         if (!isEditingStopTargetField() || textRenderer == null || text == null || text.isEmpty()) {
             return false;
         }
-        StringBuilder filtered = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= '0' && c <= '9') {
-                filtered.append(c);
-            }
-        }
-        if (filtered.length() == 0) {
+        String filtered = text.replace("\r", "").replace("\n", "");
+        if (filtered.isEmpty()) {
             return false;
         }
 
-        String originalBuffer = stopTargetEditBuffer;
-        int originalCaret = stopTargetCaretPosition;
-        int originalSelectionStart = stopTargetSelectionStart;
-        int originalSelectionEnd = stopTargetSelectionEnd;
-        int originalSelectionAnchor = stopTargetSelectionAnchor;
-
         String working = stopTargetEditBuffer;
         int caret = stopTargetCaretPosition;
-
         if (hasStopTargetSelection()) {
             int start = stopTargetSelectionStart;
             int end = stopTargetSelectionEnd;
@@ -7509,28 +7639,10 @@ public class NodeGraph {
             caret = start;
         }
 
-        boolean inserted = false;
-        for (int i = 0; i < filtered.length(); i++) {
-            char c = filtered.charAt(i);
-            String candidate = working.substring(0, caret) + c + working.substring(caret);
-            working = candidate;
-            caret++;
-            inserted = true;
-        }
-
-        if (inserted) {
-            stopTargetEditBuffer = working;
-            setStopTargetCaretPosition(caret);
-            updateStopTargetFieldContentWidth(textRenderer);
-            return true;
-        }
-
-        stopTargetEditBuffer = originalBuffer;
-        stopTargetCaretPosition = originalCaret;
-        stopTargetSelectionStart = originalSelectionStart;
-        stopTargetSelectionEnd = originalSelectionEnd;
-        stopTargetSelectionAnchor = originalSelectionAnchor;
-        return false;
+        stopTargetEditBuffer = working.substring(0, caret) + filtered + working.substring(caret);
+        setStopTargetCaretPosition(caret + filtered.length());
+        updateStopTargetFieldContentWidth(textRenderer);
+        return true;
     }
 
     private boolean insertVariableText(String text, TextRenderer textRenderer) {
@@ -7686,16 +7798,6 @@ public class NodeGraph {
         }
 
         String filtered = text.replace("\r", "").replace("\n", "");
-        if (isListIndexParameter(parameterEditingNode, parameterEditingIndex)) {
-            StringBuilder digitsOnly = new StringBuilder();
-            for (int i = 0; i < filtered.length(); i++) {
-                char c = filtered.charAt(i);
-                if (c >= '0' && c <= '9') {
-                    digitsOnly.append(c);
-                }
-            }
-            filtered = digitsOnly.toString();
-        }
         if (filtered.isEmpty()) {
             return false;
         }

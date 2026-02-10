@@ -55,7 +55,6 @@ public enum NodeType {
     CONTROL_FOREVER("pathmind.node.type.controlForever", 0xFFFFC107, "pathmind.node.type.controlForever.desc"),
     CONTROL_IF("pathmind.node.type.controlIf", 0xFFFFC107, "pathmind.node.type.controlIf.desc"),
     CONTROL_IF_ELSE("pathmind.node.type.controlIfElse", 0xFFFFC107, "pathmind.node.type.controlIfElse.desc"),
-    RETURN("pathmind.node.type.return", 0xFFFFC107, "pathmind.node.type.return.desc"),
 
     // Player movement commands
     LOOK("pathmind.node.type.look", 0xFF03A9F4, "pathmind.node.type.look.desc"),
@@ -218,7 +217,6 @@ public enum NodeType {
             case CONTROL_FOREVER:
             case CONTROL_IF:
             case CONTROL_IF_ELSE:
-            case RETURN:
                 return NodeCategory.LOGIC;
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:

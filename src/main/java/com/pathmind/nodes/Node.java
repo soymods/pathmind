@@ -574,11 +574,7 @@ public class Node {
     }
 
     public boolean isParameterNode() {
-        return type.getCategory() == NodeCategory.PARAMETERS
-            || type == NodeType.VARIABLE
-            || type == NodeType.OPERATOR_RANDOM
-            || type == NodeType.OPERATOR_MOD
-            || type == NodeType.LIST_ITEM;
+        return NodeTraitRegistry.isParameterNode(type);
     }
 
     public boolean shouldRenderInlineParameters() {
@@ -586,62 +582,15 @@ public class Node {
     }
 
     public static boolean isSensorType(NodeType nodeType) {
-        if (nodeType == null) {
-            return false;
-        }
-        switch (nodeType) {
-            case SENSOR_TOUCHING_BLOCK:
-            case SENSOR_TOUCHING_ENTITY:
-            case SENSOR_AT_COORDINATES:
-            case SENSOR_IS_DAYTIME:
-            case SENSOR_IS_RAINING:
-            case SENSOR_HEALTH_BELOW:
-            case SENSOR_HUNGER_BELOW:
-            case SENSOR_ITEM_IN_INVENTORY:
-            case SENSOR_ITEM_IN_SLOT:
-            case SENSOR_VILLAGER_TRADE:
-            case SENSOR_IS_SWIMMING:
-            case SENSOR_IS_IN_LAVA:
-            case SENSOR_IS_UNDERWATER:
-            case SENSOR_IS_ON_GROUND:
-            case SENSOR_IS_FALLING:
-            case SENSOR_IS_RENDERED:
-            case SENSOR_KEY_PRESSED:
-            case SENSOR_CHAT_MESSAGE:
-            case OPERATOR_EQUALS:
-            case OPERATOR_NOT:
-            case OPERATOR_BOOLEAN_NOT:
-            case OPERATOR_GREATER:
-            case OPERATOR_LESS:
-            case SENSOR_GUI_FILLED:
-            case SENSOR_TARGETED_BLOCK:
-            case SENSOR_LOOK_DIRECTION:
-            case SENSOR_TARGETED_BLOCK_FACE:
-                return true;
-            default:
-                return false;
-        }
+        return NodeTraitRegistry.isBooleanSensor(nodeType);
     }
 
     public static boolean isParameterType(NodeType nodeType) {
-        return nodeType != null
-            && (nodeType.getCategory() == NodeCategory.PARAMETERS
-                || nodeType == NodeType.VARIABLE
-                || nodeType == NodeType.OPERATOR_RANDOM
-                || nodeType == NodeType.OPERATOR_MOD
-                || nodeType == NodeType.LIST_ITEM
-                || nodeType == NodeType.SENSOR_POSITION_OF);
+        return NodeTraitRegistry.isParameterNode(nodeType);
     }
 
     public boolean canAcceptSensor() {
-        switch (type) {
-            case CONTROL_IF:
-            case CONTROL_IF_ELSE:
-            case CONTROL_REPEAT_UNTIL:
-                return true;
-            default:
-                return false;
-        }
+        return NodeCompatibility.canHostSlot(type, NodeSlotType.SENSOR);
     }
 
     public boolean hasSensorSlot() {
@@ -649,48 +598,16 @@ public class Node {
     }
 
     public boolean canAcceptParameter() {
-        if (type == NodeType.SENSOR_POSITION_OF) {
-            return true;
-        }
-        if (type == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+        if (!NodeCompatibility.canHostSlot(type, NodeSlotType.PARAMETER)) {
             return false;
         }
-        if (type == NodeType.SENSOR_TARGETED_BLOCK) {
+        if (!NodeTraitRegistry.canHostParameter(type)) {
             return false;
         }
-        if (type == NodeType.SENSOR_LOOK_DIRECTION) {
+        if (isParameterNode() && type != NodeType.OPERATOR_MOD) {
             return false;
         }
-        if (type == NodeType.WAIT) {
-            return false;
-        }
-        if (type == NodeType.OPEN_INVENTORY || type == NodeType.CLOSE_GUI) {
-            return false;
-        }
-        if (type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL || type == NodeType.START_CHAIN) {
-            return false;
-        }
-        if (type == NodeType.WRITE_BOOK) {
-            // Write Book handles its own text/page UI and shouldn't expose a parameter slot
-            return false;
-        }
-        if (type == NodeType.UI_UTILS) {
-            return false;
-        }
-        if (type == NodeType.MESSAGE) {
-            return false;
-        }
-        if (hasBooleanToggle()) {
-            return false;
-        }
-        return (!isParameterNode() || type == NodeType.OPERATOR_MOD)
-            && type != NodeType.START
-            && type != NodeType.EVENT_CALL
-            && type != NodeType.EVENT_FUNCTION
-            && type != NodeType.SWING
-            && type != NodeType.CROUCH
-            && type != NodeType.JUMP
-            && type.getCategory() != NodeCategory.LOGIC;
+        return true;
     }
 
     public boolean hasParameterSlot() {
@@ -723,51 +640,15 @@ public class Node {
     }
 
     public boolean canAcceptParameterNode(Node parameterNode, int slotIndex) {
-        if (parameterNode == null
-            || (!parameterNode.isParameterNode()
-                && parameterNode.getType() != NodeType.SENSOR_POSITION_OF
-                && parameterNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
-                && parameterNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
-                && parameterNode.getType() != NodeType.SENSOR_LOOK_DIRECTION
-                && parameterNode.getType() != NodeType.VARIABLE
-                && !(type == NodeType.OPERATOR_BOOLEAN_NOT && parameterNode.isSensorNode()))) {
-            return false;
-        }
-        if (type == NodeType.OPERATOR_MOD) {
-            if (!canAcceptParameterAt(slotIndex)) {
-                return false;
-            }
-            return parameterNode.isParameterNode()
-                || parameterNode.getType() == NodeType.VARIABLE
-                || parameterNode.getType() == NodeType.SENSOR_POSITION_OF
-                || parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                || parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
-                || parameterNode.getType() == NodeType.SENSOR_LOOK_DIRECTION;
-        }
-        if (!canAcceptParameterAt(slotIndex)) {
-            return false;
-        }
-        return isParameterSupported(parameterNode, slotIndex);
+        return NodeCompatibility.canAttachToSlot(this, parameterNode, NodeSlotType.PARAMETER, slotIndex);
     }
 
     private boolean isParameterSlotRequired(int slotIndex) {
         if (!canAcceptParameterAt(slotIndex)) {
             return false;
         }
-        if (type == NodeType.SET_VARIABLE) {
-            return slotIndex == 0 || slotIndex == 1;
-        }
-        if (type == NodeType.CHANGE_VARIABLE) {
-            return slotIndex == 0;
-        }
-        if (type == NodeType.OPERATOR_MOD) {
-            return slotIndex == 0 || slotIndex == 1;
-        }
-        if (isComparisonOperator()) {
-            return slotIndex == 0 || slotIndex == 1;
-        }
-        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
-            return slotIndex == 0 || slotIndex == 1;
+        if (NodeTraitRegistry.isParameterSlotAlwaysRequired(type, slotIndex)) {
+            return true;
         }
         if (type == NodeType.PLACE) {
             if (slotIndex == 0) {
@@ -787,221 +668,16 @@ public class Node {
         if (type == NodeType.PLACE_HAND) {
             return false;
         }
-        if (type == NodeType.WRITE_BOOK) {
-            return false;
-        }
         return slotIndex == 0;
     }
 
-    private boolean isParameterCompatibleWithSlot(Node parameter, int slotIndex) {
-        if (parameter == null) {
-            return false;
-        }
-        NodeType rawType = parameter.getType();
-        NodeType parameterType = rawType == NodeType.SENSOR_LOOK_DIRECTION ? NodeType.PARAM_DIRECTION : rawType;
-        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
-            if (slotIndex != 0) {
-                return false;
-            }
-            return parameter.isSensorNode()
-                || parameterType == NodeType.PARAM_BOOLEAN
-                || rawType == NodeType.VARIABLE;
-        }
-        if (type == NodeType.OPERATOR_MOD) {
-            return parameter.isParameterNode()
-                || rawType == NodeType.VARIABLE
-                || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
-                || parameterType == NodeType.SENSOR_LOOK_DIRECTION;
-        }
-        if (rawType == NodeType.VARIABLE
-            && type != NodeType.SET_VARIABLE
-            && type != NodeType.CHANGE_VARIABLE
-            && type != NodeType.OPERATOR_EQUALS
-            && type != NodeType.OPERATOR_NOT
-            && type != NodeType.OPERATOR_GREATER
-            && type != NodeType.OPERATOR_LESS) {
-            return true;
-        }
-        if (type == NodeType.SET_VARIABLE) {
-            if (slotIndex == 0) {
-                return rawType == NodeType.VARIABLE;
-            }
-            return (parameter.isParameterNode()
-                || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
-                || parameterType == NodeType.SENSOR_LOOK_DIRECTION);
-        }
-        if (type == NodeType.CHANGE_VARIABLE) {
-            return slotIndex == 0 && rawType == NodeType.VARIABLE;
-        }
-        if (isComparisonOperator()) {
-            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
-            Node otherParameter = getAttachedParameter(otherSlotIndex);
-            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
-            if (rawType == NodeType.VARIABLE) {
-                return !otherIsVariable;
-            }
-            return true;
-        }
-        if (type == NodeType.WALK) {
-            if (slotIndex == 0) {
-                return parameterType == NodeType.PARAM_ROTATION
-                    || parameterType == NodeType.PARAM_DIRECTION;
-            }
-            return parameterType == NodeType.PARAM_DURATION || parameterType == NodeType.PARAM_DISTANCE;
-        }
-        if (type != NodeType.PLACE && type != NodeType.PLACE_HAND) {
-            return true;
-        }
-        if (slotIndex == 0) {
-            switch (parameterType) {
-                case PARAM_BLOCK:
-                case PARAM_INVENTORY_SLOT:
-                case PARAM_PLACE_TARGET:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-        return slotIndex == 1 ? parameterProvidesCoordinates(parameterType) : true;
-    }
 
     private boolean isParameterSupported(Node parameter, int slotIndex) {
-        if (parameter == null) {
-            return false;
-        }
-        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
-            if (slotIndex != 0) {
-                return false;
-            }
-            return parameter.isSensorNode()
-                || parameter.getType() == NodeType.PARAM_BOOLEAN
-                || parameter.getType() == NodeType.VARIABLE;
-        }
-        if (type == NodeType.OPERATOR_MOD) {
-            NodeType parameterType = parameter.getType();
-            return parameter.isParameterNode()
-                || parameterType == NodeType.VARIABLE
-                || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
-                || parameterType == NodeType.SENSOR_LOOK_DIRECTION;
-        }
-        if (type == NodeType.SENSOR_POSITION_OF) {
-            if (slotIndex != 0) {
-                return false;
-            }
-            NodeType parameterType = parameter.getType();
-            return parameterType == NodeType.PARAM_ENTITY
-                || parameterType == NodeType.PARAM_BLOCK
-                || parameterType == NodeType.PARAM_ITEM;
-        }
-        if (type == NodeType.CREATE_LIST) {
-            NodeType parameterType = parameter.getType();
-            return parameterType == NodeType.PARAM_ENTITY
-                || parameterType == NodeType.PARAM_PLAYER
-                || parameterType == NodeType.PARAM_ITEM;
-        }
-        if (parameter.getType() == NodeType.VARIABLE
-            && type != NodeType.SET_VARIABLE
-            && type != NodeType.CHANGE_VARIABLE
-            && type != NodeType.OPERATOR_EQUALS
-            && type != NodeType.OPERATOR_NOT
-            && type != NodeType.OPERATOR_GREATER
-            && type != NodeType.OPERATOR_LESS) {
-            return true;
-        }
-        if (type == NodeType.SET_VARIABLE) {
-            NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.VARIABLE;
-            }
-            return (parameter.isParameterNode()
-                || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
-                || parameterType == NodeType.SENSOR_LOOK_DIRECTION);
-        }
-        if (type == NodeType.CHANGE_VARIABLE) {
-            NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.VARIABLE;
-            }
-            return parameterType == NodeType.PARAM_AMOUNT
-                || parameterType == NodeType.OPERATOR_RANDOM
-                || parameterType == NodeType.OPERATOR_MOD;
-        }
-        if (isComparisonOperator()) {
-            NodeType parameterType = parameter.getType();
-            int otherSlotIndex = slotIndex == 0 ? 1 : 0;
-            Node otherParameter = getAttachedParameter(otherSlotIndex);
-            boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
-            if (parameterType == NodeType.VARIABLE) {
-                return !otherIsVariable;
-            }
-            return true;
-        }
-        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
-            NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.PARAM_PLAYER;
-            }
-            return parameterType == NodeType.PARAM_MESSAGE;
-        }
-        if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
-            NodeType parameterType = parameter.getType();
-            if (slotIndex == 0) {
-                return parameterType == NodeType.PARAM_ITEM;
-            }
-            return parameterType == NodeType.PARAM_INVENTORY_SLOT;
-        }
-        if (!isParameterCompatibleWithSlot(parameter, slotIndex)) {
-            return false;
-        }
-        NodeType parameterType = parameter.getType();
-        if (type == NodeType.INTERACT && parameterType == NodeType.PARAM_ITEM) {
-            return false;
-        }
-        if (type == NodeType.INTERACT && parameterType == NodeType.PARAM_ENTITY) {
-            return true;
-        }
-        if (type == NodeType.USE) {
-            return parameterType == NodeType.PARAM_ITEM
-                || parameterType == NodeType.PARAM_INVENTORY_SLOT
-                || parameterType == NodeType.PARAM_BLOCK;
-        }
-        if (type == NodeType.TRADE) {
-            return parameterType == NodeType.PARAM_VILLAGER_TRADE;
-        }
-        if (type == NodeType.MOVE_ITEM && slotIndex >= 0 && slotIndex <= 1 && parameterType == NodeType.PARAM_ITEM) {
-            return true;
-        }
-        if (type == NodeType.MOVE_ITEM && slotIndex == 1 && parameterType == NodeType.PARAM_GUI) {
-            return true;
-        }
-        if ((type == NodeType.PLACE || type == NodeType.PLACE_HAND)
-            && slotIndex == 0
-            && parameterType == NodeType.PARAM_INVENTORY_SLOT) {
-            return true;
-        }
-        if (supportsDirectSensorParameter(parameterType)) {
-            return true;
-        }
-        return canApplyParameterValues(parameter) || canHandleParameterRuntime(parameter, slotIndex);
+        return NodeCompatibility.canAttachToSlot(this, parameter, NodeSlotType.PARAMETER, slotIndex);
     }
 
     public boolean canAcceptActionNode() {
-        switch (type) {
-            case CONTROL_REPEAT:
-            case CONTROL_REPEAT_UNTIL:
-            case CONTROL_FOREVER:
-                return true;
-            default:
-                return false;
-        }
+        return NodeCompatibility.canHostSlot(type, NodeSlotType.ACTION);
     }
 
     public boolean hasActionSlot() {
@@ -1258,43 +934,7 @@ public class Node {
         if (!hasParameterSlot()) {
             return 0;
         }
-        if (type == NodeType.SET_VARIABLE) {
-            return 2;
-        }
-        if (type == NodeType.CHANGE_VARIABLE) {
-            return 2;
-        }
-        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
-            return 1;
-        }
-        if (type == NodeType.OPERATOR_MOD) {
-            return 2;
-        }
-        if (isComparisonOperator()) {
-            return 2;
-        }
-        if (type == NodeType.EVENT_CALL) {
-            return 1;
-        }
-        if (type == NodeType.RETURN) {
-            return 1;
-        }
-        if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
-            return 2;
-        }
-        if (type == NodeType.MOVE_ITEM) {
-            return 2;
-        }
-        if (type == NodeType.WALK) {
-            return 2;
-        }
-        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
-            return 2;
-        }
-        if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
-            return 2;
-        }
-        return 1;
+        return NodeTraitRegistry.getParameterSlotCount(type);
     }
 
     public int getParameterSlotLeft() {
@@ -1353,49 +993,7 @@ public class Node {
         if (isComparisonOperator()) {
             return "";
         }
-        if (type == NodeType.SET_VARIABLE) {
-            return slotIndex == 0 ? "Variable" : "Value";
-        }
-        if (type == NodeType.CHANGE_VARIABLE) {
-            return slotIndex == 0 ? "Variable" : "Amount";
-        }
-        if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
-            return "Value";
-        }
-        if (type == NodeType.OPERATOR_MOD) {
-            return slotIndex == 0 ? "Value" : "Modulo";
-        }
-        if (type == NodeType.BUILD) {
-            return "Position";
-        }
-        if (type == NodeType.PLACE || type == NodeType.PLACE_HAND) {
-            return slotIndex == 0 ? "Source" : "Position";
-        }
-        if (type == NodeType.MOVE_ITEM) {
-            return slotIndex == 0 ? "Source Slot" : "Target Slot";
-        }
-        if (type == NodeType.WALK) {
-            return slotIndex == 0 ? "Direction" : "Duration/Distance";
-        }
-        if (type == NodeType.SENSOR_CHAT_MESSAGE) {
-            return slotIndex == 0 ? "User" : "Message";
-        }
-        if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
-            return slotIndex == 0 ? "Item" : "Slot";
-        }
-        if (type == NodeType.SENSOR_POSITION_OF) {
-            return "Target";
-        }
-        if (type == NodeType.SENSOR_VILLAGER_TRADE) {
-            return "Villager Trade";
-        }
-        if (type == NodeType.CREATE_LIST) {
-            return "Target";
-        }
-        if (type == NodeType.TRADE) {
-            return "Villager Trade";
-        }
-        return "Parameter";
+        return NodeTraitRegistry.getParameterSlotLabel(type, slotIndex);
     }
 
     public int getParameterSlotWidth() {
@@ -2339,25 +1937,6 @@ public class Node {
         return applied;
     }
 
-    private boolean canApplyParameterValues(Node parameter) {
-        if (parameter == null || parameter.getParameters().isEmpty() || this.parameters.isEmpty()) {
-            return false;
-        }
-        Map<String, String> exported = parameter.exportParameterValues();
-        if (exported.isEmpty()) {
-            return false;
-        }
-        for (NodeParameter target : this.parameters) {
-            String key = target.getName();
-            if (exported.containsKey(key)
-                || exported.containsKey(normalizeParameterKey(key))
-                || exported.containsKey(key.toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
     private Map<String, String> adjustParameterValuesForSlot(Map<String, String> values, int slotIndex) {
         return adjustParameterValuesForSlot(values, slotIndex, null);
     }
@@ -2367,6 +1946,46 @@ public class Node {
             return values;
         }
         switch (type) {
+            case WAIT: {
+                if (parameterNode != null && providesTrait(parameterNode, NodeValueTrait.NUMBER)) {
+                    if (!values.containsKey("Duration")) {
+                        String fallback = values.get("Amount");
+                        if (fallback == null) {
+                            fallback = values.get("Count");
+                        }
+                        if (fallback == null) {
+                            fallback = values.get("Value");
+                        }
+                        if (fallback != null) {
+                            Map<String, String> adjusted = new HashMap<>(values);
+                            adjusted.put("Duration", fallback);
+                            adjusted.put(normalizeParameterKey("Duration"), fallback);
+                            return adjusted;
+                        }
+                    }
+                }
+                break;
+            }
+            case CONTROL_REPEAT: {
+                if (parameterNode != null) {
+                    if (!values.containsKey("Count")) {
+                        String fallback = values.get("Amount");
+                        if (fallback == null) {
+                            fallback = values.get("Duration");
+                        }
+                        if (fallback == null) {
+                            fallback = values.get("Value");
+                        }
+                        if (fallback != null) {
+                            Map<String, String> adjusted = new HashMap<>(values);
+                            adjusted.put("Count", fallback);
+                            adjusted.put(normalizeParameterKey("Count"), fallback);
+                            return adjusted;
+                        }
+                    }
+                }
+                break;
+            }
             case MOVE_ITEM:
                 if (slotIndex == 0) {
                     return filterParameterMap(values, MOVE_ITEM_TARGET_KEYS);
@@ -2501,25 +2120,14 @@ public class Node {
             case POSITION:
                 return parameterProvidesCoordinates(parameterType);
             case LOOK_ORIENTATION:
-                return parameterType == NodeType.PARAM_ROTATION
-                    || parameterType == NodeType.PARAM_DIRECTION
-                    || parameterProvidesCoordinates(parameterType);
+                return parameterProvidesCoordinates(parameterType);
             default:
                 return false;
         }
     }
 
     public boolean canAcceptActionNode(Node node) {
-        if (!canAcceptActionNode() || node == null || node == this || node.isSensorNode()) {
-            return false;
-        }
-        if (node.getType() == NodeType.EVENT_FUNCTION) {
-            return false;
-        }
-        if (attachedActionNode != null && attachedActionNode != node) {
-            return false;
-        }
-        return true;
+        return NodeCompatibility.canAttachToSlot(this, node, NodeSlotType.ACTION, 0);
     }
 
     public boolean attachActionNode(Node node) {
@@ -4450,14 +4058,14 @@ public class Node {
             }
         }
 
-        if (!handled && type == NodeType.MOVE_ITEM && parameterNode.getType() == NodeType.PARAM_ITEM) {
+        if (!handled && type == NodeType.MOVE_ITEM && providesTrait(parameterNode, NodeValueTrait.ITEM)) {
             if (resolveMoveItemSlotFromItemParameter(parameterNode, slotIndex, future)) {
                 handled = true;
             } else {
                 return ParameterHandlingResult.COMPLETE;
             }
         }
-        if (!handled && type == NodeType.MOVE_ITEM && parameterNode.getType() == NodeType.PARAM_GUI) {
+        if (!handled && type == NodeType.MOVE_ITEM && providesTrait(parameterNode, NodeValueTrait.GUI)) {
             handled = true;
         }
         if (!handled && type == NodeType.USE) {
@@ -4468,7 +4076,7 @@ public class Node {
             }
         }
         if (!handled && type == NodeType.TRADE
-            && parameterNode.getType() == NodeType.PARAM_VILLAGER_TRADE) {
+            && providesTrait(parameterNode, NodeValueTrait.VILLAGER_TRADE)) {
             String tradeKey = resolveTradeKeyFromParameter(parameterNode);
             if (tradeKey != null && !tradeKey.isEmpty()) {
                 runtimeParameterData.targetTradeKey = tradeKey;
@@ -4562,6 +4170,9 @@ public class Node {
     private Optional<Vec3d> resolvePositionTarget(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
         if (data != null && data.targetVector != null) {
             return Optional.of(data.targetVector);
+        }
+        if (data != null && data.targetBlockPos != null && parameterNode.getType() == NodeType.LIST_ITEM) {
+            return Optional.of(Vec3d.ofCenter(data.targetBlockPos));
         }
 
         NodeType parameterType = parameterNode.getType();
@@ -10241,58 +9852,20 @@ public class Node {
         if (parameterType == null) {
             return false;
         }
-        switch (parameterType) {
-            case PARAM_COORDINATE:
-            case PARAM_SCHEMATIC:
-            case PARAM_PLACE_TARGET:
-            case PARAM_ITEM:
-            case PARAM_ENTITY:
-            case PARAM_PLAYER:
-            case PARAM_BLOCK:
-            case PARAM_WAYPOINT:
-            case PARAM_CLOSEST:
-            case PARAM_DIRECTION:
-            case PARAM_ROTATION:
-            case LIST_ITEM:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private boolean supportsDirectSensorParameter(NodeType parameterType) {
-        if (!isSensorNode() || parameterType == null) {
+        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(parameterType);
+        if (traits.isEmpty()) {
             return false;
         }
-        switch (type) {
-            case SENSOR_TOUCHING_BLOCK:
-                return parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_PLACE_TARGET;
-            case SENSOR_TOUCHING_ENTITY:
-                return parameterType == NodeType.PARAM_ENTITY;
-            case SENSOR_AT_COORDINATES:
-                return parameterType == NodeType.PARAM_COORDINATE || parameterType == NodeType.PARAM_PLACE_TARGET;
-            case SENSOR_ITEM_IN_INVENTORY:
-                return parameterType == NodeType.PARAM_ITEM;
-            case SENSOR_VILLAGER_TRADE:
-                return parameterType == NodeType.PARAM_VILLAGER_TRADE;
-            case SENSOR_KEY_PRESSED:
-                return parameterType == NodeType.PARAM_KEY;
-            case SENSOR_IS_RENDERED:
-                switch (parameterType) {
-                    case PARAM_BLOCK:
-                    case PARAM_ITEM:
-                    case PARAM_ENTITY:
-                    case PARAM_PLAYER:
-                    case PARAM_PLACE_TARGET:
-                        return true;
-                    default:
-                        return false;
-                }
-            case SENSOR_CHAT_MESSAGE:
-                return parameterType == NodeType.PARAM_PLAYER || parameterType == NodeType.PARAM_MESSAGE;
-            default:
-                return false;
-        }
+        return traits.contains(NodeValueTrait.COORDINATE)
+            || traits.contains(NodeValueTrait.DIRECTION)
+            || traits.contains(NodeValueTrait.ROTATION)
+            || traits.contains(NodeValueTrait.BLOCK)
+            || traits.contains(NodeValueTrait.ITEM)
+            || traits.contains(NodeValueTrait.ENTITY)
+            || traits.contains(NodeValueTrait.PLAYER)
+            || traits.contains(NodeValueTrait.WAYPOINT)
+            || traits.contains(NodeValueTrait.SCHEMATIC)
+            || traits.contains(NodeValueTrait.LIST_ITEM);
     }
 
     private boolean isBlockPlacementParameter(Node parameterNode) {
@@ -12483,9 +12056,12 @@ public class Node {
         }
 
         PlayerInventory inventory = client.player.getInventory();
-        NodeType parameterType = parameterNode.getType();
-        switch (parameterType) {
-            case PARAM_BLOCK: {
+        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(parameterNode.getType());
+        boolean isListItem = parameterNode.getType() == NodeType.LIST_ITEM;
+        boolean treatAsItem = traits.contains(NodeValueTrait.ITEM)
+            || (isListItem && runtimeParameterData != null && runtimeParameterData.targetItemId != null);
+        if (traits.contains(NodeValueTrait.BLOCK)) {
+            {
                 String rawBlock = getParameterString(parameterNode, "Block");
                 boolean anySelection = isAnySelectionValue(rawBlock);
                 List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
@@ -12516,12 +12092,18 @@ public class Node {
                 runtimeParameterData.targetItemId = result.itemId();
                 return true;
             }
-            case PARAM_ITEM: {
-                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
-                if (itemIds.isEmpty()) {
-                    sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
-                    return false;
-                }
+        }
+        if (treatAsItem) {
+            List<String> itemIds;
+            if (isListItem && runtimeParameterData != null && runtimeParameterData.targetItemId != null) {
+                itemIds = java.util.Collections.singletonList(runtimeParameterData.targetItemId);
+            } else {
+                itemIds = resolveItemIdsFromParameter(parameterNode);
+            }
+            if (itemIds.isEmpty()) {
+                sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
+                return false;
+            }
                 ItemSearchResult result = findUseItemSlot(inventory, itemIds);
                 if (result == null) {
                     String reference = String.join(", ", itemIds);
@@ -12533,8 +12115,8 @@ public class Node {
                 runtimeParameterData.targetItem = result.item();
                 runtimeParameterData.targetItemId = result.itemId();
                 return true;
-            }
-            case PARAM_INVENTORY_SLOT: {
+        }
+        if (traits.contains(NodeValueTrait.INVENTORY_SLOT)) {
                 SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
                 if (selectionType == SlotSelectionType.GUI_CONTAINER) {
                     sendNodeErrorMessage(client, "Use node can only use player inventory slots.");
@@ -12547,10 +12129,9 @@ public class Node {
                 runtimeParameterData.slotIndex = slotValue;
                 runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
                 return true;
-            }
-            default:
-                return false;
         }
+        sendIncompatibleParameterMessage(parameterNode);
+        return false;
     }
 
     private record ItemSearchResult(int slotIndex, Item item, String itemId) {
@@ -14965,6 +14546,24 @@ public class Node {
         return null;
     }
 
+    private boolean providesTrait(Node node, NodeValueTrait trait) {
+        if (node == null || trait == null) {
+            return false;
+        }
+        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(node.getType());
+        return traits.contains(trait);
+    }
+
+    private Node resolveSensorParameterNode(Node parameterNode, int slotIndex) {
+        if (parameterNode == null) {
+            return null;
+        }
+        if (parameterNode.getType() == NodeType.VARIABLE) {
+            return resolveVariableValueNode(parameterNode, slotIndex, null);
+        }
+        return parameterNode;
+    }
+
     public boolean evaluateSensor() {
         if (!isSensorNode()) {
             return false;
@@ -15000,8 +14599,12 @@ public class Node {
                 break;
             case SENSOR_TOUCHING_BLOCK: {
                 String blockId = getStringParameter("Block", "stone");
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
+                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
                 if (parameterNode != null) {
+                    if (!providesTrait(parameterNode, NodeValueTrait.BLOCK)) {
+                        sendIncompatibleParameterMessage(parameterNode);
+                        break;
+                    }
                     List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
                     if (!selections.isEmpty()) {
                         result = isTouchingBlock(selections);
@@ -15013,8 +14616,12 @@ public class Node {
             }
             case SENSOR_TOUCHING_ENTITY: {
                 String entityId = getStringParameter("Entity", "zombie");
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_ENTITY);
+                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
                 if (parameterNode != null) {
+                    if (!providesTrait(parameterNode, NodeValueTrait.ENTITY)) {
+                        sendIncompatibleParameterMessage(parameterNode);
+                        break;
+                    }
                     String nodeEntity = getParameterString(parameterNode, "Entity");
                     if (nodeEntity != null && !nodeEntity.isEmpty()) {
                         entityId = nodeEntity;
@@ -15030,11 +14637,23 @@ public class Node {
                 int x = getIntParameter("X", 0);
                 int y = getIntParameter("Y", 64);
                 int z = getIntParameter("Z", 0);
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_COORDINATE, NodeType.PARAM_PLACE_TARGET);
+                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
                 if (parameterNode != null) {
-                    x = parseNodeInt(parameterNode, "X", x);
-                    y = parseNodeInt(parameterNode, "Y", y);
-                    z = parseNodeInt(parameterNode, "Z", z);
+                    if (!providesTrait(parameterNode, NodeValueTrait.COORDINATE)) {
+                        sendIncompatibleParameterMessage(parameterNode);
+                        break;
+                    }
+                    Optional<Vec3d> resolved = resolvePositionTarget(parameterNode, null, null);
+                    if (resolved.isPresent()) {
+                        Vec3d vec = resolved.get();
+                        x = MathHelper.floor(vec.x);
+                        y = MathHelper.floor(vec.y);
+                        z = MathHelper.floor(vec.z);
+                    } else {
+                        x = parseNodeInt(parameterNode, "X", x);
+                        y = parseNodeInt(parameterNode, "Y", y);
+                        z = parseNodeInt(parameterNode, "Z", z);
+                    }
                 }
                 result = evaluateSensorCondition(SensorConditionType.AT_COORDINATES, null, null, x, y, z);
                 break;
@@ -15082,13 +14701,11 @@ public class Node {
                 int requiredAmount = Math.max(1, getIntParameter("Amount", 1));
                 Node amountNode = null;
                 Node parameterNode = null;
-                Node attached = getAttachedParameter();
-                if (attached != null && attached.isParameterNode()) {
-                    if (attached.getType() == NodeType.PARAM_AMOUNT
-                        || attached.getType() == NodeType.OPERATOR_RANDOM
-                        || attached.getType() == NodeType.OPERATOR_MOD) {
+                Node attached = resolveSensorParameterNode(getAttachedParameter(), 0);
+                if (attached != null) {
+                    if (providesTrait(attached, NodeValueTrait.NUMBER)) {
                         amountNode = attached;
-                    } else if (attached.getType() == NodeType.PARAM_ITEM) {
+                    } else if (providesTrait(attached, NodeValueTrait.ITEM)) {
                         parameterNode = attached;
                     } else {
                         sendIncompatibleParameterMessage(attached);
@@ -15116,8 +14733,8 @@ public class Node {
                 break;
             }
             case SENSOR_ITEM_IN_SLOT: {
-                Node itemNode = getAttachedParameter(0);
-                Node slotNode = getAttachedParameter(1);
+                Node itemNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
+                Node slotNode = resolveSensorParameterNode(getAttachedParameter(1), 1);
                 if (itemNode == null || slotNode == null) {
                     net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                     if (client != null) {
@@ -15126,12 +14743,12 @@ public class Node {
                     result = false;
                     break;
                 }
-                if (itemNode.getType() != NodeType.PARAM_ITEM) {
+                if (!providesTrait(itemNode, NodeValueTrait.ITEM)) {
                     sendIncompatibleParameterMessage(itemNode);
                     result = false;
                     break;
                 }
-                if (slotNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+                if (!providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
                     sendIncompatibleParameterMessage(slotNode);
                     result = false;
                     break;
@@ -15190,8 +14807,12 @@ public class Node {
             }
             case SENSOR_KEY_PRESSED: {
                 String key = getStringParameter("Key", "space");
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_KEY);
+                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
                 if (parameterNode != null) {
+                    if (!providesTrait(parameterNode, NodeValueTrait.KEY)) {
+                        sendIncompatibleParameterMessage(parameterNode);
+                        break;
+                    }
                     String parameterKey = getParameterString(parameterNode, "Key");
                     if (parameterKey != null && !parameterKey.isEmpty()) {
                         key = parameterKey;
@@ -15203,47 +14824,32 @@ public class Node {
             case SENSOR_IS_RENDERED: {
                 String resourceId = getStringParameter("Resource", "stone");
                 boolean handled = false;
-                Node parameterNode = getAttachedParameterOfType(
-                    NodeType.PARAM_BLOCK,
-                    NodeType.PARAM_ITEM,
-                    NodeType.PARAM_ENTITY,
-                    NodeType.PARAM_PLAYER,
-                    NodeType.PARAM_PLACE_TARGET
-                );
+                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
                 if (parameterNode != null) {
-                    NodeType parameterType = parameterNode.getType();
-                    switch (parameterType) {
-                        case PARAM_ITEM: {
-                            List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
-                            if (!nodeItems.isEmpty()) {
-                                resourceId = String.join(",", nodeItems);
-                            }
-                            break;
+                    if (providesTrait(parameterNode, NodeValueTrait.ITEM)) {
+                        List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
+                        if (!nodeItems.isEmpty()) {
+                            resourceId = String.join(",", nodeItems);
                         }
-                        case PARAM_ENTITY: {
-                            String nodeEntity = getParameterString(parameterNode, "Entity");
-                            if (nodeEntity != null && !nodeEntity.isEmpty()) {
-                                String state = getEntityParameterState(parameterNode);
-                                result = isEntityRendered(nodeEntity, state);
-                                handled = true;
-                                break;
-                            }
-                            break;
+                    } else if (providesTrait(parameterNode, NodeValueTrait.ENTITY)) {
+                        String nodeEntity = getParameterString(parameterNode, "Entity");
+                        if (nodeEntity != null && !nodeEntity.isEmpty()) {
+                            String state = getEntityParameterState(parameterNode);
+                            result = isEntityRendered(nodeEntity, state);
+                            handled = true;
                         }
-                        case PARAM_PLAYER: {
-                            String nodePlayer = getParameterString(parameterNode, "Player");
-                            if (nodePlayer != null && !nodePlayer.isEmpty()) {
-                                resourceId = nodePlayer;
-                            }
-                            break;
+                    } else if (providesTrait(parameterNode, NodeValueTrait.PLAYER)) {
+                        String nodePlayer = getParameterString(parameterNode, "Player");
+                        if (nodePlayer != null && !nodePlayer.isEmpty()) {
+                            resourceId = nodePlayer;
                         }
-                        default: {
-                            String nodeBlock = getBlockParameterValue(parameterNode);
-                            if (nodeBlock != null && !nodeBlock.isEmpty()) {
-                                resourceId = nodeBlock;
-                            }
-                            break;
+                    } else if (providesTrait(parameterNode, NodeValueTrait.BLOCK)) {
+                        String nodeBlock = getBlockParameterValue(parameterNode);
+                        if (nodeBlock != null && !nodeBlock.isEmpty()) {
+                            resourceId = nodeBlock;
                         }
+                    } else {
+                        sendIncompatibleParameterMessage(parameterNode);
                     }
                 }
                 if (!handled) {
@@ -15252,8 +14858,13 @@ public class Node {
                 break;
             }
             case SENSOR_VILLAGER_TRADE: {
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_VILLAGER_TRADE);
+                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
                 if (parameterNode == null) {
+                    result = false;
+                    break;
+                }
+                if (!providesTrait(parameterNode, NodeValueTrait.VILLAGER_TRADE)) {
+                    sendIncompatibleParameterMessage(parameterNode);
                     result = false;
                     break;
                 }
@@ -15324,8 +14935,8 @@ public class Node {
                 break;
             }
             case SENSOR_CHAT_MESSAGE: {
-                Node playerNode = getAttachedParameter(0);
-                Node messageNode = getAttachedParameter(1);
+                Node playerNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
+                Node messageNode = resolveSensorParameterNode(getAttachedParameter(1), 1);
                 if (playerNode == null || messageNode == null) {
                     net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                     if (client != null) {
@@ -15334,12 +14945,12 @@ public class Node {
                     result = false;
                     break;
                 }
-                if (playerNode.getType() != NodeType.PARAM_PLAYER) {
+                if (!providesTrait(playerNode, NodeValueTrait.PLAYER)) {
                     sendIncompatibleParameterMessage(playerNode);
                     result = false;
                     break;
                 }
-                if (messageNode.getType() != NodeType.PARAM_MESSAGE) {
+                if (!providesTrait(messageNode, NodeValueTrait.MESSAGE)) {
                     sendIncompatibleParameterMessage(messageNode);
                     result = false;
                     break;
@@ -15379,16 +14990,7 @@ public class Node {
     }
 
     private boolean sensorRequiresParameterNode() {
-        return switch (type) {
-            case SENSOR_TOUCHING_BLOCK,
-                 SENSOR_TOUCHING_ENTITY,
-                 SENSOR_AT_COORDINATES,
-                 SENSOR_ITEM_IN_INVENTORY,
-                 SENSOR_ITEM_IN_SLOT,
-                 SENSOR_VILLAGER_TRADE,
-                 SENSOR_CHAT_MESSAGE -> true;
-            default -> false;
-        };
+        return NodeTraitRegistry.isSensorParameterRequired(type);
     }
 
     private boolean evaluateOperatorEquals() {

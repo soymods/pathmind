@@ -1,3 +1,5 @@
+<div align="center">
+
 # Pathmind
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21--1.21.11-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
@@ -9,6 +11,14 @@
 <b>A client-side visual node editor for building workflows and automation logic in Minecraft</b>
 
 🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
+
+### ⬇️ **DOWNLOAD PATHMIND ON MODRINTH** ⬇️
+
+<a href="https://modrinth.com/mod/pathmind">
+  <img src="https://img.shields.io/badge/Modrinth-DOWNLOAD-00D5AA?style=for-the-badge&logo=modrinth&logoColor=white">
+</a>
+
+</div>
 
 ## Quick Start
 

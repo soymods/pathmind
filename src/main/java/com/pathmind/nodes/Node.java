@@ -2120,7 +2120,12 @@ public class Node {
             case POSITION:
                 return parameterProvidesCoordinates(parameterType);
             case LOOK_ORIENTATION:
-                return parameterProvidesCoordinates(parameterType);
+                if (parameterProvidesCoordinates(parameterType)) {
+                    return true;
+                }
+                EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(parameterType);
+                return traits.contains(NodeValueTrait.DIRECTION)
+                    || traits.contains(NodeValueTrait.ROTATION);
             default:
                 return false;
         }
@@ -2951,21 +2956,17 @@ public class Node {
                 break;
             }
             case SENSOR_LOOK_DIRECTION: {
-                Optional<Direction> lookDirection = getLookDirection();
-                if (lookDirection.isEmpty()) {
-                    break;
+                MinecraftClient client = MinecraftClient.getInstance();
+                if (client != null && client.player != null) {
+                    float yaw = client.player.getYaw();
+                    float pitch = client.player.getPitch();
+                    String yawValue = formatFloat(yaw);
+                    String pitchValue = formatFloat(pitch);
+                    values.put("Yaw", yawValue);
+                    values.put(normalizeParameterKey("Yaw"), yawValue);
+                    values.put("Pitch", pitchValue);
+                    values.put(normalizeParameterKey("Pitch"), pitchValue);
                 }
-                String directionValue = lookDirection.get().toString().toLowerCase(Locale.ROOT);
-                values.put("Direction", directionValue);
-                values.put(normalizeParameterKey("Direction"), directionValue);
-                values.put("Side", directionValue);
-                values.put(normalizeParameterKey("Side"), directionValue);
-                values.put("Face", directionValue);
-                values.put(normalizeParameterKey("Face"), directionValue);
-                values.put("Text", directionValue);
-                values.put(normalizeParameterKey("Text"), directionValue);
-                values.put("Message", directionValue);
-                values.put(normalizeParameterKey("Message"), directionValue);
                 break;
             }
             case SENSOR_TARGETED_BLOCK_FACE: {
@@ -4503,6 +4504,23 @@ public class Node {
 
         Float yawParam = parseNodeFloat(parameterNode, "Yaw");
         Float pitchParam = parseNodeFloat(parameterNode, "Pitch");
+        if (yawParam == null && pitchParam == null && providesTrait(parameterNode, NodeValueTrait.ROTATION)) {
+            Map<String, String> exported = parameterNode.exportParameterValues();
+            yawParam = parseFloatOrNull(exported.get("Yaw"));
+            pitchParam = parseFloatOrNull(exported.get("Pitch"));
+            if (data != null) {
+                Double distance = parseDoubleOrNull(exported.get("Distance"));
+                if (distance == null) {
+                    distance = parseDoubleOrNull(exported.get("LookDistance"));
+                }
+                if (distance == null) {
+                    distance = parseDoubleOrNull(exported.get("Range"));
+                }
+                if (distance != null && distance > 0.0) {
+                    data.resolvedLookDistance = distance;
+                }
+            }
+        }
         if (yawParam != null || pitchParam != null) {
             if (yawParam != null) {
                 setParameterIfPresent("Yaw", formatFloat(yawParam));
@@ -4526,8 +4544,24 @@ public class Node {
             return true;
         }
 
-        if (parameterNode.getType() == NodeType.PARAM_DIRECTION) {
+        if (providesTrait(parameterNode, NodeValueTrait.DIRECTION)) {
             String direction = getParameterString(parameterNode, "Direction");
+            if (direction == null || direction.isEmpty()) {
+                direction = getParameterString(parameterNode, "Side");
+            }
+            if (direction == null || direction.isEmpty()) {
+                direction = getParameterString(parameterNode, "Face");
+            }
+            if (direction == null || direction.isEmpty()) {
+                Map<String, String> exported = parameterNode.exportParameterValues();
+                direction = exported.get("Direction");
+                if (direction == null || direction.isEmpty()) {
+                    direction = exported.get("Side");
+                }
+                if (direction == null || direction.isEmpty()) {
+                    direction = exported.get("Face");
+                }
+            }
             if (direction != null) {
                 String normalized = direction.trim().toLowerCase(Locale.ROOT);
                 Float yaw = null;
@@ -4901,6 +4935,28 @@ public class Node {
         }
         try {
             return Float.parseFloat(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Float parseFloatOrNull(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return Float.parseFloat(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Double parseDoubleOrNull(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(value.trim());
         } catch (NumberFormatException e) {
             return null;
         }

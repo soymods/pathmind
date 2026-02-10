@@ -90,7 +90,7 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(NodeValueTrait.COORDINATE));
         traits.put(NodeType.SENSOR_TARGETED_BLOCK, EnumSet.of(NodeValueTrait.BLOCK));
         traits.put(NodeType.SENSOR_TARGETED_BLOCK_FACE, EnumSet.of(NodeValueTrait.DIRECTION));
-        traits.put(NodeType.SENSOR_LOOK_DIRECTION, EnumSet.of(NodeValueTrait.DIRECTION));
+        traits.put(NodeType.SENSOR_LOOK_DIRECTION, EnumSet.of(NodeValueTrait.ROTATION));
 
         traits.put(NodeType.OPERATOR_RANDOM, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_MOD, EnumSet.of(NodeValueTrait.NUMBER));

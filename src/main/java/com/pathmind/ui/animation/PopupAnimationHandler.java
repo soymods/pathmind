@@ -102,6 +102,14 @@ public class PopupAnimationHandler {
     }
 
     /**
+     * Gets the current popup animation progress (0.0 to 1.0).
+     * Use this when you want both open and close to fade content.
+     */
+    public float getPopupProgress() {
+        return popupScale.getValue();
+    }
+
+    /**
      * Returns true if the popup is currently visible or animating.
      */
     public boolean isVisible() {

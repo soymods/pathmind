@@ -1,7 +1,7 @@
 package com.pathmind.mixin;
 
 import com.pathmind.util.OverlayProtection;
-import net.minecraft.client.render.item.ItemRenderer;
+import net.minecraft.client.gui.DrawContext;
 import net.minecraft.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Block direct item rendering from overlay mods when the Pathmind GUI is open.
  */
-@Mixin(value = ItemRenderer.class, priority = 2000)
+@Mixin(value = DrawContext.class, priority = 2000)
 public class ItemRendererMixin {
 
     private static boolean pathmind$shouldBlockExternalDraw() {
@@ -19,24 +19,48 @@ public class ItemRendererMixin {
     }
 
     @Inject(
-        method = "renderInGui(Lnet/minecraft/item/ItemStack;II)V",
+        method = "drawItem(Lnet/minecraft/item/ItemStack;II)V",
         at = @At("HEAD"),
         cancellable = true,
         require = 0
     )
-    private void pathmind$blockRenderInGui(ItemStack stack, int x, int y, CallbackInfo ci) {
+    private void pathmind$blockDrawItem(ItemStack stack, int x, int y, CallbackInfo ci) {
         if (pathmind$shouldBlockExternalDraw()) {
             ci.cancel();
         }
     }
 
     @Inject(
-        method = "renderInGuiWithOverrides(Lnet/minecraft/item/ItemStack;II)V",
+        method = "drawItem(Lnet/minecraft/item/ItemStack;III)V",
         at = @At("HEAD"),
         cancellable = true,
         require = 0
     )
-    private void pathmind$blockRenderInGuiWithOverrides(ItemStack stack, int x, int y, CallbackInfo ci) {
+    private void pathmind$blockDrawItemSeeded(ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
+        if (pathmind$shouldBlockExternalDraw()) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(
+        method = "drawItemWithoutEntity(Lnet/minecraft/item/ItemStack;II)V",
+        at = @At("HEAD"),
+        cancellable = true,
+        require = 0
+    )
+    private void pathmind$blockDrawItemWithoutEntity(ItemStack stack, int x, int y, CallbackInfo ci) {
+        if (pathmind$shouldBlockExternalDraw()) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(
+        method = "drawItemWithoutEntity(Lnet/minecraft/item/ItemStack;III)V",
+        at = @At("HEAD"),
+        cancellable = true,
+        require = 0
+    )
+    private void pathmind$blockDrawItemWithoutEntitySeeded(ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
         if (pathmind$shouldBlockExternalDraw()) {
             ci.cancel();
         }

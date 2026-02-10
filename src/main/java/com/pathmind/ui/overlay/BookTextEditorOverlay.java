@@ -147,7 +147,7 @@ public class BookTextEditorOverlay {
         }
         if (!popupAnimation.isVisible()) return;
 
-        float popupAlpha = popupAnimation.getPopupAlpha();
+        float popupAlpha = popupAnimation.getPopupProgress();
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         // Get animated popup bounds
@@ -165,24 +165,26 @@ public class BookTextEditorOverlay {
 
         // Render title
         String title = "Edit Book Text";
+        int titleColor = applyPopupAlpha(UITheme.TEXT_HEADER, popupAlpha);
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(title),
             popupX + (POPUP_WIDTH - textRenderer.getWidth(title)) / 2,
             popupY + 12,
-            UITheme.TEXT_HEADER
+            titleColor
         );
 
         String pageLabel = "Page " + currentPage;
         int pageLabelWidth = textRenderer.getWidth(pageLabel);
         int pageLabelX = popupX + POPUP_WIDTH - TEXT_AREA_MARGIN - PAGE_BUTTON_SIZE * 2 - PAGE_BUTTON_GAP - 8 - pageLabelWidth;
         int pageLabelY = popupY + 12;
+        int pageLabelColor = applyPopupAlpha(UITheme.TEXT_SECONDARY, popupAlpha);
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(pageLabel),
             Math.max(popupX + TEXT_AREA_MARGIN, pageLabelX),
             pageLabelY,
-            UITheme.TEXT_SECONDARY
+            pageLabelColor
         );
 
         // Render text area
@@ -191,8 +193,10 @@ public class BookTextEditorOverlay {
         int textAreaWidth = POPUP_WIDTH - 2 * TEXT_AREA_MARGIN;
         int textAreaHeight = POPUP_HEIGHT - TITLE_HEIGHT - 8 - BUTTON_HEIGHT - BUTTON_BOTTOM_MARGIN - 30;
 
-        context.fill(textAreaX, textAreaY, textAreaX + textAreaWidth, textAreaY + textAreaHeight, UITheme.BACKGROUND_INPUT);
-        DrawContextBridge.drawBorder(context, textAreaX, textAreaY, textAreaWidth, textAreaHeight, UITheme.ACCENT_DEFAULT);
+        context.fill(textAreaX, textAreaY, textAreaX + textAreaWidth, textAreaY + textAreaHeight,
+            applyPopupAlpha(UITheme.BACKGROUND_INPUT, popupAlpha));
+        DrawContextBridge.drawBorder(context, textAreaX, textAreaY, textAreaWidth, textAreaHeight,
+            applyPopupAlpha(UITheme.ACCENT_DEFAULT, popupAlpha));
 
         // Render text content with word wrapping
         int textX = textAreaX + TEXT_AREA_PADDING;
@@ -205,13 +209,14 @@ public class BookTextEditorOverlay {
 
         // Render the text with wrapping
         String displayText = textContent != null ? textContent : "";
-        renderWrappedText(context, textRenderer, displayText, textX, textY - scrollOffset, maxTextWidth, lineHeight, textAreaHeight);
+        renderWrappedText(context, textRenderer, displayText, textX, textY - scrollOffset, maxTextWidth, lineHeight, textAreaHeight, popupAlpha);
 
         // Render caret
         updateCaretBlinkState();
         if (caretVisible) {
             int[] caretPos = getCaretScreenPosition(textRenderer, textX, textY - scrollOffset, maxTextWidth, lineHeight);
-            context.fill(caretPos[0], caretPos[1], caretPos[0] + 1, caretPos[1] + textRenderer.fontHeight, UITheme.TEXT_PRIMARY);
+            context.fill(caretPos[0], caretPos[1], caretPos[0] + 1, caretPos[1] + textRenderer.fontHeight,
+                applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
         }
 
         context.disableScissor();
@@ -220,6 +225,7 @@ public class BookTextEditorOverlay {
         int charCount = textContent != null ? textContent.length() : 0;
         String counterText = charCount + "/" + maxChars;
         int counterColor = charCount >= maxChars ? UITheme.STATE_WARNING : UITheme.TEXT_SECONDARY;
+        counterColor = applyPopupAlpha(counterColor, popupAlpha);
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(counterText),
@@ -229,15 +235,15 @@ public class BookTextEditorOverlay {
         );
 
         // Render buttons
-        renderButton(context, textRenderer, prevPageButton, mouseX, mouseY);
-        renderButton(context, textRenderer, nextPageButton, mouseX, mouseY);
-        renderButton(context, textRenderer, saveButton, mouseX, mouseY);
-        renderButton(context, textRenderer, cancelButton, mouseX, mouseY);
+        renderButton(context, textRenderer, prevPageButton, mouseX, mouseY, popupAlpha);
+        renderButton(context, textRenderer, nextPageButton, mouseX, mouseY, popupAlpha);
+        renderButton(context, textRenderer, saveButton, mouseX, mouseY, popupAlpha);
+        renderButton(context, textRenderer, cancelButton, mouseX, mouseY, popupAlpha);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
     private void renderWrappedText(DrawContext context, TextRenderer textRenderer, String text,
-                                    int x, int y, int maxWidth, int lineHeight, int areaHeight) {
+                                    int x, int y, int maxWidth, int lineHeight, int areaHeight, float popupAlpha) {
         if (text == null || text.isEmpty()) {
             return;
         }
@@ -252,7 +258,8 @@ public class BookTextEditorOverlay {
             if (c == '\n') {
                 // Render current line and move to next
                 if (currentY >= y - lineHeight && currentY < y + areaHeight + lineHeight) {
-                    context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY, UITheme.TEXT_PRIMARY);
+                    context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY,
+                        applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
                 }
                 currentLine = new StringBuilder();
                 currentY += lineHeight;
@@ -263,7 +270,8 @@ public class BookTextEditorOverlay {
             if (textRenderer.getWidth(testLine) > maxWidth) {
                 // Line is full, render it and start new line
                 if (currentY >= y - lineHeight && currentY < y + areaHeight + lineHeight) {
-                    context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY, UITheme.TEXT_PRIMARY);
+                    context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY,
+                        applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
                 }
                 currentLine = new StringBuilder();
                 currentLine.append(c);
@@ -275,7 +283,8 @@ public class BookTextEditorOverlay {
 
         // Render remaining text
         if (currentLine.length() > 0 && currentY >= y - lineHeight && currentY < y + areaHeight + lineHeight) {
-            context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY, UITheme.TEXT_PRIMARY);
+            context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY,
+                applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
         }
     }
 
@@ -314,7 +323,7 @@ public class BookTextEditorOverlay {
         return new int[]{currentX, currentY};
     }
 
-    private void renderButton(DrawContext context, TextRenderer textRenderer, ButtonWidget button, int mouseX, int mouseY) {
+    private void renderButton(DrawContext context, TextRenderer textRenderer, ButtonWidget button, int mouseX, int mouseY, float popupAlpha) {
         if (button == null) return;
 
         boolean hovered = mouseX >= button.getX() && mouseX <= button.getX() + button.getWidth() &&
@@ -330,14 +339,21 @@ public class BookTextEditorOverlay {
 
         context.fill(button.getX(), button.getY(),
                     button.getX() + button.getWidth(),
-                    button.getY() + button.getHeight(), bgColor);
+                    button.getY() + button.getHeight(), applyPopupAlpha(bgColor, popupAlpha));
         DrawContextBridge.drawBorder(context, button.getX(), button.getY(),
-                                     button.getWidth(), button.getHeight(), borderColor);
+                                     button.getWidth(), button.getHeight(), applyPopupAlpha(borderColor, popupAlpha));
 
         String label = button.getMessage().getString();
         int textX = button.getX() + (button.getWidth() - textRenderer.getWidth(label)) / 2;
         int textY = button.getY() + (button.getHeight() - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, UITheme.TEXT_PRIMARY);
+        context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY,
+            applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
+    }
+
+    private int applyPopupAlpha(int color, float alphaMultiplier) {
+        int baseAlpha = (color >>> 24) & 0xFF;
+        int applied = Math.round(baseAlpha * MathHelper.clamp(alphaMultiplier, 0f, 1f));
+        return (applied << 24) | (color & 0x00FFFFFF);
     }
 
     private void updateCaretBlinkState() {

@@ -129,8 +129,9 @@ public final class SettingsManager {
     public static long getNodeDelayMs() {
         Settings settings = getCurrent();
         int delay = settings.nodeDelayMs == null ? 150 : settings.nodeDelayMs;
-        if (delay < 0) {
-            delay = 0;
+        if (delay < 1) {
+            // Allow 0 in UI, but enforce a 1ms minimum for execution stability.
+            delay = 1;
         }
         if (delay > 1000) {
             delay = 1000;

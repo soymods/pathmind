@@ -14384,7 +14384,7 @@ public class Node {
             return null;
         }
         String state = getParameterString(node, "State");
-        if (state == null || state.isEmpty()) {
+        if (state == null || state.isEmpty() || isAnySelectionValue(state)) {
             return blockId;
         }
         Optional<String> combined = BlockSelection.combine(blockId, state);

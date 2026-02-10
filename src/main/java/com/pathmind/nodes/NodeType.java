@@ -71,6 +71,7 @@ public enum NodeType {
     // Player interaction commands
     USE("pathmind.node.type.use", 0xFF8BC34A, "pathmind.node.type.use.desc"),
     INTERACT("pathmind.node.type.interact", 0xFF4DB6AC, "pathmind.node.type.interact.desc"),
+    BREAK("pathmind.node.type.break", 0xFF4DB6AC, "pathmind.node.type.break.desc"),
     PLACE_HAND("pathmind.node.type.placeHand", 0xFFBA68C8, "pathmind.node.type.placeHand.desc"),
     TRADE("pathmind.node.type.trade", 0xFF7E57C2, "pathmind.node.type.trade.desc"),
 
@@ -267,6 +268,7 @@ public enum NodeType {
             case SWING:
             case USE:
             case INTERACT:
+            case BREAK:
             case PLACE_HAND:
             case TRADE:
                 return NodeCategory.INTERACTION;

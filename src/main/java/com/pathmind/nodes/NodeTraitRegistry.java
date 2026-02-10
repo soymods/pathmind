@@ -120,6 +120,10 @@ public final class NodeTraitRegistry {
             NodeValueTrait.PLAYER,
             NodeValueTrait.LIST_ITEM
         ));
+        accepted.put(NodeType.BREAK, EnumSet.of(
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.COORDINATE
+        ));
 
         accepted.put(NodeType.OPERATOR_EQUALS, EnumSet.of(NodeValueTrait.ANY));
         accepted.put(NodeType.OPERATOR_NOT, EnumSet.of(NodeValueTrait.ANY));
@@ -263,6 +267,7 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.PLACE_HAND, 2);
         slotCounts.put(NodeType.MOVE_ITEM, 2);
         slotCounts.put(NodeType.WALK, 2);
+        slotCounts.put(NodeType.BREAK, 1);
         slotCounts.put(NodeType.SENSOR_CHAT_MESSAGE, 2);
         slotCounts.put(NodeType.SENSOR_ITEM_IN_SLOT, 2);
         PARAMETER_SLOT_COUNTS = slotCounts;
@@ -277,6 +282,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.PLACE_HAND, new String[]{"Source", "Position"});
         slotLabels.put(NodeType.MOVE_ITEM, new String[]{"Source Slot", "Target Slot"});
         slotLabels.put(NodeType.WALK, new String[]{"Direction", "Duration/Distance"});
+        slotLabels.put(NodeType.BREAK, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
         slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Slot"});
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});

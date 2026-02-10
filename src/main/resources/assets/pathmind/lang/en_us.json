@@ -175,6 +175,8 @@
   "pathmind.node.type.use.desc": "Uses the selected hand with fine-grained control",
   "pathmind.node.type.interact": "Interact",
   "pathmind.node.type.interact.desc": "Interacts with the targeted block or entity",
+  "pathmind.node.type.break": "Break",
+  "pathmind.node.type.break.desc": "Breaks a targeted or specified block",
   "pathmind.node.type.placeHand": "Place",
   "pathmind.node.type.placeHand.desc": "Places a block from the selected hand",
   "pathmind.node.type.trade": "Trade",

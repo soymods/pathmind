@@ -2096,6 +2096,8 @@ public class Node {
                     return EnumSet.of(ParameterUsage.LOOK_ORIENTATION);
                 }
                 return EnumSet.noneOf(ParameterUsage.class);
+            case BREAK:
+                return EnumSet.of(ParameterUsage.POSITION);
             case PLACE:
                 if (slotIndex == 0 || slotIndex == 1) {
                     return EnumSet.of(ParameterUsage.POSITION);
@@ -4104,6 +4106,9 @@ public class Node {
                 handled = true;
             }
         }
+        if (!handled && type == NodeType.BREAK && providesTrait(parameterNode, NodeValueTrait.BLOCK)) {
+            handled = true;
+        }
 
         if (!handled) {
             if (future != null && !future.isDone()) {
@@ -5479,6 +5484,9 @@ public class Node {
                 break;
             case USE:
                 executeUseCommand(future);
+                break;
+            case BREAK:
+                executeBreakCommand(future);
                 break;
             case PLACE_HAND:
                 executePlaceHandCommand(future);
@@ -13607,6 +13615,150 @@ public class Node {
 
         restoreSneakState.run();
         future.complete(null);
+    }
+
+    private void executeBreakCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        Node parameterNode = getAttachedParameter(0);
+        if (parameterNode == null) {
+            sendNodeErrorMessage(client, "Break requires a block or coordinate parameter.");
+            future.complete(null);
+            return;
+        }
+
+        BlockPos targetPos = null;
+        Direction breakFace = null;
+        if (runtimeParameterData != null) {
+            if (runtimeParameterData.targetBlockPos != null) {
+                targetPos = runtimeParameterData.targetBlockPos;
+            } else if (runtimeParameterData.targetVector != null) {
+                Vec3d vec = runtimeParameterData.targetVector;
+                targetPos = new BlockPos(MathHelper.floor(vec.x), MathHelper.floor(vec.y), MathHelper.floor(vec.z));
+            }
+        }
+
+        if (targetPos == null && providesTrait(parameterNode, NodeValueTrait.BLOCK)) {
+            List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+            if (selections.isEmpty()) {
+                sendNodeErrorMessage(client, "No block selected for Break.");
+                future.complete(null);
+                return;
+            }
+            HitResult hit = client.crosshairTarget;
+            if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK) {
+                BlockPos hitPos = blockHit.getBlockPos();
+                if (hitPos != null) {
+                    BlockState hitState = client.world.getBlockState(hitPos);
+                    boolean matches = false;
+                    for (BlockSelection selection : selections) {
+                        if (selection.matches(hitState)) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                    if (matches) {
+                        targetPos = hitPos;
+                        breakFace = blockHit.getSide();
+                    }
+                }
+            }
+            if (targetPos == null) {
+                Optional<BlockPos> nearest = findNearestBlock(client, selections, Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED));
+                if (nearest.isPresent()) {
+                    targetPos = nearest.get();
+                }
+            }
+        }
+
+        if (targetPos == null) {
+            sendNodeErrorMessage(client, "No matching block found in reach for Break.");
+            future.complete(null);
+            return;
+        }
+
+        if (runtimeParameterData == null) {
+            runtimeParameterData = new RuntimeParameterData();
+        }
+        runtimeParameterData.targetBlockPos = targetPos;
+
+        Vec3d eyePos = client.player.getEyePos();
+        Vec3d center = Vec3d.ofCenter(targetPos);
+        if (eyePos.squaredDistanceTo(center) > DEFAULT_REACH_DISTANCE_SQUARED) {
+            sendNodeErrorMessage(client, "Target block is out of reach.");
+            future.complete(null);
+            return;
+        }
+
+        if (breakFace == null) {
+            Vec3d delta = center.subtract(eyePos);
+            breakFace = Direction.getFacing(delta.x, delta.y, delta.z);
+            if (breakFace == null) {
+                breakFace = Direction.UP;
+            }
+        }
+
+        BlockState state = client.world.getBlockState(targetPos);
+        if (state.isAir()) {
+            future.complete(null);
+            return;
+        }
+        float delta = state.calcBlockBreakingDelta(client.player, client.world, targetPos);
+        if (delta <= 0.0F) {
+            sendNodeErrorMessage(client, "Block cannot be broken.");
+            future.complete(null);
+            return;
+        }
+        int ticksToBreak = Math.max(1, (int) Math.ceil(1.0F / delta));
+
+        Direction finalBreakFace = breakFace;
+        BlockPos finalTargetPos = targetPos;
+        new Thread(() -> {
+            try {
+                runOnClientThread(client, () -> {
+                    orientPlayerTowardsRuntimeTarget(client, runtimeParameterData);
+                    if (client.interactionManager != null) {
+                        client.interactionManager.attackBlock(finalTargetPos, finalBreakFace);
+                    }
+                    client.player.swingHand(Hand.MAIN_HAND);
+                });
+
+                for (int i = 0; i < ticksToBreak; i++) {
+                    Thread.sleep(50L);
+                    Boolean isAir = supplyFromClient(client,
+                        () -> client.world == null || client.world.getBlockState(finalTargetPos).isAir());
+                    if (Boolean.TRUE.equals(isAir)) {
+                        break;
+                    }
+                    runOnClientThread(client, () -> {
+                        if (client.interactionManager != null) {
+                            client.interactionManager.updateBlockBreakingProgress(finalTargetPos, finalBreakFace);
+                        }
+                    });
+                }
+
+                runOnClientThread(client, () -> {
+                    if (client.player != null && client.player.networkHandler != null) {
+                        client.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
+                            PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
+                            finalTargetPos,
+                            finalBreakFace
+                        ));
+                    }
+                });
+                future.complete(null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            }
+        }, "Pathmind-Break").start();
     }
 
     private void executeTradeCommand(CompletableFuture<Void> future) {

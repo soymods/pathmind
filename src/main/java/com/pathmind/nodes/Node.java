@@ -275,6 +275,7 @@ public class Node {
     private int startNodeNumber;
     private final List<String> messageLines;
     private String bookText;
+    private final List<String> bookPages;
     private int messageFieldContentWidthOverride;
     private int parameterFieldWidthOverride;
     private int coordinateFieldWidthOverride;
@@ -306,6 +307,7 @@ public class Node {
             this.messageLines.add("Hello World");
         }
         this.bookText = "";
+        this.bookPages = new ArrayList<>();
         this.messageFieldContentWidthOverride = 0;
         this.parameterFieldWidthOverride = 0;
         this.coordinateFieldWidthOverride = 0;
@@ -3475,21 +3477,68 @@ public class Node {
     }
 
     public String getBookText() {
-        return bookText != null ? bookText : "";
+        return getBookTextForPage(1);
     }
 
     public void setBookText(String text) {
-        if (text == null) {
-            this.bookText = "";
-        } else if (text.length() > BOOK_PAGE_MAX_CHARS) {
-            this.bookText = text.substring(0, BOOK_PAGE_MAX_CHARS);
-        } else {
-            this.bookText = text;
-        }
+        setBookTextForPage(1, text);
     }
 
     public int getBookTextMaxChars() {
         return BOOK_PAGE_MAX_CHARS;
+    }
+
+    public String getBookTextForPage(int pageNumber) {
+        int pageIndex = Math.max(0, pageNumber - 1);
+        if (pageIndex < bookPages.size()) {
+            String value = bookPages.get(pageIndex);
+            return value != null ? value : "";
+        }
+        if (pageIndex == 0 && bookText != null) {
+            return bookText;
+        }
+        return "";
+    }
+
+    public void setBookTextForPage(int pageNumber, String text) {
+        int safePageNumber = Math.max(1, pageNumber);
+        ensureBookPageCapacity(safePageNumber);
+        String normalized = text == null ? "" : text;
+        if (normalized.length() > BOOK_PAGE_MAX_CHARS) {
+            normalized = normalized.substring(0, BOOK_PAGE_MAX_CHARS);
+        }
+        bookPages.set(safePageNumber - 1, normalized);
+        if (safePageNumber == 1) {
+            bookText = normalized;
+        }
+    }
+
+    public List<String> getBookPages() {
+        return new ArrayList<>(bookPages);
+    }
+
+    public void setBookPages(List<String> pages) {
+        bookPages.clear();
+        if (pages != null) {
+            for (String page : pages) {
+                String normalized = page == null ? "" : page;
+                if (normalized.length() > BOOK_PAGE_MAX_CHARS) {
+                    normalized = normalized.substring(0, BOOK_PAGE_MAX_CHARS);
+                }
+                bookPages.add(normalized);
+            }
+        }
+        if (bookPages.isEmpty()) {
+            bookPages.add("");
+        }
+        bookText = bookPages.get(0);
+    }
+
+    private void ensureBookPageCapacity(int pageNumber) {
+        int targetSize = Math.max(1, pageNumber);
+        while (bookPages.size() < targetSize) {
+            bookPages.add("");
+        }
     }
 
     public int getBookTextDisplayHeight() {
@@ -10684,8 +10733,8 @@ public class Node {
             return;
         }
 
-        String text = getBookText();
         int pageNumber = getIntParameter("Page", 1);
+        String text = getBookTextForPage(pageNumber);
         // Convert to 0-indexed page
         int pageIndex = Math.max(0, pageNumber - 1);
 

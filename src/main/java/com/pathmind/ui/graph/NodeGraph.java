@@ -4795,24 +4795,20 @@ public class NodeGraph {
         int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2;
         drawNodeText(context, textRenderer, Text.literal(buttonLabel), textX, textY, textColor);
 
-        // Render Page label and field
-        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+        // Render Page label and value (read-only)
+        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
         int labelTop = node.getBookTextPageLabelTop() - cameraY;
-        drawNodeText(context, textRenderer, Text.literal("Page:"), buttonLeft, labelTop, labelColor);
+        drawNodeText(context, textRenderer, Text.literal("Page #:"), buttonLeft, labelTop, labelColor);
 
         int fieldTop = node.getBookTextPageFieldTop() - cameraY;
-        int fieldWidth = node.getBookTextPageFieldWidth();
         int fieldHeight = node.getBookTextPageFieldHeight();
-
-        int fieldFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
-        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
-
-        context.fill(buttonLeft, fieldTop, buttonLeft + fieldWidth, fieldTop + fieldHeight, fieldFill);
-        DrawContextBridge.drawBorderInLayer(context, buttonLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
 
         // Display the page value
         NodeParameter pageParam = node.getParameter("Page");
         String pageValue = pageParam != null ? pageParam.getDisplayValue() : "1";
+        if (pageValue == null) {
+            pageValue = "";
+        }
         int pageTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         drawNodeText(context, textRenderer, Text.literal(pageValue), buttonLeft + 4, fieldTop + (fieldHeight - textRenderer.fontHeight) / 2, pageTextColor);
     }

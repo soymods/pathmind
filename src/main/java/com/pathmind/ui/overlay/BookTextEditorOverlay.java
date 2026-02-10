@@ -31,6 +31,8 @@ public class BookTextEditorOverlay {
     private static final int BUTTON_SPACING = 10;
     private static final int BUTTON_BOTTOM_MARGIN = 12;
     private static final int CHAR_COUNTER_MARGIN = 8;
+    private static final int PAGE_BUTTON_SIZE = 18;
+    private static final int PAGE_BUTTON_GAP = 6;
 
     private final Node node;
     private final int screenWidth;
@@ -48,12 +50,15 @@ public class BookTextEditorOverlay {
     private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
     private ButtonWidget saveButton;
     private ButtonWidget cancelButton;
+    private ButtonWidget prevPageButton;
+    private ButtonWidget nextPageButton;
     private boolean pendingClose = false;
 
     private long caretBlinkLastToggle = 0L;
     private boolean caretVisible = true;
     private int scrollOffset = 0;
     private int maxChars;
+    private int currentPage;
 
     public BookTextEditorOverlay(Node node, int screenWidth, int screenHeight,
                                   Runnable onClose, Consumer<Node> onSave) {
@@ -62,7 +67,8 @@ public class BookTextEditorOverlay {
         this.screenHeight = screenHeight;
         this.onClose = onClose;
         this.onSave = onSave;
-        this.textContent = node.getBookText();
+        this.currentPage = getPageNumberFromNode();
+        this.textContent = node.getBookTextForPage(currentPage);
         this.maxChars = node.getBookTextMaxChars();
         this.caretPosition = textContent.length();
         this.selectionStart = -1;
@@ -81,6 +87,19 @@ public class BookTextEditorOverlay {
         int buttonY = popupY + POPUP_HEIGHT - BUTTON_BOTTOM_MARGIN - BUTTON_HEIGHT;
         int buttonsWidth = BUTTON_WIDTH * 2 + BUTTON_SPACING;
         int buttonStartX = popupX + (POPUP_WIDTH - buttonsWidth) / 2;
+
+        int pageButtonY = popupY + 8;
+        int pageButtonRight = popupX + POPUP_WIDTH - TEXT_AREA_MARGIN;
+        int nextButtonX = pageButtonRight - PAGE_BUTTON_SIZE;
+        int prevButtonX = nextButtonX - PAGE_BUTTON_SIZE - PAGE_BUTTON_GAP;
+
+        prevPageButton = ButtonWidget.builder(Text.literal("<"), button -> changePage(currentPage - 1))
+            .dimensions(prevButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
+            .build();
+
+        nextPageButton = ButtonWidget.builder(Text.literal(">"), button -> changePage(currentPage + 1))
+            .dimensions(nextButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
+            .build();
 
         saveButton = ButtonWidget.builder(Text.literal("Save"), button -> save())
             .dimensions(buttonStartX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
@@ -154,6 +173,18 @@ public class BookTextEditorOverlay {
             UITheme.TEXT_HEADER
         );
 
+        String pageLabel = "Page " + currentPage;
+        int pageLabelWidth = textRenderer.getWidth(pageLabel);
+        int pageLabelX = popupX + POPUP_WIDTH - TEXT_AREA_MARGIN - PAGE_BUTTON_SIZE * 2 - PAGE_BUTTON_GAP - 8 - pageLabelWidth;
+        int pageLabelY = popupY + 12;
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(pageLabel),
+            Math.max(popupX + TEXT_AREA_MARGIN, pageLabelX),
+            pageLabelY,
+            UITheme.TEXT_SECONDARY
+        );
+
         // Render text area
         int textAreaX = popupX + TEXT_AREA_MARGIN;
         int textAreaY = popupY + TITLE_HEIGHT + 8;
@@ -198,6 +229,8 @@ public class BookTextEditorOverlay {
         );
 
         // Render buttons
+        renderButton(context, textRenderer, prevPageButton, mouseX, mouseY);
+        renderButton(context, textRenderer, nextPageButton, mouseX, mouseY);
         renderButton(context, textRenderer, saveButton, mouseX, mouseY);
         renderButton(context, textRenderer, cancelButton, mouseX, mouseY);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
@@ -472,6 +505,16 @@ public class BookTextEditorOverlay {
             return true;
         }
 
+        if (prevPageButton != null && isOverButton(prevPageButton, mouseX, mouseY)) {
+            changePage(currentPage - 1);
+            return true;
+        }
+
+        if (nextPageButton != null && isOverButton(nextPageButton, mouseX, mouseY)) {
+            changePage(currentPage + 1);
+            return true;
+        }
+
         return true;
     }
 
@@ -490,7 +533,7 @@ public class BookTextEditorOverlay {
     }
 
     private void save() {
-        node.setBookText(textContent);
+        node.setBookTextForPage(currentPage, textContent);
         if (onSave != null) {
             onSave.accept(node);
         }
@@ -498,10 +541,48 @@ public class BookTextEditorOverlay {
     }
 
     private void persistText() {
-        node.setBookText(textContent);
+        node.setBookTextForPage(currentPage, textContent);
         if (onSave != null) {
             onSave.accept(node);
         }
+    }
+
+    private int getPageNumberFromNode() {
+        int value = 1;
+        if (node != null) {
+            String raw = null;
+            if (node.getParameter("Page") != null) {
+                raw = node.getParameter("Page").getStringValue();
+            }
+            if (raw != null && !raw.isEmpty()) {
+                try {
+                    value = Integer.parseInt(raw.trim());
+                } catch (NumberFormatException ignored) {
+                    value = 1;
+                }
+            }
+        }
+        return Math.max(1, value);
+    }
+
+    private void changePage(int requestedPage) {
+        int nextPage = Math.max(1, requestedPage);
+        if (nextPage == currentPage) {
+            return;
+        }
+        persistText();
+        currentPage = nextPage;
+        if (node != null) {
+            node.setParameterValueAndPropagate("Page", Integer.toString(currentPage));
+            if (onSave != null) {
+                onSave.accept(node);
+            }
+        }
+        textContent = node.getBookTextForPage(currentPage);
+        caretPosition = textContent.length();
+        clearSelection();
+        scrollOffset = 0;
+        resetCaretBlink();
     }
 
     private void closeInternal() {

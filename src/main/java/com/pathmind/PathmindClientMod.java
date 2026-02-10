@@ -239,11 +239,11 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
         boolean cached = Node.warmRecipeCache(client);
+        recipeCacheWarmed = true;
         if (cached) {
-            recipeCacheWarmed = true;
             LOGGER.info("Pathmind recipe cache populated from singleplayer recipes.");
         } else {
-            recipeCacheWarmupCooldownTicks = 40;
+            LOGGER.info("Pathmind recipe cache warmup attempted but no recipes found.");
         }
     }
 

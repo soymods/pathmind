@@ -194,6 +194,17 @@ public final class BlockSelection {
         return parse(candidate).map(BlockSelection::asString);
     }
 
+    /**
+     * Returns a normalized property string for a block state (e.g., {@code age=7}).
+     */
+    public static String describeState(BlockState state) {
+        if (state == null) {
+            return "";
+        }
+        Map<Property<?>, Comparable<?>> entries = state.getEntries();
+        return buildPropertyString(entries, null);
+    }
+
     private static Optional<String> sanitizeBlockOnly(String blockId) {
         Identifier identifier = Identifier.tryParse(blockId);
         if (identifier == null || !Registries.BLOCK.containsId(identifier)) {

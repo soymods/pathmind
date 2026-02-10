@@ -1491,7 +1491,9 @@ public class NodeGraph {
 
                     boolean hideSockets = false;
                     if (draggingNode.getType() == NodeType.SENSOR_POSITION_OF
-                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
+                        || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION) {
                         resetDropTargets();
                         for (Node node : nodes) {
                             if (!node.canAcceptParameter() || node == draggingNode) {
@@ -1532,7 +1534,9 @@ public class NodeGraph {
                         if (parameterDropTarget == null
                             && (hoveredNode == null
                                 || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
-                                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE))) {
+                                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
+                                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
+                                    && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION))) {
                             for (Node node : nodes) {
                                 if (!node.canAcceptParameter() || node == draggingNode) {
                                     continue;
@@ -1618,7 +1622,10 @@ public class NodeGraph {
             return;
         }
 
-        if (nodeType == NodeType.SENSOR_POSITION_OF || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+        if (nodeType == NodeType.SENSOR_POSITION_OF
+            || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            || nodeType == NodeType.SENSOR_TARGETED_BLOCK
+            || nodeType == NodeType.SENSOR_LOOK_DIRECTION) {
             Node parameterCandidate = new Node(nodeType, worldMouseX, worldMouseY);
             Node hoveredNode = getNodeAtWorld(worldMouseX, worldMouseY);
             if (hoveredNode != null) {
@@ -1632,7 +1639,9 @@ public class NodeGraph {
             if (parameterDropTarget == null
                 && (hoveredNode == null
                     || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
-                        && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE))) {
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
+                    && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION))) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1669,7 +1678,9 @@ public class NodeGraph {
             if (parameterDropTarget == null
                 && (hoveredNode == null
                     || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
-                        && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE))) {
+                        && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
+                        && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
+                        && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION))) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1710,7 +1721,10 @@ public class NodeGraph {
             assignNewStartNodeNumber(newNode);
         }
 
-        if (nodeType == NodeType.SENSOR_POSITION_OF || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+        if (nodeType == NodeType.SENSOR_POSITION_OF
+            || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            || nodeType == NodeType.SENSOR_TARGETED_BLOCK
+            || nodeType == NodeType.SENSOR_LOOK_DIRECTION) {
             Node hoveredNode = getNodeAtWorld(worldMouseX, worldMouseY);
             if (hoveredNode != null) {
                 int slotIndex = hoveredNode.getParameterSlotIndexAt(worldMouseX, worldMouseY);
@@ -1724,7 +1738,9 @@ public class NodeGraph {
             }
             if (hoveredNode == null
                 || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
-                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE)) {
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
+                    && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION)) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1764,7 +1780,9 @@ public class NodeGraph {
             }
             if (hoveredNode == null
                 || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
-                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE)) {
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
+                    && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
+                    && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION)) {
                 for (Node node : nodes) {
                     if (!node.canAcceptParameter()) {
                         continue;
@@ -1867,7 +1885,9 @@ public class NodeGraph {
                 }
                 rootToPromote = getRootNode(node);
             } else if ((node.getType() == NodeType.SENSOR_POSITION_OF
-                || node.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE)
+                || node.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                || node.getType() == NodeType.SENSOR_TARGETED_BLOCK
+                || node.getType() == NodeType.SENSOR_LOOK_DIRECTION)
                 && parameterDropTarget != null
                 && parameterDropSlotIndex != null) {
                 Node target = parameterDropTarget;
@@ -1955,7 +1975,9 @@ public class NodeGraph {
 
         if ((draggingNode.isParameterNode()
             || draggingNode.getType() == NodeType.SENSOR_POSITION_OF
-            || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE)
+            || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
+            || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION)
             && draggingNode.getParentParameterHost() != null) {
             Node parent = draggingNode.getParentParameterHost();
             if (parent != null) {

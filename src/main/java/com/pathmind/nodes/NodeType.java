@@ -92,8 +92,9 @@ public enum NodeType {
     SENSOR_TOUCHING_BLOCK("pathmind.node.type.sensorTouchingBlock", 0xFF64B5F6, "pathmind.node.type.sensorTouchingBlock.desc"),
     SENSOR_TOUCHING_ENTITY("pathmind.node.type.sensorTouchingEntity", 0xFF64B5F6, "pathmind.node.type.sensorTouchingEntity.desc"),
     SENSOR_AT_COORDINATES("pathmind.node.type.sensorAtCoordinates", 0xFF64B5F6, "pathmind.node.type.sensorAtCoordinates.desc"),
-    SENSOR_BLOCK_AHEAD("pathmind.node.type.sensorBlockAhead", 0xFF64B5F6, "pathmind.node.type.sensorBlockAhead.desc"),
     SENSOR_POSITION_OF("pathmind.node.type.sensorPositionOf", 0xFF64B5F6, "pathmind.node.type.sensorPositionOf.desc"),
+    SENSOR_TARGETED_BLOCK("pathmind.node.type.sensorTargetedBlock", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlock.desc"),
+    SENSOR_LOOK_DIRECTION("pathmind.node.type.sensorLookDirection", 0xFF64B5F6, "pathmind.node.type.sensorLookDirection.desc"),
     SENSOR_TARGETED_BLOCK_FACE("pathmind.node.type.sensorTargetedBlockFace", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlockFace.desc"),
     SENSOR_GUI_FILLED("pathmind.node.type.sensorGuiFilled", 0xFF64B5F6, "pathmind.node.type.sensorGuiFilled.desc"),
     SENSOR_IS_DAYTIME("pathmind.node.type.sensorIsDaytime", 0xFF64B5F6, "pathmind.node.type.sensorIsDaytime.desc"),
@@ -221,8 +222,9 @@ public enum NodeType {
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
-            case SENSOR_BLOCK_AHEAD:
             case SENSOR_POSITION_OF:
+            case SENSOR_TARGETED_BLOCK:
+            case SENSOR_LOOK_DIRECTION:
             case SENSOR_TARGETED_BLOCK_FACE:
             case SENSOR_GUI_FILLED:
             case SENSOR_IS_DAYTIME:
@@ -353,7 +355,6 @@ public enum NodeType {
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
-            case SENSOR_BLOCK_AHEAD:
             case SENSOR_HEALTH_BELOW:
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ITEM_IN_INVENTORY:

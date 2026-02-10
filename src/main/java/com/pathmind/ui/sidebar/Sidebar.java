@@ -171,7 +171,8 @@ public class Sidebar {
             NodeType.SENSOR_IS_IN_LAVA,
             NodeType.SENSOR_IS_UNDERWATER,
             NodeType.SENSOR_IS_ON_GROUND,
-            NodeType.SENSOR_IS_FALLING
+            NodeType.SENSOR_IS_FALLING,
+            NodeType.SENSOR_LOOK_DIRECTION
         ));
         groups.add(new NodeGroup(
             "Input",
@@ -183,10 +184,10 @@ public class Sidebar {
             "Position & Blocks",
             baritoneAvailable,
             NodeType.SENSOR_POSITION_OF,
+            NodeType.SENSOR_TARGETED_BLOCK,
             NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_AT_COORDINATES,
-            NodeType.SENSOR_TOUCHING_BLOCK,
-            NodeType.SENSOR_BLOCK_AHEAD
+            NodeType.SENSOR_TOUCHING_BLOCK
         ));
         groups.add(new NodeGroup(
             "Entities & Visibility",

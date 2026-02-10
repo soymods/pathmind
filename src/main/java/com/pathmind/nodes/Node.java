@@ -593,7 +593,6 @@ public class Node {
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
-            case SENSOR_BLOCK_AHEAD:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_HEALTH_BELOW:
@@ -615,6 +614,8 @@ public class Node {
             case OPERATOR_GREATER:
             case OPERATOR_LESS:
             case SENSOR_GUI_FILLED:
+            case SENSOR_TARGETED_BLOCK:
+            case SENSOR_LOOK_DIRECTION:
             case SENSOR_TARGETED_BLOCK_FACE:
                 return true;
             default:
@@ -652,6 +653,12 @@ public class Node {
             return true;
         }
         if (type == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+            return false;
+        }
+        if (type == NodeType.SENSOR_TARGETED_BLOCK) {
+            return false;
+        }
+        if (type == NodeType.SENSOR_LOOK_DIRECTION) {
             return false;
         }
         if (type == NodeType.WAIT) {
@@ -701,6 +708,8 @@ public class Node {
             || type == NodeType.CROUCH
             || type == NodeType.JUMP
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            || type == NodeType.SENSOR_TARGETED_BLOCK
+            || type == NodeType.SENSOR_LOOK_DIRECTION
             || isComparisonOperator()
             || type == NodeType.OPEN_INVENTORY
             || type == NodeType.CLOSE_GUI;
@@ -718,6 +727,8 @@ public class Node {
             || (!parameterNode.isParameterNode()
                 && parameterNode.getType() != NodeType.SENSOR_POSITION_OF
                 && parameterNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
+                && parameterNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
+                && parameterNode.getType() != NodeType.SENSOR_LOOK_DIRECTION
                 && parameterNode.getType() != NodeType.VARIABLE
                 && !(type == NodeType.OPERATOR_BOOLEAN_NOT && parameterNode.isSensorNode()))) {
             return false;
@@ -729,7 +740,9 @@ public class Node {
             return parameterNode.isParameterNode()
                 || parameterNode.getType() == NodeType.VARIABLE
                 || parameterNode.getType() == NodeType.SENSOR_POSITION_OF
-                || parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE;
+                || parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                || parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
+                || parameterNode.getType() == NodeType.SENSOR_LOOK_DIRECTION;
         }
         if (!canAcceptParameterAt(slotIndex)) {
             return false;
@@ -784,22 +797,25 @@ public class Node {
         if (parameter == null) {
             return false;
         }
+        NodeType rawType = parameter.getType();
+        NodeType parameterType = rawType == NodeType.SENSOR_LOOK_DIRECTION ? NodeType.PARAM_DIRECTION : rawType;
         if (type == NodeType.OPERATOR_BOOLEAN_NOT) {
             if (slotIndex != 0) {
                 return false;
             }
             return parameter.isSensorNode()
-                || parameter.getType() == NodeType.PARAM_BOOLEAN
-                || parameter.getType() == NodeType.VARIABLE;
+                || parameterType == NodeType.PARAM_BOOLEAN
+                || rawType == NodeType.VARIABLE;
         }
         if (type == NodeType.OPERATOR_MOD) {
-            NodeType parameterType = parameter.getType();
             return parameter.isParameterNode()
-                || parameterType == NodeType.VARIABLE
+                || rawType == NodeType.VARIABLE
                 || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE;
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
+                || parameterType == NodeType.SENSOR_LOOK_DIRECTION;
         }
-        if (parameter.getType() == NodeType.VARIABLE
+        if (rawType == NodeType.VARIABLE
             && type != NodeType.SET_VARIABLE
             && type != NodeType.CHANGE_VARIABLE
             && type != NodeType.OPERATOR_EQUALS
@@ -809,30 +825,28 @@ public class Node {
             return true;
         }
         if (type == NodeType.SET_VARIABLE) {
-            NodeType parameterType = parameter.getType();
             if (slotIndex == 0) {
-                return parameterType == NodeType.VARIABLE;
+                return rawType == NodeType.VARIABLE;
             }
             return (parameter.isParameterNode()
                 || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE);
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
+                || parameterType == NodeType.SENSOR_LOOK_DIRECTION);
         }
         if (type == NodeType.CHANGE_VARIABLE) {
-            NodeType parameterType = parameter.getType();
-            return slotIndex == 0 && parameterType == NodeType.VARIABLE;
+            return slotIndex == 0 && rawType == NodeType.VARIABLE;
         }
         if (isComparisonOperator()) {
-            NodeType parameterType = parameter.getType();
             int otherSlotIndex = slotIndex == 0 ? 1 : 0;
             Node otherParameter = getAttachedParameter(otherSlotIndex);
             boolean otherIsVariable = otherParameter != null && otherParameter.getType() == NodeType.VARIABLE;
-            if (parameterType == NodeType.VARIABLE) {
+            if (rawType == NodeType.VARIABLE) {
                 return !otherIsVariable;
             }
             return true;
         }
         if (type == NodeType.WALK) {
-            NodeType parameterType = parameter.getType();
             if (slotIndex == 0) {
                 return parameterType == NodeType.PARAM_ROTATION
                     || parameterType == NodeType.PARAM_DIRECTION;
@@ -842,7 +856,6 @@ public class Node {
         if (type != NodeType.PLACE && type != NodeType.PLACE_HAND) {
             return true;
         }
-        NodeType parameterType = parameter.getType();
         if (slotIndex == 0) {
             switch (parameterType) {
                 case PARAM_BLOCK:
@@ -873,7 +886,9 @@ public class Node {
             return parameter.isParameterNode()
                 || parameterType == NodeType.VARIABLE
                 || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE;
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
+                || parameterType == NodeType.SENSOR_LOOK_DIRECTION;
         }
         if (type == NodeType.SENSOR_POSITION_OF) {
             if (slotIndex != 0) {
@@ -906,7 +921,9 @@ public class Node {
             }
             return (parameter.isParameterNode()
                 || parameterType == NodeType.SENSOR_POSITION_OF
-                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE);
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+                || parameterType == NodeType.SENSOR_TARGETED_BLOCK
+                || parameterType == NodeType.SENSOR_LOOK_DIRECTION);
         }
         if (type == NodeType.CHANGE_VARIABLE) {
             NodeType parameterType = parameter.getType();
@@ -2144,7 +2161,9 @@ public class Node {
         if (parameter == null
             || (!parameter.isParameterNode()
                 && parameter.getType() != NodeType.SENSOR_POSITION_OF
-                && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE)
+                && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
+                && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK
+                && parameter.getType() != NodeType.SENSOR_LOOK_DIRECTION)
             || parameter == this) {
             return false;
         }
@@ -2842,7 +2861,6 @@ public class Node {
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
-            case SENSOR_BLOCK_AHEAD:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_ITEM_IN_INVENTORY:
@@ -3301,6 +3319,45 @@ public class Node {
                 values.put(normalizeParameterKey("Y"), yValue);
                 values.put("Z", zValue);
                 values.put(normalizeParameterKey("Z"), zValue);
+                break;
+            }
+            case SENSOR_TARGETED_BLOCK: {
+                Optional<BlockState> targetState = getTargetedBlockState();
+                if (targetState.isEmpty()) {
+                    break;
+                }
+                BlockState state = targetState.get();
+                Identifier id = Registries.BLOCK.getId(state.getBlock());
+                if (id == null) {
+                    break;
+                }
+                String blockId = "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+                String stateValue = BlockSelection.describeState(state);
+                values.put("Block", blockId);
+                values.put(normalizeParameterKey("Block"), blockId);
+                if (stateValue == null) {
+                    stateValue = "";
+                }
+                values.put("State", stateValue);
+                values.put(normalizeParameterKey("State"), stateValue);
+                break;
+            }
+            case SENSOR_LOOK_DIRECTION: {
+                Optional<Direction> lookDirection = getLookDirection();
+                if (lookDirection.isEmpty()) {
+                    break;
+                }
+                String directionValue = lookDirection.get().toString().toLowerCase(Locale.ROOT);
+                values.put("Direction", directionValue);
+                values.put(normalizeParameterKey("Direction"), directionValue);
+                values.put("Side", directionValue);
+                values.put(normalizeParameterKey("Side"), directionValue);
+                values.put("Face", directionValue);
+                values.put(normalizeParameterKey("Face"), directionValue);
+                values.put("Text", directionValue);
+                values.put(normalizeParameterKey("Text"), directionValue);
+                values.put("Message", directionValue);
+                values.put(normalizeParameterKey("Message"), directionValue);
                 break;
             }
             case SENSOR_TARGETED_BLOCK_FACE: {
@@ -5792,7 +5849,6 @@ public class Node {
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
-            case SENSOR_BLOCK_AHEAD:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
             case SENSOR_HEALTH_BELOW:
@@ -5808,6 +5864,8 @@ public class Node {
             case SENSOR_IS_RENDERED:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_TARGETED_BLOCK:
+            case SENSOR_LOOK_DIRECTION:
             case SENSOR_TARGETED_BLOCK_FACE:
                 completeSensorEvaluation(future);
                 break;
@@ -5880,6 +5938,10 @@ public class Node {
             valueType = NodeType.PARAM_COORDINATE;
         } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
             valueType = NodeType.PARAM_MESSAGE;
+        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
+            valueType = NodeType.PARAM_BLOCK;
+        } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
+            valueType = NodeType.PARAM_DIRECTION;
         }
         ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
         manager.setRuntimeVariable(startNode, variableName.trim(), value);
@@ -10204,7 +10266,6 @@ public class Node {
         }
         switch (type) {
             case SENSOR_TOUCHING_BLOCK:
-            case SENSOR_BLOCK_AHEAD:
                 return parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_PLACE_TARGET;
             case SENSOR_TOUCHING_ENTITY:
                 return parameterType == NodeType.PARAM_ENTITY;
@@ -10861,6 +10922,28 @@ public class Node {
                 return getRuntimeValue(values, "variable");
             case SENSOR_POSITION_OF:
                 return formatCoordinateValues(values);
+            case SENSOR_TARGETED_BLOCK: {
+                String block = getRuntimeValue(values, "block");
+                if (!block.isEmpty()) {
+                    String state = getRuntimeValue(values, "state");
+                    if (!state.isEmpty()) {
+                        return block + "[" + state + "]";
+                    }
+                    return block;
+                }
+                break;
+            }
+            case SENSOR_LOOK_DIRECTION: {
+                String direction = getRuntimeValue(values, "direction");
+                if (!direction.isEmpty()) {
+                    return direction;
+                }
+                direction = getRuntimeValue(values, "side");
+                if (!direction.isEmpty()) {
+                    return direction;
+                }
+                return getRuntimeValue(values, "face");
+            }
             case SENSOR_TARGETED_BLOCK_FACE: {
                 String side = getRuntimeValue(values, "side");
                 if (!side.isEmpty()) {
@@ -14776,6 +14859,31 @@ public class Node {
         );
     }
 
+    private Optional<BlockState> getTargetedBlockState() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.world == null) {
+            return Optional.empty();
+        }
+        HitResult hit = client.crosshairTarget;
+        if (!(hit instanceof BlockHitResult) || hit.getType() != HitResult.Type.BLOCK) {
+            return Optional.empty();
+        }
+        BlockPos pos = ((BlockHitResult) hit).getBlockPos();
+        if (pos == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(client.world.getBlockState(pos));
+    }
+
+    private Optional<Direction> getLookDirection() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return Optional.empty();
+        }
+        Vec3d look = client.player.getRotationVec(1.0F);
+        return Optional.of(Direction.getFacing(look.x, look.y, look.z));
+    }
+
     private Optional<Direction> getTargetedBlockFace() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null) {
@@ -14931,19 +15039,12 @@ public class Node {
                 result = evaluateSensorCondition(SensorConditionType.AT_COORDINATES, null, null, x, y, z);
                 break;
             }
-            case SENSOR_BLOCK_AHEAD: {
-                Node parameterNode = getAttachedParameterOfType(NodeType.PARAM_BLOCK, NodeType.PARAM_PLACE_TARGET);
-                if (parameterNode != null) {
-                    List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
-                    if (!selections.isEmpty()) {
-                        result = isBlockAhead(selections);
-                        break;
-                    }
-                }
-                String blockId = getStringParameter("Block", "stone");
-                result = isBlockAhead(blockId);
+            case SENSOR_TARGETED_BLOCK:
+                result = getTargetedBlockState().isPresent();
                 break;
-            }
+            case SENSOR_LOOK_DIRECTION:
+                result = getLookDirection().isPresent();
+                break;
             case SENSOR_TARGETED_BLOCK_FACE:
                 result = getTargetedBlockFace().isPresent();
                 break;
@@ -15282,7 +15383,6 @@ public class Node {
             case SENSOR_TOUCHING_BLOCK,
                  SENSOR_TOUCHING_ENTITY,
                  SENSOR_AT_COORDINATES,
-                 SENSOR_BLOCK_AHEAD,
                  SENSOR_ITEM_IN_INVENTORY,
                  SENSOR_ITEM_IN_SLOT,
                  SENSOR_VILLAGER_TRADE,
@@ -15436,6 +15536,10 @@ public class Node {
             valueType = NodeType.PARAM_COORDINATE;
         } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
             valueType = NodeType.PARAM_MESSAGE;
+        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
+            valueType = NodeType.PARAM_BLOCK;
+        } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
+            valueType = NodeType.PARAM_DIRECTION;
         }
         if (variable.getType() != valueType) {
             return Optional.empty();
@@ -15475,7 +15579,42 @@ public class Node {
         if (leftValues == null || rightValues == null || leftValues.isEmpty() || rightValues.isEmpty()) {
             return Optional.empty();
         }
+        Optional<Boolean> blockComparison = compareBlockSelectionValues(leftValues, rightValues);
+        if (blockComparison.isPresent()) {
+            return blockComparison;
+        }
         return Optional.of(leftValues.equals(rightValues));
+    }
+
+    private Optional<Boolean> compareBlockSelectionValues(Map<String, String> leftValues, Map<String, String> rightValues) {
+        String leftBlock = getRuntimeValue(leftValues, "block");
+        String rightBlock = getRuntimeValue(rightValues, "block");
+        if (leftBlock.isEmpty() || rightBlock.isEmpty()) {
+            return Optional.empty();
+        }
+        String leftState = getRuntimeValue(leftValues, "state");
+        String rightState = getRuntimeValue(rightValues, "state");
+        String leftCombined = normalizeBlockSelection(leftBlock, leftState);
+        String rightCombined = normalizeBlockSelection(rightBlock, rightState);
+        if (leftCombined.isEmpty() || rightCombined.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(leftCombined.equalsIgnoreCase(rightCombined));
+    }
+
+    private String normalizeBlockSelection(String block, String state) {
+        if (block == null || block.trim().isEmpty()) {
+            return "";
+        }
+        String normalizedBlock = normalizeResourceId(block, "minecraft");
+        if (normalizedBlock == null || normalizedBlock.isEmpty()) {
+            return "";
+        }
+        String trimmedState = state == null ? "" : state.trim();
+        if (trimmedState.isEmpty()) {
+            return normalizedBlock;
+        }
+        return BlockSelection.combine(normalizedBlock, trimmedState).orElse(normalizedBlock + "[" + trimmedState + "]");
     }
 
     private Optional<String> resolveComparableString(Node node) {
@@ -15516,6 +15655,20 @@ public class Node {
                     return Optional.empty();
                 }
                 return Optional.of(face.trim());
+            }
+            case SENSOR_LOOK_DIRECTION: {
+                Map<String, String> values = node.exportParameterValues();
+                String direction = getRuntimeValue(values, "direction");
+                if (direction.isEmpty()) {
+                    direction = getRuntimeValue(values, "side");
+                }
+                if (direction.isEmpty()) {
+                    direction = getRuntimeValue(values, "face");
+                }
+                if (direction.isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.of(direction.trim());
             }
             default:
                 return Optional.empty();

@@ -4009,8 +4009,32 @@ public class NodeGraph {
         int fieldLeft = node.getAmountFieldLeft() - cameraX;
         int fieldWidth = node.getAmountFieldWidth();
 
-        int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
-        drawNodeText(context, textRenderer, Text.literal(node.getAmountFieldLabel()), fieldLeft + 2, labelY, baseLabelColor);
+        if (node.getType() == NodeType.WAIT && node.supportsModeSelection()) {
+            int dropdownLeft = fieldLeft;
+            int dropdownTop = labelTop;
+            int dropdownWidth = fieldWidth;
+            int dropdownHeight = labelHeight;
+            int dropdownRight = dropdownLeft + dropdownWidth;
+            int dropdownBottom = dropdownTop + dropdownHeight;
+
+            int dropdownBackground = isOverSidebar
+                ? UITheme.BACKGROUND_SECONDARY
+                : UITheme.BACKGROUND_SIDEBAR;
+            int dropdownBorder = isOverSidebar
+                ? UITheme.BORDER_SUBTLE
+                : UITheme.BORDER_HIGHLIGHT;
+
+            context.fill(dropdownLeft, dropdownTop, dropdownRight, dropdownBottom, dropdownBackground);
+            DrawContextBridge.drawBorderInLayer(context, dropdownLeft, dropdownTop, dropdownWidth, dropdownHeight, dropdownBorder);
+
+            String unitLabel = node.getAmountFieldLabel();
+            int labelY = dropdownTop + Math.max(0, (dropdownHeight - textRenderer.fontHeight) / 2);
+            int dropdownTextColor = UITheme.TEXT_HEADER;
+            drawNodeText(context, textRenderer, Text.literal(unitLabel), dropdownLeft + 4, labelY, dropdownTextColor);
+        } else {
+            int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
+            drawNodeText(context, textRenderer, Text.literal(node.getAmountFieldLabel()), fieldLeft + 2, labelY, baseLabelColor);
+        }
 
         int fieldBottom = fieldTop + fieldHeight;
         int disabledBg = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.BUTTON_DEFAULT_BG;
@@ -8588,6 +8612,7 @@ public class NodeGraph {
         int fieldTop = modeDropdownFieldY;
         if (x >= fieldLeft && x <= fieldLeft + modeDropdownFieldWidth
             && y >= fieldTop && y <= fieldTop + modeDropdownFieldHeight) {
+            closeModeDropdown();
             return true;
         }
         closeModeDropdown();
@@ -8646,7 +8671,7 @@ public class NodeGraph {
     }
 
     public boolean handleModeFieldClick(Node node, int screenX, int screenY) {
-        if (node == null || !node.shouldRenderInlineParameters() || !node.supportsModeSelection()) {
+        if (node == null || !node.supportsModeSelection()) {
             return false;
         }
         if (!isPointInsideModeField(node, screenX, screenY)) {
@@ -8810,10 +8835,17 @@ public class NodeGraph {
         modeDropdownNode = node;
         modeDropdownScrollOffset = 0;
         modeDropdownHoverIndex = -1;
-        modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
-        modeDropdownFieldY = node.getY() - cameraY + 18;
-        modeDropdownFieldWidth = getParameterFieldWidth(node);
-        modeDropdownFieldHeight = getParameterFieldHeight();
+        if (node.getType() == NodeType.WAIT) {
+            modeDropdownFieldX = node.getAmountFieldLeft() - cameraX;
+            modeDropdownFieldY = node.getAmountFieldLabelTop() - cameraY;
+            modeDropdownFieldWidth = node.getAmountFieldWidth();
+            modeDropdownFieldHeight = node.getAmountFieldLabelHeight();
+        } else {
+            modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
+            modeDropdownFieldY = node.getY() - cameraY + 18;
+            modeDropdownFieldWidth = getParameterFieldWidth(node);
+            modeDropdownFieldHeight = getParameterFieldHeight();
+        }
         modeDropdownOptions.clear();
         modeDropdownOptions.addAll(getModeDropdownOptions(node));
         modeDropdownOpen = true;
@@ -8856,6 +8888,17 @@ public class NodeGraph {
     private boolean isPointInsideModeField(Node node, int screenX, int screenY) {
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
+        if (node != null && node.getType() == NodeType.WAIT && node.supportsModeSelection()) {
+            int fieldLeft = node.getAmountFieldLeft();
+            int fieldWidth = node.getAmountFieldWidth();
+            int fieldHeight = node.getAmountFieldLabelHeight();
+            int fieldTop = node.getAmountFieldLabelTop();
+            return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        }
+        if (node == null || !node.shouldRenderInlineParameters()) {
+            return false;
+        }
         int fieldLeft = getParameterFieldLeft(node);
         int fieldWidth = getParameterFieldWidth(node);
         int fieldHeight = getParameterFieldHeight();

@@ -74,7 +74,13 @@ public enum NodeMode {
     // STOP modes
     STOP_NORMAL("Stop Process", "Stop current process"),
     STOP_CANCEL("Cancel Process", "Cancel current process"),
-    STOP_FORCE("Force Cancel", "Force stop all processes");
+    STOP_FORCE("Force Cancel", "Force stop all processes"),
+
+    // WAIT modes
+    WAIT_SECONDS("Seconds", "Wait duration in seconds"),
+    WAIT_TICKS("Ticks", "Wait duration in ticks (20 per second)"),
+    WAIT_MINUTES("Minutes", "Wait duration in minutes"),
+    WAIT_HOURS("Hours", "Wait duration in hours");
 
     private final String displayName;
     private final String description;
@@ -156,6 +162,10 @@ public enum NodeMode {
                 return new NodeMode[]{
                     STOP_NORMAL, STOP_CANCEL, STOP_FORCE
                 };
+            case WAIT:
+                return new NodeMode[]{
+                    WAIT_SECONDS, WAIT_TICKS, WAIT_MINUTES, WAIT_HOURS
+                };
             default:
                 return new NodeMode[0];
         }
@@ -192,6 +202,8 @@ public enum NodeMode {
                 return FARM_RANGE;
             case STOP:
                 return STOP_NORMAL;
+            case WAIT:
+                return WAIT_SECONDS;
             default:
                 return null;
         }

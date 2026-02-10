@@ -178,6 +178,7 @@ public class Node {
     private static final int AMOUNT_FIELD_HEIGHT = 16;
     private static final int AMOUNT_FIELD_TEXT_PADDING = 3;
     private static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
+    private static final int WAIT_AMOUNT_FIELD_GAP = 4;
     private static final int AMOUNT_TOGGLE_WIDTH = 18;
     private static final int AMOUNT_TOGGLE_HEIGHT = 10;
     private static final int AMOUNT_TOGGLE_SPACING = 6;
@@ -1151,6 +1152,9 @@ public class Node {
         if (!hasAmountInputField()) {
             return 0;
         }
+        if (type == NodeType.WAIT) {
+            return AMOUNT_FIELD_TOP_MARGIN + getAmountFieldLabelHeight() + WAIT_AMOUNT_FIELD_GAP + AMOUNT_FIELD_HEIGHT + AMOUNT_FIELD_BOTTOM_MARGIN;
+        }
         return AMOUNT_FIELD_TOP_MARGIN + AMOUNT_FIELD_LABEL_HEIGHT + AMOUNT_FIELD_HEIGHT + AMOUNT_FIELD_BOTTOM_MARGIN;
     }
 
@@ -1167,10 +1171,16 @@ public class Node {
     }
 
     public int getAmountFieldInputTop() {
+        if (type == NodeType.WAIT) {
+            return getAmountFieldLabelTop() + getAmountFieldLabelHeight() + WAIT_AMOUNT_FIELD_GAP;
+        }
         return getAmountFieldLabelTop() + AMOUNT_FIELD_LABEL_HEIGHT;
     }
 
     public int getAmountFieldLabelHeight() {
+        if (type == NodeType.WAIT) {
+            return AMOUNT_FIELD_HEIGHT;
+        }
         return AMOUNT_FIELD_LABEL_HEIGHT;
     }
 
@@ -1179,7 +1189,18 @@ public class Node {
             return "Seconds";
         }
         if (type == NodeType.WAIT) {
-            return "Seconds";
+            NodeMode waitMode = mode != null ? mode : NodeMode.WAIT_SECONDS;
+            switch (waitMode) {
+                case WAIT_TICKS:
+                    return "Ticks";
+                case WAIT_MINUTES:
+                    return "Minutes";
+                case WAIT_HOURS:
+                    return "Hours";
+                case WAIT_SECONDS:
+                default:
+                    return "Seconds";
+            }
         }
         if (type == NodeType.CONTROL_REPEAT) {
             return "Times";
@@ -1946,26 +1967,6 @@ public class Node {
             return values;
         }
         switch (type) {
-            case WAIT: {
-                if (parameterNode != null && providesTrait(parameterNode, NodeValueTrait.NUMBER)) {
-                    if (!values.containsKey("Duration")) {
-                        String fallback = values.get("Amount");
-                        if (fallback == null) {
-                            fallback = values.get("Count");
-                        }
-                        if (fallback == null) {
-                            fallback = values.get("Value");
-                        }
-                        if (fallback != null) {
-                            Map<String, String> adjusted = new HashMap<>(values);
-                            adjusted.put("Duration", fallback);
-                            adjusted.put(normalizeParameterKey("Duration"), fallback);
-                            return adjusted;
-                        }
-                    }
-                }
-                break;
-            }
             case CONTROL_REPEAT: {
                 if (parameterNode != null) {
                     if (!values.containsKey("Count")) {
@@ -2344,8 +2345,6 @@ public class Node {
                 break;
             case WAIT:
                 parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
-                parameters.add(new NodeParameter("MinimumDurationSeconds", ParameterType.DOUBLE, "0.0"));
-                parameters.add(new NodeParameter("RandomVarianceSeconds", ParameterType.DOUBLE, "0.0"));
                 break;
             case START_CHAIN:
                 parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -10268,17 +10267,27 @@ public class Node {
             return;
         }
         double baseDuration = Math.max(0.0, getDoubleParameter("Duration", 1.0));
-        double minimum = Math.max(0.0, getDoubleParameter("MinimumDurationSeconds", 0.0));
-        double variance = Math.max(0.0, getDoubleParameter("RandomVarianceSeconds", 0.0));
 
-        double effectiveDuration = Math.max(baseDuration, minimum);
-        if (variance > 0.0) {
-            double randomOffset = (Math.random() * 2.0 - 1.0) * variance;
-            effectiveDuration = Math.max(minimum, Math.max(0.0, effectiveDuration + randomOffset));
+        NodeMode waitMode = mode != null ? mode : NodeMode.WAIT_SECONDS;
+        double unitSeconds;
+        switch (waitMode) {
+            case WAIT_TICKS:
+                unitSeconds = 0.05;
+                break;
+            case WAIT_MINUTES:
+                unitSeconds = 60.0;
+                break;
+            case WAIT_HOURS:
+                unitSeconds = 3600.0;
+                break;
+            case WAIT_SECONDS:
+            default:
+                unitSeconds = 1.0;
+                break;
         }
 
-        final double waitSeconds = effectiveDuration;
-        System.out.println("Waiting for " + waitSeconds + " seconds (configured duration=" + baseDuration + ")");
+        final double waitSeconds = baseDuration * unitSeconds;
+        System.out.println("Waiting for " + waitSeconds + " seconds (configured duration=" + baseDuration + " " + waitMode.getDisplayName() + ")");
 
         new Thread(() -> {
             try {

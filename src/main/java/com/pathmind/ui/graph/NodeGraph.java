@@ -2919,7 +2919,8 @@ public class NodeGraph {
                 caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
                 int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, boxRight - 2);
-                context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
+                int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, boxBottom - 2);
+                drawCaretUnderscore(context, textRenderer, caretX, caretBaseline, boxRight - 2);
             }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else if (node.getType() == NodeType.VARIABLE) {
@@ -2996,7 +2997,8 @@ public class NodeGraph {
                 int caretIndex = MathHelper.clamp(parameterCaretPosition, 0, display.length());
                 int caretX = boxLeft + 4 + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, boxRight - 2);
-                context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
+                int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, boxBottom - 2);
+                drawCaretUnderscore(context, textRenderer, caretX, caretBaseline, boxRight - 2);
             }
         } else if (!simpleStyle && isComparisonOperator(node)) {
             int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_BG, 0.7f) : UITheme.NODE_OPERATOR_BG;
@@ -3113,7 +3115,8 @@ public class NodeGraph {
                 int caretIndex = MathHelper.clamp(eventNameCaretPosition, 0, display.length());
                 int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, boxRight - 2);
-                context.fill(caretX, boxTop + 2, caretX + 1, boxBottom - 2, UITheme.CARET_COLOR);
+                int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, boxBottom - 2);
+                drawCaretUnderscore(context, textRenderer, caretX, caretBaseline, boxRight - 2);
             }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else {
@@ -3328,7 +3331,8 @@ public class NodeGraph {
                             caretIndex = MathHelper.clamp(caretIndex, 0, displayValue.length());
                             int caretX = valueStartX + textRenderer.getWidth(displayValue.substring(0, caretIndex));
                             caretX = Math.min(caretX, fieldRight - 2);
-                            context.fill(caretX, fieldTop + 2, caretX + 1, fieldTop + fieldHeight - 2, UITheme.CARET_COLOR);
+                            int caretBaseline = Math.min(valueY + textRenderer.fontHeight - 1, fieldTop + fieldHeight - 2);
+                            drawCaretUnderscore(context, textRenderer, caretX, caretBaseline, fieldRight - 2);
                         }
 
                         if (editingThis && (isBlockItemParameter(node, i) || isGuiParameter(node, param) || isDirectionParameter(node, i))) {
@@ -3982,7 +3986,8 @@ public class NodeGraph {
                 caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
                 int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, fieldX + fieldWidth - 2);
-                context.fill(caretX, inputTop + 2, caretX + 1, inputBottom - 2, UITheme.CARET_COLOR);
+                int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, inputBottom - 2);
+                drawCaretUnderscore(context, textRenderer, caretX, caretBaseline, fieldX + fieldWidth - 2);
             }
         }
     }
@@ -4108,7 +4113,8 @@ public class NodeGraph {
             caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
             int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-            context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, UITheme.CARET_COLOR);
+            int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, fieldBottom - 2);
+            drawCaretUnderscore(context, textRenderer, caretX, caretBaseline, fieldLeft + fieldWidth - 2);
         }
 
         if (node.hasAmountToggle()) {
@@ -4381,7 +4387,8 @@ public class NodeGraph {
                 caretIndex = MathHelper.clamp(caretIndex, 0, display.length());
                 int caretX = textX + textRenderer.getWidth(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-                context.fill(caretX, fieldTop + 2, caretX + 1, fieldBottom - 2, UITheme.CARET_COLOR);
+                int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, fieldBottom - 2);
+                drawCaretUnderscore(context, textRenderer, caretX, caretBaseline, fieldLeft + fieldWidth - 2);
             }
         }
     }
@@ -4662,6 +4669,18 @@ public class NodeGraph {
         String value = variableEditBuffer == null ? "" : variableEditBuffer;
         variableEditingNode.setVariableFieldTextWidth(textRenderer.getWidth(value));
         variableEditingNode.recalculateDimensions();
+    }
+
+    private void drawCaretUnderscore(DrawContext context, TextRenderer textRenderer, int caretX, int baselineY, int maxRight) {
+        if (context == null || textRenderer == null) {
+            return;
+        }
+        int caretWidth = Math.max(4, textRenderer.getWidth("_"));
+        int endX = Math.min(caretX + caretWidth, maxRight);
+        if (endX <= caretX) {
+            return;
+        }
+        context.fill(caretX, baselineY, endX, baselineY + 1, UITheme.CARET_COLOR);
     }
 
     private void updateParameterFieldContentWidth(Node node, TextRenderer textRenderer, int editingIndex, String editingValue) {

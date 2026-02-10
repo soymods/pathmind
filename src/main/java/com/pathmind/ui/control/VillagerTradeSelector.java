@@ -256,7 +256,10 @@ public class VillagerTradeSelector {
                 int caretIndex = MathHelper.clamp(searchCaretPosition, 0, displayText.length());
                 int caretX = searchX + TEXT_PADDING + textRenderer.getWidth(displayText.substring(0, caretIndex));
                 caretX = Math.min(caretX, searchX + searchWidth - 2);
-                context.fill(caretX, searchY + 3, caretX + 1, searchY + searchHeight - 3, applyAlpha(UITheme.CARET_COLOR, alpha));
+                int caretWidth = Math.max(4, textRenderer.getWidth("_"));
+                int caretEndX = Math.min(caretX + caretWidth, searchX + searchWidth - 2);
+                int caretY = searchY + searchHeight - 3;
+                context.fill(caretX, caretY, caretEndX, caretY + 1, applyAlpha(UITheme.CARET_COLOR, alpha));
             }
         }
         sectionY += SEARCH_HEIGHT + SECTION_SPACING;

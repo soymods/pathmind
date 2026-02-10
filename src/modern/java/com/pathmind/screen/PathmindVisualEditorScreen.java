@@ -179,6 +179,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean showChatErrors = true;
     private int nodeDelayMs = 150;
     private boolean nodeDelayDragging = false;
+    private TextFieldWidget nodeDelayField;
     private AccentOption accentOption = AccentOption.SKY;
     private boolean overlayCutoutActive = false;
     private int overlayCutoutX = 0;
@@ -270,6 +271,25 @@ public class PathmindVisualEditorScreen extends Screen {
             renamePresetField.setUneditableColor(UITheme.TEXT_TERTIARY);
             renamePresetField.setChangedListener(value -> clearRenamePresetStatus());
             this.addSelectableChild(renamePresetField);
+        }
+        if (nodeDelayField == null) {
+            nodeDelayField = new TextFieldWidget(this.textRenderer, 0, 0, 120, 20, Text.literal("Delay"));
+            nodeDelayField.setMaxLength(6);
+            nodeDelayField.setDrawsBackground(false);
+            nodeDelayField.setVisible(false);
+            nodeDelayField.setEditable(false);
+            nodeDelayField.setEditableColor(UITheme.TEXT_HEADER);
+            nodeDelayField.setUneditableColor(UITheme.TEXT_HEADER);
+            nodeDelayField.setTextPredicate(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            nodeDelayField.setChangedListener(value -> {
+                Integer parsed = parseDelayFieldValue(value);
+                if (parsed != null && parsed != nodeDelayMs) {
+                    nodeDelayMs = parsed;
+                    currentSettings.nodeDelayMs = nodeDelayMs;
+                    SettingsManager.save(currentSettings);
+                }
+            });
+            this.addSelectableChild(nodeDelayField);
         }
 
         updateImportExportPathFromPreset();
@@ -1264,6 +1284,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (settingsPopupAnimation.isVisible()) {
             nodeDelayDragging = false;
+            if (nodeDelayField != null) {
+                nodeDelayField.mouseReleased(click);
+            }
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -1411,6 +1434,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.closeContextMenu();
             }
             return true;
+        }
+        if (settingsPopupAnimation.isVisible() && nodeDelayField != null && nodeDelayField.isFocused()) {
+            if (nodeDelayField.keyPressed(input)) {
+                return true;
+            }
         }
         if (settingsPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -1574,6 +1602,9 @@ public class PathmindVisualEditorScreen extends Screen {
         int modifiers = input.modifiers();
         char chr = (char) input.codepoint();
         if (settingsPopupAnimation.isVisible()) {
+            if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(input)) {
+                return true;
+            }
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -3718,8 +3749,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int delayDividerY = chatDividerY + 26;
         int delayRowCenterY = (chatDividerY + delayDividerY) / 2;
-        String delayLabel = Text.translatable("pathmind.settings.nodeDelay").getString() + " (" + nodeDelayMs + "ms)";
-        renderSliderRow(context, mouseX, mouseY, contentX, delayRowCenterY, delayLabel, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
+        renderNodeDelayRow(context, mouseX, mouseY, contentX, delayRowCenterY, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY, UITheme.BORDER_SUBTLE);
 
         int buttonWidth = 90;
@@ -3772,8 +3802,22 @@ public class PathmindVisualEditorScreen extends Screen {
         int labelY = centerY - this.textRenderer.fontHeight / 2;
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
-        int maxLabelWidth = Math.max(0, sliderX - labelX - 8);
+        String valueText = value + "ms";
+        int valueTextWidth = this.textRenderer.getWidth(valueText);
+        int valueBoxWidth = Math.max(36, valueTextWidth + 10);
+        int valueBoxX = sliderX - valueBoxWidth - 8;
+        int valueBoxY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
+        int valueBoxHeight = SETTINGS_SLIDER_HEIGHT;
+        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
         drawPopupTextWithEllipsis(context, label, labelX, labelY, maxLabelWidth, UITheme.TEXT_SECONDARY);
+
+        int valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(UITheme.DROPDOWN_OPTION_BG);
+        int valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE);
+        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
+        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+        int valueTextX = valueBoxX + Math.max(4, (valueBoxWidth - valueTextWidth) / 2);
+        int valueTextY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(valueText), valueTextX, valueTextY, UITheme.TEXT_HEADER);
 
         int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
         boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
@@ -3793,6 +3837,87 @@ public class PathmindVisualEditorScreen extends Screen {
         DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT, UITheme.BORDER_SUBTLE);
     }
 
+    private void renderNodeDelayRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
+                                    int value, int min, int max, int popupX, int scaledWidth) {
+        int labelY = centerY - this.textRenderer.fontHeight / 2;
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
+
+        String valueText = Integer.toString(value);
+        int[] valueBox = getNodeDelayFieldBounds(popupX, scaledWidth, centerY, valueText);
+        int valueBoxX = valueBox[0];
+        int valueBoxY = valueBox[1];
+        int valueBoxWidth = valueBox[2];
+        int valueBoxHeight = valueBox[3];
+        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeDelay").getString(), labelX, labelY, maxLabelWidth, UITheme.TEXT_SECONDARY);
+
+        boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight);
+        boolean focused = nodeDelayField != null && nodeDelayField.isFocused();
+        boolean activeField = focused;
+        int valueBoxBg = activeField ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        if (fieldHovered) {
+            valueBoxBg = activeField ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
+        }
+        int valueBoxBorder = activeField ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        if (fieldHovered) {
+            valueBoxBorder = getAccentColor();
+        }
+        valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBg);
+        valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBorder);
+        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
+        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+
+        if (nodeDelayField != null) {
+            if (!focused) {
+                if (!valueText.equals(nodeDelayField.getText())) {
+                    nodeDelayField.setText(valueText);
+                }
+            }
+            nodeDelayField.setVisible(true);
+            nodeDelayField.setEditable(true);
+            int textFieldHeight = Math.max(10, valueBoxHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
+            nodeDelayField.setPosition(valueBoxX + 4, valueBoxY + TEXT_FIELD_VERTICAL_PADDING);
+            nodeDelayField.setWidth(valueBoxWidth - 8);
+            nodeDelayField.setHeight(textFieldHeight);
+            nodeDelayField.render(context, mouseX, mouseY, 0f);
+        }
+
+        int unitX = valueBoxX + valueBoxWidth + 6;
+        int unitY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
+        context.drawTextWithShadow(this.textRenderer, Text.literal("ms"), unitX, unitY, UITheme.TEXT_SECONDARY);
+
+        int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
+        boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
+        int trackColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        int trackBorder = hovered ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
+        trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
+        context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
+        DrawContextBridge.drawBorder(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, trackBorder);
+
+        int clamped = MathHelper.clamp(value, min, max);
+        float t = max == min ? 0f : (clamped - min) / (float) (max - min);
+        int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
+        int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
+        int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
+        context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
+        DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT, UITheme.BORDER_SUBTLE);
+    }
+
+    private int[] getNodeDelayFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        String text = valueText == null ? "" : valueText;
+        int textWidth = this.textRenderer.getWidth(text);
+        int boxWidth = Math.max(32, textWidth + 8);
+        int boxHeight = 16;
+        int unitGap = 6;
+        int unitWidth = this.textRenderer.getWidth("ms");
+        int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
+        int boxY = centerY - boxHeight / 2;
+        return new int[]{boxX, boxY, boxWidth, boxHeight};
+    }
+
     private void updateNodeDelayFromMouse(int mouseX, int popupX, int popupWidth) {
         int sliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
         int localX = MathHelper.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
@@ -3802,6 +3927,26 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeDelayMs = value;
             currentSettings.nodeDelayMs = nodeDelayMs;
             SettingsManager.save(currentSettings);
+        }
+    }
+
+    private Integer parseDelayFieldValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        String digits = trimmed.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) {
+            return null;
+        }
+        try {
+            int parsed = Integer.parseInt(digits);
+            return MathHelper.clamp(parsed, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS);
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -4031,6 +4176,21 @@ public class PathmindVisualEditorScreen extends Screen {
         int delayRowCenterY = (chatDividerY + delayDividerY) / 2;
         int sliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
+        String delayText = nodeDelayField != null ? nodeDelayField.getText() : Integer.toString(nodeDelayMs);
+        int[] valueBox = getNodeDelayFieldBounds(popupX, SETTINGS_POPUP_WIDTH, delayRowCenterY, delayText);
+        int valueBoxX = valueBox[0];
+        int valueBoxY = valueBox[1];
+        int valueBoxWidth = valueBox[2];
+        int valueBoxHeight = valueBox[3];
+        if (nodeDelayField != null) {
+            if (isPointInRect(mouseXi, mouseYi, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight)) {
+                nodeDelayField.setEditable(true);
+                nodeDelayField.setFocused(true);
+                return true;
+            } else if (nodeDelayField.isFocused()) {
+                nodeDelayField.setFocused(false);
+            }
+        }
         if (isPointInRect(mouseXi, mouseYi, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
             nodeDelayDragging = true;
             updateNodeDelayFromMouse(mouseXi, popupX, SETTINGS_POPUP_WIDTH);

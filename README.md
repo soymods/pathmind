@@ -38,11 +38,27 @@
    - Start Minecraft with Fabric Loader
    - Use your configured keybind to open the visual editor
 
-<img
-  src="https://raw.githubusercontent.com/soymods/assets/main/soymods-assets/pathmind/preview.gif"
-  width="600"
-  alt="Pathmind preview"
-/>
+<p>
+  <div style="
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 0 auto;
+    width: 100%;
+  ">
+    <img
+      src="https://raw.githubusercontent.com/soymods/assets/main/soymods-assets/pathmind/preview.gif"
+      width="350"
+      alt="Pathmind preview gif"
+    />
+    <img
+      src="https://cdn.modrinth.com/data/GX0d78rL/images/e102a7746e517eeaeba0fa6e575060808b133cb3.png"
+      width="350"
+      alt="Pathmind screenshot"
+    />
+  </div>
+</p>
 
 ## Compatibility
 

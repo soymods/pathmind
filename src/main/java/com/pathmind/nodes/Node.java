@@ -2289,7 +2289,7 @@ public class Node {
                     
                 // FOLLOW modes
                 case FOLLOW_PLAYER:
-                    parameters.add(new NodeParameter("Player", ParameterType.STRING, "Any"));
+                    parameters.add(new NodeParameter("Player", ParameterType.STRING, "Self"));
                     break;
                 case FOLLOW_PLAYERS:
                 case FOLLOW_ENTITIES:
@@ -2549,7 +2549,7 @@ public class Node {
                 parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_PLAYER:
-                parameters.add(new NodeParameter("Player", ParameterType.STRING, "Any"));
+                parameters.add(new NodeParameter("Player", ParameterType.STRING, "Self"));
                 break;
             case PARAM_MESSAGE:
                 parameters.add(new NodeParameter("Text", ParameterType.STRING, "Any"));
@@ -4383,6 +4383,8 @@ public class Node {
                 Optional<AbstractClientPlayerEntity> player;
                 if (isAnyPlayerValue(playerName)) {
                     player = findNearestPlayer(client, client.player);
+                } else if (isSelfPlayerValue(playerName)) {
+                    player = Optional.of(client.player);
                 } else {
                     player = client.world.getPlayers().stream()
                         .filter(p -> playerName.equalsIgnoreCase(
@@ -4390,18 +4392,28 @@ public class Node {
                         .findFirst();
                 }
                 if (player.isEmpty()) {
-                    String message = isAnyPlayerValue(playerName)
-                        ? "No players nearby for " + type.getDisplayName() + "."
-                        : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                    String message;
+                    if (isAnyPlayerValue(playerName)) {
+                        message = "No players nearby for " + type.getDisplayName() + ".";
+                    } else if (isSelfPlayerValue(playerName)) {
+                        message = "Local player unavailable for " + type.getDisplayName() + ".";
+                    } else {
+                        message = "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                    }
                     sendParameterSearchFailure(message, future);
                     return Optional.empty();
                 }
                 String resolvedName = GameProfileCompatibilityBridge.getName(player.get().getGameProfile());
                 if (data != null) {
                     data.targetPlayerName = resolvedName != null ? resolvedName : playerName;
+                    data.targetEntity = player.get();
                     data.targetBlockPos = player.get().getBlockPos();
                 }
-                return Optional.ofNullable(EntityCompatibilityBridge.getPos(player.get()));
+                Vec3d playerPos = EntityCompatibilityBridge.getPos(player.get());
+                if (playerPos == null) {
+                    playerPos = Vec3d.ofCenter(player.get().getBlockPos());
+                }
+                return Optional.of(playerPos);
             }
             case PARAM_BLOCK: {
                 if (client == null || client.player == null || client.world == null) {
@@ -5892,6 +5904,8 @@ public class Node {
             String playerName = getParameterString(parameterNode, "Player");
             if (isAnyPlayerValue(playerName)) {
                 matches.addAll(client.world.getPlayers());
+            } else if (isSelfPlayerValue(playerName)) {
+                matches.add(client.player);
             } else {
                 for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
                     if (player == null) {
@@ -5905,9 +5919,14 @@ public class Node {
             }
 
             if (matches.isEmpty()) {
-                String message = isAnyPlayerValue(playerName)
-                    ? "No players nearby for " + type.getDisplayName() + "."
-                    : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                String message;
+                if (isAnyPlayerValue(playerName)) {
+                    message = "No players nearby for " + type.getDisplayName() + ".";
+                } else if (isSelfPlayerValue(playerName)) {
+                    message = "Local player unavailable for " + type.getDisplayName() + ".";
+                } else {
+                    message = "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                }
                 sendNodeErrorMessage(client, message);
                 future.complete(null);
                 return;
@@ -6354,10 +6373,15 @@ public class Node {
             handled[0] = false;
         }
 
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         RuntimeParameterData parameterData = runtimeParameterData;
         if (parameterData != null && parameterData.targetEntity != null) {
             if (handled != null && handled.length > 0) {
                 handled[0] = true;
+            }
+            if (client != null && parameterData.targetEntity == client.player) {
+                future.complete(null);
+                return null;
             }
             return parameterData.targetEntity.getBlockPos();
         }
@@ -6381,9 +6405,8 @@ public class Node {
             handled[0] = true;
         }
 
-        switch (parameterNode.getType()) {
+            switch (parameterNode.getType()) {
             case PARAM_ITEM: {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client == null || client.player == null || client.world == null) {
                     return null;
                 }
@@ -6429,7 +6452,6 @@ public class Node {
                 return matchedPosition.get();
             }
             case PARAM_ENTITY: {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client == null || client.player == null || client.world == null) {
                     return null;
                 }
@@ -6482,14 +6504,19 @@ public class Node {
                 return target.getBlockPos();
             }
             case PARAM_PLAYER: {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client == null || client.player == null || client.world == null) {
                     return null;
                 }
                 String playerName = getParameterString(parameterNode, "Player");
+                if (isSelfPlayerValue(playerName)) {
+                    future.complete(null);
+                    return null;
+                }
                 Optional<AbstractClientPlayerEntity> match;
                 if (isAnyPlayerValue(playerName)) {
                     match = findNearestPlayer(client, client.player);
+                } else if (isSelfPlayerValue(playerName)) {
+                    match = Optional.of(client.player);
                 } else {
                     match = client.world.getPlayers().stream()
                         .filter(p -> playerName.equalsIgnoreCase(
@@ -6498,9 +6525,14 @@ public class Node {
                 }
 
                 if (match.isEmpty()) {
-                    String message = isAnyPlayerValue(playerName)
-                        ? "No players nearby for " + type.getDisplayName() + "."
-                        : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                    String message;
+                    if (isAnyPlayerValue(playerName)) {
+                        message = "No players nearby for " + type.getDisplayName() + ".";
+                    } else if (isSelfPlayerValue(playerName)) {
+                        message = "Local player unavailable for " + type.getDisplayName() + ".";
+                    } else {
+                        message = "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+                    }
                     sendNodeErrorMessage(client, message);
                     future.complete(null);
                     return null;
@@ -6599,6 +6631,10 @@ public class Node {
         }
         if (targetEntity == null || targetEntity.isRemoved()) {
             return false;
+        }
+        if (targetEntity == client.player) {
+            future.complete(null);
+            return true;
         }
         if (customGoalProcess == null) {
             sendNodeErrorMessage(client, "Cannot navigate to entity: goal process unavailable.");
@@ -6726,9 +6762,15 @@ public class Node {
         }
 
         String playerName = getParameterString(parameterNode, "Player");
+        if (isSelfPlayerValue(playerName)) {
+            future.complete(null);
+            return true;
+        }
         Optional<AbstractClientPlayerEntity> match;
         if (isAnyPlayerValue(playerName)) {
             match = findNearestPlayer(client, client.player);
+        } else if (isSelfPlayerValue(playerName)) {
+            match = Optional.of(client.player);
         } else {
             match = client.world.getPlayers().stream()
                 .filter(p -> playerName.equalsIgnoreCase(
@@ -6737,9 +6779,14 @@ public class Node {
         }
 
         if (match.isEmpty()) {
-            String message = isAnyPlayerValue(playerName)
-                ? "No players nearby for " + type.getDisplayName() + "."
-                : "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+            String message;
+            if (isAnyPlayerValue(playerName)) {
+                message = "No players nearby for " + type.getDisplayName() + ".";
+            } else if (isSelfPlayerValue(playerName)) {
+                message = "Local player unavailable for " + type.getDisplayName() + ".";
+            } else {
+                message = "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
+            }
             sendNodeErrorMessage(client, message);
             future.complete(null);
             return true;
@@ -10363,11 +10410,12 @@ public class Node {
             future.completeExceptionally(new RuntimeException("No mode set for FOLLOW node"));
             return;
         }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         
         String command;
         switch (mode) {
             case FOLLOW_PLAYER:
-                String player = "Any";
+                String player = "Self";
                 NodeParameter playerParam = getParameter("Player");
                 if (playerParam != null) {
                     player = playerParam.getStringValue();
@@ -10377,6 +10425,11 @@ public class Node {
                     command = "#follow players";
                     System.out.println("Executing follow any players: " + command);
                 } else {
+                    if (isSelfPlayerValue(player)) {
+                        player = client != null && client.player != null
+                            ? GameProfileCompatibilityBridge.getName(client.player.getGameProfile())
+                            : "Self";
+                    }
                     command = "#follow player " + player;
                     System.out.println("Executing follow player: " + command);
                 }
@@ -14432,7 +14485,18 @@ public class Node {
     }
 
     private static boolean isAnyPlayerValue(String value) {
-        return value == null || value.trim().isEmpty() || "any".equalsIgnoreCase(value.trim());
+        return value != null && "any".equalsIgnoreCase(value.trim());
+    }
+
+    private static boolean isSelfPlayerValue(String value) {
+        if (value == null) {
+            return true;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty()
+            || "self".equalsIgnoreCase(trimmed)
+            || "me".equalsIgnoreCase(trimmed)
+            || "local".equalsIgnoreCase(trimmed);
     }
 
     private static boolean isAnyMessageValue(String value) {
@@ -15346,10 +15410,10 @@ public class Node {
                 break;
             }
             case SENSOR_CHAT_MESSAGE: {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 Node playerNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
                 Node messageNode = resolveSensorParameterNode(getAttachedParameter(1), 1);
                 if (playerNode == null || messageNode == null) {
-                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                     if (client != null) {
                         sendNodeErrorMessage(client, type.getDisplayName() + " requires a user and message parameter.");
                     }
@@ -15372,6 +15436,9 @@ public class Node {
                     messageText = getParameterString(messageNode, "Message");
                 }
                 boolean anyPlayer = isAnyPlayerValue(playerName);
+                if (!anyPlayer && isSelfPlayerValue(playerName) && client != null && client.player != null) {
+                    playerName = GameProfileCompatibilityBridge.getName(client.player.getGameProfile());
+                }
                 boolean anyMessage = isAnyMessageValue(messageText);
                 boolean useAmount = isAmountInputEnabled();
                 double seconds = useAmount

@@ -837,7 +837,9 @@ public class NodeParameterOverlay {
             if (param != null && (isPlayerParameter(param) || isMessageParameter(param))) {
                 if (value == null || value.trim().isEmpty()) {
                     String placeholder = getPlaceholderText(i);
-                    String applied = placeholder != null ? placeholder : "Any";
+                    String applied = placeholder != null
+                        ? placeholder
+                        : (isPlayerParameter(param) ? "Self" : "Any");
                     param.setStringValue(applied);
                     param.setUserEdited(false);
                     parameterValues.set(i, applied);

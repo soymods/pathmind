@@ -3234,12 +3234,17 @@ public class NodeGraph {
                         boolean showDirectionPlaceholder = false;
                         boolean showGuiPlaceholder = false;
                         boolean showAmountPlaceholder = false;
-                        if (isPlayerParam || isMessageParam) {
+                        if (isPlayerParam) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty()
+                                : value.isEmpty() || (!param.isUserEdited() && "Self".equalsIgnoreCase(value));
+                            showPlayerPlaceholder = showPlaceholder;
+                        }
+                        if (isMessageParam) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty()
                                 : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
-                            showPlayerPlaceholder = isPlayerParam && showPlaceholder;
-                            showMessagePlaceholder = isMessageParam && showPlaceholder;
+                            showMessagePlaceholder = showPlaceholder;
                         }
                         if (isSeedParam) {
                             boolean showPlaceholder = editingThis
@@ -3286,6 +3291,8 @@ public class NodeGraph {
                             || showDirectionPlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
+                            } else if (showPlayerPlaceholder) {
+                                value = "Self";
                             } else if (showAmountPlaceholder) {
                                 value = "0";
                             } else if (showDirectionPlaceholder) {
@@ -6532,6 +6539,7 @@ public class NodeGraph {
             || isBlockItemParameter(node, index))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
                 || "Any".equalsIgnoreCase(parameterEditBuffer)
+                || "Self".equalsIgnoreCase(parameterEditBuffer)
                 || "Any State".equalsIgnoreCase(parameterEditBuffer)
                 || "0".equals(parameterEditBuffer)) {
                 parameterEditBuffer = "";
@@ -6589,8 +6597,8 @@ public class NodeGraph {
         String previous = parameter != null ? parameter.getStringValue() : "";
         String appliedValue = value;
         if (parameter != null) {
-            boolean isAnyLikeParam = isPlayerParameter(parameterEditingNode, parameter)
-                || isMessageParameter(parameterEditingNode, parameter)
+            boolean isPlayerParam = isPlayerParameter(parameterEditingNode, parameter);
+            boolean isAnyLikeParam = isMessageParameter(parameterEditingNode, parameter)
                 || isSeedParameter(parameterEditingNode, parameter)
                 || isGuiParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
@@ -6599,6 +6607,18 @@ public class NodeGraph {
                 String trimmed = value.trim();
                 if (trimmed.isEmpty()) {
                     appliedValue = "0";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    parameter.setStringValueFromUser(value);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+                }
+            } else if (isPlayerParam) {
+                String trimmed = value.trim();
+                boolean isDefaultSelf = trimmed.isEmpty() || "Self".equalsIgnoreCase(trimmed);
+                if (isDefaultSelf) {
+                    appliedValue = "Self";
                     parameter.setStringValue(appliedValue);
                     parameter.setUserEdited(false);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);

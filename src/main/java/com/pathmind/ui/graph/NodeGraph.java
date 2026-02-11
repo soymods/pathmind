@@ -2645,6 +2645,18 @@ public class NodeGraph {
         return node.usesMinimalNodePresentation() ? NodeStyle.MINIMAL : NodeStyle.STANDARD;
     }
 
+    private boolean rendersInlineParameters(Node node) {
+        if (node == null) {
+            return false;
+        }
+        if (node.shouldRenderInlineParameters()) {
+            return true;
+        }
+        return node.isParameterNode()
+            && node.getType() != NodeType.OPERATOR_MOD
+            && node.getType() != NodeType.SENSOR_POSITION_OF;
+    }
+
     private void renderNode(DrawContext context, TextRenderer textRenderer, Node node, int mouseX, int mouseY, float delta) {
         int x = node.getX() - cameraX;
         int y = node.getY() - cameraY;
@@ -3120,7 +3132,7 @@ public class NodeGraph {
             }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else {
-            if ((node.isParameterNode() && node.getType() != NodeType.OPERATOR_MOD) || node.shouldRenderInlineParameters()) {
+            if (rendersInlineParameters(node)) {
                 if (shouldShowParameters(node)) {
                     int paramBgColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR; // Grey when over sidebar
                     context.fill(x + 3, y + 16, x + width - 3, y + height - 3, paramBgColor);
@@ -4684,7 +4696,7 @@ public class NodeGraph {
     }
 
     private void updateParameterFieldContentWidth(Node node, TextRenderer textRenderer, int editingIndex, String editingValue) {
-        if (node == null || !(node.isParameterNode() || node.shouldRenderInlineParameters()) || textRenderer == null) {
+        if (node == null || !rendersInlineParameters(node) || textRenderer == null) {
             return;
         }
         int requiredFieldWidth = 0;
@@ -6481,7 +6493,7 @@ public class NodeGraph {
     }
 
     public void startParameterEditing(Node node, int index) {
-        if (node == null || !(node.isParameterNode() || node.shouldRenderInlineParameters()) || node.hasPopupEditButton()
+        if (node == null || !rendersInlineParameters(node) || node.hasPopupEditButton()
             || index < 0 || index >= node.getParameters().size()) {
             stopParameterEditing(false);
             return;
@@ -9391,7 +9403,7 @@ public class NodeGraph {
     }
 
     public int getParameterFieldIndexAt(Node node, int screenX, int screenY) {
-        if (node == null || !(node.isParameterNode() || node.shouldRenderInlineParameters()) || node.hasPopupEditButton()) {
+        if (node == null || !rendersInlineParameters(node) || node.hasPopupEditButton()) {
             return -1;
         }
         int worldX = screenToWorldX(screenX);
@@ -10120,7 +10132,7 @@ public class NodeGraph {
         if (node == null) {
             return false;
         }
-        if (node.isParameterNode() || node.shouldRenderInlineParameters()) {
+        if (rendersInlineParameters(node)) {
             return node.hasParameters() || node.supportsModeSelection();
         }
         return false;

@@ -51,6 +51,7 @@ public class ExecutionManager {
     private final List<String> executingEvents;
     private volatile boolean cancelRequested;
     private final Map<Node, ChainController> activeChains;
+    private final Map<String, RuntimeVariable> globalRuntimeVariables;
     private final Map<ConnectionKey, Node> eventConnectionOwners;
     private final Set<Node> activeEventFunctionNodes;
     private boolean globalExecutionActive;
@@ -184,6 +185,7 @@ public class ExecutionManager {
         this.executingEvents = new ArrayList<>();
         this.cancelRequested = false;
         this.activeChains = new ConcurrentHashMap<>();
+        this.globalRuntimeVariables = new ConcurrentHashMap<>();
         this.globalExecutionActive = false;
         this.lastSnapshotWasGlobal = false;
         this.activeConnectionLookup = ConcurrentHashMap.newKeySet();
@@ -218,9 +220,11 @@ public class ExecutionManager {
         }
         ChainController controller = activeChains.get(startNode);
         if (controller == null) {
-            return false;
+            globalRuntimeVariables.put(name.trim(), value);
+            return true;
         }
         controller.runtimeVariables.put(name.trim(), value);
+        globalRuntimeVariables.put(name.trim(), value);
         return true;
     }
 
@@ -230,9 +234,36 @@ public class ExecutionManager {
         }
         ChainController controller = activeChains.get(startNode);
         if (controller == null) {
+            return globalRuntimeVariables.get(name.trim());
+        }
+        RuntimeVariable value = controller.runtimeVariables.get(name.trim());
+        return value != null ? value : globalRuntimeVariables.get(name.trim());
+    }
+
+    public boolean setRuntimeVariableForAnyActiveChain(String name, RuntimeVariable value) {
+        if (name == null || name.trim().isEmpty() || value == null) {
+            return false;
+        }
+        for (ChainController controller : activeChains.values()) {
+            controller.runtimeVariables.put(name.trim(), value);
+            globalRuntimeVariables.put(name.trim(), value);
+            return true;
+        }
+        globalRuntimeVariables.put(name.trim(), value);
+        return false;
+    }
+
+    public RuntimeVariable getRuntimeVariableFromAnyActiveChain(String name) {
+        if (name == null || name.trim().isEmpty()) {
             return null;
         }
-        return controller.runtimeVariables.get(name.trim());
+        for (ChainController controller : activeChains.values()) {
+            RuntimeVariable value = controller.runtimeVariables.get(name.trim());
+            if (value != null) {
+                return value;
+            }
+        }
+        return globalRuntimeVariables.get(name.trim());
     }
 
     public boolean setRuntimeList(Node startNode, String name, RuntimeList list) {
@@ -418,6 +449,7 @@ public class ExecutionManager {
      * Start execution with the given start node
      */
     private void startExecution(List<Node> startNodes, boolean markGlobal) {
+        globalRuntimeVariables.clear();
         this.activeNode = startNodes.isEmpty() ? null : startNodes.get(0);
         if (this.activeNode != null) {
             resetActiveNodeTiming();
@@ -498,6 +530,7 @@ public class ExecutionManager {
         this.eventConnectionOwners.clear();
         this.activeEventFunctionNodes.clear();
         this.activeChains.clear();
+        this.globalRuntimeVariables.clear();
     }
 
     private void cancelAllBaritoneCommands() {
@@ -940,6 +973,7 @@ public class ExecutionManager {
             executingEvents.clear();
             eventConnectionOwners.clear();
             activeEventFunctionNodes.clear();
+            globalRuntimeVariables.clear();
         }
     }
 

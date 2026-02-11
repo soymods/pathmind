@@ -587,6 +587,12 @@ public class Node {
         return type == NodeType.UI_UTILS;
     }
 
+    private boolean isInlineParameterNode() {
+        return isParameterNode()
+            && type != NodeType.OPERATOR_MOD
+            && type != NodeType.SENSOR_POSITION_OF;
+    }
+
     public static boolean isSensorType(NodeType nodeType) {
         return NodeTraitRegistry.isBooleanSensor(nodeType);
     }
@@ -610,7 +616,9 @@ public class Node {
         if (!NodeTraitRegistry.canHostParameter(type)) {
             return false;
         }
-        if (isParameterNode() && type != NodeType.OPERATOR_MOD) {
+        if (isParameterNode()
+            && type != NodeType.OPERATOR_MOD
+            && type != NodeType.SENSOR_POSITION_OF) {
             return false;
         }
         return true;
@@ -3603,7 +3611,7 @@ public class Node {
     }
 
     public int getPopupEditButtonTop() {
-        if (isParameterNode()) {
+        if (isParameterNode() && type != NodeType.SENSOR_POSITION_OF) {
             return y + HEADER_HEIGHT + getParameterDisplayHeight() + POPUP_EDIT_BUTTON_TOP_MARGIN;
         }
         return y + HEADER_HEIGHT;
@@ -3651,7 +3659,7 @@ public class Node {
         }
 
         int maxTextLength = Math.max(type.getDisplayName().length(), 1);
-        if ((isParameterNode() && type != NodeType.OPERATOR_MOD) || shouldRenderInlineParameters()) {
+        if (isInlineParameterNode() || shouldRenderInlineParameters()) {
             for (NodeParameter param : parameters) {
                 String paramText = getParameterLabel(param);
                 if (paramText == null || paramText.isEmpty()) {
@@ -3671,7 +3679,7 @@ public class Node {
         }
 
         int computedWidth = maxTextLength * CHAR_PIXEL_WIDTH + 24; // padding and border allowance
-        if ((isParameterNode() && type != NodeType.OPERATOR_MOD) || shouldRenderInlineParameters()) {
+        if (isInlineParameterNode() || shouldRenderInlineParameters()) {
             int maxParameterWidth = 0;
             for (NodeParameter param : parameters) {
                 if (param == null) {
@@ -3814,7 +3822,7 @@ public class Node {
         int contentHeight = HEADER_HEIGHT;
         boolean hasSlots = hasSensorSlot() || hasActionSlot();
 
-        if (isParameterNode() && type != NodeType.OPERATOR_MOD) {
+        if (isInlineParameterNode()) {
             int parameterLineCount = getVisibleParameterLineCount();
 
             if (parameterLineCount > 0) {
@@ -4198,6 +4206,9 @@ public class Node {
             startNode = getParentControl().getOwningStartNode();
         }
         ExecutionManager.RuntimeVariable runtimeVariable = manager.getRuntimeVariable(startNode, variableName.trim());
+        if (runtimeVariable == null) {
+            runtimeVariable = manager.getRuntimeVariableFromAnyActiveChain(variableName.trim());
+        }
         if (runtimeVariable == null) {
             sendVariableError("Variable \"" + variableName.trim() + "\" is not set.", future);
             return null;
@@ -5668,19 +5679,52 @@ public class Node {
             return;
         }
 
-        Map<String, String> values = valueNode.exportParameterValues();
         NodeType valueType = valueNode.getType();
+        Map<String, String> values;
         if (valueType == NodeType.SENSOR_POSITION_OF) {
+            Node parameterNode = valueNode.getAttachedParameterOfType(
+                NodeType.PARAM_ENTITY,
+                NodeType.PARAM_BLOCK,
+                NodeType.PARAM_ITEM
+            );
+            if (parameterNode == null) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Position Of requires an entity, block, or item parameter.");
+                }
+                future.complete(null);
+                return;
+            }
+            Optional<Vec3d> resolved = valueNode.resolvePositionTarget(parameterNode, null, future);
+            if (resolved.isEmpty()) {
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return;
+            }
+            Vec3d position = resolved.get();
+            int x = MathHelper.floor(position.x);
+            int y = MathHelper.floor(position.y);
+            int z = MathHelper.floor(position.z);
+            values = new HashMap<>();
+            values.put("X", Integer.toString(x));
+            values.put("Y", Integer.toString(y));
+            values.put("Z", Integer.toString(z));
             valueType = NodeType.PARAM_COORDINATE;
-        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
-            valueType = NodeType.PARAM_MESSAGE;
-        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
-            valueType = NodeType.PARAM_BLOCK;
-        } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
-            valueType = NodeType.PARAM_DIRECTION;
+        } else {
+            values = valueNode.exportParameterValues();
+            if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
+                valueType = NodeType.PARAM_MESSAGE;
+            } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
+                valueType = NodeType.PARAM_BLOCK;
+            } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
+                valueType = NodeType.PARAM_DIRECTION;
+            }
         }
         ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
-        manager.setRuntimeVariable(startNode, variableName.trim(), value);
+        boolean stored = manager.setRuntimeVariable(startNode, variableName.trim(), value);
+        if (!stored) {
+            manager.setRuntimeVariableForAnyActiveChain(variableName.trim(), value);
+        }
         future.complete(null);
     }
 

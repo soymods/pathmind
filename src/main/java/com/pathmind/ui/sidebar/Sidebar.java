@@ -181,6 +181,7 @@ public class Sidebar {
             "Position & Blocks",
             baritoneAvailable,
             NodeType.SENSOR_POSITION_OF,
+            NodeType.SENSOR_DISTANCE_BETWEEN,
             NodeType.SENSOR_TARGETED_BLOCK,
             NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_AT_COORDINATES,

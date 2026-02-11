@@ -591,7 +591,8 @@ public class Node {
     private boolean isInlineParameterNode() {
         return isParameterNode()
             && type != NodeType.OPERATOR_MOD
-            && type != NodeType.SENSOR_POSITION_OF;
+            && type != NodeType.SENSOR_POSITION_OF
+            && type != NodeType.SENSOR_DISTANCE_BETWEEN;
     }
 
     public static boolean isSensorType(NodeType nodeType) {
@@ -619,7 +620,8 @@ public class Node {
         }
         if (isParameterNode()
             && type != NodeType.OPERATOR_MOD
-            && type != NodeType.SENSOR_POSITION_OF) {
+            && type != NodeType.SENSOR_POSITION_OF
+            && type != NodeType.SENSOR_DISTANCE_BETWEEN) {
             return false;
         }
         return true;
@@ -1797,6 +1799,7 @@ public class Node {
         if (parameter == null
             || (!parameter.isParameterNode()
                 && parameter.getType() != NodeType.SENSOR_POSITION_OF
+                && parameter.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
                 && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
                 && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK
                 && parameter.getType() != NodeType.SENSOR_LOOK_DIRECTION)
@@ -2954,6 +2957,33 @@ public class Node {
                 values.put(normalizeParameterKey("Z"), zValue);
                 break;
             }
+            case SENSOR_DISTANCE_BETWEEN: {
+                Node parameterNodeA = getAttachedParameter(0);
+                Node parameterNodeB = getAttachedParameter(1);
+                if (parameterNodeA == null || parameterNodeB == null) {
+                    break;
+                }
+                if (!providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
+                    && !providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
+                    && !providesTrait(parameterNodeA, NodeValueTrait.ITEM)) {
+                    break;
+                }
+                if (!providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
+                    && !providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
+                    && !providesTrait(parameterNodeB, NodeValueTrait.ITEM)) {
+                    break;
+                }
+                Optional<Vec3d> resolvedA = resolveDistanceBetweenTarget(parameterNodeA);
+                Optional<Vec3d> resolvedB = resolveDistanceBetweenTarget(parameterNodeB);
+                if (resolvedA.isEmpty() || resolvedB.isEmpty()) {
+                    break;
+                }
+                double distance = Math.sqrt(resolvedA.get().squaredDistanceTo(resolvedB.get()));
+                String distanceValue = Double.toString(distance);
+                values.put("Distance", distanceValue);
+                values.put(normalizeParameterKey("Distance"), distanceValue);
+                break;
+            }
             case SENSOR_TARGETED_BLOCK: {
                 Optional<BlockState> targetState = getTargetedBlockState();
                 if (targetState.isEmpty()) {
@@ -3617,7 +3647,9 @@ public class Node {
     }
 
     public int getPopupEditButtonTop() {
-        if (isParameterNode() && type != NodeType.SENSOR_POSITION_OF) {
+        if (isParameterNode()
+            && type != NodeType.SENSOR_POSITION_OF
+            && type != NodeType.SENSOR_DISTANCE_BETWEEN) {
             return y + HEADER_HEIGHT + getParameterDisplayHeight() + POPUP_EDIT_BUTTON_TOP_MARGIN;
         }
         return y + HEADER_HEIGHT;
@@ -4216,6 +4248,10 @@ public class Node {
             runtimeVariable = manager.getRuntimeVariableFromAnyActiveChain(variableName.trim());
         }
         if (runtimeVariable == null) {
+            System.out.println("[Pathmind DEBUG] resolveVariableValueNode miss name=" + variableName.trim()
+                + " hostNode=" + getId()
+                + " hostType=" + getType()
+                + " owningStart=" + (startNode != null ? startNode.getId() : "null"));
             sendVariableError("Variable \"" + variableName.trim() + "\" is not set.", future);
             return null;
         }
@@ -4304,7 +4340,8 @@ public class Node {
                     sendParameterSearchFailure("No item selected on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
-                double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
+                double defaultRange = type == NodeType.SENSOR_DISTANCE_BETWEEN ? 256.0 : PARAMETER_SEARCH_RADIUS;
+                double range = parseNodeDouble(parameterNode, "Range", defaultRange);
                 boolean hasValidCandidate = false;
                 for (String candidateId : itemIds) {
                     Identifier identifier = Identifier.tryParse(candidateId);
@@ -4343,7 +4380,8 @@ public class Node {
                     return Optional.empty();
                 }
                 String state = getEntityParameterState(parameterNode);
-                double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
+                double defaultRange = type == NodeType.SENSOR_DISTANCE_BETWEEN ? 256.0 : PARAMETER_SEARCH_RADIUS;
+                double range = parseNodeDouble(parameterNode, "Range", defaultRange);
                 Entity nearest = null;
                 String nearestId = null;
                 double nearestDistance = Double.MAX_VALUE;
@@ -4556,6 +4594,70 @@ public class Node {
         }
 
         return Optional.empty();
+    }
+
+    private Optional<Vec3d> resolveDistanceBetweenTarget(Node parameterNode) {
+        if (parameterNode == null) {
+            return Optional.empty();
+        }
+        if (parameterNode.getType() != NodeType.PARAM_ENTITY) {
+            return resolvePositionTarget(parameterNode, null, null);
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null) {
+            return Optional.empty();
+        }
+
+        List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
+        if (entityIds.isEmpty()) {
+            return Optional.empty();
+        }
+
+        double range = parseNodeDouble(parameterNode, "Range", 256.0);
+        double searchRadius = Math.max(1.0, range);
+        String state = getEntityParameterState(parameterNode);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+
+        java.util.Set<Identifier> targetIds = new java.util.HashSet<>();
+        for (String candidateId : entityIds) {
+            Identifier id = Identifier.tryParse(candidateId);
+            if (id != null) {
+                targetIds.add(id);
+            }
+        }
+        if (targetIds.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Entity nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (Entity entity : client.world.getOtherEntities(client.player, searchBox)) {
+            if (entity == null || entity.isRemoved()) {
+                continue;
+            }
+            Identifier candidateId = Registries.ENTITY_TYPE.getId(entity.getType());
+            if (candidateId == null || !targetIds.contains(candidateId)) {
+                continue;
+            }
+            if (!EntityStateOptions.matchesState(entity, state)) {
+                continue;
+            }
+            double distance = entity.squaredDistanceTo(client.player);
+            if (nearest == null || distance < nearestDistance) {
+                nearest = entity;
+                nearestDistance = distance;
+            }
+        }
+
+        if (nearest == null) {
+            return Optional.empty();
+        }
+        Vec3d pos = EntityCompatibilityBridge.getPos(nearest);
+        if (pos != null) {
+            return Optional.of(pos);
+        }
+        return Optional.of(Vec3d.ofCenter(nearest.getBlockPos()));
     }
 
     private void applyVectorToCoordinateParameters(Vec3d targetVec) {
@@ -5673,6 +5775,9 @@ public class Node {
         Node slot1 = getAttachedParameter(1);
         Node variableNode = slot0;
         Node valueNode = slot1;
+        System.out.println("[Pathmind DEBUG] SET_VARIABLE begin node=" + getId()
+            + " varNode=" + (variableNode != null ? variableNode.getType() : "null")
+            + " valueNode=" + (valueNode != null ? valueNode.getType() : "null"));
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (variableNode == null || variableNode.getType() != NodeType.VARIABLE
@@ -5695,13 +5800,12 @@ public class Node {
 
         ExecutionManager manager = ExecutionManager.getInstance();
         Node startNode = getOwningStartNode();
-        if (startNode == null) {
-            if (client != null) {
-                sendNodeErrorMessage(client, "No active node tree available for variable assignment.");
-            }
-            future.complete(null);
-            return;
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
         }
+        System.out.println("[Pathmind DEBUG] SET_VARIABLE owningStart="
+            + (startNode != null ? startNode.getId() : "null")
+            + " name=" + variableName);
 
         NodeType valueType = valueNode.getType();
         Map<String, String> values;
@@ -5718,11 +5822,13 @@ public class Node {
                 future.complete(null);
                 return;
             }
-            Optional<Vec3d> resolved = valueNode.resolvePositionTarget(parameterNode, null, future);
+            Optional<Vec3d> resolved = valueNode.resolvePositionTarget(parameterNode, null, null);
             if (resolved.isEmpty()) {
-                if (future != null && !future.isDone()) {
-                    future.complete(null);
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Position Of could not resolve its target.");
                 }
+                setNextOutputSocket(NO_OUTPUT);
+                future.complete(null);
                 return;
             }
             Vec3d position = resolved.get();
@@ -5734,10 +5840,56 @@ public class Node {
             values.put("Y", Integer.toString(y));
             values.put("Z", Integer.toString(z));
             valueType = NodeType.PARAM_COORDINATE;
+        } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
+            Node parameterNodeA = valueNode.getAttachedParameter(0);
+            Node parameterNodeB = valueNode.getAttachedParameter(1);
+            System.out.println("[Pathmind DEBUG] SET_VARIABLE distance paramA="
+                + (parameterNodeA != null ? parameterNodeA.getType() : "null")
+                + " paramB=" + (parameterNodeB != null ? parameterNodeB.getType() : "null"));
+            if (parameterNodeA == null || parameterNodeB == null) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Distance Between requires two parameters (entity, block, or item).");
+                }
+                setNextOutputSocket(NO_OUTPUT);
+                future.complete(null);
+                return;
+            }
+            if ((!valueNode.providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
+                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
+                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.ITEM))
+                || (!valueNode.providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
+                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
+                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.ITEM))) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Distance Between only accepts entity, block, or item parameters.");
+                }
+                setNextOutputSocket(NO_OUTPUT);
+                future.complete(null);
+                return;
+            }
+            Optional<Vec3d> resolvedA = valueNode.resolveDistanceBetweenTarget(parameterNodeA);
+            Optional<Vec3d> resolvedB = valueNode.resolveDistanceBetweenTarget(parameterNodeB);
+            System.out.println("[Pathmind DEBUG] SET_VARIABLE distance resolvedA=" + resolvedA.isPresent()
+                + " resolvedB=" + resolvedB.isPresent());
+            if (resolvedA.isEmpty() || resolvedB.isEmpty()) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Distance Between could not resolve one or both targets.");
+                }
+                setNextOutputSocket(NO_OUTPUT);
+                future.complete(null);
+                return;
+            }
+            double distance = Math.sqrt(resolvedA.get().squaredDistanceTo(resolvedB.get()));
+            System.out.println("[Pathmind DEBUG] SET_VARIABLE distance value=" + distance);
+            values = new HashMap<>();
+            values.put("Distance", Double.toString(distance));
+            valueType = NodeType.PARAM_DISTANCE;
         } else {
             values = valueNode.exportParameterValues();
             if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
                 valueType = NodeType.PARAM_MESSAGE;
+            } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
+                valueType = NodeType.PARAM_DISTANCE;
             } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
                 valueType = NodeType.PARAM_BLOCK;
             } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
@@ -5745,10 +5897,12 @@ public class Node {
             }
         }
         ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
-        boolean stored = manager.setRuntimeVariable(startNode, variableName.trim(), value);
+        boolean stored = startNode != null && manager.setRuntimeVariable(startNode, variableName.trim(), value);
         if (!stored) {
             manager.setRuntimeVariableForAnyActiveChain(variableName.trim(), value);
         }
+        System.out.println("[Pathmind DEBUG] SET_VARIABLE stored name=" + variableName.trim()
+            + " type=" + valueType + " keys=" + values.keySet());
         future.complete(null);
     }
 
@@ -10771,6 +10925,8 @@ public class Node {
                 return getRuntimeValue(values, "variable");
             case SENSOR_POSITION_OF:
                 return formatCoordinateValues(values);
+            case SENSOR_DISTANCE_BETWEEN:
+                return getRuntimeValue(values, "distance");
             case SENSOR_TARGETED_BLOCK: {
                 String block = getRuntimeValue(values, "block");
                 if (!block.isEmpty()) {
@@ -13440,8 +13596,29 @@ public class Node {
         double durationSeconds = Math.max(0.0, getDoubleParameter("Duration", 1.0));
         double distance = Math.max(0.0, getDoubleParameter("Distance", 0.0));
         boolean useDistance = distance > 0.0;
+        NodeParameter durationParameter = getParameter("Duration");
+        boolean durationExplicitlyEdited = durationParameter != null && durationParameter.isUserEdited();
+
+        Node slotOneParameter = getAttachedParameter(1);
+        if (slotOneParameter != null && slotOneParameter.getType() == NodeType.VARIABLE) {
+            Node resolved = resolveVariableValueNode(slotOneParameter, 1, null);
+            if (resolved != null) {
+                slotOneParameter = resolved;
+            }
+        }
+        boolean distanceDrivenByParameter = slotOneParameter != null
+            && (slotOneParameter.getType() == NodeType.PARAM_DISTANCE
+                || slotOneParameter.getType() == NodeType.SENSOR_DISTANCE_BETWEEN);
+        System.out.println("[Pathmind DEBUG] WALK begin node=" + getId()
+            + " slot1=" + (slotOneParameter != null ? slotOneParameter.getType() : "null")
+            + " distance=" + distance
+            + " duration=" + durationSeconds
+            + " useDistance=" + useDistance
+            + " durationEdited=" + durationExplicitlyEdited
+            + " distanceDrivenByParameter=" + distanceDrivenByParameter);
 
         if (!useDistance && durationSeconds <= 0.0) {
+            System.out.println("[Pathmind DEBUG] WALK complete immediate (no distance and non-positive duration)");
             future.complete(null);
             return;
         }
@@ -13457,29 +13634,60 @@ public class Node {
 
                 if (useDistance) {
                     Vec3d startPos = supplyFromClient(client,
-                        () -> client.player != null ? EntityCompatibilityBridge.getPos(client.player) : null);
+                        () -> {
+                            if (client.player == null) {
+                                return null;
+                            }
+                            Vec3d pos = EntityCompatibilityBridge.getPos(client.player);
+                            if (pos != null) {
+                                return pos;
+                            }
+                            return new Vec3d(client.player.getX(), client.player.getY(), client.player.getZ());
+                        });
                     if (startPos != null) {
                         double targetDistanceSquared = distance * distance;
                         long startTime = System.currentTimeMillis();
-                        long maxDurationMs = durationSeconds > 0.0 ? (long) (durationSeconds * 1000) : Long.MAX_VALUE;
+                        long maxDurationMs = Long.MAX_VALUE;
+                        if (!distanceDrivenByParameter || durationExplicitlyEdited) {
+                            maxDurationMs = durationSeconds > 0.0 ? (long) (durationSeconds * 1000) : Long.MAX_VALUE;
+                        }
+                        String stopReason = "unknown";
                         while (true) {
                             Thread.sleep(50L);
                             if (System.currentTimeMillis() - startTime >= maxDurationMs) {
+                                stopReason = "timeout";
                                 break;
                             }
                             Vec3d currentPos = supplyFromClient(client,
-                                () -> client.player != null ? EntityCompatibilityBridge.getPos(client.player) : null);
+                                () -> {
+                                    if (client.player == null) {
+                                        return null;
+                                    }
+                                    Vec3d pos = EntityCompatibilityBridge.getPos(client.player);
+                                    if (pos != null) {
+                                        return pos;
+                                    }
+                                    return new Vec3d(client.player.getX(), client.player.getY(), client.player.getZ());
+                                });
                             if (currentPos == null) {
+                                stopReason = "currentPosNull";
                                 break;
                             }
                             double dx = currentPos.x - startPos.x;
                             double dz = currentPos.z - startPos.z;
                             if ((dx * dx + dz * dz) >= targetDistanceSquared) {
+                                stopReason = "distanceReached";
                                 break;
                             }
                         }
+                        System.out.println("[Pathmind DEBUG] WALK complete distance mode reason=" + stopReason
+                            + " targetDistance=" + distance
+                            + " maxDurationMs=" + maxDurationMs);
+                    } else {
+                        System.out.println("[Pathmind DEBUG] WALK complete distance mode startPos=null");
                     }
                 } else {
+                    System.out.println("[Pathmind DEBUG] WALK complete duration mode durationSeconds=" + durationSeconds);
                     Thread.sleep((long) (durationSeconds * 1000));
                 }
 
@@ -14721,10 +14929,22 @@ public class Node {
         }
         double searchRadius = Math.max(1.0, range);
         Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+        Identifier targetTypeId = Registries.ENTITY_TYPE.getId(entityType);
         List<Entity> matches = client.world.getOtherEntities(
             client.player,
             searchBox,
-            entity -> entity.getType() == entityType && EntityStateOptions.matchesState(entity, state)
+            entity -> {
+                if (entity == null) {
+                    return false;
+                }
+                EntityType<?> candidateType = entity.getType();
+                boolean sameType = candidateType == entityType;
+                if (!sameType && targetTypeId != null) {
+                    Identifier candidateId = Registries.ENTITY_TYPE.getId(candidateType);
+                    sameType = targetTypeId.equals(candidateId);
+                }
+                return sameType && EntityStateOptions.matchesState(entity, state);
+            }
         );
         if (matches.isEmpty()) {
             return Optional.empty();
@@ -15614,6 +15834,8 @@ public class Node {
         NodeType valueType = valueNode.getType();
         if (valueType == NodeType.SENSOR_POSITION_OF) {
             valueType = NodeType.PARAM_COORDINATE;
+        } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
+            valueType = NodeType.PARAM_DISTANCE;
         } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
             valueType = NodeType.PARAM_MESSAGE;
         } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
@@ -15764,6 +15986,16 @@ public class Node {
             case OPERATOR_RANDOM:
             case OPERATOR_MOD:
                 return Optional.of(parseNodeDouble(node, "Amount", 0.0));
+            case PARAM_DISTANCE:
+                return Optional.of(parseNodeDouble(node, "Distance", 0.0));
+            case SENSOR_DISTANCE_BETWEEN: {
+                Map<String, String> values = node.exportParameterValues();
+                String distanceValue = getRuntimeValue(values, "distance");
+                if (distanceValue.isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(parseDoubleOrNull(distanceValue));
+            }
             case PARAM_INVENTORY_SLOT:
                 return resolveInventorySlotCount(node).map(count -> (double) count);
             default:

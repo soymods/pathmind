@@ -218,6 +218,8 @@
   "pathmind.node.type.sensorAtCoordinates.desc": "Detect if player is at specific coordinates",
   "pathmind.node.type.sensorPositionOf": "Position Of",
   "pathmind.node.type.sensorPositionOf.desc": "Gets the position of an entity, block, or item",
+  "pathmind.node.type.sensorDistanceBetween": "Distance Between",
+  "pathmind.node.type.sensorDistanceBetween.desc": "Gets the distance between two targets (entity, block, or item)",
   "pathmind.node.type.sensorTargetedBlock": "Targeted Block",
   "pathmind.node.type.sensorTargetedBlock.desc": "Gets the block the player is targeting",
   "pathmind.node.type.sensorLookDirection": "Look Direction",

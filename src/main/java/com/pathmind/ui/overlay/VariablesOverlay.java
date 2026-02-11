@@ -31,16 +31,26 @@ public class VariablesOverlay {
 
     private final ExecutionManager executionManager;
     private final AnimatedValue visibility;
+    private List<String> lastDisplayLines;
 
     public VariablesOverlay() {
         this.executionManager = ExecutionManager.getInstance();
         this.visibility = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
+        this.lastDisplayLines = List.of();
     }
 
     public void render(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
         List<RuntimeVariableEntry> entries = executionManager.getRuntimeVariableEntries();
         List<String> lines = entries.isEmpty() ? List.of() : buildDisplayLines(entries);
-        boolean shouldShow = !lines.isEmpty();
+        boolean hasFreshLines = !lines.isEmpty();
+        if (hasFreshLines) {
+            lastDisplayLines = lines;
+        }
+        boolean showingCompletion = executionManager.isDisplayingCompletion();
+        if (!hasFreshLines && showingCompletion && !lastDisplayLines.isEmpty()) {
+            lines = lastDisplayLines;
+        }
+        boolean shouldShow = !lines.isEmpty() && (hasFreshLines || showingCompletion);
 
         visibility.animateTo(shouldShow ? 1f : 0f, shouldShow ? OPEN_DURATION_MS : CLOSE_DURATION_MS);
         visibility.tick();

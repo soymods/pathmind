@@ -1491,6 +1491,7 @@ public class NodeGraph {
 
                     boolean hideSockets = false;
                     if (draggingNode.getType() == NodeType.SENSOR_POSITION_OF
+                        || draggingNode.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
                         || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
                         || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
                         || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION) {
@@ -1534,6 +1535,7 @@ public class NodeGraph {
                         if (parameterDropTarget == null
                             && (hoveredNode == null
                                 || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                                    && hoveredNode.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
                                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
                                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
                                     && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION))) {
@@ -1623,6 +1625,7 @@ public class NodeGraph {
         }
 
         if (nodeType == NodeType.SENSOR_POSITION_OF
+            || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK
             || nodeType == NodeType.SENSOR_LOOK_DIRECTION) {
@@ -1639,6 +1642,7 @@ public class NodeGraph {
             if (parameterDropTarget == null
                 && (hoveredNode == null
                     || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                    && hoveredNode.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
                     && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION))) {
@@ -1678,6 +1682,7 @@ public class NodeGraph {
             if (parameterDropTarget == null
                 && (hoveredNode == null
                     || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                        && hoveredNode.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
                         && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
                         && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
                         && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION))) {
@@ -1722,6 +1727,7 @@ public class NodeGraph {
         }
 
         if (nodeType == NodeType.SENSOR_POSITION_OF
+            || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK
             || nodeType == NodeType.SENSOR_LOOK_DIRECTION) {
@@ -1738,6 +1744,7 @@ public class NodeGraph {
             }
             if (hoveredNode == null
                 || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                    && hoveredNode.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
                     && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION)) {
@@ -1780,6 +1787,7 @@ public class NodeGraph {
             }
             if (hoveredNode == null
                 || (hoveredNode.getType() != NodeType.SENSOR_POSITION_OF
+                    && hoveredNode.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
                     && hoveredNode.getType() != NodeType.SENSOR_TARGETED_BLOCK
                     && hoveredNode.getType() != NodeType.SENSOR_LOOK_DIRECTION)) {
@@ -1885,6 +1893,7 @@ public class NodeGraph {
                 }
                 rootToPromote = getRootNode(node);
             } else if ((node.getType() == NodeType.SENSOR_POSITION_OF
+                || node.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
                 || node.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
                 || node.getType() == NodeType.SENSOR_TARGETED_BLOCK
                 || node.getType() == NodeType.SENSOR_LOOK_DIRECTION)
@@ -1975,6 +1984,7 @@ public class NodeGraph {
 
         if ((draggingNode.isParameterNode()
             || draggingNode.getType() == NodeType.SENSOR_POSITION_OF
+            || draggingNode.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
             || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
             || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION)
@@ -2654,7 +2664,8 @@ public class NodeGraph {
         }
         return node.isParameterNode()
             && node.getType() != NodeType.OPERATOR_MOD
-            && node.getType() != NodeType.SENSOR_POSITION_OF;
+            && node.getType() != NodeType.SENSOR_POSITION_OF
+            && node.getType() != NodeType.SENSOR_DISTANCE_BETWEEN;
     }
 
     private void renderNode(DrawContext context, TextRenderer textRenderer, Node node, int mouseX, int mouseY, float delta) {

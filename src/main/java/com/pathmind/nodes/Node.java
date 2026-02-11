@@ -34,6 +34,7 @@ import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.RecipeCompatibilityBridge;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.EntityPose;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.BlockItem;
@@ -636,7 +637,10 @@ public class Node {
         return isStopControlNode()
             || type == NodeType.START_CHAIN
             || type == NodeType.SWING
+            || type == NodeType.CRAWL
             || type == NodeType.CROUCH
+            || type == NodeType.SPRINT
+            || type == NodeType.FLY
             || type == NodeType.JUMP
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || type == NodeType.SENSOR_TARGETED_BLOCK
@@ -2437,11 +2441,13 @@ public class Node {
                 parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "0.0"));
                 break;
+            case CRAWL:
+                break;
             case CROUCH:
                 break;
             case SPRINT:
-                parameters.add(new NodeParameter("Active", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("AllowFlying", ParameterType.BOOLEAN, "false"));
+                break;
+            case FLY:
                 break;
             case CONTROL_REPEAT:
                 parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "10"));
@@ -5572,11 +5578,17 @@ public class Node {
             case JUMP:
                 executeJumpCommand(future);
                 break;
+            case CRAWL:
+                executeCrawlCommand(future);
+                break;
             case CROUCH:
                 executeCrouchCommand(future);
                 break;
             case SPRINT:
                 executeSprintCommand(future);
+                break;
+            case FLY:
+                executeFlyCommand(future);
                 break;
             case INTERACT:
                 executeInteractCommand(future);
@@ -13465,6 +13477,25 @@ public class Node {
         future.complete(null);
     }
 
+    private void executeCrawlCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        boolean active = client.player.getPose() != EntityPose.SWIMMING || !client.player.isSwimming();
+        client.player.setSwimming(active);
+        client.player.setPose(active ? EntityPose.SWIMMING : EntityPose.STANDING);
+        if (client.options != null && client.options.sneakKey != null) {
+            client.options.sneakKey.setPressed(false);
+        }
+        future.complete(null);
+    }
+
     private void applyCrouchState(net.minecraft.client.MinecraftClient client, boolean active) {
         if (client == null || client.player == null) {
             return;
@@ -13512,14 +13543,8 @@ public class Node {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
-        
-        boolean active = getBooleanParameter("Active", true);
-        boolean allowFlying = getBooleanParameter("AllowFlying", false);
 
-        if (!allowFlying && client.player.getAbilities() != null && client.player.getAbilities().flying) {
-            future.complete(null);
-            return;
-        }
+        boolean active = !client.player.isSprinting();
 
         boolean previous = client.player.isSprinting();
         client.player.setSprinting(active);
@@ -13527,6 +13552,37 @@ public class Node {
             ClientCommandC2SPacket.Mode mode = active ? ClientCommandC2SPacket.Mode.START_SPRINTING : ClientCommandC2SPacket.Mode.STOP_SPRINTING;
             client.player.networkHandler.sendPacket(new ClientCommandC2SPacket(client.player, mode));
         }
+        future.complete(null);
+    }
+
+    private void executeFlyCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        if (client.player.getAbilities() == null) {
+            future.complete(null);
+            return;
+        }
+
+        boolean active = !client.player.getAbilities().flying;
+        if (active && !client.player.getAbilities().allowFlying) {
+            future.complete(null);
+            return;
+        }
+
+        // Lift off first so enabling flight works reliably even when starting grounded.
+        if (active && client.player.isOnGround()) {
+            client.player.jump();
+        }
+
+        client.player.getAbilities().flying = active;
+        client.player.sendAbilitiesUpdate();
         future.complete(null);
     }
     

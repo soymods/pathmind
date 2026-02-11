@@ -60,8 +60,10 @@ public enum NodeType {
     LOOK("pathmind.node.type.look", 0xFF03A9F4, "pathmind.node.type.look.desc"),
     WALK("pathmind.node.type.walk", 0xFF26C6DA, "pathmind.node.type.walk.desc"),
     JUMP("pathmind.node.type.jump", 0xFF009688, "pathmind.node.type.jump.desc"),
+    CRAWL("pathmind.node.type.crawl", 0xFF455A64, "pathmind.node.type.crawl.desc"),
     CROUCH("pathmind.node.type.crouch", 0xFF607D8B, "pathmind.node.type.crouch.desc"),
     SPRINT("pathmind.node.type.sprint", 0xFFFFEB3B, "pathmind.node.type.sprint.desc"),
+    FLY("pathmind.node.type.fly", 0xFF29B6F6, "pathmind.node.type.fly.desc"),
     STOP("pathmind.node.type.stop", 0xFFF44336, "pathmind.node.type.stop.desc"),
 
     // Player combat commands
@@ -252,8 +254,10 @@ public enum NodeType {
             case FOLLOW:
             case WALK:
             case JUMP:
+            case CRAWL:
             case CROUCH:
             case SPRINT:
+            case FLY:
                 return NodeCategory.MOVEMENT;
             case COLLECT:
             case BUILD:
@@ -337,8 +341,10 @@ public enum NodeType {
             case USE:
             case LOOK:
             case WALK:
+            case CRAWL:
             case CROUCH:
             case SPRINT:
+            case FLY:
             case INTERACT:
             case PLACE_HAND:
             case TRADE:

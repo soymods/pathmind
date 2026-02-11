@@ -668,7 +668,7 @@ public class PathmindVisualEditorScreen extends Screen {
             UITheme.TOOLBAR_BG_HOVER,
             UITheme.TOOLBAR_BG_DISABLED,
             UITheme.BUTTON_DEFAULT_BORDER,
-            UITheme.BUTTON_HOVER_OUTLINE
+            getAccentColor()
         );
 
         int iconColor = UITheme.TEXT_PRIMARY;

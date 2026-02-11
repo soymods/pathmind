@@ -243,7 +243,7 @@ public class PathmindClientMod implements ClientModInitializer {
         if (cached) {
             LOGGER.info("Pathmind recipe cache populated from singleplayer recipes.");
         } else {
-            LOGGER.info("Pathmind recipe cache warmup attempted but no recipes found.");
+            LOGGER.debug("Pathmind recipe cache warmup attempted but no recipes found.");
         }
     }
 

@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -116,6 +118,7 @@ import com.pathmind.util.InputCompatibilityBridge;
  * Similar to Blender's shader nodes, each node has inputs, outputs, and parameters.
  */
 public class Node {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
     public static final int NO_OUTPUT = -1;
     private final String id;
     private final NodeType type;
@@ -4158,6 +4161,16 @@ public class Node {
             handled = true;
         }
 
+        if (!handled && type == NodeType.GOTO) {
+            NodeType parameterType = parameterNode.getType();
+            if (parameterType == NodeType.PARAM_ENTITY
+                || parameterType == NodeType.PARAM_PLAYER
+                || parameterType == NodeType.PARAM_ITEM
+                || parameterType == NodeType.PARAM_BLOCK) {
+                return ParameterHandlingResult.CONTINUE;
+            }
+        }
+
         if (!handled) {
             if (future != null && !future.isDone()) {
                 sendIncompatibleParameterMessage(parameterNode);
@@ -7850,6 +7863,9 @@ public class Node {
     }
 
     private void logRecipeOutputDebug(CraftingRecipe recipe, Object serverRegistryManager, Object clientRegistryManager) {
+        if (!LOGGER.isDebugEnabled()) {
+            return;
+        }
         String recipeClass = recipe != null ? recipe.getClass().getName() : "null";
         String serverMgr = serverRegistryManager != null ? serverRegistryManager.getClass().getName() : "null";
         String clientMgr = clientRegistryManager != null ? clientRegistryManager.getClass().getName() : "null";
@@ -7874,15 +7890,16 @@ public class Node {
                 }
             }
         }
-        System.out.println(
-            "Pathmind craft output debug: recipeClass=" + recipeClass
-                + " serverRegistry=" + serverMgr
-                + " clientRegistry=" + clientMgr
-                + " serverLookup=" + serverLookup
-                + " clientLookup=" + clientLookup
-                + " outputMethods=" + outputMethods
-                + " craftMethods=" + craftMethods
-                + " methodsSample=" + allMethodsSample
+        LOGGER.debug(
+            "Pathmind craft output debug: recipeClass={} serverRegistry={} clientRegistry={} serverLookup={} clientLookup={} outputMethods={} craftMethods={} methodsSample={}",
+            recipeClass,
+            serverMgr,
+            clientMgr,
+            serverLookup,
+            clientLookup,
+            outputMethods,
+            craftMethods,
+            allMethodsSample
         );
     }
 
@@ -7923,17 +7940,21 @@ public class Node {
                                int matchingOutputs,
                                List<String> sampleOutputs,
                                List<String> managerTypes) {
+        if (!LOGGER.isDebugEnabled()) {
+            return;
+        }
         String targetId = targetItem != null ? Registries.ITEM.getId(targetItem).toString() : "unknown";
-        System.out.println(
-            "Pathmind craft debug: target=" + targetId
-                + " mode=" + craftMode
-                + " managers=" + managerCount
-                + " managerTypes=" + managerTypes
-                + " entries=" + totalEntries
-                + " craftingEntries=" + craftingEntries
-                + " emptyOutputs=" + emptyOutputs
-                + " matchingOutputs=" + matchingOutputs
-                + " sampleOutputs=" + sampleOutputs
+        LOGGER.debug(
+            "Pathmind craft debug: target={} mode={} managers={} managerTypes={} entries={} craftingEntries={} emptyOutputs={} matchingOutputs={} sampleOutputs={}",
+            targetId,
+            craftMode,
+            managerCount,
+            managerTypes,
+            totalEntries,
+            craftingEntries,
+            emptyOutputs,
+            matchingOutputs,
+            sampleOutputs
         );
     }
 
@@ -9282,25 +9303,36 @@ public class Node {
             Ingredient ingredient = unwrapRecipeIngredient(entry);
             if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
                 if (!loggedSummary) {
-                    System.out.println(
-                        "Pathmind craft debug: ingredient list type="
-                            + ingredients.getClass().getName()
-                            + " size=" + ingredients.size()
-                    );
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug(
+                            "Pathmind craft debug: ingredient list type={} size={}",
+                            ingredients.getClass().getName(),
+                            ingredients.size()
+                        );
+                    }
                     loggedSummary = true;
                 }
                 if (loggedEmpty < 3) {
                     int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
                     String entryType = entry != null ? entry.getClass().getName() : "null";
                     String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
-                    System.out.println(
-                        "Pathmind craft debug: empty ingredient entryType="
-                            + entryType + " ingredientType=" + ingredientType + " matches=" + matches
-                    );
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug(
+                            "Pathmind craft debug: empty ingredient entryType={} ingredientType={} matches={}",
+                            entryType,
+                            ingredientType,
+                            matches
+                        );
+                    }
                     loggedEmpty++;
                 }
                 if (!loggedUnknown && ingredient == null && entry != null) {
-                    System.out.println("Pathmind craft debug: unresolved ingredient entry type=" + entry.getClass().getName());
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug(
+                            "Pathmind craft debug: unresolved ingredient entry type={}",
+                            entry.getClass().getName()
+                        );
+                    }
                     logUnresolvedIngredientEntry(entry);
                     loggedUnknown = true;
                 }
@@ -9360,7 +9392,7 @@ public class Node {
     }
 
     private void logMissingRecipeIngredients(CraftingRecipe recipe) {
-        if (recipe == null) {
+        if (recipe == null || !LOGGER.isDebugEnabled()) {
             return;
         }
         try {
@@ -9396,19 +9428,20 @@ public class Node {
                     logged++;
                 }
             }
-            System.out.println(builder.toString());
+            LOGGER.debug(builder.toString());
         } catch (RuntimeException ignored) {
             // Avoid breaking crafting flow on debug failure.
         }
     }
 
     private void logEmptyPlacementIngredients(List<Ingredient> ingredients, Object registryManager) {
-        if (ingredients == null || ingredients.isEmpty()) {
+        if (ingredients == null || ingredients.isEmpty() || !LOGGER.isDebugEnabled()) {
             return;
         }
-        System.out.println(
-            "Pathmind craft debug: placement ingredients all empty size=" + ingredients.size()
-                + " listType=" + ingredients.getClass().getName()
+        LOGGER.debug(
+            "Pathmind craft debug: placement ingredients all empty size={} listType={}",
+            ingredients.size(),
+            ingredients.getClass().getName()
         );
         int logged = 0;
         for (Ingredient ingredient : ingredients) {
@@ -9417,19 +9450,28 @@ public class Node {
             }
             int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
             String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
-            System.out.println("Pathmind craft debug: placement ingredient type=" + ingredientType + " matches=" + matches);
+            LOGGER.debug(
+                "Pathmind craft debug: placement ingredient type={} matches={}",
+                ingredientType,
+                matches
+            );
             logged++;
         }
     }
 
     private void logIngredientListIfEmpty(String source, List<?> ingredients, Object registryManager) {
-        if (ingredients == null || ingredients.isEmpty()) {
-            System.out.println("Pathmind craft debug: " + source + " ingredient list empty");
+        if (!LOGGER.isDebugEnabled()) {
             return;
         }
-        System.out.println(
-            "Pathmind craft debug: " + source + " ingredient list type=" + ingredients.getClass().getName()
-                + " size=" + ingredients.size()
+        if (ingredients == null || ingredients.isEmpty()) {
+            LOGGER.debug("Pathmind craft debug: {} ingredient list empty", source);
+            return;
+        }
+        LOGGER.debug(
+            "Pathmind craft debug: {} ingredient list type={} size={}",
+            source,
+            ingredients.getClass().getName(),
+            ingredients.size()
         );
         int logged = 0;
         for (Object entry : ingredients) {
@@ -9440,9 +9482,12 @@ public class Node {
             int matches = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager).size();
             String entryType = entry != null ? entry.getClass().getName() : "null";
             String ingredientType = ingredient != null ? ingredient.getClass().getName() : "null";
-            System.out.println(
-                "Pathmind craft debug: " + source + " entryType=" + entryType
-                    + " ingredientType=" + ingredientType + " matches=" + matches
+            LOGGER.debug(
+                "Pathmind craft debug: {} entryType={} ingredientType={} matches={}",
+                source,
+                entryType,
+                ingredientType,
+                matches
             );
             if (ingredient == null && entry != null) {
                 logUnresolvedIngredientEntry(entry);
@@ -9452,7 +9497,7 @@ public class Node {
     }
 
     private void logUnresolvedIngredientEntry(Object entry) {
-        if (entry == null) {
+        if (entry == null || !LOGGER.isDebugEnabled()) {
             return;
         }
         try {
@@ -9489,7 +9534,7 @@ public class Node {
                     .append(":").append(field.getType().getName());
                 loggedFields++;
             }
-            System.out.println(builder.toString());
+            LOGGER.debug(builder.toString());
         } catch (RuntimeException ignored) {
             // Avoid breaking crafting flow on debug failure.
         }

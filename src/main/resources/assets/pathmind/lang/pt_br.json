@@ -190,6 +190,8 @@
   "pathmind.node.type.dropItem.desc": "Solta o item atualmente selecionado",
   "pathmind.node.type.dropSlot": "Soltar Slot",
   "pathmind.node.type.dropSlot.desc": "Solta itens de um slot específico",
+  "pathmind.node.type.clickSlot": "Clicar Slot",
+  "pathmind.node.type.clickSlot.desc": "Clica no slot de inventário selecionado",
   "pathmind.node.type.moveItem": "Mover Item",
   "pathmind.node.type.moveItem.desc": "Move itens entre slots do inventário",
   "pathmind.node.type.openInventory": "Abrir Inventário",

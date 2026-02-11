@@ -194,6 +194,8 @@
   "pathmind.node.type.dropItem.desc": "Drops the currently selected item",
   "pathmind.node.type.dropSlot": "Drop Slot",
   "pathmind.node.type.dropSlot.desc": "Drops items from a specific slot",
+  "pathmind.node.type.clickSlot": "Click Slot",
+  "pathmind.node.type.clickSlot.desc": "Clicks the selected inventory slot",
   "pathmind.node.type.moveItem": "Move Item",
   "pathmind.node.type.moveItem.desc": "Moves items between inventory slots",
   "pathmind.node.type.openInventory": "Open Inventory",

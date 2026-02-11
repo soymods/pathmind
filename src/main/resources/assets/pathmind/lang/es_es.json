@@ -190,6 +190,8 @@
   "pathmind.node.type.dropItem.desc": "Suelta el objeto seleccionado actualmente",
   "pathmind.node.type.dropSlot": "Soltar Ranura",
   "pathmind.node.type.dropSlot.desc": "Suelta objetos de una ranura específica",
+  "pathmind.node.type.clickSlot": "Clic en Ranura",
+  "pathmind.node.type.clickSlot.desc": "Hace clic en la ranura de inventario seleccionada",
   "pathmind.node.type.moveItem": "Mover Objeto",
   "pathmind.node.type.moveItem.desc": "Mueve objetos entre ranuras de inventario",
   "pathmind.node.type.openInventory": "Abrir Inventario",

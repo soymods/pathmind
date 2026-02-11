@@ -246,6 +246,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.HOTBAR, EnumSet.of(NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.ITEM));
         accepted.put(NodeType.DROP_ITEM, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.DROP_SLOT, EnumSet.of(NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.NUMBER));
+        accepted.put(NodeType.CLICK_SLOT, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.EQUIP_ARMOR, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.EQUIP_HAND, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
 
@@ -284,6 +285,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.PLACE, new String[]{"Source", "Position"});
         slotLabels.put(NodeType.PLACE_HAND, new String[]{"Source", "Position"});
         slotLabels.put(NodeType.MOVE_ITEM, new String[]{"Source Slot", "Target Slot"});
+        slotLabels.put(NodeType.CLICK_SLOT, new String[]{"Inventory Slot"});
         slotLabels.put(NodeType.WALK, new String[]{"Direction", "Duration/Distance"});
         slotLabels.put(NodeType.BREAK, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});

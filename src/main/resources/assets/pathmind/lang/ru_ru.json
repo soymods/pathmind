@@ -186,6 +186,8 @@
   "pathmind.node.type.dropItem.desc": "Выбрасывает текущий выбранный предмет",
   "pathmind.node.type.dropSlot": "Выбросить из слота",
   "pathmind.node.type.dropSlot.desc": "Выбрасывает предметы из определенного слота",
+  "pathmind.node.type.clickSlot": "Клик по слоту",
+  "pathmind.node.type.clickSlot.desc": "Кликает по выбранному слоту инвентаря",
   "pathmind.node.type.moveItem": "Переместить предмет",
   "pathmind.node.type.moveItem.desc": "Перемещает предметы между слотами инвентаря",
   "pathmind.node.type.openInventory": "Открыть инвентарь",

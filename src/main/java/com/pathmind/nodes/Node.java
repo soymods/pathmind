@@ -2386,6 +2386,9 @@ public class Node {
                 parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("EntireStack", ParameterType.BOOLEAN, "true"));
                 break;
+            case CLICK_SLOT:
+                parameters.add(new NodeParameter("Slot", ParameterType.INTEGER, "0"));
+                break;
             case MOVE_ITEM:
                 parameters.add(new NodeParameter("SourceSlot", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("TargetSlot", ParameterType.INTEGER, "9"));
@@ -5670,6 +5673,9 @@ public class Node {
                 break;
             case DROP_SLOT:
                 executeDropSlotCommand(future);
+                break;
+            case CLICK_SLOT:
+                executeClickSlotCommand(future);
                 break;
             case MOVE_ITEM:
                 executeMoveItemCommand(future);
@@ -12147,6 +12153,46 @@ public class Node {
             client.player.dropItem(removed, true);
         }
         
+        inventory.markDirty();
+        client.player.playerScreenHandler.sendContentUpdates();
+        future.complete(null);
+    }
+
+    private void executeClickSlotCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        ClientPlayerInteractionManager interactionManager = client.interactionManager;
+        ScreenHandler handler = client.player.currentScreenHandler;
+        if (interactionManager == null || handler == null) {
+            future.completeExceptionally(new RuntimeException("Interaction manager unavailable"));
+            return;
+        }
+
+        PlayerInventory inventory = client.player.getInventory();
+        int slotValue = getIntParameter("Slot", 0);
+        SlotSelectionType selectionType = resolveInventorySlotSelectionType(0);
+        SlotResolution resolution = resolveInventorySlot(handler, inventory, slotValue, selectionType);
+        if (resolution == null || resolution.slot == null) {
+            sendNodeErrorMessage(client, "Click Slot requires a valid slot selection.");
+            future.complete(null);
+            return;
+        }
+
+        interactionManager.clickSlot(
+            handler.syncId,
+            resolution.handlerSlotIndex,
+            0,
+            SlotActionType.PICKUP,
+            client.player
+        );
+
         inventory.markDirty();
         client.player.playerScreenHandler.sendContentUpdates();
         future.complete(null);

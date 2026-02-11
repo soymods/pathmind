@@ -190,6 +190,8 @@
   "pathmind.node.type.dropItem.desc": "Lässt den aktuell ausgewählten Gegenstand fallen",
   "pathmind.node.type.dropSlot": "Slot fallen lassen",
   "pathmind.node.type.dropSlot.desc": "Lässt Gegenstände aus einem bestimmten Slot fallen",
+  "pathmind.node.type.clickSlot": "Slot anklicken",
+  "pathmind.node.type.clickSlot.desc": "Klickt den ausgewählten Inventar-Slot an",
   "pathmind.node.type.moveItem": "Gegenstand verschieben",
   "pathmind.node.type.moveItem.desc": "Verschiebt Gegenstände zwischen Inventar-Slots",
   "pathmind.node.type.openInventory": "Inventar öffnen",

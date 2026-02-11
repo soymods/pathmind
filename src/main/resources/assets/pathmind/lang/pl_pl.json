@@ -186,6 +186,8 @@
   "pathmind.node.type.dropItem.desc": "Upuszcza aktualnie wybrany przedmiot",
   "pathmind.node.type.dropSlot": "Upuść slot",
   "pathmind.node.type.dropSlot.desc": "Upuszcza przedmioty z określonego slotu",
+  "pathmind.node.type.clickSlot": "Kliknij slot",
+  "pathmind.node.type.clickSlot.desc": "Klika wybrany slot ekwipunku",
   "pathmind.node.type.moveItem": "Przenieś przedmiot",
   "pathmind.node.type.moveItem.desc": "Przenosi przedmioty między slotami ekwipunku",
   "pathmind.node.type.openInventory": "Otwórz ekwipunek",

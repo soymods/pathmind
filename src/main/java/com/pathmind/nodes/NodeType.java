@@ -80,6 +80,7 @@ public enum NodeType {
     HOTBAR("pathmind.node.type.hotbar", 0xFFCDDC39, "pathmind.node.type.hotbar.desc"),
     DROP_ITEM("pathmind.node.type.dropItem", 0xFFFFAB91, "pathmind.node.type.dropItem.desc"),
     DROP_SLOT("pathmind.node.type.dropSlot", 0xFFFF7043, "pathmind.node.type.dropSlot.desc"),
+    CLICK_SLOT("pathmind.node.type.clickSlot", 0xFFFF7043, "pathmind.node.type.clickSlot.desc"),
     MOVE_ITEM("pathmind.node.type.moveItem", 0xFFFFB74D, "pathmind.node.type.moveItem.desc"),
     OPEN_INVENTORY("pathmind.node.type.openInventory", 0xFFB0BEC5, "pathmind.node.type.openInventory.desc"),
     CLOSE_GUI("pathmind.node.type.closeGui", 0xFFB0BEC5, "pathmind.node.type.closeGui.desc"),
@@ -279,6 +280,7 @@ public enum NodeType {
             case HOTBAR:
             case DROP_ITEM:
             case DROP_SLOT:
+            case CLICK_SLOT:
             case MOVE_ITEM:
             case OPEN_INVENTORY:
             case CLOSE_GUI:
@@ -351,6 +353,7 @@ public enum NodeType {
             case PLACE_HAND:
             case TRADE:
             case DROP_SLOT:
+            case CLICK_SLOT:
             case MOVE_ITEM:
             case EQUIP_ARMOR:
             case EQUIP_HAND:

@@ -186,6 +186,8 @@
   "pathmind.node.type.dropItem.desc": "Lâche l'objet actuellement sélectionné",
   "pathmind.node.type.dropSlot": "Lâcher un emplacement",
   "pathmind.node.type.dropSlot.desc": "Lâche les objets d'un emplacement spécifique",
+  "pathmind.node.type.clickSlot": "Cliquer emplacement",
+  "pathmind.node.type.clickSlot.desc": "Clique sur l'emplacement d'inventaire sélectionné",
   "pathmind.node.type.moveItem": "Déplacer un objet",
   "pathmind.node.type.moveItem.desc": "Déplace des objets entre les emplacements d'inventaire",
   "pathmind.node.type.openInventory": "Ouvrir l'inventaire",

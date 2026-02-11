@@ -2664,6 +2664,7 @@ public class NodeGraph {
         }
         return node.isParameterNode()
             && node.getType() != NodeType.OPERATOR_MOD
+            && node.getType() != NodeType.PARAM_DURATION
             && node.getType() != NodeType.SENSOR_POSITION_OF
             && node.getType() != NodeType.SENSOR_DISTANCE_BETWEEN;
     }
@@ -4044,7 +4045,7 @@ public class NodeGraph {
         int fieldLeft = node.getAmountFieldLeft() - cameraX;
         int fieldWidth = node.getAmountFieldWidth();
 
-        if (node.getType() == NodeType.WAIT && node.supportsModeSelection()) {
+        if ((node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) && node.supportsModeSelection()) {
             int dropdownLeft = fieldLeft;
             int dropdownTop = labelTop;
             int dropdownWidth = fieldWidth;
@@ -4097,7 +4098,11 @@ public class NodeGraph {
             ? value
             : trimTextToWidth(value, textRenderer, fieldWidth - 6);
         if (showPlaceholder) {
-            display = node.getType() == NodeType.MOVE_ITEM ? "Any" : "0";
+            if (node.getType() == NodeType.MOVE_ITEM) {
+                display = "Any";
+            } else {
+                display = "0";
+            }
             valueColor = UITheme.TEXT_TERTIARY;
         }
         int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
@@ -5664,13 +5669,21 @@ public class NodeGraph {
         }
 
         String value = amountEditBuffer == null ? "" : amountEditBuffer.trim();
-        if (!value.isEmpty() && !isNumericOrVariableReference(value, amountEditingNode, true, false)) {
+        if (amountEditingNode.getType() == NodeType.PARAM_DURATION && !value.startsWith("~")) {
+            // Accept locale decimal input like "1,5" for duration fields.
+            value = value.replace(',', '.');
+        }
+        if (amountEditingNode.getType() != NodeType.PARAM_DURATION
+            && !value.isEmpty()
+            && !isNumericOrVariableReference(value, amountEditingNode, true, false)) {
             amountEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
             return false;
         }
         if (value.isEmpty()) {
             if (amountEditingNode.getType() == NodeType.MOVE_ITEM) {
                 value = "0";
+            } else if (amountEditingNode.getType() == NodeType.PARAM_DURATION) {
+                value = "";
             } else {
                 value = amountEditOriginalValue != null && !amountEditOriginalValue.isEmpty()
                     ? amountEditOriginalValue
@@ -8657,6 +8670,7 @@ public class NodeGraph {
         if (!modeDropdownOpen) {
             return false;
         }
+        refreshModeDropdownAnchor();
         int x = (int) screenX;
         int y = (int) screenY;
         if (isPointInsideModeDropdownList(x, y)) {
@@ -8681,6 +8695,7 @@ public class NodeGraph {
         if (!modeDropdownOpen) {
             return false;
         }
+        refreshModeDropdownAnchor();
         if (!isPointInsideModeDropdownList((int) screenX, (int) screenY)) {
             return false;
         }
@@ -8752,10 +8767,29 @@ public class NodeGraph {
         modeDropdownOptions.clear();
     }
 
+    private void refreshModeDropdownAnchor() {
+        if (!modeDropdownOpen || modeDropdownNode == null) {
+            return;
+        }
+        Node node = modeDropdownNode;
+        if (node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) {
+            modeDropdownFieldX = node.getAmountFieldLeft() - cameraX;
+            modeDropdownFieldY = node.getAmountFieldLabelTop() - cameraY;
+            modeDropdownFieldWidth = node.getAmountFieldWidth();
+            modeDropdownFieldHeight = node.getAmountFieldLabelHeight();
+        } else {
+            modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
+            modeDropdownFieldY = node.getY() - cameraY + 18;
+            modeDropdownFieldWidth = getParameterFieldWidth(node);
+            modeDropdownFieldHeight = getParameterFieldHeight();
+        }
+    }
+
     private void renderModeDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
         if (!modeDropdownOpen) {
             return;
         }
+        refreshModeDropdownAnchor();
         List<ModeDropdownOption> options = modeDropdownOptions;
         int optionCount = Math.max(1, options.size());
         float zoom = getZoomScale();
@@ -8850,6 +8884,7 @@ public class NodeGraph {
         if (!modeDropdownOpen) {
             return false;
         }
+        refreshModeDropdownAnchor();
         float zoom = getZoomScale();
         int transformedX = Math.round(screenX / zoom);
         int transformedY = Math.round(screenY / zoom);
@@ -8866,6 +8901,7 @@ public class NodeGraph {
         if (!modeDropdownOpen) {
             return -1;
         }
+        refreshModeDropdownAnchor();
         float zoom = getZoomScale();
         int transformedY = Math.round(screenY / zoom);
 
@@ -8893,7 +8929,7 @@ public class NodeGraph {
         modeDropdownNode = node;
         modeDropdownScrollOffset = 0;
         modeDropdownHoverIndex = -1;
-        if (node.getType() == NodeType.WAIT) {
+        if (node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) {
             modeDropdownFieldX = node.getAmountFieldLeft() - cameraX;
             modeDropdownFieldY = node.getAmountFieldLabelTop() - cameraY;
             modeDropdownFieldWidth = node.getAmountFieldWidth();
@@ -8946,7 +8982,9 @@ public class NodeGraph {
     private boolean isPointInsideModeField(Node node, int screenX, int screenY) {
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
-        if (node != null && node.getType() == NodeType.WAIT && node.supportsModeSelection()) {
+        if (node != null
+            && (node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION)
+            && node.supportsModeSelection()) {
             int fieldLeft = node.getAmountFieldLeft();
             int fieldWidth = node.getAmountFieldWidth();
             int fieldHeight = node.getAmountFieldLabelHeight();

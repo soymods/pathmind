@@ -255,6 +255,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
         accepted.put(NodeType.TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE, NodeValueTrait.NUMBER));
         accepted.put(NodeType.CONTROL_REPEAT, EnumSet.of(NodeValueTrait.NUMBER));
+        accepted.put(NodeType.WAIT, EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.NUMBER));
 
         PARAMETER_ACCEPTED_TRAITS = accepted;
 
@@ -296,6 +297,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.CREATE_LIST, new String[]{"Target"});
         slotLabels.put(NodeType.TRADE, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.CONTROL_REPEAT, new String[]{"Count"});
+        slotLabels.put(NodeType.WAIT, new String[]{"Duration"});
         PARAMETER_SLOT_LABELS = slotLabels;
     }
 
@@ -391,6 +393,9 @@ public final class NodeTraitRegistry {
         if (hostType == NodeType.CONTROL_REPEAT && slotIndex == 0) {
             return EnumSet.of(NodeValueTrait.NUMBER, NodeValueTrait.DURATION);
         }
+        if (hostType == NodeType.WAIT && slotIndex == 0) {
+            return EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.NUMBER);
+        }
         return EnumSet.copyOf(traits);
     }
 
@@ -449,6 +454,9 @@ public final class NodeTraitRegistry {
         }
         if (hostType == NodeType.SENSOR_DISTANCE_BETWEEN) {
             return slotIndex == 0 || slotIndex == 1;
+        }
+        if (hostType == NodeType.WAIT) {
+            return false;
         }
         return slotIndex == 0;
     }

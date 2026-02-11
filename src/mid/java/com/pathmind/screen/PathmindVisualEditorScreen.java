@@ -1067,6 +1067,11 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleModeFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
                 if (nodeGraph.isPointInsideAmountField(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     nodeGraph.startAmountEditing(clickedNode);
@@ -1077,11 +1082,6 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (messageIndex != -1) {
                     nodeGraph.selectNode(clickedNode);
                     nodeGraph.startMessageEditing(clickedNode, messageIndex);
-                    return true;
-                }
-
-                if (nodeGraph.handleModeFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
                     return true;
                 }
 

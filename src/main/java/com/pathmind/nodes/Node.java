@@ -591,6 +591,7 @@ public class Node {
     private boolean isInlineParameterNode() {
         return isParameterNode()
             && type != NodeType.OPERATOR_MOD
+            && type != NodeType.PARAM_DURATION
             && type != NodeType.SENSOR_POSITION_OF
             && type != NodeType.SENSOR_DISTANCE_BETWEEN;
     }
@@ -1138,7 +1139,7 @@ public class Node {
         if (type == NodeType.CHANGE_VARIABLE) {
             return true;
         }
-        if (type == NodeType.WAIT) {
+        if (type == NodeType.PARAM_DURATION) {
             return true;
         }
         return false;
@@ -1171,7 +1172,7 @@ public class Node {
         if (!hasAmountInputField()) {
             return 0;
         }
-        if (type == NodeType.WAIT) {
+        if (type == NodeType.WAIT || type == NodeType.PARAM_DURATION) {
             return AMOUNT_FIELD_TOP_MARGIN + getAmountFieldLabelHeight() + WAIT_AMOUNT_FIELD_GAP + AMOUNT_FIELD_HEIGHT + AMOUNT_FIELD_BOTTOM_MARGIN;
         }
         return AMOUNT_FIELD_TOP_MARGIN + AMOUNT_FIELD_LABEL_HEIGHT + AMOUNT_FIELD_HEIGHT + AMOUNT_FIELD_BOTTOM_MARGIN;
@@ -1190,14 +1191,14 @@ public class Node {
     }
 
     public int getAmountFieldInputTop() {
-        if (type == NodeType.WAIT) {
+        if (type == NodeType.WAIT || type == NodeType.PARAM_DURATION) {
             return getAmountFieldLabelTop() + getAmountFieldLabelHeight() + WAIT_AMOUNT_FIELD_GAP;
         }
         return getAmountFieldLabelTop() + AMOUNT_FIELD_LABEL_HEIGHT;
     }
 
     public int getAmountFieldLabelHeight() {
-        if (type == NodeType.WAIT) {
+        if (type == NodeType.WAIT || type == NodeType.PARAM_DURATION) {
             return AMOUNT_FIELD_HEIGHT;
         }
         return AMOUNT_FIELD_LABEL_HEIGHT;
@@ -1208,6 +1209,20 @@ public class Node {
             return "Seconds";
         }
         if (type == NodeType.WAIT) {
+            NodeMode waitMode = mode != null ? mode : NodeMode.WAIT_SECONDS;
+            switch (waitMode) {
+                case WAIT_TICKS:
+                    return "Ticks";
+                case WAIT_MINUTES:
+                    return "Minutes";
+                case WAIT_HOURS:
+                    return "Hours";
+                case WAIT_SECONDS:
+                default:
+                    return "Seconds";
+            }
+        }
+        if (type == NodeType.PARAM_DURATION) {
             NodeMode waitMode = mode != null ? mode : NodeMode.WAIT_SECONDS;
             switch (waitMode) {
                 case WAIT_TICKS:
@@ -1235,6 +1250,9 @@ public class Node {
             return "Count";
         }
         if (type == NodeType.WAIT) {
+            return "Duration";
+        }
+        if (type == NodeType.PARAM_DURATION) {
             return "Duration";
         }
         return "Amount";
@@ -2324,6 +2342,13 @@ public class Node {
                 case STOP_FORCE:
                     // No parameters needed
                     break;
+                // Duration parameter modes
+                case WAIT_SECONDS:
+                case WAIT_TICKS:
+                case WAIT_MINUTES:
+                case WAIT_HOURS:
+                    parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, ""));
+                    break;
                 // UI Utils modes
                 case UI_UTILS_SET_SEND_PACKETS:
                 case UI_UTILS_SET_DELAY_PACKETS:
@@ -2364,7 +2389,7 @@ public class Node {
                 parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
                 break;
             case WAIT:
-                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
+                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "0.0"));
                 break;
             case START_CHAIN:
                 parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -2540,18 +2565,18 @@ public class Node {
                 parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
                 break;
             case PARAM_BLOCK:
-                parameters.add(new NodeParameter("Block", ParameterType.STRING, "stone"));
+                parameters.add(new NodeParameter("Block", ParameterType.STRING, ""));
                 parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_ITEM:
-                parameters.add(new NodeParameter("Item", ParameterType.STRING, "stick"));
+                parameters.add(new NodeParameter("Item", ParameterType.STRING, ""));
                 break;
             case PARAM_VILLAGER_TRADE:
                 parameters.add(new NodeParameter("Profession", ParameterType.STRING, "librarian"));
                 parameters.add(new NodeParameter("Item", ParameterType.STRING, "book"));
                 break;
             case PARAM_ENTITY:
-                parameters.add(new NodeParameter("Entity", ParameterType.STRING, "cow"));
+                parameters.add(new NodeParameter("Entity", ParameterType.STRING, ""));
                 parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
                 break;
             case PARAM_PLAYER:
@@ -2575,7 +2600,7 @@ public class Node {
                 parameters.add(new NodeParameter("Mode", ParameterType.STRING, "player_inventory"));
                 break;
             case PARAM_DURATION:
-                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
+                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, ""));
                 break;
             case PARAM_AMOUNT:
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "1.0"));
@@ -2638,6 +2663,12 @@ public class Node {
             if (param.getName().equals(name)) {
                 return param;
             }
+        }
+        if ("Duration".equals(name) && (type == NodeType.WAIT || type == NodeType.PARAM_DURATION)) {
+            String defaultValue = type == NodeType.PARAM_DURATION ? "" : "0.0";
+            NodeParameter duration = new NodeParameter("Duration", ParameterType.DOUBLE, defaultValue);
+            parameters.add(duration);
+            return duration;
         }
         return null;
     }
@@ -2883,12 +2914,43 @@ public class Node {
             case PARAM_DURATION: {
                 String duration = values.get("Duration");
                 if (duration != null) {
-                    values.put("IntervalSeconds", duration);
-                    values.put(normalizeParameterKey("IntervalSeconds"), duration);
-                    values.put("WaitSeconds", duration);
-                    values.put(normalizeParameterKey("WaitSeconds"), duration);
-                    values.put("DurationSeconds", duration);
-                    values.put(normalizeParameterKey("DurationSeconds"), duration);
+                    String trimmed = duration.trim();
+                    double parsed = 1.0;
+                    if (!trimmed.isEmpty()) {
+                        try {
+                            parsed = Double.parseDouble(trimmed);
+                        } catch (NumberFormatException ignored) {
+                            parsed = 0.0;
+                        }
+                    }
+
+                    NodeMode durationMode = mode != null ? mode : NodeMode.WAIT_SECONDS;
+                    double unitSeconds;
+                    switch (durationMode) {
+                        case WAIT_TICKS:
+                            unitSeconds = 0.05;
+                            break;
+                        case WAIT_MINUTES:
+                            unitSeconds = 60.0;
+                            break;
+                        case WAIT_HOURS:
+                            unitSeconds = 3600.0;
+                            break;
+                        case WAIT_SECONDS:
+                        default:
+                            unitSeconds = 1.0;
+                            break;
+                    }
+
+                    String secondsValue = Double.toString(Math.max(0.0, parsed) * unitSeconds);
+                    values.put("Duration", secondsValue);
+                    values.put(normalizeParameterKey("Duration"), secondsValue);
+                    values.put("IntervalSeconds", secondsValue);
+                    values.put(normalizeParameterKey("IntervalSeconds"), secondsValue);
+                    values.put("WaitSeconds", secondsValue);
+                    values.put(normalizeParameterKey("WaitSeconds"), secondsValue);
+                    values.put("DurationSeconds", secondsValue);
+                    values.put(normalizeParameterKey("DurationSeconds"), secondsValue);
                 }
                 break;
             }
@@ -4130,6 +4192,36 @@ public class Node {
         Map<String, String> adjustedValues = adjustParameterValuesForSlot(exported, slotIndex, parameterNode);
         if (!exported.isEmpty()) {
             handled = applyParameterValuesFromMap(adjustedValues);
+        }
+        if (!handled && type == NodeType.WAIT) {
+            String durationValue = adjustedValues.get("Duration");
+            if (durationValue == null) {
+                durationValue = adjustedValues.get(normalizeParameterKey("Duration"));
+            }
+            if (durationValue == null) {
+                durationValue = adjustedValues.get("DurationSeconds");
+            }
+            if (durationValue == null) {
+                durationValue = adjustedValues.get(normalizeParameterKey("DurationSeconds"));
+            }
+            if (durationValue == null) {
+                durationValue = adjustedValues.get("WaitSeconds");
+            }
+            if (durationValue == null) {
+                durationValue = adjustedValues.get(normalizeParameterKey("WaitSeconds"));
+            }
+            if (durationValue == null) {
+                durationValue = adjustedValues.get("IntervalSeconds");
+            }
+            if (durationValue == null) {
+                durationValue = adjustedValues.get(normalizeParameterKey("IntervalSeconds"));
+            }
+            if (durationValue != null && !durationValue.trim().isEmpty()) {
+                setParameterValueAndPropagate("Duration", durationValue.trim());
+                handled = true;
+            } else if (providesTrait(parameterNode, NodeValueTrait.DURATION) || providesTrait(parameterNode, NodeValueTrait.NUMBER)) {
+                handled = true;
+            }
         }
 
         if (parameterNode.getType() == NodeType.LIST_ITEM) {

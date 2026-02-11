@@ -440,7 +440,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Render language dropdown options on top of scrim overlay
         if (settingsPopupAnimation.isVisible()) {
-            RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+            RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
             drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
         }
 
@@ -3694,7 +3694,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
         float popupAlpha = settingsPopupAnimation.getPopupAlpha();
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         int popupWidth = SETTINGS_POPUP_WIDTH;
         int popupHeight = SETTINGS_POPUP_HEIGHT;
@@ -3738,7 +3737,6 @@ public class PathmindVisualEditorScreen extends Screen {
         String currentLang = this.client.getLanguageManager().getLanguage();
         String langDisplayName = getLanguageDisplayName(currentLang);
         boolean languageHovered = mouseX >= contentX && mouseX <= contentX + languageButtonWidth && mouseY >= languageButtonY && mouseY <= languageButtonY + 20;
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
         drawLanguageDropdown(context, contentX, languageButtonY, languageButtonWidth, langDisplayName, languageHovered);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
@@ -3865,7 +3863,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
         boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
         int trackColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-        int trackBorder = hovered ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        int trackBorder = UITheme.BORDER_SUBTLE;
         trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
         trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
         context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
@@ -3876,9 +3874,11 @@ public class PathmindVisualEditorScreen extends Screen {
         int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
         int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
         int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
+        int handleBorder = (hovered || nodeDelayDragging) ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        handleBorder = getPopupAnimatedColor(settingsPopupAnimation, handleBorder);
         context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
         DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+            handleBorder);
     }
 
     private void renderNodeDelayRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
@@ -3938,7 +3938,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
         boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
         int trackColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-        int trackBorder = hovered ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        int trackBorder = UITheme.BORDER_SUBTLE;
         trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
         trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
         context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
@@ -3949,9 +3949,11 @@ public class PathmindVisualEditorScreen extends Screen {
         int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
         int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
         int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
+        int handleBorder = (hovered || nodeDelayDragging) ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        handleBorder = getPopupAnimatedColor(settingsPopupAnimation, handleBorder);
         context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
         DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+            handleBorder);
     }
 
     private int[] getNodeDelayFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
@@ -4278,10 +4280,18 @@ public class PathmindVisualEditorScreen extends Screen {
         languageDropdownAnimation.animateTo(languageDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
         languageDropdownAnimation.tick();
 
-        // Draw dropdown button background
-        int bgColor = hovered ? UITheme.DROPDOWN_BG_HOVER : UITheme.DROPDOWN_BG;
+        int bgColor;
+        if (hovered) {
+            bgColor = languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER;
+        } else {
+            bgColor = languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
+        }
         bgColor = settingsPopupAnimation.getAnimatedPopupColor(bgColor);
-        context.fill(x, y, x + width, y + 20, bgColor);
+        context.fill(x + 1, y + 1, x + width - 1, y + 19, bgColor);
+
+        int borderColor = getAnimatedBorderColor("settings-language-dropdown", hovered || languageDropdownOpen, UITheme.BORDER_DEFAULT, getAccentColor());
+        borderColor = settingsPopupAnimation.getAnimatedPopupColor(borderColor);
+        DrawContextBridge.drawBorder(context, x, y, width, 20, borderColor);
 
         // Draw dropdown text
         int labelColor = (hovered || languageDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
@@ -4338,7 +4348,7 @@ public class PathmindVisualEditorScreen extends Screen {
             boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
             int optionBg = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
             optionBg = settingsPopupAnimation.getAnimatedPopupColor(optionBg);
-            context.fill(x, optionY, x + width, optionY + 20, optionBg);
+            context.fill(x + 1, optionY + 1, x + width - 1, optionY + 20, optionBg);
 
             // Highlight current language with accent color
             String currentLang = this.client.getLanguageManager().getLanguage();
@@ -4346,6 +4356,15 @@ public class PathmindVisualEditorScreen extends Screen {
             textColor = settingsPopupAnimation.getAnimatedPopupColor(textColor);
             context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
         }
+
+        DropdownLayoutHelper.drawOutline(
+            context,
+            x,
+            dropdownY,
+            width,
+            fullOptionsHeight,
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT)
+        );
 
         // Disable scissor
         context.disableScissor();

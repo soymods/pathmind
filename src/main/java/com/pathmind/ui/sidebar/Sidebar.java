@@ -31,9 +31,6 @@ public class Sidebar {
     private static final int TAB_SIZE = 24;
     private static final int TAB_SPACING = 8;
     private static final int TOP_PADDING = 8;
-    private static final int TAB_COLUMNS = 2;
-    private static final int TAB_COLUMN_MARGIN = 8;
-    private static final int TAB_COLUMN_SPACING = 8;
     private static final int SCROLLBAR_WIDTH = 6;
     private static final int SCROLLBAR_MARGIN = 4;
     private static final int SCROLLBAR_MIN_KNOB_HEIGHT = 20;
@@ -308,17 +305,25 @@ public class Sidebar {
         }
 
         int availableTabHeight = Math.max(TAB_SIZE, sidebarHeight - TOP_PADDING * 2);
-        int rowsFromHeight = Math.max(1, (availableTabHeight + TAB_SPACING) / (TAB_SIZE + TAB_SPACING));
-        int minRowsNeeded = totalVisibleTabs > 0 ? (int) Math.ceil(totalVisibleTabs / (double) TAB_COLUMNS) : 1;
-        int rowsPerColumn = Math.max(rowsFromHeight, minRowsNeeded);
-        int columnsUsed = totalVisibleTabs > 0 ? (int) Math.ceil(totalVisibleTabs / (double) rowsPerColumn) : 1;
-        columnsUsed = Math.min(columnsUsed, TAB_COLUMNS);
+        int tabSize = TAB_SIZE;
+        int tabSpacing = TAB_SPACING;
+        if (totalVisibleTabs > 0) {
+            int defaultRequiredHeight = totalVisibleTabs * TAB_SIZE + (totalVisibleTabs - 1) * TAB_SPACING;
+            if (defaultRequiredHeight > availableTabHeight) {
+                float scale = availableTabHeight / (float) defaultRequiredHeight;
+                tabSize = Math.max(12, Math.round(TAB_SIZE * scale));
+                tabSpacing = Math.max(2, Math.round(TAB_SPACING * scale));
 
-        if (columnsUsed > 1) {
-            currentInnerSidebarWidth = INNER_SIDEBAR_WIDTH * 2 - 6;
-        } else {
-            currentInnerSidebarWidth = INNER_SIDEBAR_WIDTH;
+                int scaledRequiredHeight = totalVisibleTabs * tabSize + (totalVisibleTabs - 1) * tabSpacing;
+                if (scaledRequiredHeight > availableTabHeight) {
+                    tabSpacing = 2;
+                    int maxSizeFromHeight = (availableTabHeight - (totalVisibleTabs - 1) * tabSpacing) / totalVisibleTabs;
+                    tabSize = Math.max(8, maxSizeFromHeight);
+                }
+            }
         }
+
+        currentInnerSidebarWidth = INNER_SIDEBAR_WIDTH;
 
         int totalWidth = currentInnerSidebarWidth
             + Math.round((OUTER_SIDEBAR_WIDTH - currentInnerSidebarWidth) * openProgress);
@@ -370,9 +375,8 @@ public class Sidebar {
 
         // Render colored tabs
         hoveredCategory = null;
-        // rowsPerColumn already calculated above
-
-        int visibleTabIndex = 0; // Track visible tabs separately from array index
+        int tabX = Math.max(0, (currentInnerSidebarWidth - tabSize) / 2);
+        int visibleTabIndex = 0;
         for (int i = 0; i < categories.length; i++) {
             NodeCategory category = categories[i];
 
@@ -381,15 +385,12 @@ public class Sidebar {
                 continue;
             }
 
-            int column = visibleTabIndex / rowsPerColumn;
-            int row = visibleTabIndex % rowsPerColumn;
-            int tabY = currentY + row * (TAB_SIZE + TAB_SPACING);
-            int tabX = TAB_COLUMN_MARGIN + column * (TAB_SIZE + TAB_COLUMN_SPACING);
-            visibleTabIndex++; // Increment only for visible tabs
+            int tabY = currentY + visibleTabIndex * (tabSize + tabSpacing);
+            visibleTabIndex++;
 
             // Check if tab is hovered
-            boolean tabHovered = effectiveMouseX >= tabX && effectiveMouseX <= tabX + TAB_SIZE &&
-                               effectiveMouseY >= tabY && effectiveMouseY < tabY + TAB_SIZE;
+            boolean tabHovered = effectiveMouseX >= tabX && effectiveMouseX <= tabX + tabSize &&
+                               effectiveMouseY >= tabY && effectiveMouseY < tabY + tabSize;
 
             // Check if tab is selected
             boolean tabSelected = category == selectedCategory;
@@ -407,16 +408,16 @@ public class Sidebar {
             int tabColor = tabSelected ? normalColor : AnimationHelper.lerpColor(normalColor, hoverColor, hoverProgress);
 
             // Render square tab
-            context.fill(tabX, tabY, tabX + TAB_SIZE, tabY + TAB_SIZE, tabColor);
+            context.fill(tabX, tabY, tabX + tabSize, tabY + tabSize, tabColor);
 
             // Tab outline - subtle border
             int outlineColor = darkenColor(baseColor, 0.7f);
-            DrawContextBridge.drawBorder(context, tabX, tabY, TAB_SIZE, TAB_SIZE, outlineColor);
+            DrawContextBridge.drawBorder(context, tabX, tabY, tabSize, tabSize, outlineColor);
 
             // Render centered icon
             String icon = category.getIcon();
-            int iconX = tabX + (TAB_SIZE - textRenderer.getWidth(icon)) / 2;
-            int iconY = tabY + (TAB_SIZE - textRenderer.fontHeight) / 2 + 1;
+            int iconX = tabX + (tabSize - textRenderer.getWidth(icon)) / 2;
+            int iconY = tabY + (tabSize - textRenderer.fontHeight) / 2 + 1;
 
             context.drawTextWithShadow(textRenderer, icon, iconX, iconY, UITheme.TEXT_HEADER);
 

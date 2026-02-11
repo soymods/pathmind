@@ -620,7 +620,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Node background with transparency
         context.fill(x, y, x + width, y + height, 0x802A2A2A);
         // Draw grey outline for dragging state
-        DrawContextBridge.drawBorder(context, x, y, width, height, 0xFFAAAAAA);
+        DrawContextBridge.drawBorderInLayer(context, x, y, width, height, 0xFFAAAAAA);
 
         // Node header
         if (draggingNodeType != NodeType.START && draggingNodeType != NodeType.EVENT_FUNCTION) {

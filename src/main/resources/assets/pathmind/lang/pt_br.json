@@ -248,6 +248,8 @@
   "pathmind.node.type.sensorIsFalling.desc": "Detecta se o jogador está atualmente caindo",
   "pathmind.node.type.sensorIsRendered": "Está Renderizado",
   "pathmind.node.type.sensorIsRendered.desc": "Detecta se um bloco, item, entidade ou jogador especificado está atualmente visível para o jogador",
+  "pathmind.node.type.sensorIsVisible": "Is Visible",
+  "pathmind.node.type.sensorIsVisible.desc": "Detect if a specified block, dropped item, entity, or player is currently in the player's field of view and not obscured",
   "pathmind.node.type.sensorKeyPressed": "Tecla Pressionada",
   "pathmind.node.type.sensorKeyPressed.desc": "Detecta se uma tecla específica do teclado está atualmente pressionada",
   "pathmind.node.type.sensorChatMessage": "Mensagem no Chat",

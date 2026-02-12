@@ -248,6 +248,8 @@
   "pathmind.node.type.sensorIsFalling.desc": "Erkennt, ob der Spieler gerade fällt",
   "pathmind.node.type.sensorIsRendered": "Ist gerendert",
   "pathmind.node.type.sensorIsRendered.desc": "Erkennt, ob ein angegebener Block, Gegenstand, eine Entität oder ein Spieler gerade für den Spieler sichtbar ist",
+  "pathmind.node.type.sensorIsVisible": "Is Visible",
+  "pathmind.node.type.sensorIsVisible.desc": "Detect if a specified block, dropped item, entity, or player is currently in the player's field of view and not obscured",
   "pathmind.node.type.sensorKeyPressed": "Taste gedrückt",
   "pathmind.node.type.sensorKeyPressed.desc": "Erkennt, ob eine bestimmte Taste gerade gedrückt wird",
   "pathmind.node.type.sensorChatMessage": "Chat-Nachricht",

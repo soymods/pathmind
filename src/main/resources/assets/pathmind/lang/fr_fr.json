@@ -244,6 +244,8 @@
   "pathmind.node.type.sensorIsFalling.desc": "Détecte si le joueur tombe actuellement",
   "pathmind.node.type.sensorIsRendered": "Est rendu",
   "pathmind.node.type.sensorIsRendered.desc": "Détecte si un bloc, un objet, une entité ou un joueur spécifié est actuellement visible pour le joueur",
+  "pathmind.node.type.sensorIsVisible": "Is Visible",
+  "pathmind.node.type.sensorIsVisible.desc": "Detect if a specified block, dropped item, entity, or player is currently in the player's field of view and not obscured",
   "pathmind.node.type.sensorKeyPressed": "Touche pressée",
   "pathmind.node.type.sensorKeyPressed.desc": "Détecte si une touche spécifique du clavier est actuellement enfoncée",
   "pathmind.node.type.sensorChatMessage": "Message de chat",

@@ -2553,6 +2553,7 @@ public class Node {
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
                 break;
             case SENSOR_IS_RENDERED:
+            case SENSOR_IS_VISIBLE:
                 parameters.add(new NodeParameter("Resource", ParameterType.STRING, "stone"));
                 break;
             case SENSOR_CHAT_MESSAGE:
@@ -3030,12 +3031,14 @@ public class Node {
                 }
                 if (!providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
                     && !providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
-                    && !providesTrait(parameterNodeA, NodeValueTrait.ITEM)) {
+                    && !providesTrait(parameterNodeA, NodeValueTrait.ITEM)
+                    && !providesTrait(parameterNodeA, NodeValueTrait.PLAYER)) {
                     break;
                 }
                 if (!providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
                     && !providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
-                    && !providesTrait(parameterNodeB, NodeValueTrait.ITEM)) {
+                    && !providesTrait(parameterNodeB, NodeValueTrait.ITEM)
+                    && !providesTrait(parameterNodeB, NodeValueTrait.PLAYER)) {
                     break;
                 }
                 Optional<Vec3d> resolvedA = resolveDistanceBetweenTarget(parameterNodeA);
@@ -4193,7 +4196,7 @@ public class Node {
         if (!exported.isEmpty()) {
             handled = applyParameterValuesFromMap(adjustedValues);
         }
-        if (!handled && type == NodeType.WAIT) {
+        if (type == NodeType.WAIT) {
             String durationValue = adjustedValues.get("Duration");
             if (durationValue == null) {
                 durationValue = adjustedValues.get(normalizeParameterKey("Duration"));
@@ -4217,8 +4220,15 @@ public class Node {
                 durationValue = adjustedValues.get(normalizeParameterKey("IntervalSeconds"));
             }
             if (durationValue != null && !durationValue.trim().isEmpty()) {
-                setParameterValueAndPropagate("Duration", durationValue.trim());
-                handled = true;
+                String trimmedDuration = durationValue.trim();
+                Double parsedDurationSeconds = parseDoubleOrNull(trimmedDuration);
+                if (runtimeParameterData != null && parsedDurationSeconds != null) {
+                    runtimeParameterData.durationSeconds = Math.max(0.0, parsedDurationSeconds);
+                }
+                if (!handled) {
+                    setParameterValueAndPropagate("Duration", trimmedDuration);
+                    handled = true;
+                }
             } else if (providesTrait(parameterNode, NodeValueTrait.DURATION) || providesTrait(parameterNode, NodeValueTrait.NUMBER)) {
                 handled = true;
             }
@@ -4364,7 +4374,13 @@ public class Node {
             snapshot.applyParameterValuesFromMap(values);
         }
 
-        if (!isParameterSupported(snapshot, slotIndex)) {
+        boolean variableSupported = isParameterSupported(snapshot, slotIndex);
+        if (!variableSupported
+            && (type == NodeType.OPERATOR_GREATER || type == NodeType.OPERATOR_LESS)) {
+            variableSupported = resolveComparableNumber(snapshot).isPresent();
+        }
+
+        if (!variableSupported) {
             sendVariableError("Variable \"" + variableName.trim() + "\" cannot be used with " + type.getDisplayName() + ".", future);
             return null;
         }
@@ -4469,14 +4485,54 @@ public class Node {
                 if (client == null || client.player == null) {
                     return Optional.empty();
                 }
+                String state = getEntityParameterState(parameterNode);
+                double defaultRange = type == NodeType.SENSOR_DISTANCE_BETWEEN ? 256.0 : PARAMETER_SEARCH_RADIUS;
+                double range = parseNodeDouble(parameterNode, "Range", defaultRange);
+                String rawEntity = getParameterString(parameterNode, "Entity");
+
+                if (isAnySelectionValue(rawEntity)) {
+                    if (client.world == null) {
+                        return Optional.empty();
+                    }
+                    double searchRadius = Math.max(1.0, range);
+                    Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+                    Entity nearest = null;
+                    double nearestDistance = Double.MAX_VALUE;
+                    for (Entity entity : client.world.getOtherEntities(client.player, searchBox)) {
+                        if (entity == null || entity.isRemoved()) {
+                            continue;
+                        }
+                        if (!EntityStateOptions.matchesState(entity, state)) {
+                            continue;
+                        }
+                        double distance = entity.squaredDistanceTo(client.player);
+                        if (nearest == null || distance < nearestDistance) {
+                            nearest = entity;
+                            nearestDistance = distance;
+                        }
+                    }
+                    if (nearest == null) {
+                        sendParameterSearchFailure("No nearby entity found for " + type.getDisplayName() + ".", future);
+                        return Optional.empty();
+                    }
+                    Identifier nearestIdentifier = Registries.ENTITY_TYPE.getId(nearest.getType());
+                    if (data != null) {
+                        data.targetEntity = nearest;
+                        data.targetEntityId = nearestIdentifier != null ? nearestIdentifier.toString() : null;
+                        data.targetBlockPos = nearest.getBlockPos();
+                    }
+                    Vec3d nearestPos = EntityCompatibilityBridge.getPos(nearest);
+                    if (nearestPos != null) {
+                        return Optional.of(nearestPos);
+                    }
+                    return Optional.of(Vec3d.ofCenter(nearest.getBlockPos()));
+                }
+
                 List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
                 if (entityIds.isEmpty()) {
                     sendParameterSearchFailure("No entity selected on parameter for " + type.getDisplayName() + ".", future);
                     return Optional.empty();
                 }
-                String state = getEntityParameterState(parameterNode);
-                double defaultRange = type == NodeType.SENSOR_DISTANCE_BETWEEN ? 256.0 : PARAMETER_SEARCH_RADIUS;
-                double range = parseNodeDouble(parameterNode, "Range", defaultRange);
                 Entity nearest = null;
                 String nearestId = null;
                 double nearestDistance = Double.MAX_VALUE;
@@ -4704,14 +4760,37 @@ public class Node {
             return Optional.empty();
         }
 
-        List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
-        if (entityIds.isEmpty()) {
-            return Optional.empty();
-        }
-
+        String state = getEntityParameterState(parameterNode);
         double range = parseNodeDouble(parameterNode, "Range", 256.0);
         double searchRadius = Math.max(1.0, range);
-        String state = getEntityParameterState(parameterNode);
+        List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
+        if (entityIds.isEmpty()) {
+            Entity nearestAny = null;
+            double nearestAnyDistance = Double.MAX_VALUE;
+            Box anySearchBox = client.player.getBoundingBox().expand(searchRadius);
+            for (Entity entity : client.world.getOtherEntities(client.player, anySearchBox)) {
+                if (entity == null || entity.isRemoved()) {
+                    continue;
+                }
+                if (!EntityStateOptions.matchesState(entity, state)) {
+                    continue;
+                }
+                double distance = entity.squaredDistanceTo(client.player);
+                if (nearestAny == null || distance < nearestAnyDistance) {
+                    nearestAny = entity;
+                    nearestAnyDistance = distance;
+                }
+            }
+            if (nearestAny == null) {
+                return Optional.empty();
+            }
+            Vec3d pos = EntityCompatibilityBridge.getPos(nearestAny);
+            if (pos != null) {
+                return Optional.of(pos);
+            }
+            return Optional.of(Vec3d.ofCenter(nearestAny.getBlockPos()));
+        }
+
         Box searchBox = client.player.getBoundingBox().expand(searchRadius);
 
         java.util.Set<Identifier> targetIds = new java.util.HashSet<>();
@@ -5833,6 +5912,7 @@ public class Node {
             case SENSOR_IS_ON_GROUND:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case SENSOR_IS_VISIBLE:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
             case SENSOR_TARGETED_BLOCK:
@@ -5946,7 +6026,7 @@ public class Node {
                 + " paramB=" + (parameterNodeB != null ? parameterNodeB.getType() : "null"));
             if (parameterNodeA == null || parameterNodeB == null) {
                 if (client != null) {
-                    sendNodeErrorMessage(client, "Distance Between requires two parameters (entity, block, or item).");
+                    sendNodeErrorMessage(client, "Distance Between requires two parameters (entity, user, block, or item).");
                 }
                 setNextOutputSocket(NO_OUTPUT);
                 future.complete(null);
@@ -5954,12 +6034,14 @@ public class Node {
             }
             if ((!valueNode.providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
                 && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.ITEM))
+                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.ITEM)
+                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.PLAYER))
                 || (!valueNode.providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
                 && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.ITEM))) {
+                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.ITEM)
+                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.PLAYER))) {
                 if (client != null) {
-                    sendNodeErrorMessage(client, "Distance Between only accepts entity, block, or item parameters.");
+                    sendNodeErrorMessage(client, "Distance Between only accepts entity, user, block, or item parameters.");
                 }
                 setNextOutputSocket(NO_OUTPUT);
                 future.complete(null);
@@ -10722,26 +10804,31 @@ public class Node {
             return;
         }
         double baseDuration = Math.max(0.0, getDoubleParameter("Duration", 1.0));
+        Double attachedDurationSeconds = runtimeParameterData != null ? runtimeParameterData.durationSeconds : null;
 
+        final double waitSeconds;
         NodeMode waitMode = mode != null ? mode : NodeMode.WAIT_SECONDS;
-        double unitSeconds;
-        switch (waitMode) {
-            case WAIT_TICKS:
-                unitSeconds = 0.05;
-                break;
-            case WAIT_MINUTES:
-                unitSeconds = 60.0;
-                break;
-            case WAIT_HOURS:
-                unitSeconds = 3600.0;
-                break;
-            case WAIT_SECONDS:
-            default:
-                unitSeconds = 1.0;
-                break;
+        if (attachedDurationSeconds != null) {
+            waitSeconds = attachedDurationSeconds;
+        } else {
+            double unitSeconds;
+            switch (waitMode) {
+                case WAIT_TICKS:
+                    unitSeconds = 0.05;
+                    break;
+                case WAIT_MINUTES:
+                    unitSeconds = 60.0;
+                    break;
+                case WAIT_HOURS:
+                    unitSeconds = 3600.0;
+                    break;
+                case WAIT_SECONDS:
+                default:
+                    unitSeconds = 1.0;
+                    break;
+            }
+            waitSeconds = baseDuration * unitSeconds;
         }
-
-        final double waitSeconds = baseDuration * unitSeconds;
         System.out.println("Waiting for " + waitSeconds + " seconds (configured duration=" + baseDuration + " " + waitMode.getDisplayName() + ")");
 
         new Thread(() -> {
@@ -15690,6 +15777,42 @@ public class Node {
                 }
                 break;
             }
+            case SENSOR_IS_VISIBLE: {
+                String resourceId = getStringParameter("Resource", "stone");
+                boolean handled = false;
+                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
+                if (parameterNode != null) {
+                    if (providesTrait(parameterNode, NodeValueTrait.ITEM)) {
+                        List<String> nodeItems = resolveItemIdsFromParameter(parameterNode);
+                        if (!nodeItems.isEmpty()) {
+                            resourceId = String.join(",", nodeItems);
+                        }
+                    } else if (providesTrait(parameterNode, NodeValueTrait.ENTITY)) {
+                        String nodeEntity = getParameterString(parameterNode, "Entity");
+                        if (nodeEntity != null && !nodeEntity.isEmpty()) {
+                            String state = getEntityParameterState(parameterNode);
+                            result = isEntityVisible(nodeEntity, state);
+                            handled = true;
+                        }
+                    } else if (providesTrait(parameterNode, NodeValueTrait.PLAYER)) {
+                        String nodePlayer = getParameterString(parameterNode, "Player");
+                        if (nodePlayer != null && !nodePlayer.isEmpty()) {
+                            resourceId = nodePlayer;
+                        }
+                    } else if (providesTrait(parameterNode, NodeValueTrait.BLOCK)) {
+                        String nodeBlock = getBlockParameterValue(parameterNode);
+                        if (nodeBlock != null && !nodeBlock.isEmpty()) {
+                            resourceId = nodeBlock;
+                        }
+                    } else {
+                        sendIncompatibleParameterMessage(parameterNode);
+                    }
+                }
+                if (!handled) {
+                    result = isResourceVisible(resourceId);
+                }
+                break;
+            }
             case SENSOR_VILLAGER_TRADE: {
                 Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
                 if (parameterNode == null) {
@@ -16567,6 +16690,80 @@ public class Node {
         return false;
     }
 
+    private boolean isResourceVisible(String resourceId) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null || resourceId == null || resourceId.isEmpty()) {
+            return false;
+        }
+        String trimmed = resourceId.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        if (trimmed.indexOf(',') >= 0) {
+            String[] parts = trimmed.split(",");
+            for (String part : parts) {
+                if (part != null && !part.trim().isEmpty() && isResourceVisible(part.trim())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return isSingleResourceVisible(client, trimmed);
+    }
+
+    private boolean isEntityVisible(String entityId, String state) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null || entityId == null || entityId.isEmpty()) {
+            return false;
+        }
+        for (String candidateId : splitMultiValueList(entityId)) {
+            String sanitized = sanitizeResourceId(candidateId);
+            String normalized = sanitized != null && !sanitized.isEmpty()
+                ? normalizeResourceId(sanitized, "minecraft")
+                : candidateId;
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                continue;
+            }
+            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+            if (isEntityVisible(client, entityType, state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isSingleResourceVisible(net.minecraft.client.MinecraftClient client, String resourceId) {
+        if (client == null || client.player == null || client.world == null || resourceId == null || resourceId.isEmpty()) {
+            return false;
+        }
+        Optional<BlockSelection> selectionOptional = BlockSelection.parse(resourceId);
+        if (selectionOptional.isPresent()) {
+            BlockSelection selection = selectionOptional.get();
+            Block block = selection.getBlock();
+            return block != null && isBlockVisible(client, block, selection);
+        }
+        String normalized = resourceId.contains(":")
+            ? resourceId.toLowerCase(Locale.ROOT)
+            : resourceId;
+        Identifier identifier = Identifier.tryParse(normalized);
+        if (identifier != null) {
+            if (Registries.BLOCK.containsId(identifier)) {
+                Block block = Registries.BLOCK.get(identifier);
+                return isBlockVisible(client, block);
+            }
+            if (Registries.ITEM.containsId(identifier)) {
+                Item item = Registries.ITEM.get(identifier);
+                return isItemVisible(client, item);
+            }
+            if (Registries.ENTITY_TYPE.containsId(identifier)) {
+                EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+                return isEntityVisible(client, entityType, "");
+            }
+        }
+        return isPlayerVisible(client, resourceId);
+    }
+
     private boolean isSingleResourceRendered(net.minecraft.client.MinecraftClient client, String resourceId) {
         if (client == null || client.player == null || client.world == null || resourceId == null || resourceId.isEmpty()) {
             return false;
@@ -16638,7 +16835,7 @@ public class Node {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
                     BlockState state = client.world.getBlockState(mutable);
                     boolean matches = selection != null ? selection.matches(state) : state.isOf(block);
-                    if (matches && isBlockVisible(client, mutable)) {
+                    if (matches && isBlockVisible(client, mutable, false)) {
                         return true;
                     }
                 }
@@ -16648,11 +16845,69 @@ public class Node {
     }
 
     private boolean isBlockVisible(net.minecraft.client.MinecraftClient client, BlockPos pos) {
+        return isBlockVisible(client, pos, true);
+    }
+
+    private boolean isBlockVisible(net.minecraft.client.MinecraftClient client, Block block) {
+        return isBlockVisible(client, block, null);
+    }
+
+    private boolean isBlockVisible(net.minecraft.client.MinecraftClient client, BlockSelection selection) {
+        if (selection == null) {
+            return false;
+        }
+        Block block = selection.getBlock();
+        if (block == null) {
+            return false;
+        }
+        return isBlockVisible(client, block, selection);
+    }
+
+    private boolean isBlockVisible(net.minecraft.client.MinecraftClient client, Block block, BlockSelection selection) {
+        if (client == null || client.player == null || client.world == null || block == null) {
+            return false;
+        }
+
+        HitResult hitResult = client.crosshairTarget;
+        if (hitResult instanceof BlockHitResult blockHit) {
+            BlockPos hitPos = blockHit.getBlockPos();
+            BlockState state = client.world.getBlockState(hitPos);
+            boolean matches = selection != null ? selection.matches(state) : state.isOf(block);
+            if (matches && isBlockVisible(client, hitPos, true)) {
+                return true;
+            }
+        }
+
+        BlockPos playerPos = client.player.getBlockPos();
+        int viewDistance = client.options.getViewDistance().getValue();
+        int horizontalRadius = MathHelper.clamp(viewDistance * 4, 8, 48);
+        int verticalRadius = MathHelper.clamp(viewDistance * 2, 6, 32);
+        BlockPos.Mutable mutable = new BlockPos.Mutable();
+
+        for (int dx = -horizontalRadius; dx <= horizontalRadius; dx++) {
+            for (int dy = -verticalRadius; dy <= verticalRadius; dy++) {
+                for (int dz = -horizontalRadius; dz <= horizontalRadius; dz++) {
+                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    BlockState state = client.world.getBlockState(mutable);
+                    boolean matches = selection != null ? selection.matches(state) : state.isOf(block);
+                    if (matches && isBlockVisible(client, mutable, true)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isBlockVisible(net.minecraft.client.MinecraftClient client, BlockPos pos, boolean requireInFieldOfView) {
         if (client == null || client.player == null || client.world == null) {
             return false;
         }
         Vec3d cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
         Vec3d target = Vec3d.ofCenter(pos);
+        if (requireInFieldOfView && !isPointInPlayerFieldOfView(client, target)) {
+            return false;
+        }
         RaycastContext context = new RaycastContext(
             cameraPos,
             target,
@@ -16698,6 +16953,25 @@ public class Node {
         return !candidates.isEmpty();
     }
 
+    private boolean isItemVisible(net.minecraft.client.MinecraftClient client, Item item) {
+        if (client == null || client.player == null || client.world == null || item == null) {
+            return false;
+        }
+        double renderDistance = Math.max(8.0, client.options.getViewDistance().getValue() * 4.0);
+        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
+        List<ItemEntity> candidates = client.world.getEntitiesByClass(
+            ItemEntity.class,
+            searchBox,
+            entity -> entity != null
+                && !entity.isRemoved()
+                && !entity.getStack().isEmpty()
+                && entity.getStack().isOf(item)
+                && client.player.canSee(entity)
+                && isEntityInPlayerFieldOfView(client, entity)
+        );
+        return !candidates.isEmpty();
+    }
+
     private boolean isEntityRendered(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, String state) {
         if (client == null || client.player == null || client.world == null || entityType == null) {
             return false;
@@ -16720,6 +16994,36 @@ public class Node {
                 && entity.isAlive()
                 && entity.getType() == entityType
                 && EntityStateOptions.matchesState(entity, state)
+        );
+        return !matches.isEmpty();
+    }
+
+    private boolean isEntityVisible(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, String state) {
+        if (client == null || client.player == null || client.world == null || entityType == null) {
+            return false;
+        }
+
+        HitResult hitResult = client.crosshairTarget;
+        if (hitResult instanceof EntityHitResult entityHit
+            && entityHit.getEntity() != null
+            && entityHit.getEntity().getType() == entityType
+            && EntityStateOptions.matchesState(entityHit.getEntity(), state)
+            && client.player.canSee(entityHit.getEntity())
+            && isEntityInPlayerFieldOfView(client, entityHit.getEntity())) {
+            return true;
+        }
+
+        double renderDistance = Math.max(8.0, client.options.getViewDistance().getValue() * 4.0);
+        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
+        List<Entity> matches = client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity != null
+                && entity.isAlive()
+                && entity.getType() == entityType
+                && EntityStateOptions.matchesState(entity, state)
+                && client.player.canSee(entity)
+                && isEntityInPlayerFieldOfView(client, entity)
         );
         return !matches.isEmpty();
     }
@@ -16758,6 +17062,97 @@ public class Node {
         }
 
         return false;
+    }
+
+    private boolean isPlayerVisible(net.minecraft.client.MinecraftClient client, String playerName) {
+        if (client == null || client.player == null || client.world == null || playerName == null || playerName.isEmpty()) {
+            return false;
+        }
+
+        String trimmed = playerName.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+
+        HitResult hitResult = client.crosshairTarget;
+        if (hitResult instanceof EntityHitResult entityHit && entityHit.getEntity() instanceof AbstractClientPlayerEntity targetPlayer) {
+            if (trimmed.equalsIgnoreCase(GameProfileCompatibilityBridge.getName(targetPlayer.getGameProfile()))
+                && client.player.canSee(targetPlayer)
+                && isEntityInPlayerFieldOfView(client, targetPlayer)) {
+                return true;
+            }
+        }
+
+        double renderDistance = Math.max(8.0, client.options.getViewDistance().getValue() * 4.0);
+        for (AbstractClientPlayerEntity playerEntity : client.world.getPlayers()) {
+            if (playerEntity == null || !playerEntity.isAlive()) {
+                continue;
+            }
+            if (!trimmed.equalsIgnoreCase(GameProfileCompatibilityBridge.getName(playerEntity.getGameProfile()))) {
+                continue;
+            }
+            if (playerEntity.squaredDistanceTo(client.player) > renderDistance * renderDistance) {
+                continue;
+            }
+            if (!client.player.canSee(playerEntity) || !isEntityInPlayerFieldOfView(client, playerEntity)) {
+                continue;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isEntityInPlayerFieldOfView(net.minecraft.client.MinecraftClient client, Entity entity) {
+        if (entity == null) {
+            return false;
+        }
+        Vec3d target = entity.getBoundingBox().getCenter();
+        return isPointInPlayerFieldOfView(client, target);
+    }
+
+    private boolean isPointInPlayerFieldOfView(net.minecraft.client.MinecraftClient client, Vec3d target) {
+        if (client == null || client.player == null || target == null) {
+            return false;
+        }
+        Vec3d eyePos = client.player.getEyePos();
+        Vec3d toTarget = target.subtract(eyePos);
+        if (toTarget.lengthSquared() <= 1.0E-6D) {
+            return true;
+        }
+        Vec3d forward = client.player.getRotationVec(1.0F);
+        if (forward.lengthSquared() <= 1.0E-6D) {
+            return false;
+        }
+        Vec3d forwardNorm = forward.normalize();
+        Vec3d worldUp = new Vec3d(0.0, 1.0, 0.0);
+        Vec3d right = forwardNorm.crossProduct(worldUp);
+        if (right.lengthSquared() <= 1.0E-6D) {
+            right = new Vec3d(1.0, 0.0, 0.0);
+        } else {
+            right = right.normalize();
+        }
+        Vec3d up = right.crossProduct(forwardNorm).normalize();
+
+        Vec3d targetNorm = toTarget.normalize();
+        double z = targetNorm.dotProduct(forwardNorm);
+        if (z <= 0.0) {
+            return false;
+        }
+        double x = targetNorm.dotProduct(right);
+        double y = targetNorm.dotProduct(up);
+
+        int width = client.getWindow() != null ? client.getWindow().getFramebufferWidth() : 0;
+        int height = client.getWindow() != null ? client.getWindow().getFramebufferHeight() : 0;
+        double aspect = (width > 0 && height > 0) ? (double) width / (double) height : (16.0 / 9.0);
+
+        double verticalFovDegrees = MathHelper.clamp(client.options.getFov().getValue(), 30.0, 170.0);
+        double verticalHalfRadians = Math.toRadians(verticalFovDegrees / 2.0);
+        double horizontalHalfRadians = Math.atan(Math.tan(verticalHalfRadians) * aspect);
+
+        double horizontalAngle = Math.atan2(Math.abs(x), z);
+        double verticalAngle = Math.atan2(Math.abs(y), z);
+        return horizontalAngle <= horizontalHalfRadians && verticalAngle <= verticalHalfRadians;
     }
 
     private boolean isSwimming() {

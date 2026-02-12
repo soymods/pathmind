@@ -114,6 +114,7 @@ public enum NodeType {
     SENSOR_IS_ON_GROUND("pathmind.node.type.sensorIsOnGround", 0xFF64B5F6, "pathmind.node.type.sensorIsOnGround.desc"),
     SENSOR_IS_FALLING("pathmind.node.type.sensorIsFalling", 0xFF64B5F6, "pathmind.node.type.sensorIsFalling.desc"),
     SENSOR_IS_RENDERED("pathmind.node.type.sensorIsRendered", 0xFF64B5F6, "pathmind.node.type.sensorIsRendered.desc"),
+    SENSOR_IS_VISIBLE("pathmind.node.type.sensorIsVisible", 0xFF64B5F6, "pathmind.node.type.sensorIsVisible.desc"),
     SENSOR_KEY_PRESSED("pathmind.node.type.sensorKeyPressed", 0xFF64B5F6, "pathmind.node.type.sensorKeyPressed.desc"),
     SENSOR_CHAT_MESSAGE("pathmind.node.type.sensorChatMessage", 0xFF64B5F6, "pathmind.node.type.sensorChatMessage.desc"),
 
@@ -244,6 +245,7 @@ public enum NodeType {
             case SENSOR_IS_ON_GROUND:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case SENSOR_IS_VISIBLE:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
                 return NodeCategory.SENSORS;
@@ -373,6 +375,7 @@ public enum NodeType {
             case SENSOR_VILLAGER_TRADE:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
+            case SENSOR_IS_VISIBLE:
             case SENSOR_CHAT_MESSAGE:
             case PARAM_COORDINATE:
             case PARAM_BLOCK:

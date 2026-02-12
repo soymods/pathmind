@@ -23,6 +23,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_IS_ON_GROUND,
         NodeType.SENSOR_IS_FALLING,
         NodeType.SENSOR_IS_RENDERED,
+        NodeType.SENSOR_IS_VISIBLE,
         NodeType.SENSOR_KEY_PRESSED,
         NodeType.SENSOR_CHAT_MESSAGE,
         NodeType.SENSOR_GUI_FILLED,
@@ -135,7 +136,12 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.OPERATOR_BOOLEAN_NOT, EnumSet.of(NodeValueTrait.BOOLEAN));
 
         accepted.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY));
-        accepted.put(NodeType.SENSOR_DISTANCE_BETWEEN, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY));
+        accepted.put(NodeType.SENSOR_DISTANCE_BETWEEN, EnumSet.of(
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER
+        ));
         accepted.put(NodeType.SENSOR_TOUCHING_BLOCK, EnumSet.of(NodeValueTrait.BLOCK));
         accepted.put(NodeType.SENSOR_TOUCHING_ENTITY, EnumSet.of(NodeValueTrait.ENTITY));
         accepted.put(NodeType.SENSOR_AT_COORDINATES, EnumSet.of(NodeValueTrait.COORDINATE));
@@ -145,6 +151,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_CHAT_MESSAGE, EnumSet.of(NodeValueTrait.PLAYER, NodeValueTrait.MESSAGE, NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_KEY_PRESSED, EnumSet.of(NodeValueTrait.KEY));
         accepted.put(NodeType.SENSOR_IS_RENDERED, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
+        accepted.put(NodeType.SENSOR_IS_VISIBLE, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
 
         accepted.put(NodeType.USE, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.BLOCK));
         accepted.put(NodeType.INTERACT, EnumSet.of(

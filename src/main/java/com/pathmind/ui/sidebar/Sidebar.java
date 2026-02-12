@@ -191,7 +191,8 @@ public class Sidebar {
             "Entities & Visibility",
             baritoneAvailable,
             NodeType.SENSOR_TOUCHING_ENTITY,
-            NodeType.SENSOR_IS_RENDERED
+            NodeType.SENSOR_IS_RENDERED,
+            NodeType.SENSOR_IS_VISIBLE
         ));
         groups.add(new NodeGroup(
             "Inventory & Items",

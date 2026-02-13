@@ -97,7 +97,7 @@ public final class NodeTraitRegistry {
 
         traits.put(NodeType.OPERATOR_RANDOM, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_MOD, EnumSet.of(NodeValueTrait.NUMBER));
-        traits.put(NodeType.LIST_ITEM, EnumSet.of(NodeValueTrait.LIST_ITEM, NodeValueTrait.COORDINATE));
+        traits.put(NodeType.LIST_ITEM, EnumSet.of(NodeValueTrait.LIST_ITEM, NodeValueTrait.COORDINATE, NodeValueTrait.INVENTORY_SLOT));
         traits.put(NodeType.VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
 
         PROVIDED_TRAITS = traits;
@@ -258,17 +258,16 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.EQUIP_HAND, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
 
         accepted.put(NodeType.SET_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
-        accepted.put(NodeType.CHANGE_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.NUMBER));
-        accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
+        accepted.put(NodeType.CHANGE_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE));
+        accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.GUI));
         accepted.put(NodeType.TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE, NodeValueTrait.NUMBER));
-        accepted.put(NodeType.CONTROL_REPEAT, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.WAIT, EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.NUMBER));
 
         PARAMETER_ACCEPTED_TRAITS = accepted;
 
         EnumMap<NodeType, Integer> slotCounts = new EnumMap<>(NodeType.class);
         slotCounts.put(NodeType.SET_VARIABLE, 2);
-        slotCounts.put(NodeType.CHANGE_VARIABLE, 2);
+        slotCounts.put(NodeType.CHANGE_VARIABLE, 1);
         slotCounts.put(NodeType.OPERATOR_MOD, 2);
         slotCounts.put(NodeType.OPERATOR_EQUALS, 2);
         slotCounts.put(NodeType.OPERATOR_NOT, 2);
@@ -286,7 +285,7 @@ public final class NodeTraitRegistry {
 
         EnumMap<NodeType, String[]> slotLabels = new EnumMap<>(NodeType.class);
         slotLabels.put(NodeType.SET_VARIABLE, new String[]{"Variable", "Value"});
-        slotLabels.put(NodeType.CHANGE_VARIABLE, new String[]{"Variable", "Amount"});
+        slotLabels.put(NodeType.CHANGE_VARIABLE, new String[]{"Variable"});
         slotLabels.put(NodeType.OPERATOR_BOOLEAN_NOT, new String[]{"Value"});
         slotLabels.put(NodeType.OPERATOR_MOD, new String[]{"Value", "Modulo"});
         slotLabels.put(NodeType.BUILD, new String[]{"Position"});
@@ -303,7 +302,6 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.SENSOR_VILLAGER_TRADE, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.CREATE_LIST, new String[]{"Target"});
         slotLabels.put(NodeType.TRADE, new String[]{"Villager Trade"});
-        slotLabels.put(NodeType.CONTROL_REPEAT, new String[]{"Count"});
         slotLabels.put(NodeType.WAIT, new String[]{"Duration"});
         PARAMETER_SLOT_LABELS = slotLabels;
     }
@@ -353,9 +351,6 @@ public final class NodeTraitRegistry {
         if (traits == null) {
             return EnumSet.noneOf(NodeValueTrait.class);
         }
-        if (hostType == NodeType.CONTROL_REPEAT) {
-            return EnumSet.of(NodeValueTrait.NUMBER, NodeValueTrait.DURATION);
-        }
         if (hostType == NodeType.WALK && slotIndex == 1) {
             return EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.DISTANCE);
         }
@@ -396,9 +391,6 @@ public final class NodeTraitRegistry {
         }
         if (hostType == NodeType.CHANGE_VARIABLE && slotIndex == 0) {
             return EnumSet.of(NodeValueTrait.VARIABLE);
-        }
-        if (hostType == NodeType.CONTROL_REPEAT && slotIndex == 0) {
-            return EnumSet.of(NodeValueTrait.NUMBER, NodeValueTrait.DURATION);
         }
         if (hostType == NodeType.WAIT && slotIndex == 0) {
             return EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.NUMBER);

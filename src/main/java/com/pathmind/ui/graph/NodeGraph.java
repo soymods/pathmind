@@ -2893,6 +2893,7 @@ public class NodeGraph {
             int eventNameVariableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
             Set<String> eventNameVariableNames = collectRuntimeVariableNames(node);
             InlineVariableRender eventNameRenderData = null;
+            boolean highlightPlainEventName = false;
             if (!eventNameVariableNames.isEmpty() && value.indexOf('~') >= 0) {
                 InlineVariableRender candidate = buildInlineVariableRender(value, eventNameVariableNames, isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT, eventNameVariableHighlightColor);
                 if (editingEventName) {
@@ -2901,10 +2902,16 @@ public class NodeGraph {
                 } else if (textRenderer.getWidth(candidate.displayText) <= boxRight - boxLeft - 8) {
                     eventNameRenderData = candidate;
                     display = eventNameRenderData.displayText;
+                } else if (isSingleKnownInlineVariableReference(value, eventNameVariableNames)) {
+                    display = trimTextToWidth(candidate.displayText, textRenderer, boxRight - boxLeft - 8);
+                    highlightPlainEventName = true;
                 }
             }
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
+            if (highlightPlainEventName) {
+                textColor = eventNameVariableHighlightColor;
+            }
             int textX = boxLeft + 4;
             if (editingEventName && hasEventNameSelection()) {
                 int start = eventNameSelectionStart;
@@ -3328,6 +3335,9 @@ public class NodeGraph {
                             } else if (textRenderer.getWidth(candidate.displayText) <= maxValueWidth) {
                                 paramRenderData = candidate;
                                 displayValue = paramRenderData.displayText;
+                            } else if (isSingleKnownInlineVariableReference(value, paramVariableNames)) {
+                                displayValue = trimTextToWidth(candidate.displayText, textRenderer, maxValueWidth);
+                                valueColor = paramVariableHighlightColor;
                             }
                         }
                         int valueY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
@@ -3593,6 +3603,7 @@ public class NodeGraph {
         int slotY = node.getSensorSlotTop() - cameraY;
         int slotWidth = node.getSensorSlotWidth();
         int slotHeight = node.getSensorSlotHeight();
+        boolean useLogicSlotTitle = usesLogicSensorSlotTitle(node);
 
         int backgroundColor = node.hasAttachedSensor() ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_PRIMARY;
         if (isOverSidebar) {
@@ -3608,7 +3619,17 @@ public class NodeGraph {
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
         DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
+        if (useLogicSlotTitle) {
+            String titleDisplay = trimTextToWidth(getLogicSensorSlotTitle(node), textRenderer, slotWidth - 4);
+            int titleY = slotY - textRenderer.fontHeight - 2;
+            int titleColor = sensorDropTarget == node ? UITheme.ACCENT_DEFAULT : (isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY);
+            drawNodeText(context, textRenderer, Text.literal(titleDisplay), slotX + 2, titleY, titleColor);
+        }
+
         if (!node.hasAttachedSensor()) {
+            if (useLogicSlotTitle) {
+                return;
+            }
             String placeholder = "Drag a sensor here";
             String display = trimTextToWidth(placeholder, textRenderer, slotWidth - 8);
             int textWidth = textRenderer.getWidth(display);
@@ -3624,6 +3645,7 @@ public class NodeGraph {
         int slotY = node.getActionSlotTop() - cameraY;
         int slotWidth = node.getActionSlotWidth();
         int slotHeight = node.getActionSlotHeight();
+        boolean useLogicSlotTitle = usesLogicActionSlotTitle(node);
 
         int backgroundColor = node.hasAttachedActionNode() ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_PRIMARY;
         if (isOverSidebar) {
@@ -3639,7 +3661,18 @@ public class NodeGraph {
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
         DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
+        if (useLogicSlotTitle) {
+            String title = getLogicActionSlotTitle(node);
+            int titleColor = actionDropTarget == node ? UITheme.DROP_ACCENT_GREEN : (isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY);
+            int titleY = slotY - textRenderer.fontHeight - 2;
+            String titleDisplay = trimTextToWidth(title, textRenderer, slotWidth - 4);
+            drawNodeText(context, textRenderer, Text.literal(titleDisplay), slotX + 2, titleY, titleColor);
+        }
+
         if (!node.hasAttachedActionNode()) {
+            if (useLogicSlotTitle) {
+                return;
+            }
             String placeholder = "Drag a node here";
             String display = trimTextToWidth(placeholder, textRenderer, slotWidth - 8);
             int textWidth = textRenderer.getWidth(display);
@@ -3648,6 +3681,37 @@ public class NodeGraph {
             int textColor = actionDropTarget == node ? UITheme.DROP_ACCENT_GREEN : UITheme.TEXT_TERTIARY;
             drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
         }
+    }
+
+    private boolean usesLogicSensorSlotTitle(Node node) {
+        if (node == null) {
+            return false;
+        }
+        NodeType type = node.getType();
+        return type == NodeType.CONTROL_IF
+            || type == NodeType.CONTROL_IF_ELSE
+            || type == NodeType.CONTROL_REPEAT_UNTIL;
+    }
+
+    private boolean usesLogicActionSlotTitle(Node node) {
+        if (node == null) {
+            return false;
+        }
+        NodeType type = node.getType();
+        return type == NodeType.CONTROL_REPEAT
+            || type == NodeType.CONTROL_REPEAT_UNTIL
+            || type == NodeType.CONTROL_FOREVER;
+    }
+
+    private String getLogicSensorSlotTitle(Node node) {
+        return "Condition";
+    }
+
+    private String getLogicActionSlotTitle(Node node) {
+        if (node != null && node.getType() == NodeType.CONTROL_REPEAT) {
+            return "Repeat Body";
+        }
+        return "Loop Body";
     }
 
     private boolean isPointInsideBooleanToggle(Node node, int mouseX, int mouseY) {
@@ -3985,6 +4049,9 @@ public class NodeGraph {
                 } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
                     coordRenderData = candidate;
                     display = coordRenderData.displayText;
+                } else if (isSingleKnownInlineVariableReference(value, coordVariableNames)) {
+                    display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
+                    valueColor = variableHighlightColor;
                 }
             }
 
@@ -4116,6 +4183,9 @@ public class NodeGraph {
             } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
                 amountRenderData = candidate;
                 display = amountRenderData.displayText;
+            } else if (isSingleKnownInlineVariableReference(value, amountVariableNames)) {
+                display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
+                valueColor = variableHighlightColor;
             }
         }
 
@@ -4388,6 +4458,9 @@ public class NodeGraph {
                 } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
                     renderData = candidate;
                     display = renderData.displayText;
+                } else if (isSingleKnownInlineVariableReference(rawValue, runtimeVariableNames)) {
+                    display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
+                    valueColor = variableHighlightColor;
                 }
             }
 
@@ -4511,6 +4584,26 @@ public class NodeGraph {
 
     private boolean isInlineVariableChar(char character) {
         return Character.isLetterOrDigit(character) || character == '_' || character == '-';
+    }
+
+    private boolean isSingleKnownInlineVariableReference(String rawText, Set<String> variableNames) {
+        if (rawText == null || variableNames == null || variableNames.isEmpty()) {
+            return false;
+        }
+        String trimmed = rawText.trim();
+        if (!trimmed.equals(rawText) || !trimmed.startsWith("~")) {
+            return false;
+        }
+        String name = trimmed.substring(1);
+        if (name.isEmpty() || !variableNames.contains(name)) {
+            return false;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            if (!isInlineVariableChar(name.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Returns true if value is empty, a valid number, or a single ~variable_name reference (known variable). */
@@ -4974,6 +5067,9 @@ public class NodeGraph {
             } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
                 stopTargetRenderData = candidate;
                 display = stopTargetRenderData.displayText;
+            } else if (isSingleKnownInlineVariableReference(value, stopTargetVariableNames)) {
+                display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
+                valueColor = variableHighlightColor;
             }
         }
 
@@ -5072,6 +5168,9 @@ public class NodeGraph {
             } else if (textRenderer.getWidth(candidate.displayText) <= fieldWidth - 6) {
                 variableFieldRenderData = candidate;
                 display = variableFieldRenderData.displayText;
+            } else if (isSingleKnownInlineVariableReference(value, variableFieldVariableNames)) {
+                display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
+                valueColor = variableHighlightColor;
             }
         }
 
@@ -10571,7 +10670,7 @@ public class NodeGraph {
         System.out.println("Loaded " + nodes.size() + " nodes and " + connections.size() + " connections");
         return true;
     }
-    
+
     /**
      * Check if there's a saved node graph available
      */

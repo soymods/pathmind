@@ -142,6 +142,8 @@ public class Node {
     private static final int BODY_PADDING_NO_PARAMS = 10;
     private static final int START_END_SIZE = 36;
     private static final String CHAT_MESSAGE_PREFIX = "\u00A74[\u00A7cPathmind\u00A74] \u00A77";
+    private static final String LIST_SLOT_GUI_PREFIX = "gui:";
+    private static final String LIST_SLOT_PLAYER_PREFIX = "player:";
     private static final long CRAFTING_ACTION_DELAY_MS = 75L;
     private static final int CRAFTING_OUTPUT_POLL_LIMIT = 5;
     private static final int SENSOR_SLOT_MARGIN_HORIZONTAL = 8;
@@ -925,7 +927,11 @@ public class Node {
     }
 
     public int getSensorSlotTop() {
-        return getSlotAreaStartY();
+        int top = getSlotAreaStartY();
+        if (showsSensorSlotHeader()) {
+            top += PARAMETER_SLOT_LABEL_HEIGHT;
+        }
+        return top;
     }
 
     public int getSensorSlotWidth() {
@@ -1711,10 +1717,16 @@ public class Node {
     public int getActionSlotTop() {
         int top = getSlotAreaStartY();
         if (hasSensorSlot()) {
+            if (showsSensorSlotHeader()) {
+                top += PARAMETER_SLOT_LABEL_HEIGHT;
+            }
             top += getSensorSlotHeight();
             if (hasActionSlot()) {
                 top += SLOT_VERTICAL_SPACING;
             }
+        }
+        if (showsActionSlotHeader()) {
+            top += PARAMETER_SLOT_LABEL_HEIGHT;
         }
         return top;
     }
@@ -4016,12 +4028,18 @@ public class Node {
         }
 
         if (hasSensorSlot()) {
+            if (showsSensorSlotHeader()) {
+                contentHeight += PARAMETER_SLOT_LABEL_HEIGHT;
+            }
             contentHeight += getSensorSlotHeight();
         }
 
         if (hasActionSlot()) {
             if (hasSensorSlot()) {
                 contentHeight += SLOT_VERTICAL_SPACING;
+            }
+            if (showsActionSlotHeader()) {
+                contentHeight += PARAMETER_SLOT_LABEL_HEIGHT;
             }
             contentHeight += getActionSlotHeight();
         }
@@ -4058,6 +4076,18 @@ public class Node {
         notifyParentParameterHostOfResize();
         notifyParentActionControlOfResize();
         notifyParentControlOfResize();
+    }
+
+    private boolean showsSensorSlotHeader() {
+        return type == NodeType.CONTROL_IF
+            || type == NodeType.CONTROL_IF_ELSE
+            || type == NodeType.CONTROL_REPEAT_UNTIL;
+    }
+
+    private boolean showsActionSlotHeader() {
+        return type == NodeType.CONTROL_REPEAT
+            || type == NodeType.CONTROL_REPEAT_UNTIL
+            || type == NodeType.CONTROL_FOREVER;
     }
 
     /**
@@ -5322,6 +5352,17 @@ public class Node {
         }
     }
 
+    private static Integer parseIntOrNull(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private static Double parseDoubleOrNull(String value) {
         if (value == null || value.isEmpty()) {
             return null;
@@ -6173,7 +6214,7 @@ public class Node {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (parameterNode == null) {
             if (client != null) {
-                sendNodeErrorMessage(client, "Create List requires an entity, player, or item parameter.");
+                sendNodeErrorMessage(client, "Create List requires an entity, player, item, or GUI parameter.");
             }
             future.complete(null);
             return;
@@ -6182,9 +6223,10 @@ public class Node {
         NodeType parameterType = parameterNode.getType();
         if (parameterType != NodeType.PARAM_ENTITY
             && parameterType != NodeType.PARAM_PLAYER
-            && parameterType != NodeType.PARAM_ITEM) {
+            && parameterType != NodeType.PARAM_ITEM
+            && parameterType != NodeType.PARAM_GUI) {
             if (client != null) {
-                sendNodeErrorMessage(client, "Create List requires an entity, player, or item parameter.");
+                sendNodeErrorMessage(client, "Create List requires an entity, player, item, or GUI parameter.");
             }
             future.complete(null);
             return;
@@ -6282,6 +6324,37 @@ public class Node {
                 Item item = Registries.ITEM.get(identifier);
                 matches.addAll(findItemsByType(client, item, range));
             }
+        } else if (parameterType == NodeType.PARAM_GUI) {
+            ScreenHandler handler = client.player.currentScreenHandler;
+            if (handler == null) {
+                sendNodeErrorMessage(client, "No GUI is open for " + type.getDisplayName() + ".");
+                future.complete(null);
+                return;
+            }
+
+            GuiSelectionMode guiMode = GuiSelectionMode.fromId(getParameterString(parameterNode, "GUI"));
+            List<String> entries = collectGuiListEntries(handler, guiMode);
+            if (entries.isEmpty()) {
+                sendNodeErrorMessage(client, "No matching GUI slots found for " + type.getDisplayName() + ".");
+                future.complete(null);
+                return;
+            }
+
+            ExecutionManager manager = ExecutionManager.getInstance();
+            Node startNode = getOwningStartNode();
+            if (startNode == null && getParentControl() != null) {
+                startNode = getParentControl().getOwningStartNode();
+            }
+            if (startNode == null) {
+                sendNodeErrorMessage(client, "No active node tree available for list creation.");
+                future.complete(null);
+                return;
+            }
+
+            manager.setRuntimeList(startNode, listName.trim(),
+                new ExecutionManager.RuntimeList(parameterType, entries));
+            future.complete(null);
+            return;
         }
 
         if (matches.isEmpty()) {
@@ -6314,6 +6387,28 @@ public class Node {
         manager.setRuntimeList(startNode, listName.trim(),
             new ExecutionManager.RuntimeList(parameterType, entries));
         future.complete(null);
+    }
+
+    private List<String> collectGuiListEntries(ScreenHandler handler, GuiSelectionMode guiMode) {
+        if (handler == null) {
+            return Collections.emptyList();
+        }
+        List<String> entries = new ArrayList<>();
+        for (int slotIndex = 0; slotIndex < handler.slots.size(); slotIndex++) {
+            Slot slot = handler.getSlot(slotIndex);
+            if (slot == null) {
+                continue;
+            }
+            boolean playerSlot = slot.inventory instanceof PlayerInventory;
+            if (guiMode == GuiSelectionMode.PLAYER_INVENTORY && !playerSlot) {
+                continue;
+            }
+            if (guiMode != null && guiMode != GuiSelectionMode.PLAYER_INVENTORY && playerSlot) {
+                continue;
+            }
+            entries.add((playerSlot ? LIST_SLOT_PLAYER_PREFIX : LIST_SLOT_GUI_PREFIX) + slotIndex);
+        }
+        return entries;
     }
 
     private boolean applyNumericOperation(Node snapshot, double amount, String operation, String[] error) {
@@ -12516,6 +12611,13 @@ public class Node {
             return SlotSelectionType.PLAYER_INVENTORY;
         }
 
+        if (parameterNode.getType() == NodeType.LIST_ITEM) {
+            ListSlotEntry listSlotEntry = resolveListItemSlotEntry(parameterNode, false, null);
+            if (listSlotEntry != null) {
+                return listSlotEntry.selectionType;
+            }
+        }
+
         // For item parameters, check if a container GUI is open
         if (parameterNode.getType() == NodeType.PARAM_ITEM) {
             // Check if there's a mode specified on the item parameter
@@ -12604,6 +12706,16 @@ public class Node {
         SlotResolution(Slot slot, int handlerSlotIndex) {
             this.slot = slot;
             this.handlerSlotIndex = handlerSlotIndex;
+        }
+    }
+
+    private static final class ListSlotEntry {
+        final int slotIndex;
+        final SlotSelectionType selectionType;
+
+        ListSlotEntry(int slotIndex, SlotSelectionType selectionType) {
+            this.slotIndex = slotIndex;
+            this.selectionType = selectionType;
         }
     }
 
@@ -15196,12 +15308,7 @@ public class Node {
             return null;
         }
 
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = getOwningStartNode();
-        if (startNode == null && getParentControl() != null) {
-            startNode = getParentControl().getOwningStartNode();
-        }
-        ExecutionManager.RuntimeList list = manager.getRuntimeList(startNode, listName.trim());
+        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
         if (list == null || list.getEntries().isEmpty()) {
             sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" is empty or missing.");
             if (future != null && !future.isDone()) {
@@ -15235,6 +15342,30 @@ public class Node {
                 future.complete(null);
             }
             return null;
+        }
+
+        if (list.getElementType() == NodeType.PARAM_GUI) {
+            if (getParameter("Slot") == null && getParameter("SourceSlot") == null && getParameter("TargetSlot") == null) {
+                sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" contains GUI slots and cannot be used by " + type.getDisplayName() + ".");
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return null;
+            }
+            ListSlotEntry slotEntry = parseListSlotEntry(entry);
+            if (slotEntry == null) {
+                sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" item " + index + " is not a valid GUI slot.");
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return null;
+            }
+            if (data != null) {
+                data.slotIndex = slotEntry.slotIndex;
+                data.slotSelectionType = slotEntry.selectionType;
+            }
+            applyListSlotSelection(slotEntry.slotIndex, listNode.parentParameterSlotIndex);
+            return client.player;
         }
 
         try {
@@ -15288,6 +15419,89 @@ public class Node {
                 future.complete(null);
             }
             return null;
+        }
+    }
+
+    private ExecutionManager.RuntimeList resolveRuntimeList(Node listNode) {
+        if (listNode == null) {
+            return null;
+        }
+        String listName = getParameterString(listNode, "List");
+        if (listName == null || listName.trim().isEmpty()) {
+            return null;
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        return manager.getRuntimeList(startNode, listName.trim());
+    }
+
+    private ListSlotEntry resolveListItemSlotEntry(Node listNode, boolean reportErrors, CompletableFuture<Void> future) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (listNode == null) {
+            return null;
+        }
+        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
+        String listName = getParameterString(listNode, "List");
+        String safeListName = listName == null ? "" : listName.trim();
+        if (list == null || list.getEntries().isEmpty() || list.getElementType() != NodeType.PARAM_GUI) {
+            return null;
+        }
+
+        int index = parseNodeInt(listNode, "Index", 1);
+        if (index <= 0 || index > list.getEntries().size()) {
+            if (reportErrors && client != null) {
+                sendNodeErrorMessage(client, "List \"" + safeListName + "\" has no item " + index + ".");
+            }
+            if (reportErrors && future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+        String entry = list.getEntries().get(index - 1);
+        ListSlotEntry parsed = parseListSlotEntry(entry);
+        if (parsed == null) {
+            if (reportErrors && client != null) {
+                sendNodeErrorMessage(client, "List \"" + safeListName + "\" item " + index + " is not a valid GUI slot.");
+            }
+            if (reportErrors && future != null && !future.isDone()) {
+                future.complete(null);
+            }
+        }
+        return parsed;
+    }
+
+    private ListSlotEntry parseListSlotEntry(String entry) {
+        if (entry == null) {
+            return null;
+        }
+        String trimmed = entry.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.startsWith(LIST_SLOT_GUI_PREFIX)) {
+            Integer slotIndex = parseIntOrNull(trimmed.substring(LIST_SLOT_GUI_PREFIX.length()));
+            return slotIndex == null ? null : new ListSlotEntry(slotIndex, SlotSelectionType.GUI_CONTAINER);
+        }
+        if (trimmed.startsWith(LIST_SLOT_PLAYER_PREFIX)) {
+            Integer slotIndex = parseIntOrNull(trimmed.substring(LIST_SLOT_PLAYER_PREFIX.length()));
+            return slotIndex == null ? null : new ListSlotEntry(slotIndex, SlotSelectionType.PLAYER_INVENTORY);
+        }
+        return null;
+    }
+
+    private void applyListSlotSelection(int slotIndex, int parameterSlotIndex) {
+        if (getParameter("Slot") != null) {
+            setParameterValueAndPropagate("Slot", Integer.toString(slotIndex));
+            return;
+        }
+        if (getParameter("SourceSlot") != null && (parameterSlotIndex <= 0 || getParameter("TargetSlot") == null)) {
+            setParameterValueAndPropagate("SourceSlot", Integer.toString(slotIndex));
+        }
+        if (getParameter("TargetSlot") != null && parameterSlotIndex == 1) {
+            setParameterValueAndPropagate("TargetSlot", Integer.toString(slotIndex));
         }
     }
 

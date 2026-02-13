@@ -22,6 +22,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.pathmind.data.NodeGraphData;
+import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.data.PresetManager;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -642,6 +645,7 @@ public class Node {
     public boolean usesMinimalNodePresentation() {
         return isStopControlNode()
             || type == NodeType.START_CHAIN
+            || type == NodeType.RUN_PRESET
             || type == NodeType.SWING
             || type == NodeType.CRAWL
             || type == NodeType.CROUCH
@@ -1161,11 +1165,18 @@ public class Node {
     }
 
     public boolean hasStopTargetInputField() {
-        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN;
+        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN || type == NodeType.RUN_PRESET;
     }
 
     public boolean hasVariableInputField() {
         return type == NodeType.CREATE_LIST;
+    }
+
+    public String getStopTargetFieldParameterKey() {
+        if (type == NodeType.RUN_PRESET) {
+            return "Preset";
+        }
+        return "StartNumber";
     }
 
     public String getVariableFieldParameterKey() {
@@ -2406,6 +2417,9 @@ public class Node {
                 break;
             case START_CHAIN:
                 parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
+                break;
+            case RUN_PRESET:
+                parameters.add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 break;
             case STOP_CHAIN:
                 parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -5869,6 +5883,9 @@ public class Node {
                 break;
             case START_CHAIN:
                 executeStartChainNode(future);
+                break;
+            case RUN_PRESET:
+                executeRunPresetNode(future);
                 break;
             case STOP_CHAIN:
                 executeStopChainNode(future);
@@ -12202,6 +12219,70 @@ public class Node {
             System.out.println("Activate node could not find START node " + targetNumber + ".");
         }
 
+        future.complete(null);
+    }
+
+    private void executeRunPresetNode(CompletableFuture<Void> future) {
+        String requestedPreset = getStringParameter("Preset", "");
+        String presetName = requestedPreset != null ? requestedPreset.trim() : "";
+        if (presetName.isEmpty()) {
+            presetName = PresetManager.getActivePreset();
+        }
+
+        List<String> availablePresets = PresetManager.getAvailablePresets();
+        for (String available : availablePresets) {
+            if (available != null && available.equalsIgnoreCase(presetName)) {
+                presetName = available;
+                break;
+            }
+        }
+
+        NodeGraphData graphData = NodeGraphPersistence.loadNodeGraphForPreset(presetName);
+        if (graphData == null || graphData.getNodes() == null || graphData.getNodes().isEmpty()) {
+            System.out.println("Run Preset node could not load preset \"" + presetName + "\".");
+            future.complete(null);
+            return;
+        }
+
+        List<Node> nodes = NodeGraphPersistence.convertToNodes(graphData);
+        if (nodes == null || nodes.isEmpty()) {
+            System.out.println("Run Preset node could not build nodes for preset \"" + presetName + "\".");
+            future.complete(null);
+            return;
+        }
+        Map<String, Node> nodeMap = new HashMap<>();
+        for (Node node : nodes) {
+            if (node != null && node.getId() != null) {
+                nodeMap.put(node.getId(), node);
+            }
+        }
+        List<NodeConnection> connections = NodeGraphPersistence.convertToConnections(graphData, nodeMap);
+
+        List<Node> presetStarts = new ArrayList<>();
+        for (Node candidate : nodes) {
+            if (candidate != null && candidate.getType() == NodeType.START) {
+                presetStarts.add(candidate);
+            }
+        }
+        if (presetStarts.isEmpty()) {
+            System.out.println("Run Preset node found no START nodes in preset \"" + presetName + "\".");
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        int started = 0;
+        for (Node startNode : presetStarts) {
+            if (manager.executeBranch(startNode, nodes, connections, presetName)) {
+                started++;
+            }
+        }
+
+        if (started == 0) {
+            System.out.println("Run Preset node did not start any chains for preset \"" + presetName + "\".");
+        } else {
+            System.out.println("Run Preset node started " + started + " chain(s) for preset \"" + presetName + "\".");
+        }
         future.complete(null);
     }
 

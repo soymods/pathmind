@@ -168,6 +168,9 @@ public class NodeGraphPersistence {
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
             }
+            if (node.getType() == NodeType.RUN_PRESET && node.getParameter("Preset") == null) {
+                node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
+            }
             Integer startNodeNumber = nodeData.getStartNodeNumber();
             if (startNodeNumber != null) {
                 node.setStartNodeNumber(startNodeNumber);

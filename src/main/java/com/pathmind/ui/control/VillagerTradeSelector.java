@@ -4,6 +4,7 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.VillagerDataCompatibilityBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
@@ -1418,16 +1419,7 @@ public class VillagerTradeSelector {
     }
 
     private String trimDisplayString(TextRenderer renderer, String text, int availableWidth) {
-        if (text == null) {
-            return "";
-        }
-        if (renderer.getWidth(text) <= availableWidth) {
-            return text;
-        }
-        int ellipsisWidth = renderer.getWidth("...");
-        int trimmedWidth = Math.max(0, availableWidth - ellipsisWidth);
-        String trimmed = renderer.trimToWidth(text, trimmedWidth);
-        return trimmed + "...";
+        return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
     }
 
     private void renderWrappedText(DrawContext context, TextRenderer textRenderer, String message,

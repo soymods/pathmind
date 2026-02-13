@@ -11,6 +11,7 @@ import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.InventorySlotModeHelper;
+import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -1676,16 +1677,7 @@ public class NodeParameterOverlay {
     }
 
     private String trimDisplayString(TextRenderer renderer, String text, int availableWidth) {
-        if (text == null) {
-            return "";
-        }
-        if (renderer.getWidth(text) <= availableWidth) {
-            return text;
-        }
-        int ellipsisWidth = renderer.getWidth("...");
-        int trimmedWidth = Math.max(0, availableWidth - ellipsisWidth);
-        String trimmed = renderer.trimToWidth(text, trimmedWidth);
-        return trimmed + "...";
+        return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
     }
 
     private int adjustColorBrightness(int color, float factor) {

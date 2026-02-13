@@ -25,6 +25,7 @@ import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.MatrixStackBridge;
+import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -1051,6 +1052,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (nodeGraph.handleSchematicDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     return true;
                 }
+                if (nodeGraph.handleRunPresetDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
 
                 if (nodeGraph.handleMessageButtonClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     return true;
@@ -1170,6 +1174,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
         } else {
+            if (button == 0 && nodeGraph.handleRunPresetDropdownClick(null, (int)mouseX, (int)mouseY)) {
+                return true;
+            }
             if (button == 0 && nodeGraph.handleSchematicDropdownClick(null, (int)mouseX, (int)mouseY)) {
                 return true;
             }
@@ -1736,6 +1743,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.handleSchematicDropdownScroll(mouseX, mouseY, verticalAmount)) {
             return true;
         }
+        if (nodeGraph.handleRunPresetDropdownScroll(mouseX, mouseY, verticalAmount)) {
+            return true;
+        }
 
         if (nodeGraph.handleParameterDropdownScroll(mouseX, mouseY, verticalAmount)) {
             return true;
@@ -2096,21 +2106,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private String trimWithEllipsis(TextRenderer renderer, String text, int availableWidth) {
-        if (text == null) {
-            return "";
-        }
-        if (availableWidth <= 0) {
-            return "...";
-        }
-        if (renderer.getWidth(text) <= availableWidth) {
-            return text;
-        }
-        int ellipsisWidth = renderer.getWidth("...");
-        if (ellipsisWidth >= availableWidth) {
-            return "...";
-        }
-        int trimmedWidth = Math.max(0, availableWidth - ellipsisWidth);
-        return renderer.trimToWidth(text, trimmedWidth) + "...";
+        return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
     }
 
     private boolean enablePopupScissor(DrawContext context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
@@ -2742,7 +2738,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 : activePresetName;
         int activeTextX = dropdownX + PRESET_TEXT_LEFT_PADDING;
         int activeTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
-        String trimmedName = this.textRenderer.trimToWidth(displayName, activeTextWidth);
+        String trimmedName = TextRenderUtil.trimWithEllipsis(this.textRenderer, displayName, activeTextWidth);
         int labelColor = (hovered || presetDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
         context.drawTextWithShadow(this.textRenderer, Text.literal(trimmedName), activeTextX, dropdownY + 5, labelColor);
 
@@ -2792,7 +2788,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         + PRESET_RENAME_ICON_SIZE
                         + PRESET_TEXT_ICON_GAP;
                 int textMaxWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING - iconSpace;
-                String presetLabel = this.textRenderer.trimToWidth(preset, textMaxWidth);
+                String presetLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, preset, textMaxWidth);
                 context.drawTextWithShadow(this.textRenderer, Text.literal(presetLabel), textX, optionY + 5, textColor);
 
                 boolean renameDisabled = isPresetRenameDisabled(preset);
@@ -2844,7 +2840,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 int createColor = createHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
                 context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, createColor);
                 int createTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
-                String createLabel = this.textRenderer.trimToWidth("+ Create new preset", createTextWidth);
+                String createLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, "+ Create new preset", createTextWidth);
                 context.drawTextWithShadow(this.textRenderer, Text.literal(createLabel), dropdownX + PRESET_TEXT_LEFT_PADDING, optionY + 5, getAccentColor());
             }
         }

@@ -121,6 +121,7 @@ public enum NodeType {
     SENSOR_CHAT_MESSAGE("pathmind.node.type.sensorChatMessage", 0xFF64B5F6, "pathmind.node.type.sensorChatMessage.desc"),
 
     // Utility Commands
+    RUN_PRESET("pathmind.node.type.runPreset", 0xFF607D8B, "pathmind.node.type.runPreset.desc"),
     SCREEN_CONTROL("pathmind.node.type.screenControl", 0xFF9E9E9E, "pathmind.node.type.screenControl.desc"),
     WAIT("pathmind.node.type.wait", 0xFF607D8B, "pathmind.node.type.wait.desc"),
     MESSAGE("pathmind.node.type.message", 0xFF9E9E9E, "pathmind.node.type.message.desc"),
@@ -295,6 +296,7 @@ public enum NodeType {
             case EQUIP_HAND:
                 return NodeCategory.GUI;
             case SCREEN_CONTROL:
+            case RUN_PRESET:
             case WAIT:
             case MESSAGE:
             case UI_UTILS:
@@ -366,6 +368,7 @@ public enum NodeType {
             case CLOSE_GUI:
             case WRITE_BOOK:
             case UI_UTILS:
+            case RUN_PRESET:
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
             case CONTROL_IF_ELSE:

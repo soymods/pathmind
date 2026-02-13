@@ -82,6 +82,8 @@
   "pathmind.node.type.start.desc": "Begins the automation sequence",
   "pathmind.node.type.startChain": "Activate",
   "pathmind.node.type.startChain.desc": "Activates a node tree by its START number",
+  "pathmind.node.type.runPreset": "Run Preset",
+  "pathmind.node.type.runPreset.desc": "Runs every START node in the selected preset",
   "pathmind.node.type.eventFunction": "Function",
   "pathmind.node.type.eventFunction.desc": "Runs a named function body when triggered",
   "pathmind.node.type.eventCall": "Call Function",

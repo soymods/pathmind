@@ -5248,6 +5248,12 @@ public class Node {
         try {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException e) {
+            try {
+                // Allow numeric variables that resolve to decimal strings (e.g. "1.0").
+                return (int) Math.round(Double.parseDouble(value.trim()));
+            } catch (NumberFormatException ignored) {
+                // Fall through to existing user-facing error handling.
+            }
             net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
             if (client != null) {
                 String raw = getParameterStringRaw(node, name);
@@ -11072,9 +11078,6 @@ public class Node {
         if (startNode == null && getParentControl() != null) {
             startNode = getParentControl().getOwningStartNode();
         }
-        if (startNode == null) {
-            return raw;
-        }
         ExecutionManager manager = ExecutionManager.getInstance();
         StringBuilder output = new StringBuilder(raw.length());
         int index = 0;
@@ -11112,11 +11115,16 @@ public class Node {
         if (manager == null || name == null || name.trim().isEmpty()) {
             return null;
         }
+        String trimmedName = name.trim();
         if (startNode != null) {
-            ExecutionManager.RuntimeVariable direct = manager.getRuntimeVariable(startNode, name.trim());
+            ExecutionManager.RuntimeVariable direct = manager.getRuntimeVariable(startNode, trimmedName);
             if (direct != null) {
                 return direct;
             }
+        }
+        ExecutionManager.RuntimeVariable anyActive = manager.getRuntimeVariableFromAnyActiveChain(trimmedName);
+        if (anyActive != null) {
+            return anyActive;
         }
         ExecutionManager.RuntimeVariable match = null;
         for (ExecutionManager.RuntimeVariableEntry entry : manager.getRuntimeVariableEntries()) {
@@ -11127,7 +11135,7 @@ public class Node {
             if (entryName == null) {
                 continue;
             }
-            if (!entryName.trim().equals(name.trim())) {
+            if (!entryName.trim().equals(trimmedName)) {
                 continue;
             }
             if (match != null) {

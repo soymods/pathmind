@@ -1,8 +1,8 @@
 package com.pathmind.ui.menu;
 
 import com.pathmind.nodes.NodeCategory;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
@@ -32,23 +32,23 @@ public final class ContextMenuRenderer {
      * Renders a menu background with optional left border (for submenus).
      */
     public static void renderMenuBackground(DrawContext context, int x, int y, int width, int height, boolean includeLeftBorder) {
-        // Fill background
-        context.fill(x, y, x + width, y + height, UITheme.CONTEXT_MENU_BG);
-
         if (includeLeftBorder) {
-            // Draw full border
-            DrawContextBridge.drawBorder(context, x, y, width, height, UITheme.CONTEXT_MENU_BORDER);
-        } else {
-            // Draw border without left side (for submenu on right)
-            int right = x + width - 1;
-            int bottom = y + height - 1;
-            // Top border
-            context.drawHorizontalLine(x, right, y, UITheme.CONTEXT_MENU_BORDER);
-            // Bottom border
-            context.drawHorizontalLine(x, right, bottom, UITheme.CONTEXT_MENU_BORDER);
-            // Right border
-            context.drawVerticalLine(right, y, bottom, UITheme.CONTEXT_MENU_BORDER);
-            // No left border - this creates 1px separator from main menu
+            UIStyleHelper.drawBeveledPanel(context, x, y, width, height, UITheme.CONTEXT_MENU_BG, UITheme.CONTEXT_MENU_BORDER, UITheme.PANEL_INNER_BORDER);
+            return;
+        }
+
+        context.fill(x, y, x + width, y + height, UITheme.CONTEXT_MENU_BG);
+        int right = x + width - 1;
+        int bottom = y + height - 1;
+        context.drawHorizontalLine(x, right, y, UITheme.CONTEXT_MENU_BORDER);
+        context.drawHorizontalLine(x, right, bottom, UITheme.CONTEXT_MENU_BORDER);
+        context.drawVerticalLine(right, y, bottom, UITheme.CONTEXT_MENU_BORDER);
+        if (width > 3 && height > 3) {
+            int innerRight = right - 1;
+            int innerBottom = bottom - 1;
+            context.drawHorizontalLine(x + 1, innerRight, y + 1, UITheme.PANEL_INNER_BORDER);
+            context.drawHorizontalLine(x + 1, innerRight, innerBottom, UITheme.PANEL_INNER_BORDER);
+            context.drawVerticalLine(innerRight, y + 1, innerBottom, UITheme.PANEL_INNER_BORDER);
         }
     }
 
@@ -56,19 +56,18 @@ public final class ContextMenuRenderer {
      * Renders a menu background without right border (for submenu on left).
      */
     public static void renderMenuBackgroundNoRightBorder(DrawContext context, int x, int y, int width, int height) {
-        // Fill background
         context.fill(x, y, x + width, y + height, UITheme.CONTEXT_MENU_BG);
-
-        // Draw border without right side (for submenu on left)
         int right = x + width - 1;
         int bottom = y + height - 1;
-        // Top border
         context.drawHorizontalLine(x, right, y, UITheme.CONTEXT_MENU_BORDER);
-        // Bottom border
         context.drawHorizontalLine(x, right, bottom, UITheme.CONTEXT_MENU_BORDER);
-        // Left border
         context.drawVerticalLine(x, y, bottom, UITheme.CONTEXT_MENU_BORDER);
-        // No right border - this creates 1px separator from main menu
+        if (width > 3 && height > 3) {
+            int innerBottom = bottom - 1;
+            context.drawHorizontalLine(x, right - 1, y + 1, UITheme.PANEL_INNER_BORDER);
+            context.drawHorizontalLine(x, right - 1, innerBottom, UITheme.PANEL_INNER_BORDER);
+            context.drawVerticalLine(x + 1, y + 1, innerBottom, UITheme.PANEL_INNER_BORDER);
+        }
     }
 
     /**

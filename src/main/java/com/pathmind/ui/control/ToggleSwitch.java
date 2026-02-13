@@ -2,8 +2,8 @@ package com.pathmind.ui.control;
 
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.gui.DrawContext;
 
 /**
@@ -67,8 +67,7 @@ public class ToggleSwitch {
 
         // Background track
         int trackColor = AnimationHelper.lerpColor(UITheme.TOGGLE_TRACK, UITheme.TOGGLE_TRACK_HOVER, hoverProg);
-        context.fill(x, y, x + WIDTH, y + HEIGHT, trackColor);
-        DrawContextBridge.drawBorder(context, x, y, WIDTH, HEIGHT, UITheme.BORDER_DEFAULT);
+        UIStyleHelper.drawBeveledPanel(context, x, y, WIDTH, HEIGHT, trackColor, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
 
         // Red indicator (left side) - bright when OFF, dim when ON
         int redX = x + 1;
@@ -79,8 +78,7 @@ public class ToggleSwitch {
         if (isHovered && !value) {
             redColor = AnimationHelper.brighten(redColor, 1.15f);
         }
-        context.fill(redX, redY, redX + INDICATOR_SIZE, redY + INDICATOR_SIZE, redColor);
-        DrawContextBridge.drawBorder(context, redX, redY, INDICATOR_SIZE, INDICATOR_SIZE, redBorder);
+        UIStyleHelper.drawBeveledPanel(context, redX, redY, INDICATOR_SIZE, INDICATOR_SIZE, redColor, redBorder, UITheme.PANEL_INNER_BORDER);
 
         // Green indicator (right side) - bright when ON, dim when OFF
         int greenX = x + WIDTH - INDICATOR_SIZE - 1;
@@ -91,8 +89,7 @@ public class ToggleSwitch {
         if (isHovered && value) {
             greenColor = AnimationHelper.brighten(greenColor, 1.15f);
         }
-        context.fill(greenX, greenY, greenX + INDICATOR_SIZE, greenY + INDICATOR_SIZE, greenColor);
-        DrawContextBridge.drawBorder(context, greenX, greenY, INDICATOR_SIZE, INDICATOR_SIZE, greenBorder);
+        UIStyleHelper.drawBeveledPanel(context, greenX, greenY, INDICATOR_SIZE, INDICATOR_SIZE, greenColor, greenBorder, UITheme.PANEL_INNER_BORDER);
     }
 
     /**

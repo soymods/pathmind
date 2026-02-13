@@ -16,47 +16,47 @@ public final class UITheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Main workspace background - near black */
-    public static final int BACKGROUND_PRIMARY = 0xFF141414;
+    public static final int BACKGROUND_PRIMARY = 0xFF0D0F13;
 
     /** Popup and panel backgrounds - very dark grey */
-    public static final int BACKGROUND_SECONDARY = 0xFF1C1C1C;
+    public static final int BACKGROUND_SECONDARY = 0xFF171A20;
 
     /** Elevated surfaces, hover states - slightly lighter for depth */
-    public static final int BACKGROUND_TERTIARY = 0xFF262626;
+    public static final int BACKGROUND_TERTIARY = 0xFF21262E;
 
     /** Sidebar background - darkest element */
-    public static final int BACKGROUND_SIDEBAR = 0xFF111111;
+    public static final int BACKGROUND_SIDEBAR = 0xFF12151B;
 
     /** Input field backgrounds - near black */
-    public static final int BACKGROUND_INPUT = 0xFF0E0E0E;
+    public static final int BACKGROUND_INPUT = 0xFF0A0C10;
 
     /** Semi-transparent overlay for modals - dark gray with 50% opacity */
-    public static final int OVERLAY_BACKGROUND = 0x80101010;
+    public static final int OVERLAY_BACKGROUND = 0xA0101218;
 
     /** Section header background - slightly distinct from panel */
-    public static final int BACKGROUND_SECTION = 0xFF1A1A1A;
+    public static final int BACKGROUND_SECTION = 0xFF14171E;
 
     /** Row stripe for alternating list items */
-    public static final int BACKGROUND_ROW_ALT = 0xFF181818;
+    public static final int BACKGROUND_ROW_ALT = 0xFF1A1D24;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // BORDER COLORS
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Subtle borders - barely visible dividers */
-    public static final int BORDER_SUBTLE = 0xFF2A2A2A;
+    public static final int BORDER_SUBTLE = 0xFF292E37;
 
     /** Standard borders - default state */
-    public static final int BORDER_DEFAULT = 0xFF363636;
+    public static final int BORDER_DEFAULT = 0xFF3B414D;
 
     /** Focused element borders - more visible */
-    public static final int BORDER_FOCUS = 0xFF4A4A4A;
+    public static final int BORDER_FOCUS = 0xFF596171;
 
     /** Active/highlighted borders - most prominent */
-    public static final int BORDER_HIGHLIGHT = 0xFF555555;
+    public static final int BORDER_HIGHLIGHT = 0xFF707A8E;
 
     /** Section header border accent */
-    public static final int BORDER_SECTION = 0xFF333333;
+    public static final int BORDER_SECTION = 0xFF363D49;
 
     /** Border shown when a node is being dragged */
     public static final int BORDER_DRAGGING = 0xFF888888;
@@ -75,19 +75,19 @@ public final class UITheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Primary text - high contrast white */
-    public static final int TEXT_PRIMARY = 0xFFE0E0E0;
+    public static final int TEXT_PRIMARY = 0xFFE7E7E0;
 
     /** Secondary text - muted description text */
-    public static final int TEXT_SECONDARY = 0xFF888888;
+    public static final int TEXT_SECONDARY = 0xFFA0A39C;
 
     /** Tertiary text - disabled/placeholder */
-    public static final int TEXT_TERTIARY = 0xFF585858;
+    public static final int TEXT_TERTIARY = 0xFF6A6E78;
 
     /** Header text - bright white for titles */
-    public static final int TEXT_HEADER = 0xFFF0F0F0;
+    public static final int TEXT_HEADER = 0xFFF5F4EE;
 
     /** Label text - slightly dimmer than primary for form labels */
-    public static final int TEXT_LABEL = 0xFFCCCCCC;
+    public static final int TEXT_LABEL = 0xFFD4D5CE;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // NODE RENDERING COLORS
@@ -281,16 +281,16 @@ public final class UITheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Sky blue accent - selection and focus indicator */
-    public static final int ACCENT_SKY = 0xFF5B99B5;
+    public static final int ACCENT_SKY = 0xFF698BA0;
 
     /** Mint green accent */
-    public static final int ACCENT_MINT = 0xFF4CAF50;
+    public static final int ACCENT_MINT = 0xFF4C9A5A;
 
     /** Amber/orange accent */
-    public static final int ACCENT_AMBER = 0xFFD4922A;
+    public static final int ACCENT_AMBER = 0xFFD0A937;
 
     /** Default accent color (sky) */
-    public static final int ACCENT_DEFAULT = ACCENT_SKY;
+    public static final int ACCENT_DEFAULT = ACCENT_AMBER;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // STATE COLORS
@@ -313,50 +313,50 @@ public final class UITheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Default button background - dark */
-    public static final int BUTTON_DEFAULT_BG = 0xFF2A2A2A;
+    public static final int BUTTON_DEFAULT_BG = 0xFF232831;
 
     /** Default button hover background */
-    public static final int BUTTON_DEFAULT_HOVER = 0xFF383838;
+    public static final int BUTTON_DEFAULT_HOVER = 0xFF2D3440;
 
     /** Default button border */
-    public static final int BUTTON_DEFAULT_BORDER = 0xFF444444;
+    public static final int BUTTON_DEFAULT_BORDER = 0xFF4A5261;
 
     /** Button hover outline - subtle highlight */
-    public static final int BUTTON_HOVER_OUTLINE = 0xFF6A9FBD;
+    public static final int BUTTON_HOVER_OUTLINE = 0xFFD0A937;
 
     /** Primary button background - darker accent */
-    public static final int BUTTON_PRIMARY_BG = 0xFF2A4A5A;
+    public static final int BUTTON_PRIMARY_BG = 0xFF3A311B;
 
     /** Primary button hover */
-    public static final int BUTTON_PRIMARY_HOVER = 0xFF3A5A6A;
+    public static final int BUTTON_PRIMARY_HOVER = 0xFF4A3E22;
 
     /** Danger button background - dark red */
-    public static final int BUTTON_DANGER_BG = 0xFF5C2020;
+    public static final int BUTTON_DANGER_BG = 0xFF4F1F1F;
 
     /** Danger button hover */
-    public static final int BUTTON_DANGER_HOVER = 0xFF7A2E2E;
+    public static final int BUTTON_DANGER_HOVER = 0xFF642828;
 
     /** Active/selected button in segmented group */
-    public static final int BUTTON_ACTIVE_BG = 0xFF3A3A3A;
+    public static final int BUTTON_ACTIVE_BG = 0xFF2A2F39;
 
     /** Active button border in segmented group */
-    public static final int BUTTON_ACTIVE_BORDER = 0xFF5B99B5;
+    public static final int BUTTON_ACTIVE_BORDER = 0xFFD0A937;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // TOOLBAR COLORS
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Toolbar button default background */
-    public static final int TOOLBAR_BG = 0xFF2A2A2A;
+    public static final int TOOLBAR_BG = 0xFF222730;
 
     /** Toolbar button hovered background */
-    public static final int TOOLBAR_BG_HOVER = 0xFF383838;
+    public static final int TOOLBAR_BG_HOVER = 0xFF2D3440;
 
     /** Toolbar button active/pressed background */
-    public static final int TOOLBAR_BG_ACTIVE = 0xFF353535;
+    public static final int TOOLBAR_BG_ACTIVE = 0xFF323843;
 
     /** Toolbar button disabled background */
-    public static final int TOOLBAR_BG_DISABLED = 0xFF1E1E1E;
+    public static final int TOOLBAR_BG_DISABLED = 0xFF1A1E26;
 
     /** Execute button background when running */
     public static final int TOOLBAR_EXECUTE_BG = 0xFF243224;
@@ -402,16 +402,16 @@ public final class UITheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Preset dropdown background */
-    public static final int DROPDOWN_BG = 0xFF2A2A2A;
+    public static final int DROPDOWN_BG = 0xFF232831;
 
     /** Preset dropdown hover */
-    public static final int DROPDOWN_BG_HOVER = 0xFF383838;
+    public static final int DROPDOWN_BG_HOVER = 0xFF2D3440;
 
     /** Dropdown option background */
-    public static final int DROPDOWN_OPTION_BG = 0xFF222222;
+    public static final int DROPDOWN_OPTION_BG = 0xFF1B2027;
 
     /** Dropdown option hover */
-    public static final int DROPDOWN_OPTION_HOVER = 0xFF333333;
+    public static final int DROPDOWN_OPTION_HOVER = 0xFF2A313D;
 
     /** Dropdown action disabled text */
     public static final int DROPDOWN_ACTION_DISABLED = 0xFF555555;
@@ -428,20 +428,20 @@ public final class UITheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Tooltip background (semi-transparent) */
-    public static final int TOOLTIP_BG = 0xF01A1A1A;
+    public static final int TOOLTIP_BG = 0xF0161920;
 
     /** Tooltip border (semi-transparent white) */
-    public static final int TOOLTIP_BORDER = 0x80FFFFFF;
+    public static final int TOOLTIP_BORDER = 0x80959EAF;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // GRID COLORS
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Grid line color (semi-transparent) */
-    public static final int GRID_LINE = 0x40333333;
+    public static final int GRID_LINE = 0x40363B45;
 
     /** Grid origin marker */
-    public static final int GRID_ORIGIN = 0xFF2A2A2A;
+    public static final int GRID_ORIGIN = 0xFF2C313C;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // DRAG PREVIEW COLORS
@@ -464,10 +464,10 @@ public final class UITheme {
     public static final int LINK_COLOR = 0xFF87CEEB;
 
     /** Rename field input background */
-    public static final int RENAME_INPUT_BG = 0xFF1A1A1A;
+    public static final int RENAME_INPUT_BG = 0xFF151921;
 
     /** Rename field border */
-    public static final int RENAME_INPUT_BORDER = 0xFF000000;
+    public static final int RENAME_INPUT_BORDER = 0xFF2E3440;
 
     /** Dropdown icon hover background */
     public static final int DROPDOWN_ICON_HOVER_BG = 0x33555555;
@@ -498,25 +498,31 @@ public final class UITheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /** Context menu background */
-    public static final int CONTEXT_MENU_BG = 0xFF1C1C1C;
+    public static final int CONTEXT_MENU_BG = 0xFF161A21;
 
     /** Context menu border */
-    public static final int CONTEXT_MENU_BORDER = 0xFF555555;
+    public static final int CONTEXT_MENU_BORDER = 0xFF49505E;
 
     /** Context menu item hover background */
-    public static final int CONTEXT_MENU_ITEM_HOVER = 0xFF262626;
+    public static final int CONTEXT_MENU_ITEM_HOVER = 0xFF242C37;
 
     /** Context menu separator line */
-    public static final int CONTEXT_MENU_SEPARATOR = 0xFF333333;
+    public static final int CONTEXT_MENU_SEPARATOR = 0xFF333945;
 
     /** Context menu text color */
     public static final int CONTEXT_MENU_TEXT = 0xFFE0E0E0;
 
     /** Context menu category icon background */
-    public static final int CONTEXT_MENU_ICON_BG = 0xFF2A2A2A;
+    public static final int CONTEXT_MENU_ICON_BG = 0xFF262D38;
 
     /** Context menu group header text (sub-groups) */
-    public static final int CONTEXT_MENU_GROUP_HEADER = 0xFF888888;
+    public static final int CONTEXT_MENU_GROUP_HEADER = 0xFF9CA2AF;
+
+    /** Inner frame color used for beveled panel styling. */
+    public static final int PANEL_INNER_BORDER = 0xFF1D222C;
+
+    /** Hover background for icon hitboxes in list rows. */
+    public static final int ICON_HITBOX_HOVER_BG = 0x334D5564;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // DIMENSIONS

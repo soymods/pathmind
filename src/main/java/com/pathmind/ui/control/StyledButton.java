@@ -2,8 +2,8 @@ package com.pathmind.ui.control;
 
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
@@ -141,11 +141,8 @@ public class StyledButton {
             borderColor = AnimationHelper.darken(borderColor, 0.6f);
         }
 
-        // Render background
-        context.fill(x, y, x + width, y + height, bgColor);
-
-        // Render border
-        DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
+        int innerBorder = AnimationHelper.lerpColor(UITheme.PANEL_INNER_BORDER, UITheme.BUTTON_HOVER_OUTLINE, hoverProg * 0.4f);
+        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, bgColor, borderColor, innerBorder);
 
         // Render text
         int textColor = enabled ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
@@ -259,8 +256,7 @@ public class StyledButton {
             borderColor = UITheme.BUTTON_HOVER_OUTLINE;
         }
 
-        context.fill(x, y, x + width, y + height, bgColor);
-        DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
+        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
 
         int textX = x + width / 2;
         int textY = y + (height - textRenderer.fontHeight) / 2 + 1;

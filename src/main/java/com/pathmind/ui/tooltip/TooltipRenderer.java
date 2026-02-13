@@ -1,7 +1,7 @@
 package com.pathmind.ui.tooltip;
 
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
@@ -53,8 +53,7 @@ public final class TooltipRenderer {
             y = MARGIN;
         }
 
-        context.fill(x, y, x + tooltipWidth, y + tooltipHeight, UITheme.TOOLTIP_BG);
-        DrawContextBridge.drawBorder(context, x, y, tooltipWidth, tooltipHeight, UITheme.TOOLTIP_BORDER);
+        UIStyleHelper.drawBeveledPanel(context, x, y, tooltipWidth, tooltipHeight, UITheme.TOOLTIP_BG, UITheme.TOOLTIP_BORDER, UITheme.PANEL_INNER_BORDER);
 
         int textX = x + PADDING;
         int textY = y + PADDING;

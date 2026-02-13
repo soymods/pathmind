@@ -3193,7 +3193,7 @@ public class NodeGraph {
                             : UITheme.BACKGROUND_SIDEBAR;
                         int fieldBorder = isOverSidebar
                             ? UITheme.BORDER_SUBTLE
-                            : UITheme.BORDER_HIGHLIGHT;
+                            : UITheme.BORDER_DEFAULT;
 
                         context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
                         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
@@ -3237,7 +3237,7 @@ public class NodeGraph {
                             : UITheme.BACKGROUND_SIDEBAR;
                         int fieldBorder = isOverSidebar
                             ? UITheme.BORDER_SUBTLE
-                            : UITheme.BORDER_HIGHLIGHT;
+                            : UITheme.BORDER_DEFAULT;
 
                         context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
                         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
@@ -4149,7 +4149,7 @@ public class NodeGraph {
                 : UITheme.BACKGROUND_SIDEBAR;
             int dropdownBorder = isOverSidebar
                 ? UITheme.BORDER_SUBTLE
-                : UITheme.BORDER_HIGHLIGHT;
+                : UITheme.BORDER_DEFAULT;
 
             context.fill(dropdownLeft, dropdownTop, dropdownRight, dropdownBottom, dropdownBackground);
             DrawContextBridge.drawBorderInLayer(context, dropdownLeft, dropdownTop, dropdownWidth, dropdownHeight, dropdownBorder);

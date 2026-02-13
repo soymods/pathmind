@@ -5,6 +5,7 @@ import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -22,7 +23,7 @@ import java.util.Map;
 
 /**
  * Manages the sidebar with categorized draggable nodes.
- * Features a nested sidebar design with colored tabs like sticky notes.
+ * Uses a nested, beveled panel style with category tabs and grouped node lists.
  */
 public class Sidebar {
     // Outer sidebar dimensions
@@ -366,8 +367,7 @@ public class Sidebar {
         
         // Outer sidebar background
         int outerColor = totalWidth > currentInnerSidebarWidth ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
-        context.fill(0, sidebarStartY, totalWidth, sidebarStartY + sidebarHeight, outerColor);
-        context.drawVerticalLine(totalWidth, sidebarStartY, sidebarStartY + sidebarHeight, UITheme.BORDER_SUBTLE);
+        UIStyleHelper.drawPanel(context, 0, sidebarStartY, totalWidth, sidebarHeight, outerColor, UITheme.BORDER_SUBTLE);
 
         // Inner sidebar background (for tabs)
         context.fill(0, sidebarStartY, currentInnerSidebarWidth, sidebarStartY + sidebarHeight, UITheme.BACKGROUND_SIDEBAR);
@@ -411,11 +411,8 @@ public class Sidebar {
             int tabColor = tabSelected ? normalColor : AnimationHelper.lerpColor(normalColor, hoverColor, hoverProgress);
 
             // Render square tab
-            context.fill(tabX, tabY, tabX + tabSize, tabY + tabSize, tabColor);
-
-            // Tab outline - subtle border
             int outlineColor = darkenColor(baseColor, 0.7f);
-            DrawContextBridge.drawBorder(context, tabX, tabY, tabSize, tabSize, outlineColor);
+            UIStyleHelper.drawBeveledPanel(context, tabX, tabY, tabSize, tabSize, tabColor, outlineColor, UITheme.PANEL_INNER_BORDER);
 
             // Render centered icon
             String icon = category.getIcon();
@@ -506,8 +503,7 @@ public class Sidebar {
                             int indicatorSize = 12;
                             int indicatorX = currentInnerSidebarWidth + 8;
                             int indicatorY = contentY + 3;
-                            context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
-                            DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, UITheme.BORDER_SUBTLE);
+                            UIStyleHelper.drawBeveledPanel(context, indicatorX, indicatorY, indicatorSize, indicatorSize, nodeType.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
 
                             context.drawTextWithShadow(
                                 textRenderer,
@@ -539,8 +535,7 @@ public class Sidebar {
                         int indicatorSize = 12;
                         int indicatorX = currentInnerSidebarWidth + 8; // Align with category title
                         int indicatorY = contentY + 3;
-                        context.fill(indicatorX, indicatorY, indicatorX + indicatorSize, indicatorY + indicatorSize, nodeType.getColor());
-                        DrawContextBridge.drawBorder(context, indicatorX, indicatorY, indicatorSize, indicatorSize, UITheme.BORDER_SUBTLE);
+                        UIStyleHelper.drawBeveledPanel(context, indicatorX, indicatorY, indicatorSize, indicatorSize, nodeType.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
 
                         context.drawTextWithShadow(
                             textRenderer,

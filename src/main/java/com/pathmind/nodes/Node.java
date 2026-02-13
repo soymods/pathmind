@@ -16673,6 +16673,18 @@ public class Node {
         if (client == null || client.player == null || client.world == null || entityId == null || entityId.isEmpty()) {
             return false;
         }
+        if (isAnySelectionValue(entityId)) {
+            double renderDistance = Math.max(8.0, client.options.getViewDistance().getValue() * 4.0);
+            Box searchBox = client.player.getBoundingBox().expand(renderDistance);
+            List<Entity> matches = client.world.getOtherEntities(
+                client.player,
+                searchBox,
+                entity -> entity != null
+                    && entity.isAlive()
+                    && EntityStateOptions.matchesState(entity, state)
+            );
+            return !matches.isEmpty();
+        }
         for (String candidateId : splitMultiValueList(entityId)) {
             String sanitized = sanitizeResourceId(candidateId);
             String normalized = sanitized != null && !sanitized.isEmpty()

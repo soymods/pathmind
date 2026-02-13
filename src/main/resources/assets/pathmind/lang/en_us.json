@@ -255,7 +255,7 @@
   "pathmind.node.type.sensorIsFalling": "Is Falling",
   "pathmind.node.type.sensorIsFalling.desc": "Detect if the player is currently falling",
   "pathmind.node.type.sensorIsRendered": "Is Rendered",
-  "pathmind.node.type.sensorIsRendered.desc": "Detect if a specified block, item, entity, or player is currently visible to the player",
+  "pathmind.node.type.sensorIsRendered.desc": "Detect if a specified block, item, entity, or player is currently rendered in the world (not limited to the player's field of view)",
   "pathmind.node.type.sensorIsVisible": "Is Visible",
   "pathmind.node.type.sensorIsVisible.desc": "Detect if a specified block, dropped item, entity, or player is currently in the player's field of view and not obscured",
   "pathmind.node.type.sensorKeyPressed": "Key Pressed",

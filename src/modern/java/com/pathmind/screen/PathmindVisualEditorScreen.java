@@ -1846,7 +1846,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupTextWithEllipsis(
             context,
-            "This will remove all nodes from the workspace.",
+            Text.translatable("pathmind.popup.clearWorkspace.message").getString(),
             popupX + 20,
             popupY + 48,
             scaledWidth - 40,
@@ -1897,17 +1897,17 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         int infoY = popupY + 44;
-        String importInfo = "Click Import to load a saved workspace.";
+        String importInfo = Text.translatable("pathmind.popup.importExport.importInfo").getString();
         drawPopupTextWithEllipsis(context, importInfo, popupX + 20, infoY, scaledWidth - 40,
             getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_SECONDARY));
 
-        String exportInfo = "Click Export to choose where to save the current workspace.";
+        String exportInfo = Text.translatable("pathmind.popup.importExport.exportInfo").getString();
         drawPopupTextWithEllipsis(context, exportInfo, popupX + 20, infoY + 14, scaledWidth - 40,
             getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_SECONDARY));
 
         Path defaultPath = NodeGraphPersistence.getDefaultSavePath();
         if (defaultPath != null) {
-            String defaultLabel = "Default save: " + defaultPath.toString();
+            String defaultLabel = Text.translatable("pathmind.popup.importExport.defaultSave", defaultPath.toString()).getString();
             drawPopupTextWithEllipsis(context, defaultLabel, popupX + 20, infoY + 30, scaledWidth - 40,
                 getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_TERTIARY));
         }
@@ -2010,8 +2010,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, "Baritone nodes need the Baritone API (optional)", centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, "Install baritone-api to enable these nodes", centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.title").getString(), centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
         drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, UITheme.LINK_COLOR);
 
         int buttonWidth = 100;
@@ -2054,8 +2054,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, "UI Utils nodes need the UI-Utils mod (optional)", centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, "Install UI-Utils to enable these nodes", centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.title").getString(), centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
         drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, UITheme.LINK_COLOR);
 
         int buttonWidth = 100;
@@ -3176,7 +3176,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupTextWithEllipsis(
             context,
-            "Enter a name for the new preset.",
+            Text.translatable("pathmind.popup.createPreset.message").getString(),
             popupX + 20,
             popupY + 44,
             scaledWidth - 40,
@@ -3255,9 +3255,9 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         String presetLabel = pendingPresetRenameName == null || pendingPresetRenameName.isEmpty()
-                ? "the selected preset"
-                : "Preset: " + pendingPresetRenameName;
-        drawPopupTextWithEllipsis(context, "Enter a new name.", popupX + 20, popupY + 44, scaledWidth - 40, UITheme.TEXT_SECONDARY);
+                ? Text.translatable("pathmind.popup.preset.fallbackSelected").getString()
+                : Text.translatable("pathmind.popup.preset.label", pendingPresetRenameName).getString();
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.popup.renamePreset.message").getString(), popupX + 20, popupY + 44, scaledWidth - 40, UITheme.TEXT_SECONDARY);
         drawPopupTextWithEllipsis(context, presetLabel, popupX + 20, popupY + 58, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 
         int fieldX = popupX + 20;
@@ -3333,9 +3333,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         String presetLabel = (pendingPresetDeletionName != null && !pendingPresetDeletionName.isEmpty())
                 ? pendingPresetDeletionName
-                : "this preset";
-        String warningLine = "This will permanently remove the preset.";
-        String presetLine = "Preset: " + presetLabel;
+                : Text.translatable("pathmind.popup.preset.fallbackCurrent").getString();
+        String warningLine = Text.translatable("pathmind.popup.deletePreset.message").getString();
+        String presetLine = Text.translatable("pathmind.popup.preset.label", presetLabel).getString();
         drawPopupTextWithEllipsis(context, warningLine, popupX + 20, popupY + 48, scaledWidth - 40, UITheme.TEXT_SECONDARY);
         drawPopupTextWithEllipsis(context, presetLine, popupX + 20, popupY + 64, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 

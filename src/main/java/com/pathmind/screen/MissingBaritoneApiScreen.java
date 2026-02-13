@@ -20,7 +20,7 @@ public class MissingBaritoneApiScreen extends Screen {
     private final Screen parent;
 
     public MissingBaritoneApiScreen(Screen parent) {
-        super(Text.literal("Pathmind - Missing Baritone API"));
+        super(Text.translatable("pathmind.screen.missingBaritone.title"));
         this.parent = parent;
     }
 
@@ -31,17 +31,17 @@ public class MissingBaritoneApiScreen extends Screen {
         int startY = this.height / 2 + 10;
 
         addDrawableChild(ButtonWidget.builder(
-            Text.literal("Open download link"),
+            Text.translatable("pathmind.button.openLink"),
             button -> openDownloadLink()
         ).dimensions(centerX - BUTTON_WIDTH - BUTTON_SPACING / 2, startY, BUTTON_WIDTH, BUTTON_HEIGHT).build());
 
         addDrawableChild(ButtonWidget.builder(
-            Text.literal("Copy link"),
+            Text.translatable("pathmind.button.copyLink"),
             button -> copyDownloadLink()
         ).dimensions(centerX + BUTTON_SPACING / 2, startY, BUTTON_WIDTH, BUTTON_HEIGHT).build());
 
         addDrawableChild(ButtonWidget.builder(
-            Text.literal("Back"),
+            Text.translatable("pathmind.button.close"),
             button -> close()
         ).dimensions(centerX - (BUTTON_WIDTH / 2), startY + BUTTON_HEIGHT + BUTTON_SPACING, BUTTON_WIDTH, BUTTON_HEIGHT).build());
     }
@@ -72,8 +72,8 @@ public class MissingBaritoneApiScreen extends Screen {
         int centerX = this.width / 2;
         int messageY = this.height / 2 - 40;
 
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone not detected"), centerX, messageY, UITheme.TEXT_HEADER);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install Baritone to unlock Baritone nodes"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("pathmind.popup.missingBaritone.title"), centerX, messageY, UITheme.TEXT_HEADER);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("pathmind.popup.missingBaritone.message"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 32, UITheme.LINK_COLOR);
 
         super.render(context, mouseX, mouseY, delta);

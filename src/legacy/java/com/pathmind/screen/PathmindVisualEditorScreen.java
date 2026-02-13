@@ -1861,7 +1861,7 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         int infoY = popupY + 44;
-        String importInfo = "Click Import to load a saved workspace.";
+        String importInfo = Text.translatable("pathmind.popup.importExport.importInfo").getString();
         context.drawTextWithShadow(
             this.textRenderer,
             Text.literal(importInfo),
@@ -1870,7 +1870,7 @@ public class PathmindVisualEditorScreen extends Screen {
             getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_SECONDARY)
         );
 
-        String exportInfo = "Click Export to choose where to save the current workspace.";
+        String exportInfo = Text.translatable("pathmind.popup.importExport.exportInfo").getString();
         context.drawTextWithShadow(
             this.textRenderer,
             Text.literal(exportInfo),
@@ -1881,7 +1881,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         Path defaultPath = NodeGraphPersistence.getDefaultSavePath();
         if (defaultPath != null) {
-            String defaultLabel = "Default save: " + defaultPath.toString();
+            String defaultLabel = Text.translatable("pathmind.popup.importExport.defaultSave", defaultPath.toString()).getString();
             String trimmedDefault = TextRenderUtil.trimWithEllipsis(this.textRenderer, defaultLabel, popupWidth - 40);
             context.drawTextWithShadow(
                 this.textRenderer,
@@ -1999,8 +1999,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + popupWidth / 2;
         int messageY = popupY + 16;
         int baritonePrimary = getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Baritone not detected"), centerX, messageY, baritonePrimary);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install Baritone to enable these nodes"), centerX, messageY + 16, baritonePrimary);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.popup.missingBaritone.title").getString()), centerX, messageY, baritonePrimary);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.popup.missingBaritone.message").getString()), centerX, messageY + 16, baritonePrimary);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 30,
             getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.LINK_COLOR));
 
@@ -2047,8 +2047,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + popupWidth / 2;
         int messageY = popupY + 16;
         int uiUtilsPrimary = getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("UI Utils nodes need the UI-Utils mod (optional)"), centerX, messageY, uiUtilsPrimary);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Install UI-Utils to enable these nodes"), centerX, messageY + 16, uiUtilsPrimary);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.popup.missingUiUtils.title").getString()), centerX, messageY, uiUtilsPrimary);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.popup.missingUiUtils.message").getString()), centerX, messageY + 16, uiUtilsPrimary);
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(UI_UTILS_DOWNLOAD_URL), centerX, messageY + 30,
             getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.LINK_COLOR));
 
@@ -3256,8 +3256,8 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         String presetLabel = pendingPresetRenameName == null || pendingPresetRenameName.isEmpty()
-                ? "the selected preset"
-                : "Preset: " + pendingPresetRenameName;
+                ? Text.translatable("pathmind.popup.preset.fallbackSelected").getString()
+                : Text.translatable("pathmind.popup.preset.label", pendingPresetRenameName).getString();
         String trimmedPreset = TextRenderUtil.trimWithEllipsis(this.textRenderer, presetLabel, popupWidth - 40);
         context.drawTextWithShadow(
                 this.textRenderer,
@@ -3354,9 +3354,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         String presetLabel = (pendingPresetDeletionName != null && !pendingPresetDeletionName.isEmpty())
                 ? pendingPresetDeletionName
-                : "this preset";
-        String warningLine = "This will permanently remove the preset.";
-        String presetLine = "Preset: " + presetLabel;
+                : Text.translatable("pathmind.popup.preset.fallbackCurrent").getString();
+        String warningLine = Text.translatable("pathmind.popup.deletePreset.message").getString();
+        String presetLine = Text.translatable("pathmind.popup.preset.label", presetLabel).getString();
         String trimmedWarning = TextRenderUtil.trimWithEllipsis(this.textRenderer, warningLine, popupWidth - 40);
         String trimmedPreset = TextRenderUtil.trimWithEllipsis(this.textRenderer, presetLine, popupWidth - 40);
 

@@ -2717,7 +2717,9 @@ public class NodeGraph {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_BG, 0.75f) : UITheme.NODE_EVENT_CALL_BG;
         } else if (node.getType() == NodeType.VARIABLE) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_BORDER, 0.75f) : UITheme.NODE_VARIABLE_BORDER; // Darker orange for variables
-        } else if (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT) {
+        } else if (node.getType() == NodeType.OPERATOR_EQUALS
+            || node.getType() == NodeType.OPERATOR_NOT
+            || node.getType() == NodeType.OPERATOR_BOOLEAN_OR) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_BORDER, 0.75f) : UITheme.NODE_OPERATOR_BORDER; // Darker green for operators
         } else if (isStopControl) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_STOP_BORDER, 0.75f) : UITheme.NODE_STOP_BORDER;
@@ -2734,7 +2736,9 @@ public class NodeGraph {
 
         // Node header (only for non-START/event function nodes)
         if (simpleStyle) {
-            boolean isOperator = node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT;
+            boolean isOperator = node.getType() == NodeType.OPERATOR_EQUALS
+                || node.getType() == NodeType.OPERATOR_NOT
+                || node.getType() == NodeType.OPERATOR_BOOLEAN_OR;
             String label = node.getType().getDisplayName().toUpperCase(Locale.ROOT);
             boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
             int titleColor = (isStopControl || isActivateNode)
@@ -2765,7 +2769,8 @@ public class NodeGraph {
             && node.getType() != NodeType.EVENT_FUNCTION
             && node.getType() != NodeType.VARIABLE
             && node.getType() != NodeType.OPERATOR_EQUALS
-            && node.getType() != NodeType.OPERATOR_NOT) {
+            && node.getType() != NodeType.OPERATOR_NOT
+            && node.getType() != NodeType.OPERATOR_BOOLEAN_OR) {
             int headerColor = node.getType().getColor() & UITheme.NODE_HEADER_ALPHA_MASK;
             if (isOverSidebar) {
                 headerColor = UITheme.NODE_HEADER_DIMMED; // Grey header when over sidebar
@@ -3885,6 +3890,7 @@ public class NodeGraph {
         switch (node.getType()) {
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
+            case OPERATOR_BOOLEAN_OR:
             case OPERATOR_GREATER:
             case OPERATOR_LESS:
                 return true;
@@ -3917,6 +3923,8 @@ public class NodeGraph {
                 return "=";
             case OPERATOR_NOT:
                 return minimalStyle ? "=/" : "!=";
+            case OPERATOR_BOOLEAN_OR:
+                return "OR";
             case OPERATOR_GREATER:
                 return isOperatorInclusive(node) ? ">=" : ">";
             case OPERATOR_LESS:

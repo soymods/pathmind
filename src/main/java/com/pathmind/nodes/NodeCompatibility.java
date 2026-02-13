@@ -77,7 +77,8 @@ public final class NodeCompatibility {
             || !provided.isEmpty()
             || candidateType == NodeType.VARIABLE;
         if (!isParameterLike) {
-            return isBooleanSensor && accepted.contains(NodeValueTrait.BOOLEAN);
+            return isBooleanSensor
+                && (accepted.contains(NodeValueTrait.BOOLEAN) || accepted.contains(NodeValueTrait.ANY));
         }
 
         if (candidateType == NodeType.VARIABLE) {

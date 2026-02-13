@@ -30,6 +30,7 @@ public final class NodeTraitRegistry {
         NodeType.OPERATOR_EQUALS,
         NodeType.OPERATOR_NOT,
         NodeType.OPERATOR_BOOLEAN_NOT,
+        NodeType.OPERATOR_BOOLEAN_OR,
         NodeType.OPERATOR_GREATER,
         NodeType.OPERATOR_LESS
     );
@@ -97,6 +98,8 @@ public final class NodeTraitRegistry {
 
         traits.put(NodeType.OPERATOR_RANDOM, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_MOD, EnumSet.of(NodeValueTrait.NUMBER));
+        traits.put(NodeType.OPERATOR_BOOLEAN_OR, EnumSet.of(NodeValueTrait.BOOLEAN));
+        traits.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.LIST_ITEM, EnumSet.of(NodeValueTrait.LIST_ITEM, NodeValueTrait.COORDINATE, NodeValueTrait.INVENTORY_SLOT));
         traits.put(NodeType.VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
 
@@ -134,6 +137,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.OPERATOR_GREATER, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.OPERATOR_LESS, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.OPERATOR_BOOLEAN_NOT, EnumSet.of(NodeValueTrait.BOOLEAN));
+        accepted.put(NodeType.OPERATOR_BOOLEAN_OR, EnumSet.of(NodeValueTrait.BOOLEAN));
 
         accepted.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY));
         accepted.put(NodeType.SENSOR_DISTANCE_BETWEEN, EnumSet.of(
@@ -147,6 +151,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_AT_COORDINATES, EnumSet.of(NodeValueTrait.COORDINATE));
         accepted.put(NodeType.SENSOR_ITEM_IN_INVENTORY, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_ITEM_IN_SLOT, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT));
+        accepted.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.SENSOR_VILLAGER_TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_CHAT_MESSAGE, EnumSet.of(NodeValueTrait.PLAYER, NodeValueTrait.MESSAGE, NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_KEY_PRESSED, EnumSet.of(NodeValueTrait.KEY));
@@ -269,6 +274,7 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.SET_VARIABLE, 2);
         slotCounts.put(NodeType.CHANGE_VARIABLE, 1);
         slotCounts.put(NodeType.OPERATOR_MOD, 2);
+        slotCounts.put(NodeType.OPERATOR_BOOLEAN_OR, 2);
         slotCounts.put(NodeType.OPERATOR_EQUALS, 2);
         slotCounts.put(NodeType.OPERATOR_NOT, 2);
         slotCounts.put(NodeType.OPERATOR_GREATER, 2);
@@ -287,6 +293,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.SET_VARIABLE, new String[]{"Variable", "Value"});
         slotLabels.put(NodeType.CHANGE_VARIABLE, new String[]{"Variable"});
         slotLabels.put(NodeType.OPERATOR_BOOLEAN_NOT, new String[]{"Value"});
+        slotLabels.put(NodeType.OPERATOR_BOOLEAN_OR, new String[]{"Left", "Right"});
         slotLabels.put(NodeType.OPERATOR_MOD, new String[]{"Value", "Modulo"});
         slotLabels.put(NodeType.BUILD, new String[]{"Position"});
         slotLabels.put(NodeType.PLACE, new String[]{"Source", "Position"});
@@ -332,7 +339,8 @@ public final class NodeTraitRegistry {
             || type == NodeType.SENSOR_DISTANCE_BETWEEN
             || type == NodeType.SENSOR_TARGETED_BLOCK
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || type == NodeType.SENSOR_LOOK_DIRECTION) {
+            || type == NodeType.SENSOR_LOOK_DIRECTION
+            || type == NodeType.SENSOR_SLOT_ITEM_COUNT) {
             return true;
         }
         if (type == NodeType.VARIABLE || type == NodeType.OPERATOR_RANDOM || type == NodeType.OPERATOR_MOD || type == NodeType.LIST_ITEM) {
@@ -440,6 +448,9 @@ public final class NodeTraitRegistry {
             return slotIndex == 0;
         }
         if (hostType == NodeType.OPERATOR_MOD) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
+        if (hostType == NodeType.OPERATOR_BOOLEAN_OR) {
             return slotIndex == 0 || slotIndex == 1;
         }
         if (hostType == NodeType.OPERATOR_EQUALS

@@ -199,6 +199,7 @@ public class Sidebar {
             baritoneAvailable,
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
+            NodeType.SENSOR_SLOT_ITEM_COUNT,
             NodeType.SENSOR_VILLAGER_TRADE,
             NodeType.SENSOR_GUI_FILLED
         ));

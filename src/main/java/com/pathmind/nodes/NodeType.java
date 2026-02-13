@@ -24,6 +24,7 @@ public enum NodeType {
     OPERATOR_EQUALS("pathmind.node.type.operatorEquals", 0xFF00C853, "pathmind.node.type.operatorEquals.desc"),
     OPERATOR_NOT("pathmind.node.type.operatorNot", 0xFF00C853, "pathmind.node.type.operatorNot.desc"),
     OPERATOR_BOOLEAN_NOT("pathmind.node.type.operatorBooleanNot", 0xFF00C853, "pathmind.node.type.operatorBooleanNot.desc"),
+    OPERATOR_BOOLEAN_OR("pathmind.node.type.operatorBooleanOr", 0xFF00C853, "pathmind.node.type.operatorBooleanOr.desc"),
     OPERATOR_GREATER("pathmind.node.type.operatorGreater", 0xFF00C853, "pathmind.node.type.operatorGreater.desc"),
     OPERATOR_LESS("pathmind.node.type.operatorLess", 0xFF00C853, "pathmind.node.type.operatorLess.desc"),
     OPERATOR_MOD("pathmind.node.type.operatorMod", 0xFF00C853, "pathmind.node.type.operatorMod.desc"),
@@ -107,6 +108,7 @@ public enum NodeType {
     SENSOR_HUNGER_BELOW("pathmind.node.type.sensorHungerBelow", 0xFF64B5F6, "pathmind.node.type.sensorHungerBelow.desc"),
     SENSOR_ITEM_IN_INVENTORY("pathmind.node.type.sensorItemInInventory", 0xFF64B5F6, "pathmind.node.type.sensorItemInInventory.desc"),
     SENSOR_ITEM_IN_SLOT("pathmind.node.type.sensorItemInSlot", 0xFF64B5F6, "pathmind.node.type.sensorItemInSlot.desc"),
+    SENSOR_SLOT_ITEM_COUNT("pathmind.node.type.sensorSlotItemCount", 0xFF64B5F6, "pathmind.node.type.sensorSlotItemCount.desc"),
     SENSOR_VILLAGER_TRADE("pathmind.node.type.sensorVillagerTrade", 0xFF64B5F6, "pathmind.node.type.sensorVillagerTrade.desc"),
     SENSOR_IS_SWIMMING("pathmind.node.type.sensorIsSwimming", 0xFF64B5F6, "pathmind.node.type.sensorIsSwimming.desc"),
     SENSOR_IS_IN_LAVA("pathmind.node.type.sensorIsInLava", 0xFF64B5F6, "pathmind.node.type.sensorIsInLava.desc"),
@@ -212,6 +214,7 @@ public enum NodeType {
             case OPERATOR_EQUALS:
             case OPERATOR_NOT:
             case OPERATOR_BOOLEAN_NOT:
+            case OPERATOR_BOOLEAN_OR:
             case OPERATOR_GREATER:
             case OPERATOR_LESS:
             case OPERATOR_MOD:
@@ -238,6 +241,7 @@ public enum NodeType {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
+            case SENSOR_SLOT_ITEM_COUNT:
             case SENSOR_VILLAGER_TRADE:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
@@ -372,6 +376,7 @@ public enum NodeType {
             case SENSOR_HUNGER_BELOW:
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
+            case SENSOR_SLOT_ITEM_COUNT:
             case SENSOR_VILLAGER_TRADE:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
@@ -403,6 +408,7 @@ public enum NodeType {
             case OPERATOR_RANDOM:
             case OPERATOR_MOD:
             case OPERATOR_BOOLEAN_NOT:
+            case OPERATOR_BOOLEAN_OR:
             case CREATE_LIST:
             case LIST_ITEM:
                 return true;

@@ -578,6 +578,7 @@ public class Node {
     private boolean isComparisonOperator() {
         return type == NodeType.OPERATOR_EQUALS
             || type == NodeType.OPERATOR_NOT
+            || type == NodeType.OPERATOR_BOOLEAN_OR
             || type == NodeType.OPERATOR_GREATER
             || type == NodeType.OPERATOR_LESS;
     }
@@ -2526,6 +2527,8 @@ public class Node {
                 break;
             case OPERATOR_BOOLEAN_NOT:
                 break;
+            case OPERATOR_BOOLEAN_OR:
+                break;
             case OPERATOR_GREATER:
             case OPERATOR_LESS:
                 parameters.add(new NodeParameter("Inclusive", ParameterType.BOOLEAN, "false"));
@@ -2546,6 +2549,8 @@ public class Node {
             case SENSOR_ITEM_IN_SLOT:
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
+                break;
+            case SENSOR_SLOT_ITEM_COUNT:
                 break;
             case SENSOR_VILLAGER_TRADE:
                 break;
@@ -3113,6 +3118,21 @@ public class Node {
                 values.put(normalizeParameterKey("Text"), faceValue);
                 values.put("Message", faceValue);
                 values.put(normalizeParameterKey("Message"), faceValue);
+                break;
+            }
+            case SENSOR_SLOT_ITEM_COUNT: {
+                Node slotNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
+                int count = 0;
+                if (slotNode != null && providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+                    count = Math.max(0, resolveInventorySlotCount(slotNode).orElse(0));
+                }
+                String countValue = Integer.toString(count);
+                values.put("Amount", countValue);
+                values.put(normalizeParameterKey("Amount"), countValue);
+                values.put("Count", countValue);
+                values.put(normalizeParameterKey("Count"), countValue);
+                values.put("Value", countValue);
+                values.put(normalizeParameterKey("Value"), countValue);
                 break;
             }
             case PARAM_ITEM: {
@@ -6034,6 +6054,13 @@ public class Node {
 
         NodeType valueType = valueNode.getType();
         Map<String, String> values;
+        if (valueNode.isSensorNode()) {
+            boolean sensorResult = valueNode.evaluateSensor();
+            values = new HashMap<>();
+            values.put("Toggle", Boolean.toString(sensorResult));
+            values.put(normalizeParameterKey("Toggle"), Boolean.toString(sensorResult));
+            valueType = NodeType.PARAM_BOOLEAN;
+        } else
         if (valueType == NodeType.SENSOR_POSITION_OF) {
             Node parameterNode = valueNode.getAttachedParameterOfType(
                 NodeType.PARAM_ENTITY,
@@ -6121,6 +6148,8 @@ public class Node {
                 valueType = NodeType.PARAM_BLOCK;
             } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
                 valueType = NodeType.PARAM_DIRECTION;
+            } else if (valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
+                valueType = NodeType.PARAM_AMOUNT;
             }
         }
         ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
@@ -11195,6 +11224,8 @@ public class Node {
             }
             case PARAM_AMOUNT:
                 return getRuntimeValue(values, "amount");
+            case SENSOR_SLOT_ITEM_COUNT:
+                return getRuntimeValue(values, "amount");
             case OPERATOR_RANDOM:
                 String value = getRuntimeValue(values, "value");
                 if (!value.isEmpty()) {
@@ -15733,6 +15764,9 @@ public class Node {
             case OPERATOR_BOOLEAN_NOT:
                 result = evaluateOperatorBooleanNot();
                 break;
+            case OPERATOR_BOOLEAN_OR:
+                result = evaluateOperatorBooleanOr();
+                break;
             case OPERATOR_GREATER:
                 result = evaluateOperatorGreater();
                 break;
@@ -15928,6 +15962,19 @@ public class Node {
                 int requiredAmount = Math.max(1, getIntParameter("Amount", 1));
                 boolean matchesItem = stackMatchesAnyItem(stack, itemIds);
                 result = matchesItem && (!useAmount || stack.getCount() >= requiredAmount);
+                break;
+            }
+            case SENSOR_SLOT_ITEM_COUNT: {
+                Node slotNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
+                if (slotNode == null || !providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (client != null) {
+                        sendNodeErrorMessage(client, type.getDisplayName() + " requires an inventory slot parameter.");
+                    }
+                    result = false;
+                    break;
+                }
+                result = resolveInventorySlotCount(slotNode).isPresent();
                 break;
             }
             case SENSOR_IS_SWIMMING:
@@ -16189,6 +16236,20 @@ public class Node {
         return result.map(value -> !value).orElse(false);
     }
 
+    private boolean evaluateOperatorBooleanOr() {
+        Node left = getAttachedParameter(0);
+        Node right = getAttachedParameter(1);
+        if (left == null || right == null) {
+            return false;
+        }
+        Optional<Boolean> leftValue = resolveBooleanOperandWithVariables(left, 0);
+        Optional<Boolean> rightValue = resolveBooleanOperandWithVariables(right, 1);
+        if (leftValue.isEmpty() || rightValue.isEmpty()) {
+            return false;
+        }
+        return leftValue.get() || rightValue.get();
+    }
+
     private boolean evaluateOperatorGreater() {
         Optional<Boolean> result = evaluateOperatorOrdering(true);
         return result.orElse(false);
@@ -16235,6 +16296,10 @@ public class Node {
 
     private Optional<Boolean> evaluateOperatorBooleanOperand() {
         Node operand = getAttachedParameter(0);
+        return resolveBooleanOperandWithVariables(operand, 0);
+    }
+
+    private Optional<Boolean> resolveBooleanOperandWithVariables(Node operand, int slotIndex) {
         if (operand == null) {
             return Optional.empty();
         }
@@ -16242,7 +16307,7 @@ public class Node {
             return Optional.of(operand.evaluateSensor());
         }
         if (operand.getType() == NodeType.VARIABLE) {
-            Node resolved = resolveVariableValueNode(operand, 0, null);
+            Node resolved = resolveVariableValueNode(operand, slotIndex, null);
             if (resolved == null) {
                 return Optional.empty();
             }
@@ -16325,6 +16390,10 @@ public class Node {
             valueType = NodeType.PARAM_BLOCK;
         } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
             valueType = NodeType.PARAM_DIRECTION;
+        } else if (valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
+            valueType = NodeType.PARAM_AMOUNT;
+        } else if (NodeTraitRegistry.isBooleanSensor(valueType)) {
+            valueType = NodeType.PARAM_BOOLEAN;
         }
         if (variable.getType() != valueType) {
             return Optional.empty();
@@ -16478,6 +16547,17 @@ public class Node {
                     return Optional.empty();
                 }
                 return Optional.ofNullable(parseDoubleOrNull(distanceValue));
+            }
+            case SENSOR_SLOT_ITEM_COUNT: {
+                Map<String, String> values = node.exportParameterValues();
+                String amountValue = getRuntimeValue(values, "amount");
+                if (amountValue.isEmpty()) {
+                    amountValue = getRuntimeValue(values, "count");
+                }
+                if (amountValue.isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(parseDoubleOrNull(amountValue));
             }
             case PARAM_INVENTORY_SLOT:
                 return resolveInventorySlotCount(node).map(count -> (double) count);

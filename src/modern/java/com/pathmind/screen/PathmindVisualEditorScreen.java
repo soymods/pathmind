@@ -22,7 +22,6 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.BaritoneDependencyChecker;
-import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.MatrixStackBridge;
@@ -208,7 +207,7 @@ public class PathmindVisualEditorScreen extends Screen {
     public PathmindVisualEditorScreen() {
         super(Text.translatable("screen.pathmind.visual_editor.title"));
         this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
-        this.uiUtilsAvailable = UiUtilsDependencyChecker.isUiUtilsPresent();
+        this.uiUtilsAvailable = UiUtilsProxy.isAvailable();
         this.nodeGraph = new NodeGraph();
         this.sidebar = new Sidebar(baritoneAvailable, uiUtilsAvailable);
         refreshAvailablePresets();

@@ -3,6 +3,7 @@ package com.pathmind.ui.graph;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
+import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCategory;
@@ -2721,7 +2722,7 @@ public class NodeGraph {
         if (node.isDragging()) {
             borderColor = UITheme.BORDER_DRAGGING; // Medium grey outline when dragging
         } else if (node.isSelected()) {
-            borderColor = UITheme.ACCENT_DEFAULT; // Light blue selection
+            borderColor = getSelectedNodeAccentColor();
         } else if (node.getType() == NodeType.START) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_START_BORDER, 0.75f) : UITheme.NODE_START_BORDER; // Darker green for START
         } else if (node.getType() == NodeType.EVENT_FUNCTION) {
@@ -3808,6 +3809,23 @@ public class NodeGraph {
         g = MathHelper.clamp((int) (g * factor), 0, 255);
         b = MathHelper.clamp((int) (b * factor), 0, 255);
         return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private int getSelectedNodeAccentColor() {
+        SettingsManager.Settings settings = SettingsManager.getCurrent();
+        if (settings == null || settings.accentColor == null) {
+            return UITheme.ACCENT_DEFAULT;
+        }
+        switch (settings.accentColor.toLowerCase(Locale.ROOT)) {
+            case "sky":
+                return UITheme.ACCENT_SKY;
+            case "mint":
+                return UITheme.ACCENT_MINT;
+            case "amber":
+                return UITheme.ACCENT_AMBER;
+            default:
+                return UITheme.ACCENT_DEFAULT;
+        }
     }
 
     private int toGrayscale(int color, float brightnessFactor) {

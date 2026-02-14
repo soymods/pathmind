@@ -24,7 +24,7 @@
 
 ### Prerequisites
 - **Minecraft**: Any supported version (match the `+mc<version>` suffix on the jar you download)
-- **Fabric Loader**: 0.17.2 or higher
+- **Fabric Loader**: 0.17.3 or higher
 - **Fabric API**: release that matches your chosen Minecraft version
 - **Java**: 21 or higher
 
@@ -123,7 +123,7 @@
 | **Mod Version** | 1.1.3 |
 | **Minecraft Version** | Matches the `+mc<version>` suffix on each jar |
 | **Yarn Mappings** | Automatically selected per target version |
-| **Fabric Loader** | 0.17.2 |
+| **Fabric Loader** | 0.17.3 |
 | **Fabric API** | Automatically selected per target version |
 
 ### Development Guidelines
@@ -131,6 +131,9 @@
 - Add comments for complex logic
 - Test your changes thoroughly
 - Update documentation as needed
+
+### Release Readiness
+- Use [`RELEASE_GATE.md`](RELEASE_GATE.md) as the required checklist before promoting any build from beta to full release.
 
 ## License
 

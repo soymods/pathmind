@@ -41,13 +41,13 @@ public final class UiUtilsDependencyChecker {
             Class.forName(MODERN_CORE_CLASS, false, UiUtilsDependencyChecker.class.getClassLoader());
             cachedResult = Boolean.TRUE;
         } catch (ClassNotFoundException e) {
-            PathmindMod.LOGGER.warn("UI Utils reported as loaded but classes are missing: {}", e.getMessage());
+            PathmindMod.LOGGER.info("UI Utils detected but incompatible; integration disabled.");
             cachedResult = Boolean.FALSE;
         } catch (LinkageError e) {
-            PathmindMod.LOGGER.warn("UI Utils failed to initialize, marking unavailable", e);
+            PathmindMod.LOGGER.info("UI Utils failed to initialize; integration disabled.");
             cachedResult = Boolean.FALSE;
         } catch (Throwable t) {
-            PathmindMod.LOGGER.warn("Unexpected error while checking for UI Utils", t);
+            PathmindMod.LOGGER.info("UI Utils check failed unexpectedly; integration disabled.");
             cachedResult = Boolean.FALSE;
         }
 

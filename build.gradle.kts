@@ -115,6 +115,9 @@ dependencies {
 
     // Gson for JSON serialization
     implementation("com.google.code.gson:gson:2.10.1")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.processResources {
@@ -137,6 +140,10 @@ tasks.withType<JavaCompile>().configureEach {
     if (targetJavaVersionInt >= JavaVersion.VERSION_1_9) {
         options.release.set(targetJavaVersion)
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 java {

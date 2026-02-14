@@ -79,8 +79,19 @@ public final class UiUtilsProxy {
             backend = Backend.MODERN;
             initOverlayAccess();
             return true;
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
+            LOGGER.debug("UI Utils modern backend unavailable: {}", e.getMessage());
+            UiUtilsDependencyChecker.markUnavailable();
+            backend = Backend.NONE;
+            return false;
+        } catch (LinkageError e) {
+            LOGGER.debug("UI Utils modern backend linkage failure, disabling integration", e);
+            UiUtilsDependencyChecker.markUnavailable();
+            backend = Backend.NONE;
+            return false;
         } catch (Throwable t) {
-            LOGGER.warn("Failed to initialize UI Utils proxy", t);
+            LOGGER.debug("Failed to initialize UI Utils proxy, disabling integration", t);
+            UiUtilsDependencyChecker.markUnavailable();
             backend = Backend.NONE;
             return false;
         }

@@ -25,6 +25,8 @@ public enum NodeType {
     OPERATOR_NOT("pathmind.node.type.operatorNot", 0xFF00C853, "pathmind.node.type.operatorNot.desc"),
     OPERATOR_BOOLEAN_NOT("pathmind.node.type.operatorBooleanNot", 0xFF00C853, "pathmind.node.type.operatorBooleanNot.desc"),
     OPERATOR_BOOLEAN_OR("pathmind.node.type.operatorBooleanOr", 0xFF00C853, "pathmind.node.type.operatorBooleanOr.desc"),
+    OPERATOR_BOOLEAN_AND("pathmind.node.type.operatorBooleanAnd", 0xFF00C853, "pathmind.node.type.operatorBooleanAnd.desc"),
+    OPERATOR_BOOLEAN_XOR("pathmind.node.type.operatorBooleanXor", 0xFF00C853, "pathmind.node.type.operatorBooleanXor.desc"),
     OPERATOR_GREATER("pathmind.node.type.operatorGreater", 0xFF00C853, "pathmind.node.type.operatorGreater.desc"),
     OPERATOR_LESS("pathmind.node.type.operatorLess", 0xFF00C853, "pathmind.node.type.operatorLess.desc"),
     OPERATOR_MOD("pathmind.node.type.operatorMod", 0xFF00C853, "pathmind.node.type.operatorMod.desc"),
@@ -216,6 +218,8 @@ public enum NodeType {
             case OPERATOR_NOT:
             case OPERATOR_BOOLEAN_NOT:
             case OPERATOR_BOOLEAN_OR:
+            case OPERATOR_BOOLEAN_AND:
+            case OPERATOR_BOOLEAN_XOR:
             case OPERATOR_GREATER:
             case OPERATOR_LESS:
             case OPERATOR_MOD:
@@ -412,6 +416,8 @@ public enum NodeType {
             case OPERATOR_MOD:
             case OPERATOR_BOOLEAN_NOT:
             case OPERATOR_BOOLEAN_OR:
+            case OPERATOR_BOOLEAN_AND:
+            case OPERATOR_BOOLEAN_XOR:
             case CREATE_LIST:
             case LIST_ITEM:
                 return true;

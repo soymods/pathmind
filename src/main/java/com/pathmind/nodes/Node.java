@@ -582,6 +582,8 @@ public class Node {
         return type == NodeType.OPERATOR_EQUALS
             || type == NodeType.OPERATOR_NOT
             || type == NodeType.OPERATOR_BOOLEAN_OR
+            || type == NodeType.OPERATOR_BOOLEAN_AND
+            || type == NodeType.OPERATOR_BOOLEAN_XOR
             || type == NodeType.OPERATOR_GREATER
             || type == NodeType.OPERATOR_LESS;
     }
@@ -2542,6 +2544,8 @@ public class Node {
             case OPERATOR_BOOLEAN_NOT:
                 break;
             case OPERATOR_BOOLEAN_OR:
+            case OPERATOR_BOOLEAN_AND:
+            case OPERATOR_BOOLEAN_XOR:
                 break;
             case OPERATOR_GREATER:
             case OPERATOR_LESS:
@@ -15848,6 +15852,12 @@ public class Node {
             case OPERATOR_BOOLEAN_OR:
                 result = evaluateOperatorBooleanOr();
                 break;
+            case OPERATOR_BOOLEAN_AND:
+                result = evaluateOperatorBooleanAnd();
+                break;
+            case OPERATOR_BOOLEAN_XOR:
+                result = evaluateOperatorBooleanXor();
+                break;
             case OPERATOR_GREATER:
                 result = evaluateOperatorGreater();
                 break;
@@ -16329,6 +16339,34 @@ public class Node {
             return false;
         }
         return leftValue.get() || rightValue.get();
+    }
+
+    private boolean evaluateOperatorBooleanAnd() {
+        Node left = getAttachedParameter(0);
+        Node right = getAttachedParameter(1);
+        if (left == null || right == null) {
+            return false;
+        }
+        Optional<Boolean> leftValue = resolveBooleanOperandWithVariables(left, 0);
+        Optional<Boolean> rightValue = resolveBooleanOperandWithVariables(right, 1);
+        if (leftValue.isEmpty() || rightValue.isEmpty()) {
+            return false;
+        }
+        return leftValue.get() && rightValue.get();
+    }
+
+    private boolean evaluateOperatorBooleanXor() {
+        Node left = getAttachedParameter(0);
+        Node right = getAttachedParameter(1);
+        if (left == null || right == null) {
+            return false;
+        }
+        Optional<Boolean> leftValue = resolveBooleanOperandWithVariables(left, 0);
+        Optional<Boolean> rightValue = resolveBooleanOperandWithVariables(right, 1);
+        if (leftValue.isEmpty() || rightValue.isEmpty()) {
+            return false;
+        }
+        return leftValue.get() ^ rightValue.get();
     }
 
     private boolean evaluateOperatorGreater() {

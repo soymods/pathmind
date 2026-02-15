@@ -31,6 +31,8 @@ public final class NodeTraitRegistry {
         NodeType.OPERATOR_NOT,
         NodeType.OPERATOR_BOOLEAN_NOT,
         NodeType.OPERATOR_BOOLEAN_OR,
+        NodeType.OPERATOR_BOOLEAN_AND,
+        NodeType.OPERATOR_BOOLEAN_XOR,
         NodeType.OPERATOR_GREATER,
         NodeType.OPERATOR_LESS
     );
@@ -99,6 +101,8 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.OPERATOR_RANDOM, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_MOD, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_BOOLEAN_OR, EnumSet.of(NodeValueTrait.BOOLEAN));
+        traits.put(NodeType.OPERATOR_BOOLEAN_AND, EnumSet.of(NodeValueTrait.BOOLEAN));
+        traits.put(NodeType.OPERATOR_BOOLEAN_XOR, EnumSet.of(NodeValueTrait.BOOLEAN));
         traits.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.LIST_ITEM, EnumSet.of(NodeValueTrait.LIST_ITEM, NodeValueTrait.COORDINATE, NodeValueTrait.INVENTORY_SLOT));
         traits.put(NodeType.VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
@@ -138,6 +142,8 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.OPERATOR_LESS, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.OPERATOR_BOOLEAN_NOT, EnumSet.of(NodeValueTrait.BOOLEAN));
         accepted.put(NodeType.OPERATOR_BOOLEAN_OR, EnumSet.of(NodeValueTrait.BOOLEAN));
+        accepted.put(NodeType.OPERATOR_BOOLEAN_AND, EnumSet.of(NodeValueTrait.BOOLEAN));
+        accepted.put(NodeType.OPERATOR_BOOLEAN_XOR, EnumSet.of(NodeValueTrait.BOOLEAN));
 
         accepted.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY));
         accepted.put(NodeType.SENSOR_DISTANCE_BETWEEN, EnumSet.of(
@@ -275,6 +281,8 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.CHANGE_VARIABLE, 1);
         slotCounts.put(NodeType.OPERATOR_MOD, 2);
         slotCounts.put(NodeType.OPERATOR_BOOLEAN_OR, 2);
+        slotCounts.put(NodeType.OPERATOR_BOOLEAN_AND, 2);
+        slotCounts.put(NodeType.OPERATOR_BOOLEAN_XOR, 2);
         slotCounts.put(NodeType.OPERATOR_EQUALS, 2);
         slotCounts.put(NodeType.OPERATOR_NOT, 2);
         slotCounts.put(NodeType.OPERATOR_GREATER, 2);
@@ -294,6 +302,8 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.CHANGE_VARIABLE, new String[]{"Variable"});
         slotLabels.put(NodeType.OPERATOR_BOOLEAN_NOT, new String[]{"Value"});
         slotLabels.put(NodeType.OPERATOR_BOOLEAN_OR, new String[]{"Left", "Right"});
+        slotLabels.put(NodeType.OPERATOR_BOOLEAN_AND, new String[]{"Left", "Right"});
+        slotLabels.put(NodeType.OPERATOR_BOOLEAN_XOR, new String[]{"Left", "Right"});
         slotLabels.put(NodeType.OPERATOR_MOD, new String[]{"Value", "Modulo"});
         slotLabels.put(NodeType.BUILD, new String[]{"Position"});
         slotLabels.put(NodeType.PLACE, new String[]{"Source", "Position"});
@@ -451,6 +461,12 @@ public final class NodeTraitRegistry {
             return slotIndex == 0 || slotIndex == 1;
         }
         if (hostType == NodeType.OPERATOR_BOOLEAN_OR) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
+        if (hostType == NodeType.OPERATOR_BOOLEAN_AND) {
+            return slotIndex == 0 || slotIndex == 1;
+        }
+        if (hostType == NodeType.OPERATOR_BOOLEAN_XOR) {
             return slotIndex == 0 || slotIndex == 1;
         }
         if (hostType == NodeType.OPERATOR_EQUALS

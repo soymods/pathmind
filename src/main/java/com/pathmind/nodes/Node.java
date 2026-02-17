@@ -73,6 +73,7 @@ import net.minecraft.client.gui.screen.ingame.BookEditScreen;
 import net.minecraft.client.gui.screen.ingame.CraftingScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.WritableBookContentComponent;
 import net.minecraft.text.RawFilteredPair;
@@ -2514,6 +2515,9 @@ public class Node {
             case WALK:
                 parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "0.0"));
+                break;
+            case PRESS_KEY:
+                parameters.add(new NodeParameter("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
                 break;
             case CRAWL:
                 break;
@@ -5970,6 +5974,9 @@ public class Node {
                 break;
             case JUMP:
                 executeJumpCommand(future);
+                break;
+            case PRESS_KEY:
+                executePressKeyCommand(future);
                 break;
             case CRAWL:
                 executeCrawlCommand(future);
@@ -14199,6 +14206,47 @@ public class Node {
 
         client.player.jump();
         future.complete(null);
+    }
+
+    private void executePressKeyCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        String keyName = getStringParameter("Key", "GLFW_KEY_SPACE");
+        Integer keyCode = resolveKeyCode(keyName);
+        if (keyCode == null) {
+            sendNodeErrorMessage(client, "Unknown key: " + keyName);
+            future.complete(null);
+            return;
+        }
+
+        InputUtil.Key inputKey = InputUtil.Type.KEYSYM.createFromCode(keyCode);
+        KeyBinding.onKeyPressed(inputKey);
+
+        boolean keyAlreadyDown = InputCompatibilityBridge.isKeyPressed(client, keyCode);
+        if (keyAlreadyDown) {
+            future.complete(null);
+            return;
+        }
+
+        KeyBinding.setKeyPressed(inputKey, true);
+        MESSAGE_SCHEDULER.schedule(() -> {
+            net.minecraft.client.MinecraftClient releaseClient = net.minecraft.client.MinecraftClient.getInstance();
+            if (releaseClient == null) {
+                future.complete(null);
+                return;
+            }
+            releaseClient.execute(() -> {
+                KeyBinding.setKeyPressed(inputKey, false);
+                future.complete(null);
+            });
+        }, 75L, TimeUnit.MILLISECONDS);
     }
     
     private void executeCrouchCommand(CompletableFuture<Void> future) {

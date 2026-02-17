@@ -63,6 +63,7 @@ public enum NodeType {
     LOOK("pathmind.node.type.look", 0xFF03A9F4, "pathmind.node.type.look.desc"),
     WALK("pathmind.node.type.walk", 0xFF26C6DA, "pathmind.node.type.walk.desc"),
     JUMP("pathmind.node.type.jump", 0xFF009688, "pathmind.node.type.jump.desc"),
+    PRESS_KEY("pathmind.node.type.pressKey", 0xFF26A69A, "pathmind.node.type.pressKey.desc"),
     CRAWL("pathmind.node.type.crawl", 0xFF455A64, "pathmind.node.type.crawl.desc"),
     CROUCH("pathmind.node.type.crouch", 0xFF607D8B, "pathmind.node.type.crouch.desc"),
     SPRINT("pathmind.node.type.sprint", 0xFFFFEB3B, "pathmind.node.type.sprint.desc"),
@@ -287,6 +288,7 @@ public enum NodeType {
             case BREAK:
             case PLACE_HAND:
             case TRADE:
+            case PRESS_KEY:
                 return NodeCategory.INTERACTION;
             case HOTBAR:
             case DROP_ITEM:
@@ -356,6 +358,7 @@ public enum NodeType {
             case DROP_ITEM:
             case USE:
             case LOOK:
+            case PRESS_KEY:
             case WALK:
             case CRAWL:
             case CROUCH:

@@ -194,6 +194,7 @@ public final class NodeTraitRegistry {
             NodeValueTrait.PLAYER,
             NodeValueTrait.LIST_ITEM
         ));
+        accepted.put(NodeType.PRESS_KEY, EnumSet.of(NodeValueTrait.KEY));
 
         accepted.put(NodeType.GOTO, EnumSet.of(
             NodeValueTrait.COORDINATE,
@@ -292,6 +293,7 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.MOVE_ITEM, 2);
         slotCounts.put(NodeType.WALK, 2);
         slotCounts.put(NodeType.BREAK, 1);
+        slotCounts.put(NodeType.PRESS_KEY, 1);
         slotCounts.put(NodeType.SENSOR_CHAT_MESSAGE, 2);
         slotCounts.put(NodeType.SENSOR_ITEM_IN_SLOT, 2);
         slotCounts.put(NodeType.SENSOR_DISTANCE_BETWEEN, 2);
@@ -312,6 +314,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.CLICK_SLOT, new String[]{"Inventory Slot"});
         slotLabels.put(NodeType.WALK, new String[]{"Direction", "Duration/Distance"});
         slotLabels.put(NodeType.BREAK, new String[]{"Target"});
+        slotLabels.put(NodeType.PRESS_KEY, new String[]{"Key"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
         slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Slot"});
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});

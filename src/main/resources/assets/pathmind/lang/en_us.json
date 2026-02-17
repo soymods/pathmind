@@ -186,6 +186,8 @@
   "pathmind.node.type.paramWaypoint.desc": "Represents a waypoint name and optional range",
   "pathmind.node.type.path": "Path",
   "pathmind.node.type.path.desc": "Initiates pathfinding to the set goal",
+  "pathmind.node.type.pressKey": "Press Key",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind",
   "pathmind.node.type.place": "Place",
   "pathmind.node.type.place.desc": "Places blocks at specified coordinates",
   "pathmind.node.type.placeHand": "Place",

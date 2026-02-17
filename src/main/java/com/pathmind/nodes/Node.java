@@ -1155,6 +1155,9 @@ public class Node {
         if (type == NodeType.PARAM_DURATION) {
             return true;
         }
+        if (type == NodeType.USE) {
+            return true;
+        }
         return false;
     }
 
@@ -1225,6 +1228,9 @@ public class Node {
     }
 
     public String getAmountFieldLabel() {
+        if (type == NodeType.USE) {
+            return "Hold Duration";
+        }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return "Seconds";
         }
@@ -1275,6 +1281,9 @@ public class Node {
         if (type == NodeType.PARAM_DURATION) {
             return "Duration";
         }
+        if (type == NodeType.USE) {
+            return "UseDurationSeconds";
+        }
         return "Amount";
     }
 
@@ -1304,7 +1313,8 @@ public class Node {
         return type == NodeType.SENSOR_ITEM_IN_INVENTORY
             || type == NodeType.SENSOR_ITEM_IN_SLOT
             || type == NodeType.SENSOR_CHAT_MESSAGE
-            || type == NodeType.TRADE;
+            || type == NodeType.TRADE
+            || type == NodeType.USE;
     }
 
     public boolean hasAmountSignToggle() {
@@ -1533,8 +1543,11 @@ public class Node {
         if (!hasAmountToggle()) {
             return;
         }
-        if (getParameter("Amount") == null) {
-            parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
+        String amountKey = getAmountParameterKey();
+        if (getParameter(amountKey) == null) {
+            ParameterType amountType = type == NodeType.USE ? ParameterType.DOUBLE : ParameterType.INTEGER;
+            String defaultValue = type == NodeType.USE ? "0.0" : "1";
+            parameters.add(new NodeParameter(amountKey, amountType, defaultValue));
         }
         if (getParameter("UseAmount") == null) {
             parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
@@ -2462,6 +2475,7 @@ public class Node {
             case USE:
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
                 parameters.add(new NodeParameter("UseDurationSeconds", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
                 parameters.add(new NodeParameter("RepeatCount", ParameterType.INTEGER, "1"));
                 parameters.add(new NodeParameter("UseIntervalSeconds", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("StopIfUnavailable", ParameterType.BOOLEAN, "true"));
@@ -13162,7 +13176,10 @@ public class Node {
         int configuredCount = Math.max(0, getIntParameter("RepeatCount", 1));
         boolean useUntilEmpty = getBooleanParameter("UseUntilEmpty", false);
         boolean stopIfUnavailable = getBooleanParameter("StopIfUnavailable", true);
-        double durationSeconds = Math.max(0.0, getDoubleParameter("UseDurationSeconds", 0.0));
+        boolean holdDurationEnabled = isAmountInputEnabled();
+        double durationSeconds = holdDurationEnabled
+            ? Math.max(0.0, getDoubleParameter("UseDurationSeconds", 0.0))
+            : 0.0;
         double intervalSeconds = Math.max(0.0, getDoubleParameter("UseIntervalSeconds", 0.0));
         boolean allowBlock = getBooleanParameter("AllowBlockInteraction", true);
         boolean allowEntity = getBooleanParameter("AllowEntityInteraction", true);

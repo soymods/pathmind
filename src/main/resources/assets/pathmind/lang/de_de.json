@@ -284,6 +284,8 @@
   "pathmind.node.type.walk.desc": "Läuft vorwärts mit optionaler Rotation",
   "pathmind.node.type.writeBook": "Buch schreiben",
   "pathmind.node.type.writeBook.desc": "Schreibt Text in ein offenes Buch mit Feder",
+  "pathmind.node.type.writeSign": "Schild schreiben",
+  "pathmind.node.type.writeSign.desc": "Schreibt Text in einen offenen Schild-Editor",
   "pathmind.overlay.editParameters": "Parameter bearbeiten: %s",
   "pathmind.overlay.parameterLabel": "%s (%s):",
   "pathmind.popup.clearWorkspace.message": "Dies entfernt alle Knoten aus dem Arbeitsbereich.",
@@ -317,5 +319,7 @@
   "pathmind.settings.title": "Einstellungen",
   "pathmind.title": "Pathmind Knoten-Editor",
   "screen.pathmind.visual_editor.subtitle": "Knotenbasierte Workflows erstellen und verwalten",
-  "screen.pathmind.visual_editor.title": "Pathmind Visueller Editor"
+  "screen.pathmind.visual_editor.title": "Pathmind Visueller Editor",
+  "pathmind.node.type.pressKey": "Press Key",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind"
 }

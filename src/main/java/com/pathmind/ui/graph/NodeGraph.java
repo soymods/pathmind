@@ -1111,7 +1111,7 @@ public class NodeGraph {
             if (nodeData.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
                 newNode.setMessageLines(nodeData.getMessageLines());
             }
-            if (nodeData.getType() == NodeType.WRITE_BOOK && nodeData.getBookText() != null) {
+            if (newNode.hasBookTextInput() && nodeData.getBookText() != null) {
                 newNode.setBookText(nodeData.getBookText());
             }
             newNode.recalculateDimensions();
@@ -4854,22 +4854,22 @@ public class NodeGraph {
         int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2;
         drawNodeText(context, textRenderer, Text.literal(buttonLabel), textX, textY, textColor);
 
-        // Render Page label and value (read-only)
-        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
-        int labelTop = node.getBookTextPageLabelTop() - cameraY;
-        drawNodeText(context, textRenderer, Text.literal("Page #:"), buttonLeft, labelTop, labelColor);
+        if (node.hasBookTextPageInput()) {
+            int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
+            int labelTop = node.getBookTextPageLabelTop() - cameraY;
+            drawNodeText(context, textRenderer, Text.literal("Page #:"), buttonLeft, labelTop, labelColor);
 
-        int fieldTop = node.getBookTextPageFieldTop() - cameraY;
-        int fieldHeight = node.getBookTextPageFieldHeight();
+            int fieldTop = node.getBookTextPageFieldTop() - cameraY;
+            int fieldHeight = node.getBookTextPageFieldHeight();
 
-        // Display the page value
-        NodeParameter pageParam = node.getParameter("Page");
-        String pageValue = pageParam != null ? pageParam.getDisplayValue() : "1";
-        if (pageValue == null) {
-            pageValue = "";
+            NodeParameter pageParam = node.getParameter("Page");
+            String pageValue = pageParam != null ? pageParam.getDisplayValue() : "1";
+            if (pageValue == null) {
+                pageValue = "";
+            }
+            int pageTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+            drawNodeText(context, textRenderer, Text.literal(pageValue), buttonLeft + 4, fieldTop + (fieldHeight - textRenderer.fontHeight) / 2, pageTextColor);
         }
-        int pageTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        drawNodeText(context, textRenderer, Text.literal(pageValue), buttonLeft + 4, fieldTop + (fieldHeight - textRenderer.fontHeight) / 2, pageTextColor);
     }
 
     private void renderPopupEditButton(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
@@ -10824,11 +10824,9 @@ public class NodeGraph {
                     messageNode.setMessageLines(nodeData.getMessageLines());
                 }
             }
-            if (nodeData.getType() == NodeType.WRITE_BOOK && nodeData.getBookText() != null) {
-                Node bookNode = nodeMap.get(nodeData.getId());
-                if (bookNode != null) {
-                    bookNode.setBookText(nodeData.getBookText());
-                }
+            Node textNode = nodeMap.get(nodeData.getId());
+            if (textNode != null && textNode.hasBookTextInput() && nodeData.getBookText() != null) {
+                textNode.setBookText(nodeData.getBookText());
             }
         }
 

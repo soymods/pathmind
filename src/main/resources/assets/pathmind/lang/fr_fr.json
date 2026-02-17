@@ -284,6 +284,8 @@
   "pathmind.node.type.walk.desc": "Marche vers l'avant avec rotation optionnelle",
   "pathmind.node.type.writeBook": "Écrire un livre",
   "pathmind.node.type.writeBook.desc": "Écrit du texte dans un livre et une plume ouverts",
+  "pathmind.node.type.writeSign": "Écrire un panneau",
+  "pathmind.node.type.writeSign.desc": "Écrit du texte dans un éditeur de panneau ouvert",
   "pathmind.overlay.editParameters": "Modifier les paramètres : %s",
   "pathmind.overlay.parameterLabel": "%s (%s) :",
   "pathmind.popup.clearWorkspace.message": "Cela supprimera tous les nœuds de l'espace de travail.",
@@ -317,5 +319,7 @@
   "pathmind.settings.title": "Paramètres",
   "pathmind.title": "Éditeur de nœuds Pathmind",
   "screen.pathmind.visual_editor.subtitle": "Créer et gérer des flux de travail basés sur des nœuds",
-  "screen.pathmind.visual_editor.title": "Éditeur visuel Pathmind"
+  "screen.pathmind.visual_editor.title": "Éditeur visuel Pathmind",
+  "pathmind.node.type.pressKey": "Press Key",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind"
 }

@@ -69,6 +69,7 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Box;
 import net.minecraft.world.RaycastContext;
 import net.minecraft.client.gui.screen.ChatScreen;
+import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.client.gui.screen.ingame.BookEditScreen;
 import net.minecraft.client.gui.screen.ingame.CraftingScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
@@ -238,6 +239,9 @@ public class Node {
     private static final int BOOK_TEXT_PAGE_FIELD_HEIGHT = 16;
     private static final int BOOK_TEXT_FIELD_SPACING = 6;
     private static final int BOOK_TEXT_BOTTOM_MARGIN = 6;
+    private static final int SIGN_LINE_MAX_CHARS = 15;
+    private static final int SIGN_MAX_LINES = 4;
+    private static final int SIGN_MAX_CHARS = 63;
     private static final int POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL = 6;
     private static final int POPUP_EDIT_BUTTON_TOP_MARGIN = 4;
     private static final int POPUP_EDIT_BUTTON_HEIGHT = 16;
@@ -2473,6 +2477,8 @@ public class Node {
             case WRITE_BOOK:
                 parameters.add(new NodeParameter("Page", ParameterType.INTEGER, "1"));
                 break;
+            case WRITE_SIGN:
+                break;
             case USE:
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
                 parameters.add(new NodeParameter("UseDurationSeconds", ParameterType.DOUBLE, "0.0"));
@@ -3654,8 +3660,12 @@ public class Node {
         return (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
     }
 
-    // Book text methods for WRITE_BOOK node
+    // Text input methods for WRITE_BOOK and WRITE_SIGN nodes
     public boolean hasBookTextInput() {
+        return type == NodeType.WRITE_BOOK || type == NodeType.WRITE_SIGN;
+    }
+
+    public boolean hasBookTextPageInput() {
         return type == NodeType.WRITE_BOOK;
     }
 
@@ -3668,10 +3678,33 @@ public class Node {
     }
 
     public int getBookTextMaxChars() {
-        return BOOK_PAGE_MAX_CHARS;
+        return type == NodeType.WRITE_SIGN ? SIGN_MAX_CHARS : BOOK_PAGE_MAX_CHARS;
+    }
+
+    public int getBookTextMaxCharsPerLine() {
+        return type == NodeType.WRITE_SIGN ? SIGN_LINE_MAX_CHARS : 0;
+    }
+
+    public int getBookTextMaxLines() {
+        return type == NodeType.WRITE_SIGN ? SIGN_MAX_LINES : 0;
+    }
+
+    public int getBookTextPopupWidth() {
+        return type == NodeType.WRITE_SIGN ? 300 : 340;
+    }
+
+    public int getBookTextPopupHeight() {
+        return type == NodeType.WRITE_SIGN ? 230 : 280;
+    }
+
+    public String getBookTextEditorTitle() {
+        return type == NodeType.WRITE_SIGN ? "Edit Sign Text" : "Edit Book Text";
     }
 
     public String getBookTextForPage(int pageNumber) {
+        if (type == NodeType.WRITE_SIGN) {
+            return bookText != null ? bookText : "";
+        }
         int pageIndex = Math.max(0, pageNumber - 1);
         if (pageIndex < bookPages.size()) {
             String value = bookPages.get(pageIndex);
@@ -3684,6 +3717,10 @@ public class Node {
     }
 
     public void setBookTextForPage(int pageNumber, String text) {
+        if (type == NodeType.WRITE_SIGN) {
+            bookText = normalizeSignText(text);
+            return;
+        }
         int safePageNumber = Math.max(1, pageNumber);
         ensureBookPageCapacity(safePageNumber);
         String normalized = text == null ? "" : text;
@@ -3701,6 +3738,11 @@ public class Node {
     }
 
     public void setBookPages(List<String> pages) {
+        if (type == NodeType.WRITE_SIGN) {
+            String first = (pages == null || pages.isEmpty()) ? "" : pages.get(0);
+            bookText = normalizeSignText(first);
+            return;
+        }
         bookPages.clear();
         if (pages != null) {
             for (String page : pages) {
@@ -3724,13 +3766,40 @@ public class Node {
         }
     }
 
+    private String normalizeSignText(String raw) {
+        String text = raw == null ? "" : raw;
+        if (text.length() > SIGN_MAX_CHARS) {
+            text = text.substring(0, SIGN_MAX_CHARS);
+        }
+        String[] split = text.split("\\n", -1);
+        int lineCount = Math.min(SIGN_MAX_LINES, split.length);
+        StringBuilder normalized = new StringBuilder();
+        for (int i = 0; i < lineCount; i++) {
+            String line = split[i] == null ? "" : split[i];
+            if (line.length() > SIGN_LINE_MAX_CHARS) {
+                line = line.substring(0, SIGN_LINE_MAX_CHARS);
+            }
+            if (i > 0) {
+                normalized.append('\n');
+            }
+            normalized.append(line);
+        }
+        String result = normalized.toString();
+        if (result.length() > SIGN_MAX_CHARS) {
+            return result.substring(0, SIGN_MAX_CHARS);
+        }
+        return result;
+    }
+
     public int getBookTextDisplayHeight() {
         if (!hasBookTextInput()) {
             return 0;
         }
-        // Height for: Edit Text button + spacing + Page label + Page field
-        return BOOK_TEXT_TOP_MARGIN + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_FIELD_SPACING
-               + BOOK_TEXT_LABEL_HEIGHT + BOOK_TEXT_PAGE_FIELD_HEIGHT + BOOK_TEXT_BOTTOM_MARGIN;
+        if (hasBookTextPageInput()) {
+            return BOOK_TEXT_TOP_MARGIN + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_FIELD_SPACING
+                + BOOK_TEXT_LABEL_HEIGHT + BOOK_TEXT_PAGE_FIELD_HEIGHT + BOOK_TEXT_BOTTOM_MARGIN;
+        }
+        return BOOK_TEXT_TOP_MARGIN + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_BOTTOM_MARGIN;
     }
 
     public int getBookTextButtonTop() {
@@ -4073,7 +4142,7 @@ public class Node {
             contentHeight += SLOT_AREA_PADDING_TOP;
         } else if (type == NodeType.MESSAGE) {
             contentHeight += getMessageFieldDisplayHeight();
-        } else if (type == NodeType.WRITE_BOOK) {
+        } else if (hasBookTextInput()) {
             contentHeight += getBookTextDisplayHeight();
         } else if (hasStopTargetInputField()) {
             contentHeight += getStopTargetFieldDisplayHeight();
@@ -5929,6 +5998,9 @@ public class Node {
                 break;
             case WRITE_BOOK:
                 executeWriteBookCommand(future);
+                break;
+            case WRITE_SIGN:
+                executeWriteSignCommand(future);
                 break;
             case UI_UTILS:
                 executeUiUtilsCommand(future);
@@ -11930,6 +12002,104 @@ public class Node {
         } catch (ReflectiveOperationException e) {
             return null;
         }
+    }
+
+    private void executeWriteSignCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            sendNodeErrorMessage(client, "Client or player not available");
+            future.completeExceptionally(new RuntimeException("Client or player not available"));
+            return;
+        }
+
+        if (!(client.currentScreen instanceof AbstractSignEditScreen)) {
+            sendNodeErrorMessage(client, "No sign edit screen is open");
+            future.completeExceptionally(new RuntimeException("No sign edit screen is open"));
+            return;
+        }
+
+        String[] lines = new String[SIGN_MAX_LINES];
+        Arrays.fill(lines, "");
+        String[] split = (getBookText() == null ? "" : getBookText()).split("\\n", -1);
+        int copyCount = Math.min(SIGN_MAX_LINES, split.length);
+        for (int i = 0; i < copyCount; i++) {
+            String line = split[i] == null ? "" : split[i];
+            lines[i] = line.length() > SIGN_LINE_MAX_CHARS ? line.substring(0, SIGN_LINE_MAX_CHARS) : line;
+        }
+
+        final String[] signLines = lines;
+        final AbstractSignEditScreen signScreen = (AbstractSignEditScreen) client.currentScreen;
+        client.execute(() -> {
+            try {
+                Field currentRowField = null;
+                Method setCurrentRowMessageMethod = null;
+                for (Class<?> cls = signScreen.getClass(); cls != null; cls = cls.getSuperclass()) {
+                    for (Field field : cls.getDeclaredFields()) {
+                        String fieldName = field.getName().toLowerCase(Locale.ROOT);
+                        if (field.getType() == int.class && (fieldName.contains("currentrow") || fieldName.equals("field_40428"))) {
+                            field.setAccessible(true);
+                            currentRowField = field;
+                            break;
+                        }
+                    }
+                    if (currentRowField != null) {
+                        break;
+                    }
+                }
+                for (Class<?> cls = signScreen.getClass(); cls != null; cls = cls.getSuperclass()) {
+                    for (Method method : cls.getDeclaredMethods()) {
+                        String methodName = method.getName().toLowerCase(Locale.ROOT);
+                        if (method.getParameterCount() == 1
+                            && method.getParameterTypes()[0] == String.class
+                            && method.getReturnType() == void.class
+                            && (methodName.contains("setcurrentrowmessage") || methodName.equals("method_49913"))) {
+                            method.setAccessible(true);
+                            setCurrentRowMessageMethod = method;
+                            break;
+                        }
+                    }
+                    if (setCurrentRowMessageMethod != null) {
+                        break;
+                    }
+                }
+
+                if (currentRowField != null && setCurrentRowMessageMethod != null) {
+                    for (int i = 0; i < signLines.length; i++) {
+                        currentRowField.setInt(signScreen, i);
+                        setCurrentRowMessageMethod.invoke(signScreen, signLines[i]);
+                    }
+                }
+
+                for (Class<?> cls = signScreen.getClass(); cls != null; cls = cls.getSuperclass()) {
+                    for (Field field : cls.getDeclaredFields()) {
+                        field.setAccessible(true);
+                        if (field.getType() == String[].class) {
+                            Object raw = field.get(signScreen);
+                            if (raw instanceof String[] target && target.length >= SIGN_MAX_LINES) {
+                                for (int i = 0; i < SIGN_MAX_LINES; i++) {
+                                    target[i] = signLines[i];
+                                }
+                                field.set(signScreen, target);
+                            }
+                        }
+                    }
+                }
+
+                future.complete(null);
+            } catch (Exception e) {
+                e.printStackTrace();
+                String message = e.getMessage();
+                if (message == null || message.isBlank()) {
+                    message = e.getClass().getSimpleName();
+                }
+                sendNodeErrorMessage(client, "Error writing to sign: " + message);
+                future.completeExceptionally(e);
+            }
+        });
     }
 
     private void executeGoalCommand(CompletableFuture<Void> future) {

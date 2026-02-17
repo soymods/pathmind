@@ -284,6 +284,8 @@
   "pathmind.node.type.walk.desc": "Idzie do przodu z opcjonalną rotacją",
   "pathmind.node.type.writeBook": "Napisz książkę",
   "pathmind.node.type.writeBook.desc": "Pisze tekst w otwartej książce z piórem",
+  "pathmind.node.type.writeSign": "Napisz znak",
+  "pathmind.node.type.writeSign.desc": "Pisze tekst w otwartym edytorze znaku",
   "pathmind.overlay.editParameters": "Edytuj parametry: %s",
   "pathmind.overlay.parameterLabel": "%s (%s):",
   "pathmind.popup.clearWorkspace.message": "Spowoduje to usunięcie wszystkich węzłów z obszaru roboczego.",
@@ -317,5 +319,7 @@
   "pathmind.settings.title": "Ustawienia",
   "pathmind.title": "Edytor węzłów Pathmind",
   "screen.pathmind.visual_editor.subtitle": "Twórz i zarządzaj przepływami pracy opartymi na węzłach",
-  "screen.pathmind.visual_editor.title": "Edytor wizualny Pathmind"
+  "screen.pathmind.visual_editor.title": "Edytor wizualny Pathmind",
+  "pathmind.node.type.pressKey": "Press Key",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind"
 }

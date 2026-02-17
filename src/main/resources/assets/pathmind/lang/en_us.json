@@ -286,6 +286,8 @@
   "pathmind.node.type.walk.desc": "Walks forward with optional rotation",
   "pathmind.node.type.writeBook": "Write Book",
   "pathmind.node.type.writeBook.desc": "Writes text to an open book and quill",
+  "pathmind.node.type.writeSign": "Write Sign",
+  "pathmind.node.type.writeSign.desc": "Writes text into an open sign editor",
   "pathmind.overlay.editParameters": "Edit Parameters: %s",
   "pathmind.overlay.parameterLabel": "%s (%s):",
   "pathmind.popup.clearWorkspace.message": "This will remove all nodes from the workspace.",

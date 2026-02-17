@@ -21,8 +21,6 @@ import java.util.function.Consumer;
  * Provides a large text area for entering book page content.
  */
 public class BookTextEditorOverlay {
-    private static final int POPUP_WIDTH = 340;
-    private static final int POPUP_HEIGHT = 280;
     private static final int TITLE_HEIGHT = 30;
     private static final int TEXT_AREA_MARGIN = 16;
     private static final int TEXT_AREA_PADDING = 8;
@@ -40,6 +38,10 @@ public class BookTextEditorOverlay {
     private final Runnable onClose;
     private final Consumer<Node> onSave;
 
+    private final int popupWidth;
+    private final int popupHeight;
+    private final int maxCharsPerLine;
+    private final int maxLines;
     private int popupX;
     private int popupY;
     private String textContent;
@@ -67,8 +69,12 @@ public class BookTextEditorOverlay {
         this.screenHeight = screenHeight;
         this.onClose = onClose;
         this.onSave = onSave;
+        this.popupWidth = Math.max(220, node.getBookTextPopupWidth());
+        this.popupHeight = Math.max(180, node.getBookTextPopupHeight());
+        this.maxCharsPerLine = node.getBookTextMaxCharsPerLine();
+        this.maxLines = node.getBookTextMaxLines();
         this.currentPage = getPageNumberFromNode();
-        this.textContent = node.getBookTextForPage(currentPage);
+        this.textContent = constrainText(node.getBookTextForPage(currentPage));
         this.maxChars = node.getBookTextMaxChars();
         this.caretPosition = textContent.length();
         this.selectionStart = -1;
@@ -79,27 +85,32 @@ public class BookTextEditorOverlay {
     }
 
     private void updatePopupPosition() {
-        popupX = (screenWidth - POPUP_WIDTH) / 2;
-        popupY = (screenHeight - POPUP_HEIGHT) / 2;
+        popupX = (screenWidth - popupWidth) / 2;
+        popupY = (screenHeight - popupHeight) / 2;
     }
 
     public void init() {
-        int buttonY = popupY + POPUP_HEIGHT - BUTTON_BOTTOM_MARGIN - BUTTON_HEIGHT;
+        int buttonY = popupY + popupHeight - BUTTON_BOTTOM_MARGIN - BUTTON_HEIGHT;
         int buttonsWidth = BUTTON_WIDTH * 2 + BUTTON_SPACING;
-        int buttonStartX = popupX + (POPUP_WIDTH - buttonsWidth) / 2;
+        int buttonStartX = popupX + (popupWidth - buttonsWidth) / 2;
 
         int pageButtonY = popupY + 8;
-        int pageButtonRight = popupX + POPUP_WIDTH - TEXT_AREA_MARGIN;
+        int pageButtonRight = popupX + popupWidth - TEXT_AREA_MARGIN;
         int nextButtonX = pageButtonRight - PAGE_BUTTON_SIZE;
         int prevButtonX = nextButtonX - PAGE_BUTTON_SIZE - PAGE_BUTTON_GAP;
 
-        prevPageButton = ButtonWidget.builder(Text.literal("<"), button -> changePage(currentPage - 1))
-            .dimensions(prevButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
-            .build();
+        if (node.hasBookTextPageInput()) {
+            prevPageButton = ButtonWidget.builder(Text.literal("<"), button -> changePage(currentPage - 1))
+                .dimensions(prevButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
+                .build();
 
-        nextPageButton = ButtonWidget.builder(Text.literal(">"), button -> changePage(currentPage + 1))
-            .dimensions(nextButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
-            .build();
+            nextPageButton = ButtonWidget.builder(Text.literal(">"), button -> changePage(currentPage + 1))
+                .dimensions(nextButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
+                .build();
+        } else {
+            prevPageButton = null;
+            nextPageButton = null;
+        }
 
         saveButton = ButtonWidget.builder(Text.literal("Save"), button -> save())
             .dimensions(buttonStartX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
@@ -133,7 +144,7 @@ public class BookTextEditorOverlay {
     }
 
     public int[] getScaledPopupBounds() {
-        return popupAnimation.getScaledPopupBoundsFromTopLeft(popupX, popupY, POPUP_WIDTH, POPUP_HEIGHT);
+        return popupAnimation.getScaledPopupBoundsFromTopLeft(popupX, popupY, popupWidth, popupHeight);
     }
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
@@ -151,7 +162,7 @@ public class BookTextEditorOverlay {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         // Get animated popup bounds
-        int[] bounds = popupAnimation.getScaledPopupBounds(screenWidth, screenHeight, POPUP_WIDTH, POPUP_HEIGHT);
+        int[] bounds = popupAnimation.getScaledPopupBounds(screenWidth, screenHeight, popupWidth, popupHeight);
         int scaledX = bounds[0];
         int scaledY = bounds[1];
         int scaledWidth = bounds[2];
@@ -164,34 +175,36 @@ public class BookTextEditorOverlay {
             popupAnimation.getAnimatedPopupColor(UITheme.BORDER_HIGHLIGHT));
 
         // Render title
-        String title = "Edit Book Text";
+        String title = node.getBookTextEditorTitle();
         int titleColor = applyPopupAlpha(UITheme.TEXT_HEADER, popupAlpha);
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(title),
-            popupX + (POPUP_WIDTH - textRenderer.getWidth(title)) / 2,
+            popupX + (popupWidth - textRenderer.getWidth(title)) / 2,
             popupY + 12,
             titleColor
         );
 
-        String pageLabel = "Page " + currentPage;
-        int pageLabelWidth = textRenderer.getWidth(pageLabel);
-        int pageLabelX = popupX + POPUP_WIDTH - TEXT_AREA_MARGIN - PAGE_BUTTON_SIZE * 2 - PAGE_BUTTON_GAP - 8 - pageLabelWidth;
-        int pageLabelY = popupY + 12;
-        int pageLabelColor = applyPopupAlpha(UITheme.TEXT_SECONDARY, popupAlpha);
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(pageLabel),
-            Math.max(popupX + TEXT_AREA_MARGIN, pageLabelX),
-            pageLabelY,
-            pageLabelColor
-        );
+        if (node.hasBookTextPageInput()) {
+            String pageLabel = "Page " + currentPage;
+            int pageLabelWidth = textRenderer.getWidth(pageLabel);
+            int pageLabelX = popupX + popupWidth - TEXT_AREA_MARGIN - PAGE_BUTTON_SIZE * 2 - PAGE_BUTTON_GAP - 8 - pageLabelWidth;
+            int pageLabelY = popupY + 12;
+            int pageLabelColor = applyPopupAlpha(UITheme.TEXT_SECONDARY, popupAlpha);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(pageLabel),
+                Math.max(popupX + TEXT_AREA_MARGIN, pageLabelX),
+                pageLabelY,
+                pageLabelColor
+            );
+        }
 
         // Render text area
         int textAreaX = popupX + TEXT_AREA_MARGIN;
         int textAreaY = popupY + TITLE_HEIGHT + 8;
-        int textAreaWidth = POPUP_WIDTH - 2 * TEXT_AREA_MARGIN;
-        int textAreaHeight = POPUP_HEIGHT - TITLE_HEIGHT - 8 - BUTTON_HEIGHT - BUTTON_BOTTOM_MARGIN - 30;
+        int textAreaWidth = popupWidth - 2 * TEXT_AREA_MARGIN;
+        int textAreaHeight = popupHeight - TITLE_HEIGHT - 8 - BUTTON_HEIGHT - BUTTON_BOTTOM_MARGIN - 30;
 
         context.fill(textAreaX, textAreaY, textAreaX + textAreaWidth, textAreaY + textAreaHeight,
             applyPopupAlpha(UITheme.BACKGROUND_INPUT, popupAlpha));
@@ -235,8 +248,10 @@ public class BookTextEditorOverlay {
         );
 
         // Render buttons
-        renderButton(context, textRenderer, prevPageButton, mouseX, mouseY, popupAlpha);
-        renderButton(context, textRenderer, nextPageButton, mouseX, mouseY, popupAlpha);
+        if (node.hasBookTextPageInput()) {
+            renderButton(context, textRenderer, prevPageButton, mouseX, mouseY, popupAlpha);
+            renderButton(context, textRenderer, nextPageButton, mouseX, mouseY, popupAlpha);
+        }
         renderButton(context, textRenderer, saveButton, mouseX, mouseY, popupAlpha);
         renderButton(context, textRenderer, cancelButton, mouseX, mouseY, popupAlpha);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
@@ -468,14 +483,84 @@ public class BookTextEditorOverlay {
             deleteSelection();
         }
 
-        int remaining = maxChars - textContent.length();
-        if (remaining <= 0) return;
+        if (text == null || text.isEmpty()) {
+            return;
+        }
 
-        String toInsert = text.length() <= remaining ? text : text.substring(0, remaining);
-        textContent = textContent.substring(0, caretPosition) + toInsert + textContent.substring(caretPosition);
-        caretPosition += toInsert.length();
+        StringBuilder inserted = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            if (textContent.length() >= maxChars) {
+                break;
+            }
+            char chr = text.charAt(i);
+            if (chr == '\n' && maxLines > 0 && getLineCount(textContent) >= maxLines) {
+                continue;
+            }
+            if (chr != '\n' && maxCharsPerLine > 0 && getCurrentLineLength() >= maxCharsPerLine) {
+                continue;
+            }
+
+            textContent = textContent.substring(0, caretPosition) + chr + textContent.substring(caretPosition);
+            caretPosition++;
+            inserted.append(chr);
+        }
+        if (inserted.length() == 0) {
+            return;
+        }
         resetCaretBlink();
         persistText();
+    }
+
+    private int getCurrentLineLength() {
+        int start = textContent.lastIndexOf('\n', Math.max(0, caretPosition - 1));
+        start = start == -1 ? 0 : start + 1;
+        int end = textContent.indexOf('\n', caretPosition);
+        if (end == -1) {
+            end = textContent.length();
+        }
+        return Math.max(0, end - start);
+    }
+
+    private int getLineCount(String text) {
+        if (text == null || text.isEmpty()) {
+            return 1;
+        }
+        int count = 1;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private String constrainText(String text) {
+        String normalized = text == null ? "" : text;
+        if (normalized.length() > maxChars) {
+            normalized = normalized.substring(0, maxChars);
+        }
+        if (maxCharsPerLine <= 0 && maxLines <= 0) {
+            return normalized;
+        }
+
+        String[] lines = normalized.split("\\n", -1);
+        int limit = maxLines > 0 ? Math.min(maxLines, lines.length) : lines.length;
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < limit; i++) {
+            String line = lines[i] == null ? "" : lines[i];
+            if (maxCharsPerLine > 0 && line.length() > maxCharsPerLine) {
+                line = line.substring(0, maxCharsPerLine);
+            }
+            if (i > 0) {
+                out.append('\n');
+            }
+            out.append(line);
+        }
+        String constrained = out.toString();
+        if (constrained.length() > maxChars) {
+            constrained = constrained.substring(0, maxChars);
+        }
+        return constrained;
     }
 
     private boolean hasSelection() {
@@ -503,8 +588,8 @@ public class BookTextEditorOverlay {
         if (!popupAnimation.isVisible()) return false;
 
         // Check if click is outside popup
-        if (mouseX < popupX || mouseX > popupX + POPUP_WIDTH ||
-            mouseY < popupY || mouseY > popupY + POPUP_HEIGHT) {
+        if (mouseX < popupX || mouseX > popupX + popupWidth ||
+            mouseY < popupY || mouseY > popupY + popupHeight) {
             // Treat clicking outside as confirm/save so user input isn't lost
             save();
             return true;
@@ -582,6 +667,9 @@ public class BookTextEditorOverlay {
     }
 
     private void changePage(int requestedPage) {
+        if (!node.hasBookTextPageInput()) {
+            return;
+        }
         int nextPage = Math.max(1, requestedPage);
         if (nextPage == currentPage) {
             return;
@@ -594,7 +682,7 @@ public class BookTextEditorOverlay {
                 onSave.accept(node);
             }
         }
-        textContent = node.getBookTextForPage(currentPage);
+        textContent = constrainText(node.getBookTextForPage(currentPage));
         caretPosition = textContent.length();
         clearSelection();
         scrollOffset = 0;

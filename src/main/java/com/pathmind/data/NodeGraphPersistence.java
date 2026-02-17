@@ -161,7 +161,7 @@ public class NodeGraphPersistence {
             if (node.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
                 node.setMessageLines(nodeData.getMessageLines());
             }
-            if (node.getType() == NodeType.WRITE_BOOK && nodeData.getBookText() != null) {
+            if (node.hasBookTextInput() && nodeData.getBookText() != null) {
                 node.setBookText(nodeData.getBookText());
             }
             if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)

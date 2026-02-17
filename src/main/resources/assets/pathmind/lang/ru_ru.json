@@ -284,6 +284,8 @@
   "pathmind.node.type.walk.desc": "Идет вперед с опциональным поворотом",
   "pathmind.node.type.writeBook": "Написать книгу",
   "pathmind.node.type.writeBook.desc": "Пишет текст в открытую книгу с пером",
+  "pathmind.node.type.writeSign": "Написать табличку",
+  "pathmind.node.type.writeSign.desc": "Пишет текст в открытом редакторе таблички",
   "pathmind.overlay.editParameters": "Редактировать параметры: %s",
   "pathmind.overlay.parameterLabel": "%s (%s):",
   "pathmind.popup.clearWorkspace.message": "Это удалит все узлы из рабочей области.",
@@ -317,5 +319,7 @@
   "pathmind.settings.title": "Настройки",
   "pathmind.title": "Редактор узлов Pathmind",
   "screen.pathmind.visual_editor.subtitle": "Создание и управление рабочими процессами на основе узлов",
-  "screen.pathmind.visual_editor.title": "Визуальный редактор Pathmind"
+  "screen.pathmind.visual_editor.title": "Визуальный редактор Pathmind",
+  "pathmind.node.type.pressKey": "Press Key",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind"
 }

@@ -89,6 +89,7 @@ public enum NodeType {
     OPEN_INVENTORY("pathmind.node.type.openInventory", 0xFFB0BEC5, "pathmind.node.type.openInventory.desc"),
     CLOSE_GUI("pathmind.node.type.closeGui", 0xFFB0BEC5, "pathmind.node.type.closeGui.desc"),
     WRITE_BOOK("pathmind.node.type.writeBook", 0xFFB0BEC5, "pathmind.node.type.writeBook.desc"),
+    WRITE_SIGN("pathmind.node.type.writeSign", 0xFFB0BEC5, "pathmind.node.type.writeSign.desc"),
     UI_UTILS("pathmind.node.type.uiUtils", 0xFFB0BEC5, "pathmind.node.type.uiUtils.desc"),
 
     // Equipment Commands
@@ -298,6 +299,7 @@ public enum NodeType {
             case OPEN_INVENTORY:
             case CLOSE_GUI:
             case WRITE_BOOK:
+            case WRITE_SIGN:
             case EQUIP_ARMOR:
             case EQUIP_HAND:
                 return NodeCategory.GUI;

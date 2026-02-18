@@ -4,6 +4,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
@@ -228,8 +229,13 @@ public class BookTextEditorOverlay {
         updateCaretBlinkState();
         if (caretVisible) {
             int[] caretPos = getCaretScreenPosition(textRenderer, textX, textY - scrollOffset, maxTextWidth, lineHeight);
-            context.fill(caretPos[0], caretPos[1], caretPos[0] + 1, caretPos[1] + textRenderer.fontHeight,
-                applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
+            UIStyleHelper.drawTextCaret(
+                context,
+                caretPos[0],
+                caretPos[1],
+                caretPos[1] + textRenderer.fontHeight,
+                applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
+            );
         }
 
         context.disableScissor();

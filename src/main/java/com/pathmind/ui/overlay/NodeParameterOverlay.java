@@ -9,6 +9,7 @@ import com.pathmind.ui.control.VillagerTradeSelector;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.InventorySlotModeHelper;
 import com.pathmind.util.TextRenderUtil;
@@ -499,8 +500,13 @@ public class NodeParameterOverlay {
                     int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
                     int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
                     caretX = Math.min(caretX, fieldX + fieldWidth - 2);
-                    context.fill(caretX, fieldY + 4, caretX + 1, fieldY + fieldHeight - 4,
-                        applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
+                    UIStyleHelper.drawTextCaret(
+                        context,
+                        caretX,
+                        fieldY + 4,
+                        fieldY + fieldHeight - 4,
+                        applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
+                    );
                 }
             }
 

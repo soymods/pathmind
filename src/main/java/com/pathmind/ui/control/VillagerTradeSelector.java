@@ -1,6 +1,7 @@
 package com.pathmind.ui.control;
 
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.DropdownLayoutHelper;
@@ -257,10 +258,16 @@ public class VillagerTradeSelector {
                 int caretIndex = MathHelper.clamp(searchCaretPosition, 0, displayText.length());
                 int caretX = searchX + TEXT_PADDING + textRenderer.getWidth(displayText.substring(0, caretIndex));
                 caretX = Math.min(caretX, searchX + searchWidth - 2);
-                int caretWidth = Math.max(4, textRenderer.getWidth("_"));
-                int caretEndX = Math.min(caretX + caretWidth, searchX + searchWidth - 2);
-                int caretY = searchY + searchHeight - 3;
-                context.fill(caretX, caretY, caretEndX, caretY + 1, applyAlpha(UITheme.CARET_COLOR, alpha));
+                int caretTopY = searchY + 3;
+                int caretBottomY = searchY + searchHeight - 3;
+                UIStyleHelper.drawTextCaret(
+                    context,
+                    caretX,
+                    caretTopY,
+                    caretBottomY,
+                    searchX + searchWidth - 2,
+                    applyAlpha(UITheme.CARET_COLOR, alpha)
+                );
             }
         }
         sectionY += SEARCH_HEIGHT + SECTION_SPACING;

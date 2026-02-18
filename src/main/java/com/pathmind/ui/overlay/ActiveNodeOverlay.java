@@ -9,6 +9,8 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
 import com.pathmind.util.DrawContextBridge;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * HUD overlay that displays the currently active node in the top right corner.
@@ -36,8 +38,9 @@ public class ActiveNodeOverlay {
     public void render(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
         boolean isExecuting = executionManager.isExecuting();
         boolean showingCompletion = executionManager.isDisplayingCompletion();
-        Node activeNode = executionManager.getActiveNode();
-        boolean shouldShow = (isExecuting || showingCompletion) && (showingCompletion || activeNode != null);
+        Node primaryNode = executionManager.getActiveNode();
+        List<Node> activeNodes = executionManager.getActiveNodeChainSnapshot();
+        boolean shouldShow = (isExecuting || showingCompletion) && (showingCompletion || !activeNodes.isEmpty());
 
         visibility.animateTo(shouldShow ? 1f : 0f, shouldShow ? OPEN_DURATION_MS : CLOSE_DURATION_MS);
         visibility.tick();
@@ -47,85 +50,91 @@ public class ActiveNodeOverlay {
             return;
         }
 
-        int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
-        int overlayX = screenWidth - OVERLAY_WIDTH - MARGIN + slideOffset;
-        int overlayY = MARGIN;
-        
-        // Render semi-transparent background
-        context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT,
-            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
-
-        // Render border
-        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT,
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
-        
-        // Calculate right-aligned text positions
-        int textRightX = overlayX + OVERLAY_WIDTH - 8;
-        
-        // Render title (right-aligned)
-        String titleText = "Active Node";
-        int titleWidth = textRenderer.getWidth(titleText);
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(titleText),
-            textRightX - titleWidth,
-            overlayY + 6,
-            applyAlpha(UITheme.ACCENT_SKY, progress)
-        );
-        
-        // Render node type with color (right-aligned)
-        String nodeTypeName;
-        int nodeColor;
-
+        List<Node> nodesToRender = new ArrayList<>();
         if (showingCompletion) {
-            if (activeNode != null) {
-                nodeTypeName = activeNode.getType().getDisplayName();
-                nodeColor = activeNode.getType().getColor();
-            } else {
-                nodeTypeName = "End";
-                nodeColor = UITheme.STATE_ERROR;
-            }
+            nodesToRender.add(primaryNode);
         } else {
-            nodeTypeName = activeNode != null ? activeNode.getType().getDisplayName() : "";
-            nodeColor = activeNode != null ? activeNode.getType().getColor() : UITheme.ACCENT_SKY;
+            nodesToRender.addAll(activeNodes);
         }
-        int nodeTypeWidth = textRenderer.getWidth(nodeTypeName);
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(nodeTypeName),
-            textRightX - nodeTypeWidth,
-            overlayY + 18,
-            applyAlpha(nodeColor, progress)
-        );
-        
-        // Render execution time (right-aligned)
-        long executionDuration = executionManager.getActiveNodeDuration();
-        String timeText = "Node Time: " + formatDuration(executionDuration);
-        int timeWidth = textRenderer.getWidth(timeText);
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(timeText),
-            textRightX - timeWidth,
-            overlayY + 30,
-            applyAlpha(UITheme.TEXT_HEADER, progress)
-        );
-        
-        // Render status indicator (right-aligned)
-        String statusText = showingCompletion ? "Finished" : "Executing...";
-        int statusWidth = textRenderer.getWidth(statusText);
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(statusText),
-            textRightX - statusWidth,
-            overlayY + 42,
-            applyAlpha(showingCompletion ? UITheme.STATE_ERROR : UITheme.ACCENT_SKY, progress)
-        );
-        
-        // Render a small colored indicator dot (top left)
-        int dotX = overlayX + 8;
-        int dotY = overlayY + 8;
-        context.fill(dotX, dotY, dotX + 8, dotY + 8, applyAlpha(nodeColor, progress));
-        DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+
+        int cardSpacing = 6;
+        int maxCards = Math.max(1, (screenHeight - MARGIN) / (OVERLAY_HEIGHT + cardSpacing));
+        int cardCount = Math.min(nodesToRender.size(), maxCards);
+
+        for (int i = 0; i < cardCount; i++) {
+            Node node = nodesToRender.get(i);
+            int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
+            int overlayX = screenWidth - OVERLAY_WIDTH - MARGIN + slideOffset;
+            int overlayY = MARGIN + (i * (OVERLAY_HEIGHT + cardSpacing));
+
+            context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT,
+                applyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
+            DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT,
+                applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+
+            int textRightX = overlayX + OVERLAY_WIDTH - 8;
+
+            String titleText = i == 0 ? "Active Node" : "Active Node " + (i + 1);
+            int titleWidth = textRenderer.getWidth(titleText);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(titleText),
+                textRightX - titleWidth,
+                overlayY + 6,
+                applyAlpha(UITheme.ACCENT_SKY, progress)
+            );
+
+            String nodeTypeName;
+            int nodeColor;
+            if (showingCompletion) {
+                if (node != null) {
+                    nodeTypeName = node.getType().getDisplayName();
+                    nodeColor = node.getType().getColor();
+                } else {
+                    nodeTypeName = "End";
+                    nodeColor = UITheme.STATE_ERROR;
+                }
+            } else {
+                nodeTypeName = node != null ? node.getType().getDisplayName() : "";
+                nodeColor = node != null ? node.getType().getColor() : UITheme.ACCENT_SKY;
+            }
+
+            int nodeTypeWidth = textRenderer.getWidth(nodeTypeName);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(nodeTypeName),
+                textRightX - nodeTypeWidth,
+                overlayY + 18,
+                applyAlpha(nodeColor, progress)
+            );
+
+            String timeText = i == 0
+                ? "Node Time: " + formatDuration(executionManager.getActiveNodeDuration())
+                : "Node Time: --";
+            int timeWidth = textRenderer.getWidth(timeText);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(timeText),
+                textRightX - timeWidth,
+                overlayY + 30,
+                applyAlpha(UITheme.TEXT_HEADER, progress)
+            );
+
+            String statusText = showingCompletion ? "Finished" : "Executing...";
+            int statusWidth = textRenderer.getWidth(statusText);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(statusText),
+                textRightX - statusWidth,
+                overlayY + 42,
+                applyAlpha(showingCompletion ? UITheme.STATE_ERROR : UITheme.ACCENT_SKY, progress)
+            );
+
+            int dotX = overlayX + 8;
+            int dotY = overlayY + 8;
+            context.fill(dotX, dotY, dotX + 8, dotY + 8, applyAlpha(nodeColor, progress));
+            DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+        }
     }
     
     /**

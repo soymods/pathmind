@@ -105,6 +105,7 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.OPERATOR_BOOLEAN_XOR, EnumSet.of(NodeValueTrait.BOOLEAN));
         traits.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.LIST_ITEM, EnumSet.of(NodeValueTrait.LIST_ITEM, NodeValueTrait.COORDINATE, NodeValueTrait.INVENTORY_SLOT));
+        traits.put(NodeType.LIST_LENGTH, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
 
         PROVIDED_TRAITS = traits;
@@ -356,7 +357,11 @@ public final class NodeTraitRegistry {
             || type == NodeType.SENSOR_SLOT_ITEM_COUNT) {
             return true;
         }
-        if (type == NodeType.VARIABLE || type == NodeType.OPERATOR_RANDOM || type == NodeType.OPERATOR_MOD || type == NodeType.LIST_ITEM) {
+        if (type == NodeType.VARIABLE
+            || type == NodeType.OPERATOR_RANDOM
+            || type == NodeType.OPERATOR_MOD
+            || type == NodeType.LIST_ITEM
+            || type == NodeType.LIST_LENGTH) {
             return true;
         }
         return false;

@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Objects;
 
 /**
@@ -48,12 +49,15 @@ public class ExecutionManager {
     private List<NodeConnection> workspaceConnections;
     private final Set<ConnectionKey> activeConnectionLookup;
     private final Map<String, Node> outputNodeLookup;
-    private final List<String> executingEvents;
+    private final Set<String> executingEvents;
     private volatile boolean cancelRequested;
     private final Map<Node, ChainController> activeChains;
     private final Map<String, RuntimeVariable> globalRuntimeVariables;
     private final Map<ConnectionKey, Node> eventConnectionOwners;
     private final Set<Node> activeEventFunctionNodes;
+    private final Map<Integer, Node> activeExecutionNodes;
+    private final AtomicInteger nextExecutionId;
+    private Integer primaryExecutionId;
     private boolean globalExecutionActive;
     private boolean lastSnapshotWasGlobal;
     private long activeNodeStartTime;
@@ -67,13 +71,17 @@ public class ExecutionManager {
 
     private static class ChainController {
         final Node startNode;
+        final int rootExecutionId;
         volatile boolean cancelRequested;
+        final AtomicInteger activeExecutions;
         final Map<String, RuntimeVariable> runtimeVariables;
         final Map<String, RuntimeList> runtimeLists;
 
-        ChainController(Node startNode) {
+        ChainController(Node startNode, int rootExecutionId) {
             this.startNode = startNode;
+            this.rootExecutionId = rootExecutionId;
             this.cancelRequested = false;
+            this.activeExecutions = new AtomicInteger(1);
             this.runtimeVariables = new ConcurrentHashMap<>();
             this.runtimeLists = new ConcurrentHashMap<>();
         }
@@ -182,7 +190,7 @@ public class ExecutionManager {
         this.activeConnections = new ArrayList<>();
         this.workspaceNodes = new ArrayList<>();
         this.workspaceConnections = new ArrayList<>();
-        this.executingEvents = new ArrayList<>();
+        this.executingEvents = ConcurrentHashMap.newKeySet();
         this.cancelRequested = false;
         this.activeChains = new ConcurrentHashMap<>();
         this.globalRuntimeVariables = new ConcurrentHashMap<>();
@@ -192,6 +200,9 @@ public class ExecutionManager {
         this.outputNodeLookup = new ConcurrentHashMap<>();
         this.eventConnectionOwners = new ConcurrentHashMap<>();
         this.activeEventFunctionNodes = ConcurrentHashMap.newKeySet();
+        this.activeExecutionNodes = new ConcurrentHashMap<>();
+        this.nextExecutionId = new AtomicInteger(1);
+        this.primaryExecutionId = null;
         this.activeNodeStartTime = 0;
         this.activeNodePausedDuration = 0;
         this.activeNodePauseStartTime = 0;
@@ -351,10 +362,12 @@ public class ExecutionManager {
         activeChains.clear();
 
         for (Node startNode : startNodes) {
-            ChainController controller = new ChainController(startNode);
+            int executionId = allocateExecutionId();
+            ChainController controller = new ChainController(startNode, executionId);
             activeChains.put(startNode, controller);
-            CompletableFuture<Void> chainFuture = runChain(startNode, controller);
-            chainFuture.whenComplete((ignored, throwable) -> handleChainCompletion(controller, throwable));
+            CompletableFuture<Void> chainFuture = runChain(startNode, controller, controller.rootExecutionId);
+            chainFuture.whenComplete((ignored, throwable) ->
+                handleChainCompletion(controller, throwable, controller.rootExecutionId));
         }
     }
 
@@ -437,10 +450,12 @@ public class ExecutionManager {
             this.isExecuting = true;
         }
 
-        ChainController controller = new ChainController(startNode);
+        int executionId = allocateExecutionId();
+        ChainController controller = new ChainController(startNode, executionId);
         activeChains.put(startNode, controller);
-        CompletableFuture<Void> chainFuture = runChain(startNode, controller);
-        chainFuture.whenComplete((ignored, throwable) -> handleChainCompletion(controller, throwable));
+        CompletableFuture<Void> chainFuture = runChain(startNode, controller, controller.rootExecutionId);
+        chainFuture.whenComplete((ignored, throwable) ->
+            handleChainCompletion(controller, throwable, controller.rootExecutionId));
         updateLastStartContext(startNode, presetName);
         return true;
     }
@@ -450,6 +465,8 @@ public class ExecutionManager {
      */
     private void startExecution(List<Node> startNodes, boolean markGlobal) {
         globalRuntimeVariables.clear();
+        this.activeExecutionNodes.clear();
+        this.primaryExecutionId = null;
         this.activeNode = startNodes.isEmpty() ? null : startNodes.get(0);
         if (this.activeNode != null) {
             resetActiveNodeTiming();
@@ -472,13 +489,31 @@ public class ExecutionManager {
      * Set the currently active node
      */
     public void setActiveNode(Node node) {
-        this.activeNode = node;
-        if (node != null) {
-            resetActiveNodeTiming();
-        } else {
-            clearActiveNodeTiming();
+        setActiveNode(node, primaryExecutionId != null ? primaryExecutionId : -1);
+    }
+
+    private void setActiveNode(Node node, int executionId) {
+        if (executionId >= 0) {
+            if (node != null) {
+                activeExecutionNodes.put(executionId, node);
+            } else {
+                activeExecutionNodes.remove(executionId);
+            }
         }
-        LOGGER.trace("Set active node to {}", node != null ? node.getType() : "null");
+
+        if (primaryExecutionId == null && executionId >= 0) {
+            primaryExecutionId = executionId;
+        }
+
+        if (primaryExecutionId != null && executionId == primaryExecutionId) {
+            this.activeNode = node;
+            if (node != null) {
+                resetActiveNodeTiming();
+            } else {
+                clearActiveNodeTiming();
+            }
+            LOGGER.trace("Set active node to {}", node != null ? node.getType() : "null");
+        }
     }
     
     /**
@@ -529,6 +564,8 @@ public class ExecutionManager {
         this.executingEvents.clear();
         this.eventConnectionOwners.clear();
         this.activeEventFunctionNodes.clear();
+        this.activeExecutionNodes.clear();
+        this.primaryExecutionId = null;
         this.activeChains.clear();
         this.globalRuntimeVariables.clear();
     }
@@ -577,6 +614,26 @@ public class ExecutionManager {
      */
     public Node getActiveNode() {
         return activeNode;
+    }
+
+    public List<Node> getActiveNodeChainSnapshot() {
+        LinkedHashSet<Node> ordered = new LinkedHashSet<>();
+        if (activeNode != null) {
+            ordered.add(activeNode);
+        }
+
+        if (!activeExecutionNodes.isEmpty()) {
+            List<Integer> ids = new ArrayList<>(activeExecutionNodes.keySet());
+            Collections.sort(ids);
+            for (Integer id : ids) {
+                Node node = activeExecutionNodes.get(id);
+                if (node != null) {
+                    ordered.add(node);
+                }
+            }
+        }
+
+        return new ArrayList<>(ordered);
     }
 
     public boolean requestStopForStart(Node startNode) {
@@ -649,10 +706,12 @@ public class ExecutionManager {
             this.isExecuting = true;
         }
 
-        ChainController controller = new ChainController(match);
+        int executionId = allocateExecutionId();
+        ChainController controller = new ChainController(match, executionId);
         activeChains.put(match, controller);
-        CompletableFuture<Void> chainFuture = runChain(match, controller);
-        chainFuture.whenComplete((ignored, throwable) -> handleChainCompletion(controller, throwable));
+        CompletableFuture<Void> chainFuture = runChain(match, controller, controller.rootExecutionId);
+        chainFuture.whenComplete((ignored, throwable) ->
+            handleChainCompletion(controller, throwable, controller.rootExecutionId));
         return true;
     }
 
@@ -787,7 +846,7 @@ public class ExecutionManager {
         this.activeNodeEndTime = 0;
     }
 
-    private CompletableFuture<Void> runChain(Node currentNode, ChainController controller) {
+    private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId) {
         if (cancelRequested || controller == null || controller.cancelRequested) {
             return CompletableFuture.completedFuture(null);
         }
@@ -801,7 +860,7 @@ public class ExecutionManager {
                     return CompletableFuture.completedFuture(null);
                 }
 
-                setActiveNode(currentNode);
+                setActiveNode(currentNode, executionId);
 
                 if (cancelRequested || controller.cancelRequested) {
                     return CompletableFuture.completedFuture(null);
@@ -816,7 +875,7 @@ public class ExecutionManager {
                         return handleEventCallIfNeeded(currentNode, controller);
                     })
                     .thenCompose(ignoredFuture -> waitForExecutionResume())
-                    .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller));
+                    .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller, executionId));
             });
     }
 
@@ -865,7 +924,7 @@ public class ExecutionManager {
             return CompletableFuture.completedFuture(null);
         }
 
-        if (executingEvents.contains(eventName)) {
+        if (!executingEvents.add(eventName)) {
             LOGGER.debug("Skipping recursive event call for {}", eventName);
             return CompletableFuture.completedFuture(null);
         }
@@ -882,21 +941,34 @@ public class ExecutionManager {
         }
 
         if (handlers.isEmpty()) {
+            executingEvents.remove(eventName);
             return CompletableFuture.completedFuture(null);
         }
 
-        executingEvents.add(eventName);
-        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        List<CompletableFuture<Void>> handlerFutures = new ArrayList<>();
         for (Node handler : handlers) {
             if (cancelRequested || controller.cancelRequested) {
                 break;
             }
-            chain = chain.thenCompose(ignored -> runEventHandler(handler, controller));
+            retainChainExecution(controller);
+            int handlerExecutionId = allocateExecutionId();
+            CompletableFuture<Void> handlerFuture = runEventHandler(handler, controller, handlerExecutionId);
+            handlerFuture.whenComplete((ignored, throwable) ->
+                handleChainCompletion(controller, throwable, handlerExecutionId));
+            handlerFutures.add(handlerFuture);
         }
-        return chain.whenComplete((ignored, throwable) -> executingEvents.remove(eventName));
+
+        if (handlerFutures.isEmpty()) {
+            executingEvents.remove(eventName);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture.allOf(handlerFutures.toArray(new CompletableFuture[0]))
+            .whenComplete((ignored, throwable) -> executingEvents.remove(eventName));
+        return CompletableFuture.completedFuture(null);
     }
 
-    private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller) {
+    private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller, int executionId) {
         if (cancelRequested || controller == null || controller.cancelRequested) {
             return CompletableFuture.completedFuture(null);
         }
@@ -909,22 +981,22 @@ public class ExecutionManager {
 
             if (attachedAction != null) {
                 if (type == NodeType.CONTROL_FOREVER && nextSocket != Node.NO_OUTPUT) {
-                    return runChain(attachedAction, controller)
+                    return runChain(attachedAction, controller, executionId)
                         .thenCompose(ignored -> {
                             if (cancelRequested || controller.cancelRequested) {
                                 return CompletableFuture.completedFuture(null);
                             }
-                            return runChain(currentNode, controller);
+                            return runChain(currentNode, controller, executionId);
                         });
                 }
 
                 if ((type == NodeType.CONTROL_REPEAT || type == NodeType.CONTROL_REPEAT_UNTIL) && nextSocket == 0) {
-                    return runChain(attachedAction, controller)
+                    return runChain(attachedAction, controller, executionId)
                         .thenCompose(ignored -> {
                             if (cancelRequested || controller.cancelRequested) {
                                 return CompletableFuture.completedFuture(null);
                             }
-                            return runChain(currentNode, controller);
+                            return runChain(currentNode, controller, executionId);
                         });
                 }
             }
@@ -939,21 +1011,22 @@ public class ExecutionManager {
             nextNode = getNextConnectedNode(currentNode, activeConnections, 0);
         }
         if (nextNode != null) {
-            return runChain(nextNode, controller);
+            return runChain(nextNode, controller, executionId);
         }
         return CompletableFuture.completedFuture(null);
     }
 
-    private CompletableFuture<Void> runEventHandler(Node handler, ChainController controller) {
+    private CompletableFuture<Void> runEventHandler(Node handler, ChainController controller, int executionId) {
         if (handler == null) {
             return CompletableFuture.completedFuture(null);
         }
 
         setEventFunctionActive(handler, true);
-        return runChain(handler, controller).whenComplete((ignored, throwable) -> setEventFunctionActive(handler, false));
+        return runChain(handler, controller, executionId)
+            .whenComplete((ignored, throwable) -> setEventFunctionActive(handler, false));
     }
 
-    private void handleChainCompletion(ChainController controller, Throwable throwable) {
+    private void handleChainCompletion(ChainController controller, Throwable throwable, int executionId) {
         if (controller == null) {
             return;
         }
@@ -962,7 +1035,18 @@ public class ExecutionManager {
             LOGGER.error("Error during execution", throwable);
         }
 
-        activeChains.remove(controller.startNode);
+        if (executionId >= 0) {
+            activeExecutionNodes.remove(executionId);
+            if (primaryExecutionId != null && primaryExecutionId == executionId) {
+                refreshPrimaryExecution();
+            }
+        }
+
+        if (!releaseChainExecution(controller)) {
+            return;
+        }
+
+        activeChains.remove(controller.startNode, controller);
 
         if (activeChains.isEmpty() && isExecuting) {
             stopExecution();
@@ -973,8 +1057,61 @@ public class ExecutionManager {
             executingEvents.clear();
             eventConnectionOwners.clear();
             activeEventFunctionNodes.clear();
+            activeExecutionNodes.clear();
+            primaryExecutionId = null;
             globalRuntimeVariables.clear();
         }
+    }
+
+    private int allocateExecutionId() {
+        return nextExecutionId.getAndIncrement();
+    }
+
+    private void refreshPrimaryExecution() {
+        if (activeExecutionNodes.isEmpty()) {
+            primaryExecutionId = null;
+            activeNode = null;
+            clearActiveNodeTiming();
+            return;
+        }
+
+        int replacementId = Integer.MAX_VALUE;
+        Node replacementNode = null;
+        for (Map.Entry<Integer, Node> entry : activeExecutionNodes.entrySet()) {
+            Integer id = entry.getKey();
+            Node node = entry.getValue();
+            if (id == null || node == null) {
+                continue;
+            }
+            if (id < replacementId) {
+                replacementId = id;
+                replacementNode = node;
+            }
+        }
+
+        if (replacementNode == null) {
+            primaryExecutionId = null;
+            activeNode = null;
+            clearActiveNodeTiming();
+            return;
+        }
+
+        primaryExecutionId = replacementId;
+        activeNode = replacementNode;
+        resetActiveNodeTiming();
+    }
+
+    private void retainChainExecution(ChainController controller) {
+        if (controller != null) {
+            controller.activeExecutions.incrementAndGet();
+        }
+    }
+
+    private boolean releaseChainExecution(ChainController controller) {
+        if (controller == null) {
+            return true;
+        }
+        return controller.activeExecutions.decrementAndGet() <= 0;
     }
 
     private boolean executeGraphSnapshot(NodeGraphData graphData, boolean markGlobalSnapshot) {

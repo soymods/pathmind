@@ -2788,7 +2788,8 @@ public class NodeGraph {
                 value = "";
             }
             String display;
-            if (!editingEventName && value.isEmpty()) {
+            boolean showPlaceholder = !editingEventName && value.isEmpty();
+            if (showPlaceholder) {
                 display = "enter name";
             } else {
                 display = value;
@@ -2812,6 +2813,9 @@ public class NodeGraph {
             }
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
+            if (showPlaceholder) {
+                textColor = UITheme.TEXT_TERTIARY;
+            }
             if (highlightPlainEventName) {
                 textColor = eventNameVariableHighlightColor;
             }
@@ -3022,13 +3026,17 @@ public class NodeGraph {
                 value = "";
             }
             String display;
-            if (!editingEventName && value.isEmpty()) {
+            boolean showPlaceholder = !editingEventName && value.isEmpty();
+            if (showPlaceholder) {
                 display = "enter name";
             } else {
                 display = value;
             }
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT;
+            if (showPlaceholder) {
+                textColor = UITheme.TEXT_TERTIARY;
+            }
             int textX = boxLeft + 4;
             if (editingEventName && hasEventNameSelection()) {
                 int start = MathHelper.clamp(eventNameSelectionStart, 0, display.length());
@@ -5355,15 +5363,8 @@ public class NodeGraph {
 
         java.util.List<String> options = getAmountSignDropdownOptions();
         int optionCount = options.size();
-        int listTop = node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2 - cameraY;
-        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            AMOUNT_SIGN_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
+        int listTop = getAmountSignDropdownListTop(node);
+        DropdownLayoutHelper.Layout layout = getAmountSignDropdownLayout(node);
         int visibleCount = layout.visibleCount;
         amountSignDropdownScrollOffset = MathHelper.clamp(amountSignDropdownScrollOffset, 0, layout.maxScrollOffset);
 
@@ -5375,14 +5376,15 @@ public class NodeGraph {
         context.fill(listLeft, listTop, listRight, listBottom, fieldBackground);
         DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getAmountSignToggleWidth(), listHeight, fieldBorder);
 
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
+        float zoom = Math.max(0.01f, getZoomScale());
+        int transformedMouseX = Math.round(mouseX / zoom);
+        int transformedMouseY = Math.round(mouseY / zoom);
         amountSignDropdownHoverIndex = -1;
-        if (worldMouseX >= node.getAmountSignToggleLeft()
-            && worldMouseX <= node.getAmountSignToggleLeft() + node.getAmountSignToggleWidth()
-            && worldMouseY >= node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2
-            && worldMouseY <= node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2 + listHeight) {
-            int row = (worldMouseY - (node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2)) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        if (transformedMouseX >= listLeft
+            && transformedMouseX <= listRight
+            && transformedMouseY >= listTop
+            && transformedMouseY <= listBottom) {
+            int row = (transformedMouseY - listTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
             if (row >= 0 && row < visibleCount) {
                 amountSignDropdownHoverIndex = amountSignDropdownScrollOffset + row;
             }
@@ -6373,6 +6375,9 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
+        stopVariableEditing(true);
+        stopEventNameEditing(true);
+        stopParameterEditing(true);
 
         messageEditingNode = node;
         messageEditingIndex = index;
@@ -6672,6 +6677,8 @@ public class NodeGraph {
         stopAmountEditing(true);
         stopStopTargetEditing(true);
         stopMessageEditing(true);
+        stopVariableEditing(true);
+        stopEventNameEditing(true);
 
         parameterEditingNode = node;
         parameterEditingIndex = index;
@@ -9310,22 +9317,57 @@ public class NodeGraph {
             return false;
         }
         Node node = amountSignDropdownNode;
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int listTop = node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2;
-        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            getAmountSignDropdownOptions().size(),
+        float zoom = Math.max(0.01f, getZoomScale());
+        int transformedX = Math.round(screenX / zoom);
+        int transformedY = Math.round(screenY / zoom);
+        int listTop = getAmountSignDropdownListTop(node);
+        DropdownLayoutHelper.Layout layout = getAmountSignDropdownLayout(node);
+        int listHeight = layout.height;
+        int listLeft = node.getAmountSignToggleLeft() - cameraX;
+        int listWidth = node.getAmountSignToggleWidth();
+        return transformedX >= listLeft && transformedX <= listLeft + listWidth
+            && transformedY >= listTop && transformedY <= listTop + listHeight;
+    }
+
+    private int getAmountSignDropdownIndexAt(Node node, int screenX, int screenY) {
+        if (node == null) {
+            return -1;
+        }
+        java.util.List<String> options = getAmountSignDropdownOptions();
+        if (options.isEmpty()) {
+            return -1;
+        }
+        float zoom = Math.max(0.01f, getZoomScale());
+        int transformedY = Math.round(screenY / zoom);
+        int listTop = getAmountSignDropdownListTop(node);
+        DropdownLayoutHelper.Layout layout = getAmountSignDropdownLayout(node);
+        int row = (transformedY - listTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
+        if (row < 0 || row >= layout.visibleCount) {
+            return -1;
+        }
+        int index = amountSignDropdownScrollOffset + row;
+        if (index < 0 || index >= options.size()) {
+            return -1;
+        }
+        return index;
+    }
+
+    private int getAmountSignDropdownListTop(Node node) {
+        return node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2 - cameraY;
+    }
+
+    private DropdownLayoutHelper.Layout getAmountSignDropdownLayout(Node node) {
+        int optionCount = Math.max(1, getAmountSignDropdownOptions().size());
+        int listTop = getAmountSignDropdownListTop(node);
+        float zoom = Math.max(0.01f, getZoomScale());
+        int transformedScreenHeight = Math.round(MinecraftClient.getInstance().getWindow().getScaledHeight() / zoom);
+        return DropdownLayoutHelper.calculate(
+            optionCount,
             SCHEMATIC_DROPDOWN_ROW_HEIGHT,
             AMOUNT_SIGN_DROPDOWN_MAX_ROWS,
             listTop,
-            screenHeight
+            transformedScreenHeight
         );
-        int listHeight = layout.height;
-        int listLeft = node.getAmountSignToggleLeft();
-        int listWidth = node.getAmountSignToggleWidth();
-        return worldX >= listLeft && worldX <= listLeft + listWidth
-            && worldY >= listTop && worldY <= listTop + listHeight;
     }
 
     private boolean isPointInsideRandomRoundingDropdownList(int screenX, int screenY) {
@@ -9473,10 +9515,11 @@ public class NodeGraph {
                 return true;
             }
             if (isPointInsideAmountSignDropdownList(mouseX, mouseY)) {
-                if (amountSignDropdownNode != null && amountSignDropdownHoverIndex >= 0) {
+                int selectedIndex = getAmountSignDropdownIndexAt(amountSignDropdownNode, mouseX, mouseY);
+                if (amountSignDropdownNode != null && selectedIndex >= 0) {
                     java.util.List<String> options = getAmountSignDropdownOptions();
-                    if (amountSignDropdownHoverIndex < options.size()) {
-                        amountSignDropdownNode.setAmountOperation(options.get(amountSignDropdownHoverIndex));
+                    if (selectedIndex < options.size()) {
+                        amountSignDropdownNode.setAmountOperation(options.get(selectedIndex));
                         amountSignDropdownNode.recalculateDimensions();
                         notifyNodeParametersChanged(amountSignDropdownNode);
                     }

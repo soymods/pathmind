@@ -112,6 +112,8 @@
   "pathmind.node.type.jump.desc": "Makes the player jump",
   "pathmind.node.type.listItem": "List Item",
   "pathmind.node.type.listItem.desc": "Select an entry from a named list",
+  "pathmind.node.type.listLength": "List Length",
+  "pathmind.node.type.listLength.desc": "Returns the current number of entries in a named list",
   "pathmind.node.type.look": "Look",
   "pathmind.node.type.look.desc": "Adjusts the player's view direction",
   "pathmind.node.type.message": "Message",

@@ -1179,7 +1179,7 @@ public class Node {
     }
 
     public boolean hasVariableInputField() {
-        return type == NodeType.CREATE_LIST;
+        return type == NodeType.CREATE_LIST || type == NodeType.LIST_LENGTH;
     }
 
     public String getStopTargetFieldParameterKey() {
@@ -1191,7 +1191,7 @@ public class Node {
 
     public String getVariableFieldParameterKey() {
         return switch (type) {
-            case CREATE_LIST -> "List";
+            case CREATE_LIST, LIST_LENGTH -> "List";
             default -> "Variable";
         };
     }
@@ -2556,6 +2556,9 @@ public class Node {
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
                 parameters.add(new NodeParameter("Index", ParameterType.INTEGER, "1"));
                 break;
+            case LIST_LENGTH:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                break;
             case OPERATOR_RANDOM:
                 parameters.add(new NodeParameter("Min", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("Max", ParameterType.DOUBLE, "1.0"));
@@ -3024,6 +3027,19 @@ public class Node {
                     values.put("Value", amount);
                     values.put(normalizeParameterKey("Value"), amount);
                 }
+                break;
+            }
+            case LIST_LENGTH: {
+                Optional<Integer> length = resolveListLengthValue(this);
+                String amount = length.map(String::valueOf).orElse("0");
+                values.put("Amount", amount);
+                values.put(normalizeParameterKey("Amount"), amount);
+                values.put("Count", amount);
+                values.put(normalizeParameterKey("Count"), amount);
+                values.put("Threshold", amount);
+                values.put(normalizeParameterKey("Threshold"), amount);
+                values.put("Value", amount);
+                values.put(normalizeParameterKey("Value"), amount);
                 break;
             }
             case OPERATOR_RANDOM: {
@@ -5347,6 +5363,9 @@ public class Node {
         if (node != null && node.getType() == NodeType.OPERATOR_MOD) {
             return (int) Math.round(node.resolveModValue().orElse((double) defaultValue));
         }
+        if (node != null && node.getType() == NodeType.LIST_LENGTH) {
+            return node.resolveListLengthValue(node).orElse(defaultValue);
+        }
         if (node != null && node.getType() == NodeType.VARIABLE) {
             String variableName = getParameterString(node, "Variable");
             Node resolved = node.resolveVariableValueNode(node, 0, null);
@@ -5406,6 +5425,12 @@ public class Node {
         }
         if (node != null && node.getType() == NodeType.OPERATOR_MOD) {
             return node.resolveModValue().orElse(defaultValue);
+        }
+        if (node != null && node.getType() == NodeType.LIST_LENGTH) {
+            Optional<Integer> length = node.resolveListLengthValue(node);
+            if (length.isPresent()) {
+                return length.get();
+            }
         }
         if (node != null && node.getType() == NodeType.VARIABLE) {
             String variableName = getParameterString(node, "Variable");
@@ -6507,6 +6532,25 @@ public class Node {
         }
 
         if (matches.isEmpty()) {
+            // Fallback for entity lists: keep configured entity IDs so downstream LIST_ITEM
+            // can resolve nearest matching entities at use time.
+            if (parameterType == NodeType.PARAM_ENTITY) {
+                List<String> configuredEntityIds = resolveEntityIdsFromParameter(parameterNode);
+                if (!configuredEntityIds.isEmpty()) {
+                    ExecutionManager manager = ExecutionManager.getInstance();
+                    Node startNode = getOwningStartNode();
+                    if (startNode == null && getParentControl() != null) {
+                        startNode = getParentControl().getOwningStartNode();
+                    }
+                    if (startNode != null) {
+                        manager.setRuntimeList(startNode, listName.trim(),
+                            new ExecutionManager.RuntimeList(parameterType, configuredEntityIds));
+                        future.complete(null);
+                        return;
+                    }
+                }
+            }
+
             sendNodeErrorMessage(client, "No matching targets found nearby for " + type.getDisplayName() + ".");
             future.complete(null);
             return;
@@ -11338,6 +11382,17 @@ public class Node {
             }
             case PARAM_AMOUNT:
                 return getRuntimeValue(values, "amount");
+            case LIST_LENGTH: {
+                String length = getRuntimeValue(values, "count");
+                if (!length.isEmpty()) {
+                    return length;
+                }
+                length = getRuntimeValue(values, "value");
+                if (!length.isEmpty()) {
+                    return length;
+                }
+                return getRuntimeValue(values, "amount");
+            }
             case SENSOR_SLOT_ITEM_COUNT:
                 return getRuntimeValue(values, "amount");
             case OPERATOR_RANDOM:
@@ -15378,13 +15433,19 @@ public class Node {
         if (param == null) {
             return defaultValue;
         }
-        if (param.getType() == ParameterType.INTEGER) {
-            return param.getIntValue();
+        String rawValue = param.getStringValue();
+        String resolvedValue = resolveRuntimeVariablesInText(rawValue);
+        if (resolvedValue == null || resolvedValue.trim().isEmpty()) {
+            return defaultValue;
         }
         try {
-            return Integer.parseInt(param.getStringValue());
-        } catch (NumberFormatException e) {
-            return defaultValue;
+            return Integer.parseInt(resolvedValue.trim());
+        } catch (NumberFormatException ignored) {
+            try {
+                return (int) Math.round(Double.parseDouble(resolvedValue.trim()));
+            } catch (NumberFormatException e) {
+                return defaultValue;
+            }
         }
     }
 
@@ -15550,11 +15611,13 @@ public class Node {
         if (param == null) {
             return defaultValue;
         }
-        if (param.getType() == ParameterType.DOUBLE) {
-            return param.getDoubleValue();
+        String rawValue = param.getStringValue();
+        String resolvedValue = resolveRuntimeVariablesInText(rawValue);
+        if (resolvedValue == null || resolvedValue.trim().isEmpty()) {
+            return defaultValue;
         }
         try {
-            return Double.parseDouble(param.getStringValue());
+            return Double.parseDouble(resolvedValue.trim());
         } catch (NumberFormatException e) {
             return defaultValue;
         }
@@ -15565,10 +15628,7 @@ public class Node {
         if (param == null) {
             return defaultValue;
         }
-        if (param.getType() == ParameterType.BOOLEAN) {
-            return param.getBoolValue();
-        }
-        String value = param.getStringValue();
+        String value = resolveRuntimeVariablesInText(param.getStringValue());
         if (value == null) {
             return defaultValue;
         }
@@ -15773,6 +15833,26 @@ public class Node {
 
             return entity;
         } catch (IllegalArgumentException ex) {
+            NodeType elementType = list.getElementType();
+            String trimmedEntry = entry.trim();
+
+            if (elementType == NodeType.PARAM_ENTITY) {
+                Identifier identifier = Identifier.tryParse(trimmedEntry);
+                if (identifier != null && Registries.ENTITY_TYPE.containsId(identifier)) {
+                    EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+                    Optional<Entity> nearest = findNearestEntity(client, entityType, PARAMETER_SEARCH_RADIUS, "");
+                    if (nearest.isPresent()) {
+                        Entity entity = nearest.get();
+                        if (data != null) {
+                            data.targetEntity = entity;
+                            data.targetEntityId = identifier.toString();
+                        }
+                        setParameterValueAndPropagate("Entity", identifier.toString());
+                        return entity;
+                    }
+                }
+            }
+
             sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" item " + index + " is not available.");
             if (future != null && !future.isDone()) {
                 future.complete(null);
@@ -15795,6 +15875,21 @@ public class Node {
             startNode = getParentControl().getOwningStartNode();
         }
         return manager.getRuntimeList(startNode, listName.trim());
+    }
+
+    private Optional<Integer> resolveListLengthValue(Node listNode) {
+        if (listNode == null) {
+            return Optional.empty();
+        }
+        String listName = getParameterString(listNode, "List");
+        if (listName == null || listName.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
+        if (list == null) {
+            return Optional.of(0);
+        }
+        return Optional.of(Math.max(0, list.getEntries().size()));
     }
 
     private ListSlotEntry resolveListItemSlotEntry(Node listNode, boolean reportErrors, CompletableFuture<Void> future) {
@@ -16891,6 +16986,8 @@ public class Node {
             case PARAM_AMOUNT:
             case OPERATOR_RANDOM:
             case OPERATOR_MOD:
+                return Optional.of(parseNodeDouble(node, "Amount", 0.0));
+            case LIST_LENGTH:
                 return Optional.of(parseNodeDouble(node, "Amount", 0.0));
             case PARAM_DISTANCE:
                 return Optional.of(parseNodeDouble(node, "Distance", 0.0));

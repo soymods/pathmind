@@ -10,7 +10,6 @@ import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.ui.control.VillagerTradeSelector;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.ChatMessageTracker;
-import com.pathmind.util.InputCompatibilityBridge;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -23,7 +22,6 @@ import net.minecraft.client.gui.screen.ingame.MerchantScreen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * The client-side mod class for Pathmind.
@@ -39,8 +37,6 @@ public class PathmindClientMod implements ClientModInitializer {
     private int recipeCacheWarmupCooldownTicks;
     private boolean playGraphsKeyDown;
     private boolean stopGraphsKeyDown;
-    private boolean playGraphsRawKeyDown;
-    private boolean stopGraphsRawKeyDown;
     private boolean merchantScreenOpen;
     private boolean villagerTradeCacheWarmed;
     private int villagerTradeCacheCooldownTicks;
@@ -184,31 +180,20 @@ public class PathmindClientMod implements ClientModInitializer {
         boolean chatOrGuiOpen = shouldIgnoreKeybinds(client);
 
         boolean stopDown = PathmindKeybinds.STOP_GRAPHS.isPressed();
-        boolean stopRawDown = isKeyDownRaw(client, GLFW.GLFW_KEY_J);
-        if (!chatOrGuiOpen && ((stopDown && !stopGraphsKeyDown) || (stopRawDown && !stopGraphsRawKeyDown))) {
+        if (!chatOrGuiOpen && stopDown && !stopGraphsKeyDown) {
             ExecutionManager.getInstance().requestStopAll();
         }
         stopGraphsKeyDown = stopDown;
-        stopGraphsRawKeyDown = stopRawDown;
 
         if (client.player == null) {
             return;
         }
 
         boolean playDown = PathmindKeybinds.PLAY_GRAPHS.isPressed();
-        boolean playRawDown = isKeyDownRaw(client, GLFW.GLFW_KEY_K);
-        if (!chatOrGuiOpen && ((playDown && !playGraphsKeyDown) || (playRawDown && !playGraphsRawKeyDown))) {
+        if (!chatOrGuiOpen && playDown && !playGraphsKeyDown) {
             ExecutionManager.getInstance().playAllGraphs();
         }
         playGraphsKeyDown = playDown;
-        playGraphsRawKeyDown = playRawDown;
-    }
-
-    private boolean isKeyDownRaw(MinecraftClient client, int keyCode) {
-        if (client == null || client.getWindow() == null) {
-            return false;
-        }
-        return InputCompatibilityBridge.isKeyPressed(client, keyCode);
     }
 
     private boolean shouldIgnoreKeybinds(MinecraftClient client) {

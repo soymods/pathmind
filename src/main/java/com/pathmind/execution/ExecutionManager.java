@@ -387,9 +387,29 @@ public class ExecutionManager {
     }
 
     public void playAllGraphs() {
-        if (!playLastStartNodeGraphFromWorkspace()) {
+        if (lastStartNodeNumber == null || lastStartNodeNumber <= 0) {
             LOGGER.debug("No last START chain available to play");
             PreciseCompletionTracker.notifyPlayerMessage("No last START chain available to play.");
+            return;
+        }
+
+        int startNodeNumber = lastStartNodeNumber;
+        if (workspaceNodes == null || workspaceNodes.isEmpty() || workspaceConnections == null) {
+            LOGGER.debug("No workspace graph available to start last START node {}", startNodeNumber);
+            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": no current script is loaded.");
+            return;
+        }
+
+        Node startNode = findWorkspaceStartNode(startNodeNumber);
+        if (startNode == null) {
+            LOGGER.debug("Last START node {} no longer exists in the current workspace", startNodeNumber);
+            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": that START node was removed.");
+            return;
+        }
+
+        if (!requestStartForStartNumber(startNodeNumber)) {
+            LOGGER.debug("Failed to start last START node {} from current workspace", startNodeNumber);
+            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": it is already running or has no executable branch.");
         }
     }
 
@@ -713,6 +733,14 @@ public class ExecutionManager {
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         return true;
+    }
+
+    public void setWorkspaceGraph(List<Node> nodes, List<NodeConnection> connections) {
+        if (nodes == null || connections == null) {
+            return;
+        }
+        this.workspaceNodes = new ArrayList<>(nodes);
+        this.workspaceConnections = new ArrayList<>(connections);
     }
 
     public boolean isChainActive(Node startNode) {

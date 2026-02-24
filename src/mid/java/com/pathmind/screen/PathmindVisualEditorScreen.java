@@ -293,6 +293,7 @@ public class PathmindVisualEditorScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        ExecutionManager.getInstance().setWorkspaceGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
     }
 
     @Override

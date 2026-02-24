@@ -498,6 +498,21 @@ public class NodeGraph {
         if (node == null || node.getType() != NodeType.START) {
             return;
         }
+        if (nextStartNodeNumber <= 0) {
+            nextStartNodeNumber = 1;
+        }
+        java.util.Set<Integer> used = new java.util.HashSet<>();
+        for (Node existing : nodes) {
+            if (existing != null && existing.getType() == NodeType.START) {
+                int number = existing.getStartNodeNumber();
+                if (number > 0) {
+                    used.add(number);
+                }
+            }
+        }
+        while (used.contains(nextStartNodeNumber)) {
+            nextStartNodeNumber++;
+        }
         node.setStartNodeNumber(nextStartNodeNumber);
         nextStartNodeNumber++;
     }
@@ -664,9 +679,14 @@ public class NodeGraph {
             }
         }
 
+        boolean removedStartNode = node.getType() == NodeType.START;
         connections.removeIf(conn ->
             conn.getOutputNode().equals(node) || conn.getInputNode().equals(node));
         nodes.remove(node);
+        if (removedStartNode) {
+            // Reuse freed START numbers on the next START node creation.
+            nextStartNodeNumber = 1;
+        }
 
         if (selectedNodes.remove(node)) {
             node.setSelected(false);

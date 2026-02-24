@@ -104,7 +104,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int MISSING_UI_UTILS_POPUP_HEIGHT = 175;
     private static final String UI_UTILS_DOWNLOAD_URL = "https://ui-utils.com";
     private static final int SETTINGS_POPUP_WIDTH = 360;
-    private static final int SETTINGS_POPUP_HEIGHT = 324;
+    private static final int SETTINGS_POPUP_HEIGHT = 408;
     private static final int SETTINGS_OPTION_WIDTH = 90;
     private static final int SETTINGS_OPTION_HEIGHT = 16;
     private static final int SETTINGS_OPTION_GAP = 6;
@@ -2363,7 +2363,10 @@ public class PathmindVisualEditorScreen extends Screen {
         int adjustedBg = getPopupAnimatedColor(animation, bgColor);
         int adjustedBorder = getPopupAnimatedColor(animation, borderColor);
         int adjustedInnerBorder = getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER);
-        int adjustedText = getPopupAnimatedColor(animation, UITheme.TEXT_PRIMARY);
+        int adjustedText = getPopupAnimatedColor(
+            animation,
+            (style == PopupButtonStyle.ACCENT && hovered) ? getAccentColor() : UITheme.TEXT_PRIMARY
+        );
         UIStyleHelper.drawBeveledPanel(context, x, y, width, height, adjustedBg, adjustedBorder, adjustedInnerBorder);
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -3847,13 +3850,44 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
+        int nodeSettingsLabelY = delayDividerY + 12;
+        drawPopupTextWithEllipsis(context, "Selected Node", contentX, nodeSettingsLabelY, scaledWidth - 40,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
+
+        Node selectedNode = nodeGraph != null ? nodeGraph.getSelectedNode() : null;
+        int nodeSettingsBodyY = nodeSettingsLabelY + 14;
+        if (selectedNode == null) {
+            drawPopupTextWithEllipsis(context, "Select a node to edit node-specific settings.", contentX, nodeSettingsBodyY, scaledWidth - 40,
+                getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
+        } else if (selectedNode.getType() != NodeType.GOTO) {
+            drawPopupTextWithEllipsis(context, selectedNode.getType().getDisplayName() + " has no settings here.", contentX, nodeSettingsBodyY, scaledWidth - 40,
+                getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
+        } else {
+            drawPopupTextWithEllipsis(context, "Editing: " + selectedNode.getType().getDisplayName(), contentX, nodeSettingsBodyY, scaledWidth - 40,
+                getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
+
+            int gotoBreakDividerY = nodeSettingsBodyY + 28;
+            int gotoBreakRowCenterY = (nodeSettingsBodyY + 10 + gotoBreakDividerY) / 2;
+            renderToggleRow(context, mouseX, mouseY, contentX, gotoBreakRowCenterY,
+                "Allow Baritone to break blocks while executing", selectedNode.isGotoAllowBreakWhileExecuting(), popupX, scaledWidth);
+            context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoBreakDividerY,
+                getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+            int gotoPlaceDividerY = gotoBreakDividerY + 22;
+            int gotoPlaceRowCenterY = (gotoBreakDividerY + gotoPlaceDividerY) / 2;
+            renderToggleRow(context, mouseX, mouseY, contentX, gotoPlaceRowCenterY,
+                "Allow Baritone to place blocks while executing", selectedNode.isGotoAllowPlaceWhileExecuting(), popupX, scaledWidth);
+            context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoPlaceDividerY,
+                getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+        }
+
         int buttonWidth = 90;
         int buttonHeight = 20;
         int buttonX = popupX + scaledWidth - buttonWidth - 20;
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered,
-            Text.translatable("pathmind.button.close"), PopupButtonStyle.DEFAULT, settingsPopupAnimation);
+            Text.translatable("pathmind.button.close"), PopupButtonStyle.ACCENT, settingsPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
@@ -4313,6 +4347,34 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeDelayDragging = true;
             updateNodeDelayFromMouse(mouseXi, popupX, SETTINGS_POPUP_WIDTH);
             return true;
+        }
+
+        Node selectedNode = nodeGraph != null ? nodeGraph.getSelectedNode() : null;
+        if (selectedNode != null && selectedNode.getType() == NodeType.GOTO) {
+            int nodeSettingsLabelY = delayDividerY + 12;
+            int nodeSettingsBodyY = nodeSettingsLabelY + 14;
+            int gotoBreakDividerY = nodeSettingsBodyY + 28;
+            int gotoBreakRowCenterY = (nodeSettingsBodyY + 10 + gotoBreakDividerY) / 2;
+            int gotoToggleX = gridToggleX;
+            int gotoBreakToggleY = gotoBreakRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
+            if (isPointInRect(mouseXi, mouseYi, gotoToggleX, gotoBreakToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+                selectedNode.setGotoAllowBreakWhileExecuting(!selectedNode.isGotoAllowBreakWhileExecuting());
+                if (nodeGraph != null) {
+                    nodeGraph.markWorkspaceDirty();
+                }
+                return true;
+            }
+
+            int gotoPlaceDividerY = gotoBreakDividerY + 22;
+            int gotoPlaceRowCenterY = (gotoBreakDividerY + gotoPlaceDividerY) / 2;
+            int gotoPlaceToggleY = gotoPlaceRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
+            if (isPointInRect(mouseXi, mouseYi, gotoToggleX, gotoPlaceToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+                selectedNode.setGotoAllowPlaceWhileExecuting(!selectedNode.isGotoAllowPlaceWhileExecuting());
+                if (nodeGraph != null) {
+                    nodeGraph.markWorkspaceDirty();
+                }
+                return true;
+            }
         }
 
         int buttonWidth = 90;

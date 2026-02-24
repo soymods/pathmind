@@ -59,6 +59,8 @@ public class NodeGraphData {
         private Integer startNodeNumber;
         private List<String> messageLines;
         private String bookText;
+        private Boolean gotoAllowBreakWhileExecuting;
+        private Boolean gotoAllowPlaceWhileExecuting;
 
         public NodeData() {
             this.parameters = new ArrayList<>();
@@ -151,6 +153,22 @@ public class NodeGraphData {
 
         public void setBookText(String bookText) {
             this.bookText = bookText;
+        }
+
+        public Boolean getGotoAllowBreakWhileExecuting() {
+            return gotoAllowBreakWhileExecuting;
+        }
+
+        public void setGotoAllowBreakWhileExecuting(Boolean gotoAllowBreakWhileExecuting) {
+            this.gotoAllowBreakWhileExecuting = gotoAllowBreakWhileExecuting;
+        }
+
+        public Boolean getGotoAllowPlaceWhileExecuting() {
+            return gotoAllowPlaceWhileExecuting;
+        }
+
+        public void setGotoAllowPlaceWhileExecuting(Boolean gotoAllowPlaceWhileExecuting) {
+            this.gotoAllowPlaceWhileExecuting = gotoAllowPlaceWhileExecuting;
         }
     }
     

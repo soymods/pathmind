@@ -258,8 +258,10 @@ public class Node {
     private static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
     private static final Pattern UNSAFE_RESOURCE_ID_PATTERN = Pattern.compile("[^a-z0-9_:/.-]");
     private static final Object GOTO_BREAK_LOCK = new Object();
-    private static final AtomicInteger ACTIVE_GOTO_BLOCKING_REQUESTS = new AtomicInteger(0);
+    private static final AtomicInteger ACTIVE_GOTO_BREAK_BLOCKING_REQUESTS = new AtomicInteger(0);
+    private static final AtomicInteger ACTIVE_GOTO_PLACE_BLOCKING_REQUESTS = new AtomicInteger(0);
     private static Boolean gotoBreakOriginalValue = null;
+    private static Boolean gotoPlaceOriginalValue = null;
     private static final ScheduledExecutorService MESSAGE_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "Pathmind-Message-Scheduler");
         t.setDaemon(true);
@@ -296,6 +298,8 @@ public class Node {
     private int amountFieldWidthOverride;
     private int stopTargetFieldWidthOverride;
     private int variableFieldWidthOverride;
+    private boolean gotoAllowBreakWhileExecuting;
+    private boolean gotoAllowPlaceWhileExecuting;
     private transient Random randomGenerator;
     private transient String randomSeedCache;
 
@@ -328,6 +332,8 @@ public class Node {
         this.amountFieldWidthOverride = 0;
         this.stopTargetFieldWidthOverride = 0;
         this.variableFieldWidthOverride = 0;
+        this.gotoAllowBreakWhileExecuting = false;
+        this.gotoAllowPlaceWhileExecuting = false;
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -793,6 +799,28 @@ public class Node {
 
     public void setStartNodeNumber(int startNodeNumber) {
         this.startNodeNumber = startNodeNumber;
+    }
+
+    public boolean isGotoAllowBreakWhileExecuting() {
+        return type == NodeType.GOTO && gotoAllowBreakWhileExecuting;
+    }
+
+    public void setGotoAllowBreakWhileExecuting(boolean gotoAllowBreakWhileExecuting) {
+        if (type != NodeType.GOTO) {
+            return;
+        }
+        this.gotoAllowBreakWhileExecuting = gotoAllowBreakWhileExecuting;
+    }
+
+    public boolean isGotoAllowPlaceWhileExecuting() {
+        return type == NodeType.GOTO && gotoAllowPlaceWhileExecuting;
+    }
+
+    public void setGotoAllowPlaceWhileExecuting(boolean gotoAllowPlaceWhileExecuting) {
+        if (type != NodeType.GOTO) {
+            return;
+        }
+        this.gotoAllowPlaceWhileExecuting = gotoAllowPlaceWhileExecuting;
     }
 
     public boolean hasAttachedActionNode() {
@@ -6835,42 +6863,76 @@ public class Node {
     }
 
     private void startGotoTaskWithBreakGuard(CompletableFuture<Void> future) {
-        disableBaritoneBlockBreakingDuringGoto(future);
+        applyBaritoneMovementGuardsDuringGoto(future);
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
     }
 
-    private void disableBaritoneBlockBreakingDuringGoto(CompletableFuture<Void> future) {
+    private void applyBaritoneMovementGuardsDuringGoto(CompletableFuture<Void> future) {
         if (future == null) {
             return;
         }
+        boolean disallowBreak = !isGotoAllowBreakWhileExecuting();
+        boolean disallowPlace = !isGotoAllowPlaceWhileExecuting();
+        if (!disallowBreak && !disallowPlace) {
+            return;
+        }
         Object settings = BaritoneApiProxy.getSettings();
         if (settings == null) {
             return;
         }
 
+        boolean appliedBreakGuard = false;
+        boolean appliedPlaceGuard = false;
         synchronized (GOTO_BREAK_LOCK) {
-            if (ACTIVE_GOTO_BLOCKING_REQUESTS.getAndIncrement() == 0) {
+            if (disallowBreak && ACTIVE_GOTO_BREAK_BLOCKING_REQUESTS.getAndIncrement() == 0) {
                 gotoBreakOriginalValue = BaritoneApiProxy.getAllowBreak(settings);
                 BaritoneApiProxy.setAllowBreak(settings, false);
+                appliedBreakGuard = true;
+            } else if (disallowBreak) {
+                appliedBreakGuard = true;
+            }
+            if (disallowPlace && ACTIVE_GOTO_PLACE_BLOCKING_REQUESTS.getAndIncrement() == 0) {
+                gotoPlaceOriginalValue = BaritoneApiProxy.getAllowPlace(settings);
+                BaritoneApiProxy.setAllowPlace(settings, false);
+                appliedPlaceGuard = true;
+            } else if (disallowPlace) {
+                appliedPlaceGuard = true;
             }
         }
 
-        future.whenComplete((result, throwable) -> restoreBaritoneBlockBreakingAfterGoto());
+        final boolean restoreBreakGuard = appliedBreakGuard;
+        final boolean restorePlaceGuard = appliedPlaceGuard;
+        future.whenComplete((result, throwable) -> restoreBaritoneMovementGuardsAfterGoto(restoreBreakGuard, restorePlaceGuard));
     }
 
-    private static void restoreBaritoneBlockBreakingAfterGoto() {
-        Object settings = BaritoneApiProxy.getSettings();
-        if (settings == null) {
+    private static void restoreBaritoneMovementGuardsAfterGoto(boolean restoreBreak, boolean restorePlace) {
+        if (!restoreBreak && !restorePlace) {
             return;
         }
 
         synchronized (GOTO_BREAK_LOCK) {
-            int remaining = ACTIVE_GOTO_BLOCKING_REQUESTS.decrementAndGet();
-            if (remaining <= 0) {
-                ACTIVE_GOTO_BLOCKING_REQUESTS.set(0);
-                Boolean originalValue = gotoBreakOriginalValue;
-                gotoBreakOriginalValue = null;
-                BaritoneApiProxy.setAllowBreak(settings, originalValue != null ? originalValue : Boolean.TRUE);
+            Object settings = BaritoneApiProxy.getSettings();
+            if (restoreBreak) {
+                int remainingBreak = ACTIVE_GOTO_BREAK_BLOCKING_REQUESTS.decrementAndGet();
+                if (remainingBreak <= 0) {
+                    ACTIVE_GOTO_BREAK_BLOCKING_REQUESTS.set(0);
+                    Boolean originalBreak = gotoBreakOriginalValue;
+                    gotoBreakOriginalValue = null;
+                    if (settings != null) {
+                        BaritoneApiProxy.setAllowBreak(settings, originalBreak != null ? originalBreak : Boolean.TRUE);
+                    }
+                }
+            }
+            if (restorePlace) {
+                int remainingPlace = ACTIVE_GOTO_PLACE_BLOCKING_REQUESTS.decrementAndGet();
+                if (remainingPlace <= 0) {
+                    ACTIVE_GOTO_PLACE_BLOCKING_REQUESTS.set(0);
+                    Boolean originalPlace = gotoPlaceOriginalValue;
+                    gotoPlaceOriginalValue = null;
+                    if (settings != null) {
+                        BaritoneApiProxy.setAllowPlace(settings, originalPlace != null ? originalPlace : Boolean.TRUE);
+                    }
+                }
             }
         }
     }

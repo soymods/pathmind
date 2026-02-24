@@ -164,6 +164,10 @@ public class NodeGraphPersistence {
             if (node.hasBookTextInput() && nodeData.getBookText() != null) {
                 node.setBookText(nodeData.getBookText());
             }
+            if (node.getType() == NodeType.GOTO) {
+                node.setGotoAllowBreakWhileExecuting(Boolean.TRUE.equals(nodeData.getGotoAllowBreakWhileExecuting()));
+                node.setGotoAllowPlaceWhileExecuting(Boolean.TRUE.equals(nodeData.getGotoAllowPlaceWhileExecuting()));
+            }
             if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -423,6 +427,13 @@ public class NodeGraphPersistence {
                 nodeData.setBookText(node.getBookText());
             } else {
                 nodeData.setBookText(null);
+            }
+            if (node.getType() == NodeType.GOTO) {
+                nodeData.setGotoAllowBreakWhileExecuting(node.isGotoAllowBreakWhileExecuting());
+                nodeData.setGotoAllowPlaceWhileExecuting(node.isGotoAllowPlaceWhileExecuting());
+            } else {
+                nodeData.setGotoAllowBreakWhileExecuting(null);
+                nodeData.setGotoAllowPlaceWhileExecuting(null);
             }
 
             data.getNodes().add(nodeData);

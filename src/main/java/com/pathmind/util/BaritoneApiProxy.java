@@ -16,6 +16,7 @@ public final class BaritoneApiProxy {
     private static final String BLOCK_OPTIONAL_META_CLASS = "baritone.api.utils.BlockOptionalMeta";
 
     private static final String SETTINGS_FIELD_ALLOW_BREAK = "allowBreak";
+    private static final String SETTINGS_FIELD_ALLOW_PLACE = "allowPlace";
     private static final String SETTINGS_VALUE_FIELD = "value";
 
     private BaritoneApiProxy() {
@@ -52,6 +53,17 @@ public final class BaritoneApiProxy {
     public static void setAllowBreak(Object settings, boolean value) {
         Object allowBreak = getFieldValue(settings, SETTINGS_FIELD_ALLOW_BREAK);
         setFieldValue(allowBreak, SETTINGS_VALUE_FIELD, value);
+    }
+
+    public static Boolean getAllowPlace(Object settings) {
+        Object allowPlace = getFieldValue(settings, SETTINGS_FIELD_ALLOW_PLACE);
+        Object value = getFieldValue(allowPlace, SETTINGS_VALUE_FIELD);
+        return value instanceof Boolean bool ? bool : null;
+    }
+
+    public static void setAllowPlace(Object settings, boolean value) {
+        Object allowPlace = getFieldValue(settings, SETTINGS_FIELD_ALLOW_PLACE);
+        setFieldValue(allowPlace, SETTINGS_VALUE_FIELD, value);
     }
 
     public static Object getCustomGoalProcess(Object baritone) {

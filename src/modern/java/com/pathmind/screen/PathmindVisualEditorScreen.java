@@ -1,6 +1,7 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindMod;
+import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
@@ -53,6 +54,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -66,6 +68,21 @@ import java.util.Set;
  */
 public class PathmindVisualEditorScreen extends Screen {
     private static final int TITLE_BAR_HEIGHT = 20;
+    private static final int TAB_BAR_LEFT_PADDING = 188;
+    private static final int TAB_BAR_RIGHT_PADDING = 230;
+    private static final int TAB_BAR_TOP = 4;
+    private static final int TAB_HEIGHT = 16;
+    private static final int TAB_GAP = 4;
+    private static final int TAB_MIN_WIDTH = 72;
+    private static final int TAB_MAX_WIDTH = 140;
+    private static final int PRESET_TAB_TEXT_PADDING = 6;
+    private static final int PRESET_TAB_CLOSE_ICON_SIZE = 6;
+    private static final int PRESET_TAB_CLOSE_HITBOX_PADDING = 2;
+    private static final int PRESET_TAB_CLOSE_GAP = 4;
+    private static final int PRESET_TAB_ADD_WIDTH = 20;
+    private static final int PRESET_TAB_HARD_MIN_WIDTH = 24;
+    private static final int PRESET_TAB_TITLE_GAP = 8;
+    private static final int PRESET_TAB_DRAG_THRESHOLD = 4;
     private static final boolean IS_MAC_OS = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT)
             .contains("mac");
@@ -98,6 +115,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int INFO_POPUP_HEIGHT = 180;
     private static final int PRESET_DELETE_POPUP_WIDTH = 320;
     private static final int PRESET_DELETE_POPUP_HEIGHT = 160;
+    private static final int PRESET_DELETE_SKIP_CHECKBOX_SIZE = 10;
     private static final int MISSING_BARITONE_POPUP_WIDTH = 360;
     private static final int MISSING_BARITONE_POPUP_HEIGHT = 175;
     private static final int MISSING_UI_UTILS_POPUP_WIDTH = 360;
@@ -120,7 +138,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final String INFO_POPUP_AUTHOR = "soyboy";
     private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
-    private static final Text TITLE_TEXT = Text.translatable("pathmind.title");
+    private static final Text TITLE_TEXT = Text.literal("Pathmind");
     private static final Text INFO_POPUP_TITLE_TEXT = Text.literal("Pathmind");
 
     private NodeGraph nodeGraph;
@@ -153,6 +171,20 @@ public class PathmindVisualEditorScreen extends Screen {
     private int presetDropdownScrollOffset = 0;
     private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
     private List<String> availablePresets = new ArrayList<>();
+    private final List<String> presetTabOrder = new ArrayList<>();
+    private final Map<String, AnimatedValue> presetTabXAnimations = new HashMap<>();
+    private final Map<String, AnimatedValue> presetTabAppearAnimations = new HashMap<>();
+    private final AnimatedValue presetTabAddButtonFadeAnimation = new AnimatedValue(1f, AnimationHelper::easeOutCubic);
+    private boolean presetTabsInitialized = false;
+    private String pendingPresetTabInteractionName = null;
+    private int pendingPresetTabPressMouseX = 0;
+    private int pendingPresetTabPressMouseY = 0;
+    private int pendingPresetTabPressTabLeft = 0;
+    private String draggingPresetTabName = null;
+    private int draggingPresetTabPointerOffsetX = 0;
+    private int draggingPresetTabCurrentX = 0;
+    private String animatingPresetDeletionName = null;
+    private long animatingPresetDeletionExecuteAtMs = 0L;
     private String activePresetName = "";
     private final PopupAnimationHandler createPresetPopupAnimation = new PopupAnimationHandler();
     private TextFieldWidget createPresetField;
@@ -179,6 +211,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
     private boolean showChatErrors = true;
+    private boolean skipPresetDeleteConfirm = false;
     private int nodeDelayMs = 150;
     private boolean nodeDelayDragging = false;
     private TextFieldWidget nodeDelayField;
@@ -189,6 +222,22 @@ public class PathmindVisualEditorScreen extends Screen {
     private int overlayCutoutWidth = 0;
     private int overlayCutoutHeight = 0;
     private Boolean uiUtilsOverlayPrevEnabled = null;
+    private final List<WorkspaceTab> workspaceTabs = new ArrayList<>();
+    private int activeWorkspaceTabIndex = 0;
+
+    private static final class WorkspaceTab {
+        private String label;
+        private NodeGraphData graphData;
+        private final Integer parentTabIndex;
+        private final String hostTemplateNodeId;
+
+        private WorkspaceTab(String label, NodeGraphData graphData, Integer parentTabIndex, String hostTemplateNodeId) {
+            this.label = label;
+            this.graphData = graphData;
+            this.parentTabIndex = parentTabIndex;
+            this.hostTemplateNodeId = hostTemplateNodeId;
+        }
+    }
 
     private enum AccentOption {
         SKY("Sky", UITheme.ACCENT_SKY),
@@ -222,6 +271,7 @@ public class PathmindVisualEditorScreen extends Screen {
         this.showGrid = currentSettings.showGrid == null || currentSettings.showGrid;
         this.showWorkspaceTooltips = currentSettings.showTooltips == null || currentSettings.showTooltips;
         this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
+        this.skipPresetDeleteConfirm = currentSettings.skipPresetDeleteConfirm != null && currentSettings.skipPresetDeleteConfirm;
         this.nodeDelayMs = currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150;
     }
 
@@ -301,6 +351,7 @@ public class PathmindVisualEditorScreen extends Screen {
             System.out.println("Found saved node graph, loading...");
             if (nodeGraph.load()) {
                 System.out.println("Successfully loaded saved node graph");
+                resetWorkspaceTabsFromCurrentGraph();
                 refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
                 return; // Don't initialize default nodes if we loaded a saved graph
@@ -311,6 +362,7 @@ public class PathmindVisualEditorScreen extends Screen {
         
         // Initialize node graph with proper centering based on screen dimensions
         nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+        resetWorkspaceTabsFromCurrentGraph();
         refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
     }
@@ -373,6 +425,7 @@ public class PathmindVisualEditorScreen extends Screen {
             UITheme.PANEL_INNER_BORDER
         );
         drawTitle(context, titleUnderlineAnimation.getValue());
+        renderWorkspaceTabs(context, mouseX, mouseY);
 
         // Tick all popup animations early so the scrim uses current values
         clearPopupAnimation.tick();
@@ -392,7 +445,6 @@ public class PathmindVisualEditorScreen extends Screen {
             renderStopButton(context, mouseX, mouseY, controlsDisabled);
             renderPlayButton(context, mouseX, mouseY, controlsDisabled);
         }
-        renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
 
         if (controlsDisabled) {
@@ -863,26 +915,14 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 0) {
-            if (isPointInRect((int)mouseX, (int)mouseY, getPresetDropdownX(), getPresetDropdownY(), PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT)) {
-                presetDropdownOpen = !presetDropdownOpen;
-                if (presetDropdownOpen) {
-                    presetDropdownScrollOffset = 0;
-                }
-                return true;
-            }
-
             if (isTitleClicked((int) mouseX, (int) mouseY)) {
                 openInfoPopup();
                 return true;
             }
-
-            if (presetDropdownOpen && handlePresetDropdownSelection(mouseX, mouseY)) {
-                return true;
-            }
         }
 
-        if (presetDropdownOpen && !isPointInRect((int)mouseX, (int)mouseY, getPresetDropdownX(), getPresetDropdownY(), PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT + getPresetDropdownOptionsHeight())) {
-            presetDropdownOpen = false;
+        if (button == 0 && handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
+            return true;
         }
 
         if (nodeGraph.isNodeContextMenuOpen()) {
@@ -1054,6 +1094,13 @@ public class PathmindVisualEditorScreen extends Screen {
         if (clickedNode != null) {
             // Node body clicked (not socket)
             if (button == 0) { // Left click - select node or start dragging
+                if (clickedNode.getType() == NodeType.TEMPLATE
+                    && nodeGraph.isPointInsideTemplateEditButton(clickedNode, (int) mouseX, (int) mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    openTemplateWorkspaceTab(clickedNode);
+                    return true;
+                }
+
                 if (nodeGraph.handleBooleanToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     return true;
                 }
@@ -1249,6 +1296,17 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (button == 0 && pendingPresetTabInteractionName != null) {
+            updatePendingPresetTabInteraction((int) mouseX, (int) mouseY);
+            if (draggingPresetTabName != null) {
+                return true;
+            }
+        }
+        if (draggingPresetTabName != null) {
+            updatePresetTabDrag((int) mouseX);
+            return true;
+        }
+
         if (button == 1 && rightClickStartX != -1 && !nodeGraph.isPanning()) {
             int dragDeltaX = Math.abs((int) mouseX - rightClickStartX);
             int dragDeltaY = Math.abs((int) mouseY - rightClickStartY);
@@ -1333,6 +1391,20 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (button == 0 && nodeGraph.isSelectionBoxActive()) {
             nodeGraph.completeSelectionBox();
+            return true;
+        }
+
+        if (draggingPresetTabName != null) {
+            endPresetTabDrag();
+            return true;
+        }
+
+        if (button == 0 && pendingPresetTabInteractionName != null) {
+            String presetName = pendingPresetTabInteractionName;
+            clearPendingPresetTabInteraction();
+            if (!presetName.equals(activePresetName)) {
+                switchPreset(presetName);
+            }
             return true;
         }
 
@@ -1785,6 +1857,555 @@ public class PathmindVisualEditorScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
     
+    private void resetWorkspaceTabsFromCurrentGraph() {
+        workspaceTabs.clear();
+        workspaceTabs.add(new WorkspaceTab("Main", nodeGraph.exportGraphDataSnapshot(), null, null));
+        activeWorkspaceTabIndex = 0;
+    }
+
+    private void renderWorkspaceTabs(DrawContext context, int mouseX, int mouseY) {
+        tickQueuedPresetDeletionAnimation();
+        if (!isPopupObscuringWorkspace() && pendingPresetTabInteractionName != null && draggingPresetTabName == null) {
+            updatePendingPresetTabInteraction(mouseX, mouseY);
+        }
+        if (!isPopupObscuringWorkspace() && draggingPresetTabName != null) {
+            updatePresetTabDrag(mouseX);
+        }
+        List<String> tabs = getRenderedPresetTabs();
+        if (tabs.isEmpty()) {
+            return;
+        }
+
+        int x = getPresetTabStartX();
+        int y = TAB_BAR_TOP;
+        int rightLimit = getPresetTabRightLimit();
+        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
+        int[] tabXs = computePresetTabXs(tabWidths, x);
+        int dragIndex = draggingPresetTabName == null ? -1 : tabs.indexOf(draggingPresetTabName);
+
+        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
+            if (i == dragIndex) {
+                continue;
+            }
+            String label = tabs.get(i);
+            int tabWidth = tabWidths[i];
+            if (tabWidth <= 0) {
+                continue;
+            }
+            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
+            drawPresetTab(context, mouseX, mouseY, label, drawX, y, tabWidth, false);
+        }
+
+        if (dragIndex >= 0 && dragIndex < tabs.size() && dragIndex < tabWidths.length) {
+            String label = tabs.get(dragIndex);
+            int tabWidth = tabWidths[dragIndex];
+            if (tabWidth > 0) {
+                int drawX = draggingPresetTabCurrentX == 0 ? tabXs[dragIndex] : draggingPresetTabCurrentX;
+                drawPresetTab(context, mouseX, mouseY, label, drawX, y, tabWidth, true);
+            }
+        }
+
+        x = getPresetTabStartX();
+        for (int width : tabWidths) {
+            if (width > 0) {
+                x += width + TAB_GAP;
+            }
+        }
+        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
+        presetTabAddButtonFadeAnimation.animateTo(draggingPresetTabName != null ? 0f : 1f, 120, AnimationHelper::easeOutCubic);
+        presetTabAddButtonFadeAnimation.tick();
+        float plusAlpha = MathHelper.clamp(presetTabAddButtonFadeAnimation.getValue(), 0f, 1f);
+        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit) {
+            boolean hovered = isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT);
+            context.drawCenteredTextWithShadow(
+                this.textRenderer,
+                Text.literal("+"),
+                addTabX + PRESET_TAB_ADD_WIDTH / 2,
+                y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1,
+                applyAlpha(hovered ? 0xFFD0D0D0 : 0xFFB8B8B8, plusAlpha)
+            );
+        }
+    }
+
+    private boolean handleWorkspaceTabClick(int mouseX, int mouseY) {
+        List<String> tabs = getRenderedPresetTabs();
+        if (tabs.isEmpty()) {
+            return false;
+        }
+        int x = getPresetTabStartX();
+        int y = TAB_BAR_TOP;
+        int rightLimit = getPresetTabRightLimit();
+        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
+        int[] tabXs = computePresetTabXs(tabWidths, x);
+        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
+            String label = tabs.get(i);
+            int tabWidth = tabWidths[i];
+            if (tabWidth <= 0) {
+                continue;
+            }
+            if (label.equals(animatingPresetDeletionName)) {
+                continue;
+            }
+            x = tabXs[i];
+            if (isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT)) {
+                if (!isPresetDeleteDisabled(label)) {
+                    int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
+                    int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
+                    int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
+                    if (isPointInRect(
+                        mouseX,
+                        mouseY,
+                        closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                        closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                        closeHitboxSize,
+                        closeHitboxSize
+                    )) {
+                        openPresetDeletePopup(label);
+                        return true;
+                    }
+                }
+                if (!label.equals(activePresetName)) {
+                    pendingPresetTabInteractionName = label;
+                    pendingPresetTabPressMouseX = mouseX;
+                    pendingPresetTabPressMouseY = mouseY;
+                    pendingPresetTabPressTabLeft = x;
+                } else if (!isPresetDeleteDisabled(label)) {
+                    pendingPresetTabInteractionName = label;
+                    pendingPresetTabPressMouseX = mouseX;
+                    pendingPresetTabPressMouseY = mouseY;
+                    pendingPresetTabPressTabLeft = x;
+                }
+                return true;
+            }
+        }
+        x = getPresetTabStartX();
+        for (int width : tabWidths) {
+            if (width > 0) {
+                x += width + TAB_GAP;
+            }
+        }
+        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
+        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit && isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT)) {
+            openCreatePresetPopup();
+            return true;
+        }
+        return false;
+    }
+
+    private int getPresetTabRightLimit() {
+        int titleWidth = this.textRenderer.getWidth(TITLE_TEXT);
+        int titleLeft = this.width - 8 - titleWidth;
+        return Math.max(getPresetTabStartX(), titleLeft - PRESET_TAB_TITLE_GAP);
+    }
+
+    private void clearPendingPresetTabInteraction() {
+        pendingPresetTabInteractionName = null;
+        pendingPresetTabPressMouseX = 0;
+        pendingPresetTabPressMouseY = 0;
+        pendingPresetTabPressTabLeft = 0;
+    }
+
+    private void updatePendingPresetTabInteraction(int mouseX, int mouseY) {
+        if (pendingPresetTabInteractionName == null || draggingPresetTabName != null) {
+            return;
+        }
+        int dx = Math.abs(mouseX - pendingPresetTabPressMouseX);
+        int dy = Math.abs(mouseY - pendingPresetTabPressMouseY);
+        if (dx < PRESET_TAB_DRAG_THRESHOLD && dy < PRESET_TAB_DRAG_THRESHOLD) {
+            return;
+        }
+        String presetName = pendingPresetTabInteractionName;
+        int tabLeft = pendingPresetTabPressTabLeft;
+        clearPendingPresetTabInteraction();
+        if (isPresetDeleteDisabled(presetName)) {
+            return;
+        }
+        beginPresetTabDrag(presetName, mouseX, tabLeft);
+    }
+
+    private void beginPresetTabDrag(String presetName, int mouseX, int tabLeft) {
+        draggingPresetTabName = presetName;
+        draggingPresetTabPointerOffsetX = mouseX - tabLeft;
+        draggingPresetTabCurrentX = tabLeft;
+    }
+
+    private void updatePresetTabDrag(int mouseX) {
+        if (draggingPresetTabName == null) {
+            return;
+        }
+        List<String> tabs = getRenderedPresetTabs();
+        int currentIndex = tabs.indexOf(draggingPresetTabName);
+        if (currentIndex < 0) {
+            endPresetTabDrag();
+            return;
+        }
+        int startX = getPresetTabStartX();
+        int rightLimit = getPresetTabRightLimit();
+        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
+        int[] xs = computePresetTabXs(widths, startX);
+        if (currentIndex >= widths.length) {
+            return;
+        }
+        int draggedWidth = widths[currentIndex];
+        draggingPresetTabCurrentX = mouseX - draggingPresetTabPointerOffsetX;
+        int dragCenter = draggingPresetTabCurrentX + draggedWidth / 2;
+        int targetIndex = 0;
+        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
+            if (i == currentIndex) {
+                continue;
+            }
+            int center = xs[i] + widths[i] / 2;
+            if (dragCenter > center) {
+                targetIndex++;
+            }
+        }
+        int lockedIndex = -1;
+        String lockedName = null;
+        for (int i = 0; i < presetTabOrder.size(); i++) {
+            if (isPresetDeleteDisabled(presetTabOrder.get(i))) {
+                lockedIndex = i;
+                lockedName = presetTabOrder.get(i);
+                break;
+            }
+        }
+        int orderIndex = presetTabOrder.indexOf(draggingPresetTabName);
+        if (orderIndex < 0) {
+            return;
+        }
+        int clampedTarget = MathHelper.clamp(targetIndex, 0, presetTabOrder.size() - 1);
+        if (clampedTarget != orderIndex) {
+            presetTabOrder.remove(orderIndex);
+            presetTabOrder.add(clampedTarget, draggingPresetTabName);
+            if (lockedIndex >= 0 && lockedName != null) {
+                int currentLocked = presetTabOrder.indexOf(lockedName);
+                if (currentLocked >= 0 && currentLocked != lockedIndex) {
+                    presetTabOrder.remove(currentLocked);
+                    presetTabOrder.add(MathHelper.clamp(lockedIndex, 0, presetTabOrder.size()), lockedName);
+                }
+            }
+        }
+    }
+
+    private void endPresetTabDrag() {
+        if (draggingPresetTabName != null && draggingPresetTabCurrentX > 0) {
+            presetTabXAnimations
+                .computeIfAbsent(draggingPresetTabName, key -> new AnimatedValue(draggingPresetTabCurrentX))
+                .setValue(draggingPresetTabCurrentX);
+        }
+        draggingPresetTabName = null;
+        draggingPresetTabPointerOffsetX = 0;
+        draggingPresetTabCurrentX = 0;
+        clearPendingPresetTabInteraction();
+    }
+
+    private int[] computePresetTabXs(int[] widths, int startX) {
+        int[] xs = new int[widths.length];
+        int x = startX;
+        for (int i = 0; i < widths.length; i++) {
+            xs[i] = x;
+            if (widths[i] > 0) {
+                x += widths[i] + TAB_GAP;
+            }
+        }
+        return xs;
+    }
+
+    private void drawPresetTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
+        boolean active = label.equals(activePresetName);
+        boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
+        int fill = active ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_SECTION;
+        int border = active ? getAccentColor() : UITheme.BORDER_DEFAULT;
+        if (!active && hovered) {
+            fill = UITheme.BUTTON_DEFAULT_HOVER;
+            border = UITheme.BORDER_HIGHLIGHT;
+        }
+        if (dragging && !active) {
+            fill = 0xFF3C3C3C;
+        }
+
+        float appear = dragging ? 1f : getPresetTabAppearProgress(label);
+        int fillColor = applyAlpha(fill, appear);
+        int borderColor = applyAlpha(border, appear);
+        int textColor = applyAlpha(active ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY, appear);
+        if (hovered && !active) {
+            textColor = applyAlpha(UITheme.TEXT_PRIMARY, appear);
+        }
+
+        context.fill(x, y, x + tabWidth, y + TAB_HEIGHT, fillColor);
+        DrawContextBridge.drawBorderInLayer(context, x, y, tabWidth, TAB_HEIGHT, borderColor);
+        boolean deletable = !isPresetDeleteDisabled(label);
+        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
+        int textMaxWidth = Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
+        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
+        context.drawText(this.textRenderer, Text.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1, textColor, false);
+
+        if (deletable) {
+            int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
+            int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
+            int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
+            boolean closeHovered = isPointInRect(
+                mouseX, mouseY,
+                closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                closeHitboxSize, closeHitboxSize
+            );
+            int closeColor = closeHovered ? UITheme.STATE_ERROR : 0xFF9A9A9A;
+            drawCloseXIcon(context, closeLeft, closeTop, PRESET_TAB_CLOSE_ICON_SIZE, applyAlpha(closeColor, appear));
+        }
+    }
+
+    private List<String> getRenderedPresetTabs() {
+        List<String> tabs = new ArrayList<>();
+        for (String name : presetTabOrder) {
+            if (availablePresets.contains(name)) {
+                tabs.add(name);
+            }
+        }
+        for (String name : availablePresets) {
+            if (!tabs.contains(name)) {
+                tabs.add(name);
+            }
+        }
+        return tabs;
+    }
+
+    private void tickQueuedPresetDeletionAnimation() {
+        if (animatingPresetDeletionName == null) {
+            return;
+        }
+        if (System.currentTimeMillis() < animatingPresetDeletionExecuteAtMs) {
+            return;
+        }
+        String presetName = animatingPresetDeletionName;
+        animatingPresetDeletionName = null;
+        animatingPresetDeletionExecuteAtMs = 0L;
+        attemptDeletePresetImmediate(presetName);
+    }
+
+    private int getAnimatedPresetTabX(String presetName, int targetX) {
+        AnimatedValue animation = presetTabXAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(targetX));
+        if (!animation.isAnimating() && Math.abs(animation.getValue() - targetX) < 0.5f) {
+            animation.setValue(targetX);
+            return targetX;
+        }
+        animation.animateTo(targetX, 120, AnimationHelper::easeOutCubic);
+        animation.tick();
+        return Math.round(animation.getValue());
+    }
+
+    private float getPresetTabAppearProgress(String presetName) {
+        AnimatedValue animation = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
+        animation.tick();
+        return MathHelper.clamp(animation.getValue(), 0f, 1f);
+    }
+
+    private int applyAlpha(int color, float alpha) {
+        int targetAlpha = (color >>> 24) & 0xFF;
+        int appliedAlpha = MathHelper.clamp(Math.round(targetAlpha * MathHelper.clamp(alpha, 0f, 1f)), 0, 255);
+        return (color & 0x00FFFFFF) | (appliedAlpha << 24);
+    }
+
+    private int getPresetTabStartX() {
+        return 6;
+    }
+
+    private int[] computePresetTabWidths(int availableWidth, int createTabWidth) {
+        return computePresetTabWidths(availablePresets, availableWidth, createTabWidth);
+    }
+
+    private int[] computePresetTabWidths(List<String> tabNames, int availableWidth, int createTabWidth) {
+        int presetCount = tabNames != null ? tabNames.size() : 0;
+        if (presetCount <= 0) {
+            return new int[0];
+        }
+
+        int available = Math.max(0, availableWidth);
+        int gapCount = presetCount; // presets + create tab => presetCount gaps
+        int gapSpace = TAB_GAP * gapCount;
+        int createWidth = createTabWidth;
+        int widthForPresets = Math.max(0, available - gapSpace - createWidth);
+        if (widthForPresets <= 0) {
+            return new int[presetCount];
+        }
+
+        int[] preferred = new int[presetCount];
+        int preferredTotal = 0;
+        for (int i = 0; i < presetCount; i++) {
+            String label = tabNames.get(i);
+            boolean deletable = !isPresetDeleteDisabled(label);
+            int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
+            int width = this.textRenderer.getWidth(label) + PRESET_TAB_TEXT_PADDING * 2 + closeSpace;
+            width = MathHelper.clamp(width, TAB_MIN_WIDTH, TAB_MAX_WIDTH);
+            preferred[i] = width;
+            preferredTotal += width;
+        }
+
+        if (preferredTotal <= widthForPresets) {
+            return preferred;
+        }
+
+        int minWidth = Math.min(TAB_MIN_WIDTH, Math.max(PRESET_TAB_HARD_MIN_WIDTH, widthForPresets / presetCount));
+        int minTotal = minWidth * presetCount;
+        int[] result = new int[presetCount];
+        if (widthForPresets <= minTotal) {
+            int base = Math.max(PRESET_TAB_HARD_MIN_WIDTH, widthForPresets / presetCount);
+            int remainder = Math.max(0, widthForPresets - base * presetCount);
+            for (int i = 0; i < presetCount; i++) {
+                result[i] = base + (i < remainder ? 1 : 0);
+            }
+            return result;
+        }
+
+        int reducibleTotal = 0;
+        for (int width : preferred) {
+            reducibleTotal += Math.max(0, width - minWidth);
+        }
+        int reductionNeeded = preferredTotal - widthForPresets;
+        int assigned = 0;
+        for (int i = 0; i < presetCount; i++) {
+            int reducible = Math.max(0, preferred[i] - minWidth);
+            int reduction = reducibleTotal > 0 ? (reductionNeeded * reducible) / reducibleTotal : 0;
+            result[i] = preferred[i] - reduction;
+            if (result[i] < minWidth) {
+                result[i] = minWidth;
+            }
+            assigned += result[i];
+        }
+
+        int diff = widthForPresets - assigned;
+        for (int i = 0; diff != 0 && i < presetCount; i++) {
+            if (diff > 0) {
+                result[i]++;
+                diff--;
+            } else if (result[i] > minWidth) {
+                result[i]--;
+                diff++;
+            }
+        }
+        return result;
+    }
+
+    private void openTemplateWorkspaceTab(Node templateNode) {
+        if (templateNode == null || templateNode.getType() != NodeType.TEMPLATE) {
+            return;
+        }
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+
+        int currentTab = activeWorkspaceTabIndex;
+        String nodeId = templateNode.getId();
+        for (int i = 0; i < workspaceTabs.size(); i++) {
+            WorkspaceTab existing = workspaceTabs.get(i);
+            if (existing.parentTabIndex != null && existing.parentTabIndex == currentTab
+                && nodeId.equals(existing.hostTemplateNodeId)) {
+                switchToWorkspaceTab(i);
+                return;
+            }
+        }
+
+        NodeGraphData source = templateNode.getTemplateGraphData();
+        if (source == null || source.getNodes() == null || source.getNodes().isEmpty()) {
+            source = createDefaultTemplateGraphData();
+            templateNode.setTemplateGraphData(source);
+            nodeGraph.markWorkspaceDirty();
+        }
+        String label = templateNode.getTemplateName();
+        WorkspaceTab newTab = new WorkspaceTab(label, source, currentTab, nodeId);
+        workspaceTabs.add(newTab);
+        switchToWorkspaceTab(workspaceTabs.size() - 1);
+    }
+
+    private void switchToWorkspaceTab(int targetIndex) {
+        if (targetIndex < 0 || targetIndex >= workspaceTabs.size() || targetIndex == activeWorkspaceTabIndex) {
+            return;
+        }
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+
+        WorkspaceTab target = workspaceTabs.get(targetIndex);
+        if (target == null) {
+            return;
+        }
+        NodeGraphData data = target.graphData != null ? target.graphData : createDefaultTemplateGraphData();
+        nodeGraph.applyGraphDataSnapshot(data, false);
+        activeWorkspaceTabIndex = targetIndex;
+    }
+
+    private void persistActiveWorkspaceToTabs() {
+        if (workspaceTabs.isEmpty() || activeWorkspaceTabIndex < 0 || activeWorkspaceTabIndex >= workspaceTabs.size()) {
+            return;
+        }
+        WorkspaceTab tab = workspaceTabs.get(activeWorkspaceTabIndex);
+        tab.graphData = nodeGraph.exportGraphDataSnapshot();
+        if (tab.parentTabIndex != null && tab.parentTabIndex >= 0 && tab.parentTabIndex < workspaceTabs.size()) {
+            WorkspaceTab parent = workspaceTabs.get(tab.parentTabIndex);
+            if (parent != null && parent.graphData != null && parent.graphData.getNodes() != null) {
+                for (NodeGraphData.NodeData nodeData : parent.graphData.getNodes()) {
+                    if (nodeData != null && tab.hostTemplateNodeId != null && tab.hostTemplateNodeId.equals(nodeData.getId())) {
+                        nodeData.setTemplateGraph(tab.graphData);
+                        nodeData.setTemplateName(tab.label);
+                        break;
+                    }
+                }
+            }
+        } else {
+            tab.label = "Main";
+        }
+    }
+
+    private void syncAllTemplateTabsIntoParents() {
+        if (workspaceTabs.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < workspaceTabs.size(); i++) {
+            if (i == activeWorkspaceTabIndex) {
+                continue;
+            }
+            WorkspaceTab tab = workspaceTabs.get(i);
+            if (tab == null || tab.parentTabIndex == null || tab.graphData == null) {
+                continue;
+            }
+            if (tab.parentTabIndex < 0 || tab.parentTabIndex >= workspaceTabs.size()) {
+                continue;
+            }
+            WorkspaceTab parent = workspaceTabs.get(tab.parentTabIndex);
+            if (parent == null || parent.graphData == null || parent.graphData.getNodes() == null) {
+                continue;
+            }
+            for (NodeGraphData.NodeData nodeData : parent.graphData.getNodes()) {
+                if (nodeData != null && tab.hostTemplateNodeId != null && tab.hostTemplateNodeId.equals(nodeData.getId())) {
+                    nodeData.setTemplateGraph(tab.graphData);
+                    nodeData.setTemplateName(tab.label);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void restoreRootWorkspaceIfNeeded() {
+        if (workspaceTabs.isEmpty()) {
+            return;
+        }
+        WorkspaceTab root = workspaceTabs.get(0);
+        if (root == null || root.graphData == null) {
+            return;
+        }
+        nodeGraph.applyGraphDataSnapshot(root.graphData, false);
+        activeWorkspaceTabIndex = 0;
+    }
+
+    private NodeGraphData createDefaultTemplateGraphData() {
+        NodeGraphData data = new NodeGraphData();
+        NodeGraphData.NodeData start = new NodeGraphData.NodeData();
+        start.setId(java.util.UUID.randomUUID().toString());
+        start.setType(NodeType.START);
+        start.setX(220);
+        start.setY(160);
+        start.setStartNodeNumber(1);
+        data.getNodes().add(start);
+        return data;
+    }
+
     private boolean hasSavedOnClose = false;
 
     private void autoSaveWorkspace() {
@@ -1801,6 +2422,9 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopMessageEditing(true);
         nodeGraph.stopParameterEditing(true);
         nodeGraph.stopParameterEditing(true);
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+        restoreRootWorkspaceIfNeeded();
 
         if (nodeGraph.save()) {
             System.out.println("Node graph auto-saved successfully");
@@ -2090,12 +2714,13 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawTitle(DrawContext context, float underlineProgress) {
-        int centerX = this.width / 2;
+        int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
+        int textRight = this.width - 8;
+        int centerX = textRight - textWidth / 2;
         int textY = (TITLE_BAR_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
         context.drawCenteredTextWithShadow(this.textRenderer, TITLE_TEXT, centerX, textY, UITheme.TEXT_PRIMARY);
 
         if (underlineProgress > 0.001f) {
-            int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
             int underlineWidth = Math.round(textWidth * underlineProgress);
             if (underlineWidth > 0) {
                 int underlineStartX = centerX - underlineWidth / 2;
@@ -3176,6 +3801,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
+        int checkboxX = popupX + 20;
+        int checkboxY = popupY + 86;
+        int checkboxHitboxSize = PRESET_DELETE_SKIP_CHECKBOX_SIZE + 4;
 
         if (isPointInRect(mouseXi, mouseYi, deleteX, buttonY, buttonWidth, buttonHeight)) {
             confirmPresetDeletion();
@@ -3184,6 +3812,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (isPointInRect(mouseXi, mouseYi, cancelX, buttonY, buttonWidth, buttonHeight)) {
             closePresetDeletePopup();
+            return true;
+        }
+
+        if (isPointInRect(mouseXi, mouseYi, checkboxX - 2, checkboxY - 2, checkboxHitboxSize, checkboxHitboxSize)) {
+            setSkipPresetDeleteConfirm(!skipPresetDeleteConfirm);
             return true;
         }
 
@@ -3413,6 +4046,24 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupTextWithEllipsis(context, warningLine, popupX + 20, popupY + 48, scaledWidth - 40, UITheme.TEXT_SECONDARY);
         drawPopupTextWithEllipsis(context, presetLine, popupX + 20, popupY + 64, scaledWidth - 40, UITheme.TEXT_SECONDARY);
 
+        int checkboxX = popupX + 20;
+        int checkboxY = popupY + 86;
+        boolean checkboxHovered = isPointInRect(mouseX, mouseY, checkboxX - 2, checkboxY - 2, PRESET_DELETE_SKIP_CHECKBOX_SIZE + 4, PRESET_DELETE_SKIP_CHECKBOX_SIZE + 4);
+        context.fill(checkboxX, checkboxY, checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE, checkboxY + PRESET_DELETE_SKIP_CHECKBOX_SIZE,
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.RENAME_INPUT_BG));
+        DrawContextBridge.drawBorder(context, checkboxX, checkboxY, PRESET_DELETE_SKIP_CHECKBOX_SIZE, PRESET_DELETE_SKIP_CHECKBOX_SIZE,
+            getPopupAnimatedColor(presetDeletePopupAnimation, checkboxHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT));
+        if (skipPresetDeleteConfirm) {
+            int checkColor = getPopupAnimatedColor(presetDeletePopupAnimation, getAccentColor());
+            context.fill(checkboxX + 2, checkboxY + 5, checkboxX + 3, checkboxY + 7, checkColor);
+            context.fill(checkboxX + 3, checkboxY + 6, checkboxX + 4, checkboxY + 8, checkColor);
+            context.fill(checkboxX + 4, checkboxY + 6, checkboxX + 5, checkboxY + 7, checkColor);
+            context.fill(checkboxX + 5, checkboxY + 5, checkboxX + 6, checkboxY + 6, checkColor);
+            context.fill(checkboxX + 6, checkboxY + 4, checkboxX + 7, checkboxY + 5, checkColor);
+            context.fill(checkboxX + 7, checkboxY + 3, checkboxX + 8, checkboxY + 4, checkColor);
+        }
+        drawPopupTextWithEllipsis(context, "Don't show again", checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE + 8, checkboxY + 1, scaledWidth - 68, UITheme.TEXT_SECONDARY);
+
         int buttonWidth = 90;
         int buttonHeight = 20;
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
@@ -3490,6 +4141,10 @@ public class PathmindVisualEditorScreen extends Screen {
         if (presetName == null || presetName.isEmpty()) {
             return;
         }
+        if (skipPresetDeleteConfirm) {
+            attemptDeletePreset(presetName);
+            return;
+        }
         pendingPresetDeletionName = presetName;
         presetDeletePopupAnimation.show();
         presetDropdownOpen = false;
@@ -3508,15 +4163,44 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private void setSkipPresetDeleteConfirm(boolean skip) {
+        this.skipPresetDeleteConfirm = skip;
+        if (currentSettings != null) {
+            currentSettings.skipPresetDeleteConfirm = skip;
+            SettingsManager.save(currentSettings);
+        }
+    }
+
     private void attemptDeletePreset(String presetName) {
+        queueAnimatedPresetDeletion(presetName);
+    }
+
+    private void queueAnimatedPresetDeletion(String presetName) {
         if (presetName == null || presetName.isEmpty()) {
             return;
         }
-
         if (isPresetDeleteDisabled(presetName)) {
             return;
         }
+        if (presetName.equals(animatingPresetDeletionName)) {
+            return;
+        }
+        if (draggingPresetTabName != null && draggingPresetTabName.equals(presetName)) {
+            endPresetTabDrag();
+        }
+        AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
+        appear.animateTo(0f, 140, AnimationHelper::easeOutCubic);
+        animatingPresetDeletionName = presetName;
+        animatingPresetDeletionExecuteAtMs = System.currentTimeMillis() + 140L;
+    }
 
+    private void attemptDeletePresetImmediate(String presetName) {
+        if (presetName == null || presetName.isEmpty()) {
+            return;
+        }
+        if (isPresetDeleteDisabled(presetName)) {
+            return;
+        }
         boolean deletingActive = presetName.equals(activePresetName);
         String defaultPreset = PresetManager.getDefaultPresetName();
         String fallbackPreset = availablePresets.stream()
@@ -3606,6 +4290,30 @@ public class PathmindVisualEditorScreen extends Screen {
     private void refreshAvailablePresets() {
         availablePresets = new ArrayList<>(PresetManager.getAvailablePresets());
         activePresetName = PresetManager.getActivePreset();
+        syncPresetTabOrderWithAvailable();
+    }
+
+    private void syncPresetTabOrderWithAvailable() {
+        HashSet<String> availableSet = new HashSet<>(availablePresets);
+        HashSet<String> previousSet = new HashSet<>(presetTabOrder);
+
+        presetTabOrder.removeIf(name -> !availableSet.contains(name));
+        for (String preset : availablePresets) {
+            if (!presetTabOrder.contains(preset)) {
+                presetTabOrder.add(preset);
+                AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(preset, key -> new AnimatedValue(1f));
+                if (presetTabsInitialized && !previousSet.contains(preset)) {
+                    appear.setValue(0f);
+                    appear.animateTo(1f, 180, AnimationHelper::easeOutCubic);
+                } else {
+                    appear.setValue(1f);
+                }
+            }
+        }
+
+        presetTabXAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
+        presetTabAppearAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
+        presetTabsInitialized = true;
     }
 
     private void updateImportExportPathFromPreset() {
@@ -3637,6 +4345,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!nodeGraph.load()) {
             nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
         }
+        resetWorkspaceTabsFromCurrentGraph();
         refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
         nodeGraph.resetCamera();
@@ -4540,6 +5249,14 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(x + PRESET_DELETE_ICON_SIZE - 3, y + 4, x + PRESET_DELETE_ICON_SIZE - 2, y + PRESET_DELETE_ICON_SIZE - 1, slatColor);
     }
 
+    private void drawCloseXIcon(DrawContext context, int x, int y, int size, int color) {
+        int span = Math.max(4, size);
+        for (int i = 0; i < span; i++) {
+            context.fill(x + i, y + i, x + i + 1, y + i + 1, color);
+            context.fill(x + (span - 1 - i), y + i, x + (span - i), y + i + 1, color);
+        }
+    }
+
     private boolean isTitleClicked(int mouseX, int mouseY) {
         return isTitleHovered(mouseX, mouseY);
     }
@@ -4547,7 +5264,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean isTitleHovered(int mouseX, int mouseY) {
         int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
         int textHeight = this.textRenderer.fontHeight;
-        int textX = this.width / 2 - textWidth / 2;
+        int textX = this.width - 8 - textWidth;
         int textY = (TITLE_BAR_HEIGHT - textHeight) / 2;
         int hitboxX = textX - TITLE_INTERACTION_PADDING;
         int hitboxY = textY - TITLE_INTERACTION_PADDING;

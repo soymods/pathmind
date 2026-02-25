@@ -118,6 +118,8 @@
   "pathmind.node.type.look.desc": "Adjusts the player's view direction",
   "pathmind.node.type.message": "Message",
   "pathmind.node.type.message.desc": "Sends a chat message",
+  "pathmind.node.type.template": "Preset",
+  "pathmind.node.type.template.desc": "References another preset with a live preview",
   "pathmind.node.type.moveItem": "Move Item",
   "pathmind.node.type.moveItem.desc": "Moves items between inventory slots",
   "pathmind.node.type.openInventory": "Open Inventory",

@@ -33,6 +33,7 @@ public final class SettingsManager {
         public Boolean showGrid = true;
         public Boolean showTooltips = true;
         public Boolean showChatErrors = true;
+        public Boolean skipPresetDeleteConfirm = false;
         public Integer nodeDelayMs = 150;
 
         public Settings() {
@@ -190,6 +191,9 @@ public final class SettingsManager {
         }
         if (settings.showChatErrors == null) {
             settings.showChatErrors = true;
+        }
+        if (settings.skipPresetDeleteConfirm == null) {
+            settings.skipPresetDeleteConfirm = false;
         }
         if (settings.nodeDelayMs == null) {
             settings.nodeDelayMs = 150;

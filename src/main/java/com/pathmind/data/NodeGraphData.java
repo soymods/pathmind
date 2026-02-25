@@ -61,6 +61,8 @@ public class NodeGraphData {
         private String bookText;
         private Boolean gotoAllowBreakWhileExecuting;
         private Boolean gotoAllowPlaceWhileExecuting;
+        private String templateName;
+        private NodeGraphData templateGraph;
 
         public NodeData() {
             this.parameters = new ArrayList<>();
@@ -169,6 +171,22 @@ public class NodeGraphData {
 
         public void setGotoAllowPlaceWhileExecuting(Boolean gotoAllowPlaceWhileExecuting) {
             this.gotoAllowPlaceWhileExecuting = gotoAllowPlaceWhileExecuting;
+        }
+
+        public String getTemplateName() {
+            return templateName;
+        }
+
+        public void setTemplateName(String templateName) {
+            this.templateName = templateName;
+        }
+
+        public NodeGraphData getTemplateGraph() {
+            return templateGraph;
+        }
+
+        public void setTemplateGraph(NodeGraphData templateGraph) {
+            this.templateGraph = templateGraph;
         }
     }
     

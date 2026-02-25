@@ -67,6 +67,9 @@ public class NodeGraph {
     private static final int CONNECTION_CLICK_THRESHOLD = 4;
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
     private static final int GRID_SNAP_SIZE = 20;
+    private static final int TEMPLATE_PREVIEW_MARGIN = 6;
+    private static final int TEMPLATE_PREVIEW_TOP = 42;
+    private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
@@ -1126,7 +1129,8 @@ public class NodeGraph {
                     && newNode.getParameter("StartNumber") == null) {
                     newNode.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 }
-                if (newNode.getType() == NodeType.RUN_PRESET && newNode.getParameter("Preset") == null) {
+                if ((newNode.getType() == NodeType.RUN_PRESET || newNode.getType() == NodeType.TEMPLATE)
+                    && newNode.getParameter("Preset") == null) {
                     newNode.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 }
             }
@@ -1238,6 +1242,13 @@ public class NodeGraph {
                 nodeData.setBookText(node.getBookText());
             } else {
                 nodeData.setBookText(null);
+            }
+            if (node.getType() == NodeType.TEMPLATE) {
+                nodeData.setTemplateName(node.getTemplateName());
+                nodeData.setTemplateGraph(node.getTemplateGraphData());
+            } else {
+                nodeData.setTemplateName(null);
+                nodeData.setTemplateGraph(null);
             }
 
             List<NodeGraphData.ParameterData> paramDataList = new ArrayList<>();
@@ -2685,6 +2696,7 @@ public class NodeGraph {
         } else if (node.getType() != NodeType.START
             && node.getType() != NodeType.EVENT_FUNCTION
             && node.getType() != NodeType.VARIABLE
+            && node.getType() != NodeType.TEMPLATE
             && node.getType() != NodeType.OPERATOR_EQUALS
             && node.getType() != NodeType.OPERATOR_NOT
             && node.getType() != NodeType.OPERATOR_BOOLEAN_OR
@@ -3082,6 +3094,8 @@ public class NodeGraph {
                 UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
             }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        } else if (node.getType() == NodeType.TEMPLATE) {
+            renderTemplateNodeContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else {
             if (rendersInlineParameters(node)) {
                 if (shouldShowParameters(node)) {
@@ -3373,7 +3387,7 @@ public class NodeGraph {
                 if (node.hasSchematicDropdownField()) {
                     renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
-                if (node.getType() == NodeType.RUN_PRESET) {
+                if (isPresetSelectorNode(node)) {
                     renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
             }
@@ -4940,6 +4954,147 @@ public class NodeGraph {
         drawNodeText(context, textRenderer, Text.literal(buttonLabel), textX, textY, textColor);
     }
 
+    private void renderTemplateNodeContent(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        int x = node.getX() - cameraX;
+        int y = node.getY() - cameraY;
+        int width = node.getWidth();
+
+        int headerColor = node.getType().getColor() & UITheme.NODE_HEADER_ALPHA_MASK;
+        if (isOverSidebar) {
+            headerColor = UITheme.NODE_HEADER_DIMMED;
+        }
+        context.fill(x + 1, y + 1, x + width - 1, y + 14, headerColor);
+
+        int bodyColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY;
+        context.fill(x + 1, y + 15, x + width - 1, y + node.getHeight() - 1, bodyColor);
+
+        String name = trimTextToWidth("Preset", textRenderer, Math.max(0, width - 18));
+        drawNodeText(context, textRenderer, name, x + 6, y + 4, isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
+
+        renderStopTargetInputField(context, textRenderer, node, isOverSidebar);
+
+        int previewLeft = getTemplatePreviewLeft(node) - cameraX;
+        int previewTop = getTemplatePreviewTop(node) - cameraY;
+        int previewWidth = getTemplatePreviewWidth(node);
+        int previewHeight = getTemplatePreviewHeight(node);
+        context.fill(previewLeft, previewTop, previewLeft + previewWidth, previewTop + previewHeight,
+            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorderInLayer(context, previewLeft, previewTop, previewWidth, previewHeight,
+            isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT);
+
+        renderTemplatePreviewGraph(context, node, previewLeft, previewTop, previewWidth, previewHeight, isOverSidebar);
+        renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+    }
+
+    private void renderTemplatePreviewGraph(DrawContext context, Node node, int previewLeft, int previewTop, int previewWidth, int previewHeight, boolean isOverSidebar) {
+        NodeGraphData templateData = getPresetPreviewGraphData(node);
+        if (templateData == null || templateData.getNodes() == null || templateData.getNodes().isEmpty()) {
+            return;
+        }
+        List<NodeGraphData.NodeData> previewNodes = templateData.getNodes();
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxY = Integer.MIN_VALUE;
+        for (NodeGraphData.NodeData nd : previewNodes) {
+            if (nd == null) {
+                continue;
+            }
+            minX = Math.min(minX, nd.getX());
+            minY = Math.min(minY, nd.getY());
+            maxX = Math.max(maxX, nd.getX());
+            maxY = Math.max(maxY, nd.getY());
+        }
+        if (minX == Integer.MAX_VALUE) {
+            return;
+        }
+
+        float padding = 6f;
+        float spanX = Math.max(1f, (maxX - minX) + 20f);
+        float spanY = Math.max(1f, (maxY - minY) + 20f);
+        float sx = Math.max(0.1f, (previewWidth - padding * 2f) / spanX);
+        float sy = Math.max(0.1f, (previewHeight - padding * 2f) / spanY);
+        float scale = Math.min(sx, sy);
+        float offsetX = previewLeft + (previewWidth - spanX * scale) / 2f + 10f * scale;
+        float offsetY = previewTop + (previewHeight - spanY * scale) / 2f + 10f * scale;
+
+        Map<String, float[]> centers = new HashMap<>();
+        for (NodeGraphData.NodeData nd : previewNodes) {
+            float cx = offsetX + (nd.getX() - minX) * scale;
+            float cy = offsetY + (nd.getY() - minY) * scale;
+            centers.put(nd.getId(), new float[]{cx, cy});
+        }
+
+        int lineColor = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
+        if (templateData.getConnections() != null) {
+            for (NodeGraphData.ConnectionData cd : templateData.getConnections()) {
+                float[] a = centers.get(cd.getOutputNodeId());
+                float[] b = centers.get(cd.getInputNodeId());
+                if (a == null || b == null) {
+                    continue;
+                }
+                int x1 = Math.round(a[0]);
+                int y1 = Math.round(a[1]);
+                int x2 = Math.round(b[0]);
+                int y2 = Math.round(b[1]);
+                int mx = (x1 + x2) / 2;
+                context.drawHorizontalLine(Math.min(x1, mx), Math.max(x1, mx), y1, lineColor);
+                context.drawVerticalLine(mx, Math.min(y1, y2), Math.max(y1, y2), lineColor);
+                context.drawHorizontalLine(Math.min(mx, x2), Math.max(mx, x2), y2, lineColor);
+            }
+        }
+
+        for (NodeGraphData.NodeData nd : previewNodes) {
+            float[] c = centers.get(nd.getId());
+            if (c == null) {
+                continue;
+            }
+            int cx = Math.round(c[0]);
+            int cy = Math.round(c[1]);
+            int color = nd.getType() == NodeType.START ? UITheme.NODE_START_BG : (nd.getType() != null ? nd.getType().getColor() : UITheme.TEXT_TERTIARY);
+            if (isOverSidebar) {
+                color = UITheme.BORDER_SUBTLE;
+            }
+            context.fill(cx - 2, cy - 2, cx + 3, cy + 3, color);
+        }
+    }
+
+    private NodeGraphData getPresetPreviewGraphData(Node node) {
+        if (node == null || node.getType() != NodeType.TEMPLATE) {
+            return null;
+        }
+        NodeParameter presetParam = node.getParameter("Preset");
+        String presetName = presetParam != null ? presetParam.getStringValue() : null;
+        if (presetName == null || presetName.isBlank()) {
+            return node.getTemplateGraphData();
+        }
+        String normalized = presetName.trim();
+        NodeGraphData cached = node.getTemplateGraphData();
+        if (cached != null && normalized.equalsIgnoreCase(node.getTemplateName())) {
+            return cached;
+        }
+        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphForPreset(normalized);
+        node.setTemplateName(normalized);
+        node.setTemplateGraphData(loaded);
+        return loaded;
+    }
+
+    private int getTemplatePreviewLeft(Node node) {
+        return node.getX() + TEMPLATE_PREVIEW_MARGIN;
+    }
+
+    private int getTemplatePreviewTop(Node node) {
+        return node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 4;
+    }
+
+    private int getTemplatePreviewWidth(Node node) {
+        return Math.max(20, node.getWidth() - TEMPLATE_PREVIEW_MARGIN * 2);
+    }
+
+    private int getTemplatePreviewHeight(Node node) {
+        return Math.max(18, node.getY() + node.getHeight() - TEMPLATE_PREVIEW_BOTTOM_MARGIN - getTemplatePreviewTop(node));
+    }
+
     public boolean isPointInsideBookTextButton(Node node, int mouseX, int mouseY) {
         if (node == null || !node.hasBookTextInput()) {
             return false;
@@ -4970,12 +5125,20 @@ public class NodeGraph {
                worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
     }
 
+    public boolean isPointInsideTemplateEditButton(Node node, int mouseX, int mouseY) {
+        return false;
+    }
+
     private void renderStopTargetInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
-        boolean isRunPresetNode = node.getType() == NodeType.RUN_PRESET;
+        boolean isRunPresetNode = isPresetSelectorNode(node);
+        if (isRunPresetNode) {
+            renderPresetSelectorField(context, textRenderer, node, isOverSidebar);
+            return;
+        }
         int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
-        boolean isActivateNode = node.getType() == NodeType.START_CHAIN || isRunPresetNode;
+        boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
         int fieldBorder = isActivateNode
             ? (isOverSidebar ? UITheme.BORDER_FOCUS : UITheme.BORDER_HIGHLIGHT)
             : (isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT);
@@ -4983,6 +5146,16 @@ public class NodeGraph {
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_LABEL;
         int activeTextColor = UITheme.TEXT_LABEL;
         int caretColor = UITheme.TEXT_LABEL;
+        boolean presetDropdownOpenForNode = isRunPresetNode && runPresetDropdownOpen && runPresetDropdownNode == node;
+        if (isRunPresetNode) {
+            fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+            activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
+            fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+            activeFieldBorder = UITheme.ACCENT_DEFAULT;
+            textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+            activeTextColor = UITheme.TEXT_PRIMARY;
+            caretColor = UITheme.TEXT_PRIMARY;
+        }
 
         boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
         if (editing) {
@@ -4995,9 +5168,17 @@ public class NodeGraph {
         int fieldWidth = node.getStopTargetFieldWidth();
 
         int fieldBottom = fieldTop + fieldHeight;
-        int backgroundColor = editing ? activeFieldBackground : fieldBackground;
-        int borderColor = editing ? activeFieldBorder : fieldBorder;
+        boolean activeVisual = isRunPresetNode ? presetDropdownOpenForNode : editing;
+        int backgroundColor = activeVisual ? activeFieldBackground : fieldBackground;
+        int borderColor = activeVisual ? activeFieldBorder : fieldBorder;
         int valueColor = editing ? activeTextColor : textColor;
+
+        if (isRunPresetNode) {
+            int labelY = fieldTop - textRenderer.fontHeight - 2;
+            if (labelY >= node.getY() - cameraY + 14) {
+                drawNodeText(context, textRenderer, Text.literal("Preset"), fieldLeft, labelY, baseLabelColor);
+            }
+        }
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
@@ -5054,7 +5235,8 @@ public class NodeGraph {
             if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
                 int selectionStartX = textX + textRenderer.getWidth(display.substring(0, start));
                 int selectionEndX = textX + textRenderer.getWidth(display.substring(0, end));
-                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_DANGER_BG);
+                int selectionColor = isRunPresetNode ? UITheme.TEXT_SELECTION_BG : UITheme.TEXT_SELECTION_DANGER_BG;
+                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, selectionColor);
             }
         }
         if (stopTargetRenderData != null && shouldRenderNodeText()) {
@@ -5077,9 +5259,78 @@ public class NodeGraph {
         if (isRunPresetNode) {
             int arrowX = fieldLeft + fieldWidth - 10;
             int arrowY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
-            String arrow = runPresetDropdownOpen && runPresetDropdownNode == node ? ">" : "v";
-            drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, arrowY, UITheme.TEXT_PRIMARY);
+            String arrow = presetDropdownOpenForNode ? ">" : "v";
+            int arrowColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+            drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, arrowY, arrowColor);
         }
+    }
+
+    private void renderPresetSelectorField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int caretColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.CARET_COLOR;
+
+        boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
+        if (editing) {
+            updateStopTargetCaretBlink();
+        }
+        boolean open = runPresetDropdownOpen && runPresetDropdownNode == node;
+
+        int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
+        int fieldHeight = node.getStopTargetFieldHeight();
+        int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
+        int fieldWidth = node.getStopTargetFieldWidth();
+        int fieldBottom = fieldTop + fieldHeight;
+        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, fieldBackground);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+
+        String inlineLabel = "Preset:";
+        int labelX = fieldLeft + 4;
+        int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
+        drawNodeText(context, textRenderer, Text.literal(inlineLabel), labelX, labelY, labelColor);
+        int valueTextX = labelX + textRenderer.getWidth(inlineLabel) + 6;
+        int maxValueWidth = Math.max(0, fieldLeft + fieldWidth - valueTextX - 4);
+
+        String value;
+        if (editing) {
+            value = stopTargetEditBuffer;
+        } else {
+            NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
+            value = targetParam != null ? targetParam.getStringValue() : "";
+        }
+        if (value == null) {
+            value = "";
+        }
+
+        String display = value;
+        int valueDrawColor = textColor;
+        if (!editing && display.isEmpty()) {
+            display = "preset";
+            valueDrawColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
+        }
+        display = editing ? display : trimTextToWidth(display, textRenderer, maxValueWidth);
+
+        int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        if (editing && hasStopTargetSelection()) {
+            int start = MathHelper.clamp(stopTargetSelectionStart, 0, display.length());
+            int end = MathHelper.clamp(stopTargetSelectionEnd, 0, display.length());
+            if (start != end) {
+                int selectionStartX = valueTextX + textRenderer.getWidth(display.substring(0, start));
+                int selectionEndX = valueTextX + textRenderer.getWidth(display.substring(0, end));
+                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
+            }
+        }
+        drawNodeText(context, textRenderer, Text.literal(display), valueTextX, textY, valueDrawColor);
+
+        if (editing && stopTargetCaretVisible) {
+            int caretIndex = MathHelper.clamp(stopTargetCaretPosition, 0, display.length());
+            int caretX = valueTextX + textRenderer.getWidth(display.substring(0, caretIndex));
+            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
+            UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
+        }
+
     }
 
     private void renderVariableInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -5314,9 +5565,10 @@ public class NodeGraph {
             return;
         }
 
-        int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
-        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int listBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int listBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int rowHoverFill = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_TERTIARY;
 
         List<String> options = runPresetDropdownOptions;
         int optionCount = options.isEmpty() ? 1 : options.size();
@@ -5337,8 +5589,8 @@ public class NodeGraph {
         int listLeft = node.getStopTargetFieldLeft() - cameraX;
         int listRight = listLeft + node.getStopTargetFieldWidth();
 
-        context.fill(listLeft, listTop, listRight, listBottom, fieldBackground);
-        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getStopTargetFieldWidth(), listHeight, fieldBorder);
+        context.fill(listLeft, listTop, listRight, listBottom, listBackground);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getStopTargetFieldWidth(), listHeight, listBorder);
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
@@ -5360,7 +5612,7 @@ public class NodeGraph {
             int rowBottom = rowTop + SCHEMATIC_DROPDOWN_ROW_HEIGHT;
             boolean hovered = options.isEmpty() ? row == 0 && runPresetDropdownHoverIndex >= 0 : optionIndex == runPresetDropdownHoverIndex;
             if (hovered) {
-                context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.DROP_ROW_HIGHLIGHT);
+                context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, rowHoverFill);
             }
             String rowText = trimTextToWidth(optionLabel, textRenderer, node.getStopTargetFieldWidth() - 6);
             drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + 3, rowTop + 4, textColor);
@@ -5984,9 +6236,6 @@ public class NodeGraph {
 
         closeSchematicDropdown();
         closeRunPresetDropdown();
-        if (node.getType() != NodeType.RUN_PRESET) {
-            closeRunPresetDropdown();
-        }
         if (isEditingStopTargetField()) {
             if (stopTargetEditingNode == node) {
                 return;
@@ -6251,7 +6500,7 @@ public class NodeGraph {
         }
 
         String value = stopTargetEditBuffer == null ? "" : stopTargetEditBuffer.trim();
-        if (stopTargetEditingNode.getType() != NodeType.RUN_PRESET
+        if (!isPresetSelectorNode(stopTargetEditingNode)
             && !value.isEmpty()
             && !isNumericOrVariableReference(value, stopTargetEditingNode, false, false)) {
             stopTargetEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
@@ -9632,7 +9881,7 @@ public class NodeGraph {
     }
 
     private String getStopTargetPlaceholder(Node node) {
-        if (node != null && node.getType() == NodeType.RUN_PRESET) {
+        if (isPresetSelectorNode(node)) {
             return "preset";
         }
         return "start #";
@@ -9643,7 +9892,7 @@ public class NodeGraph {
             Node node = nodes.get(i);
             if (node != null
                 && node.hasStopTargetInputField()
-                && node.getType() != NodeType.RUN_PRESET
+                && !isPresetSelectorNode(node)
                 && isPointInsideStopTargetField(node, screenX, screenY)) {
                 selectNode(node);
                 startStopTargetEditing(node);
@@ -9664,26 +9913,19 @@ public class NodeGraph {
                 return true;
             }
             if (isPointInsideRunPresetField(runPresetDropdownNode, screenX, screenY)) {
-                if (isPointInsideRunPresetToggle(runPresetDropdownNode, screenX, screenY)) {
-                    closeRunPresetDropdown();
-                    return true;
-                }
                 selectNode(runPresetDropdownNode);
                 startStopTargetEditing(runPresetDropdownNode);
+                openRunPresetDropdown(runPresetDropdownNode);
                 return true;
             }
             closeRunPresetDropdown();
         }
 
-        if (clickedNode != null && clickedNode.getType() == NodeType.RUN_PRESET
+        if (isPresetSelectorNode(clickedNode)
             && isPointInsideRunPresetField(clickedNode, screenX, screenY)) {
             selectNode(clickedNode);
             startStopTargetEditing(clickedNode);
-            if (isPointInsideRunPresetToggle(clickedNode, screenX, screenY)) {
-                openRunPresetDropdown(clickedNode);
-            } else {
-                closeRunPresetDropdown();
-            }
+            openRunPresetDropdown(clickedNode);
             return true;
         }
 
@@ -9895,7 +10137,7 @@ public class NodeGraph {
     }
 
     private boolean isPointInsideRunPresetField(Node node, int screenX, int screenY) {
-        if (node == null || node.getType() != NodeType.RUN_PRESET) {
+        if (!isPresetSelectorNode(node)) {
             return false;
         }
 
@@ -9911,7 +10153,7 @@ public class NodeGraph {
     }
 
     private boolean isPointInsideRunPresetToggle(Node node, int screenX, int screenY) {
-        if (node == null || node.getType() != NodeType.RUN_PRESET) {
+        if (!isPresetSelectorNode(node)) {
             return false;
         }
         int worldX = screenToWorldX(screenX);
@@ -9951,7 +10193,7 @@ public class NodeGraph {
     }
 
     private boolean isPointInsideRunPresetDropdownList(Node node, int screenX, int screenY) {
-        if (node == null || node.getType() != NodeType.RUN_PRESET || !runPresetDropdownOpen || runPresetDropdownNode != node) {
+        if (!isPresetSelectorNode(node) || !runPresetDropdownOpen || runPresetDropdownNode != node) {
             return false;
         }
         int optionCount = Math.max(1, runPresetDropdownOptions.size());
@@ -10055,7 +10297,7 @@ public class NodeGraph {
     }
 
     private void openRunPresetDropdown(Node node) {
-        if (node == null || node.getType() != NodeType.RUN_PRESET) {
+        if (!isPresetSelectorNode(node)) {
             return;
         }
         runPresetDropdownNode = node;
@@ -10136,8 +10378,16 @@ public class NodeGraph {
             resetStopTargetCaretBlink();
             updateStopTargetFieldContentWidth(getClientTextRenderer());
         }
+        if (node.getType() == NodeType.TEMPLATE) {
+            node.setTemplateName(value);
+            node.setTemplateGraphData(NodeGraphPersistence.loadNodeGraphForPreset(value));
+        }
         node.recalculateDimensions();
         notifyNodeParametersChanged(node);
+    }
+
+    private boolean isPresetSelectorNode(Node node) {
+        return node != null && (node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE);
     }
 
     private List<String> loadSchematicOptions() {
@@ -10876,7 +11126,7 @@ public class NodeGraph {
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
             }
-            if (node.getType() == NodeType.RUN_PRESET && node.getParameter("Preset") == null) {
+            if ((node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE) && node.getParameter("Preset") == null) {
                 node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
             }
             Integer startNodeNumber = nodeData.getStartNodeNumber();
@@ -10929,6 +11179,10 @@ public class NodeGraph {
             Node textNode = nodeMap.get(nodeData.getId());
             if (textNode != null && textNode.hasBookTextInput() && nodeData.getBookText() != null) {
                 textNode.setBookText(nodeData.getBookText());
+            }
+            if (textNode != null && textNode.getType() == NodeType.TEMPLATE) {
+                textNode.setTemplateName(nodeData.getTemplateName());
+                textNode.setTemplateGraphData(nodeData.getTemplateGraph());
             }
         }
 
@@ -11025,6 +11279,25 @@ public class NodeGraph {
      */
     public boolean hasSavedGraph() {
         return NodeGraphPersistence.hasSavedNodeGraph(activePreset);
+    }
+
+    public NodeGraphData exportGraphDataSnapshot() {
+        return buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
+    }
+
+    public boolean applyGraphDataSnapshot(NodeGraphData data, boolean markDirty) {
+        if (data == null) {
+            return false;
+        }
+        boolean applied = applyLoadedData(data);
+        if (applied) {
+            if (markDirty) {
+                workspaceDirty = true;
+            } else {
+                workspaceDirty = false;
+            }
+        }
+        return applied;
     }
 
     public void setActivePreset(String presetName) {

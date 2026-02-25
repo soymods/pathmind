@@ -131,6 +131,7 @@ public enum NodeType {
     SCREEN_CONTROL("pathmind.node.type.screenControl", 0xFF9E9E9E, "pathmind.node.type.screenControl.desc"),
     WAIT("pathmind.node.type.wait", 0xFF607D8B, "pathmind.node.type.wait.desc"),
     MESSAGE("pathmind.node.type.message", 0xFF9E9E9E, "pathmind.node.type.message.desc"),
+    TEMPLATE("pathmind.node.type.template", 0xFF26A69A, "pathmind.node.type.template.desc"),
     STOP_CHAIN("pathmind.node.type.stopChain", 0xFFE53935, "pathmind.node.type.stopChain.desc"),
     STOP_ALL("pathmind.node.type.stopAll", 0xFFE53935, "pathmind.node.type.stopAll.desc"),
 
@@ -196,7 +197,7 @@ public enum NodeType {
     }
 
     public boolean isDraggableFromSidebar() {
-        if (this == STOP || this == PLACE_HAND) {
+        if (this == STOP || this == PLACE_HAND || this == RUN_PRESET) {
             return false;
         }
         return true;
@@ -311,6 +312,7 @@ public enum NodeType {
             case RUN_PRESET:
             case WAIT:
             case MESSAGE:
+            case TEMPLATE:
             case UI_UTILS:
                 return NodeCategory.UTILITY;
             case STOP_CHAIN:

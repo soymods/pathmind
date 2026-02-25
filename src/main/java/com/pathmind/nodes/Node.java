@@ -248,6 +248,8 @@ public class Node {
     private static final int POPUP_EDIT_BUTTON_HEIGHT = 16;
     private static final int POPUP_EDIT_BUTTON_MIN_WIDTH = 70;
     private static final int POPUP_EDIT_BUTTON_BOTTOM_MARGIN = 6;
+    private static final int TEMPLATE_NODE_WIDTH = 160;
+    private static final int TEMPLATE_NODE_HEIGHT = 108;
     private static final int EVENT_NAME_FIELD_MARGIN_HORIZONTAL = 6;
     private static final int EVENT_NAME_FIELD_TOP_MARGIN = 6;
     private static final int EVENT_NAME_FIELD_HEIGHT = 16;
@@ -301,6 +303,8 @@ public class Node {
     private int variableFieldWidthOverride;
     private boolean gotoAllowBreakWhileExecuting;
     private boolean gotoAllowPlaceWhileExecuting;
+    private String templateName;
+    private NodeGraphData templateGraphData;
     private transient Random randomGenerator;
     private transient String randomSeedCache;
 
@@ -335,6 +339,8 @@ public class Node {
         this.variableFieldWidthOverride = 0;
         this.gotoAllowBreakWhileExecuting = false;
         this.gotoAllowPlaceWhileExecuting = false;
+        this.templateName = type == NodeType.TEMPLATE ? "Template" : "";
+        this.templateGraphData = null;
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -1205,7 +1211,7 @@ public class Node {
     }
 
     public boolean hasStopTargetInputField() {
-        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN || type == NodeType.RUN_PRESET;
+        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN || type == NodeType.RUN_PRESET || type == NodeType.TEMPLATE;
     }
 
     public boolean hasVariableInputField() {
@@ -1213,7 +1219,7 @@ public class Node {
     }
 
     public String getStopTargetFieldParameterKey() {
-        if (type == NodeType.RUN_PRESET) {
+        if (type == NodeType.RUN_PRESET || type == NodeType.TEMPLATE) {
             return "Preset";
         }
         return "StartNumber";
@@ -1664,10 +1670,16 @@ public class Node {
         if (!hasStopTargetInputField()) {
             return 0;
         }
+        if (type == NodeType.TEMPLATE) {
+            return 24;
+        }
         return STOP_TARGET_FIELD_TOP_MARGIN + STOP_TARGET_FIELD_HEIGHT + STOP_TARGET_FIELD_BOTTOM_MARGIN;
     }
 
     public int getStopTargetFieldLabelTop() {
+        if (type == NodeType.TEMPLATE) {
+            return y + HEADER_HEIGHT + 4;
+        }
         return getParameterSlotsBottom() + STOP_TARGET_FIELD_TOP_MARGIN;
     }
 
@@ -1680,14 +1692,23 @@ public class Node {
     }
 
     public int getStopTargetFieldHeight() {
+        if (type == NodeType.TEMPLATE) {
+            return 16;
+        }
         return STOP_TARGET_FIELD_HEIGHT;
     }
 
     public int getStopTargetFieldWidth() {
+        if (type == NodeType.TEMPLATE) {
+            return Math.max(72, width - 12);
+        }
         return Math.max(STOP_TARGET_FIELD_MIN_WIDTH, stopTargetFieldWidthOverride);
     }
 
     public int getStopTargetFieldLeft() {
+        if (type == NodeType.TEMPLATE) {
+            return x + 6;
+        }
         return x + Math.max(STOP_TARGET_FIELD_MARGIN_HORIZONTAL, (width - getStopTargetFieldWidth()) / 2);
     }
 
@@ -2472,6 +2493,9 @@ public class Node {
                 parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 break;
             case RUN_PRESET:
+                parameters.add(new NodeParameter("Preset", ParameterType.STRING, ""));
+                break;
+            case TEMPLATE:
                 parameters.add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 break;
             case STOP_CHAIN:
@@ -3550,6 +3574,31 @@ public class Node {
         return type == NodeType.MESSAGE;
     }
 
+    public String getTemplateName() {
+        if (type != NodeType.TEMPLATE) {
+            return "";
+        }
+        return (templateName == null || templateName.isEmpty()) ? "Template" : templateName;
+    }
+
+    public void setTemplateName(String templateName) {
+        if (type != NodeType.TEMPLATE) {
+            return;
+        }
+        this.templateName = (templateName == null || templateName.isBlank()) ? "Template" : templateName.trim();
+    }
+
+    public NodeGraphData getTemplateGraphData() {
+        return type == NodeType.TEMPLATE ? templateGraphData : null;
+    }
+
+    public void setTemplateGraphData(NodeGraphData templateGraphData) {
+        if (type != NodeType.TEMPLATE) {
+            return;
+        }
+        this.templateGraphData = templateGraphData;
+    }
+
     public int getMessageFieldCount() {
         return Math.max(1, messageLines.size());
     }
@@ -3956,6 +4005,11 @@ public class Node {
         if (type == NodeType.START) {
             this.width = START_END_SIZE;
             this.height = START_END_SIZE;
+            return;
+        }
+        if (type == NodeType.TEMPLATE) {
+            this.width = TEMPLATE_NODE_WIDTH;
+            this.height = TEMPLATE_NODE_HEIGHT;
             return;
         }
 

@@ -2113,13 +2113,13 @@ public class PathmindVisualEditorScreen extends Screen {
     private void drawPresetTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
         boolean active = label.equals(activePresetName);
         boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
-        int fill = active ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_SECTION;
+        int fill = active ? 0xFF3A3A3A : 0xFF2A2A2A;
         int border = active ? getAccentColor() : UITheme.BORDER_DEFAULT;
         if (!active && hovered) {
-            fill = UITheme.BUTTON_DEFAULT_HOVER;
+            fill = 0xFF343434;
             border = UITheme.BORDER_HIGHLIGHT;
         }
-        if (dragging && !active) {
+        if (dragging) {
             fill = 0xFF3C3C3C;
         }
 

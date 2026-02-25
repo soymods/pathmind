@@ -479,6 +479,56 @@ public class ExecutionManager {
         updateLastStartContext(startNode, presetName);
         return true;
     }
+
+    /**
+     * Start a branch from an externally supplied graph (for example a Run Preset node) without
+     * replacing the currently active graph state for other running chains.
+     */
+    public boolean executeExternalBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections, String presetName) {
+        if (startNode == null || startNode.getType() != NodeType.START) {
+            LOGGER.warn("Cannot execute external branch - invalid START node");
+            return false;
+        }
+        if (nodes == null || connections == null) {
+            LOGGER.warn("Cannot execute external branch - missing nodes or connections");
+            return false;
+        }
+        if (isChainActive(startNode)) {
+            LOGGER.debug("External START node already executing, ignoring branch start request");
+            return false;
+        }
+
+        // Preserve this graph for Activate-node lookups within the launched preset chain.
+        this.workspaceNodes = new ArrayList<>(nodes);
+        this.workspaceConnections = new ArrayList<>(connections);
+
+        List<NodeConnection> filteredConnections = filterConnections(connections);
+        BranchData branchData = buildBranchData(startNode, nodes, filteredConnections);
+        if (branchData == null || branchData.nodes.isEmpty()) {
+            LOGGER.debug("External START node has no executable branch");
+            return false;
+        }
+
+        this.lastExecutedGraph = createGraphSnapshot(branchData.nodes, branchData.connections);
+        this.lastSnapshotWasGlobal = false;
+        this.cancelRequested = false;
+        mergeActiveGraph(branchData.nodes, branchData.connections);
+
+        if (!isExecuting && activeChains.isEmpty()) {
+            startExecution(Collections.singletonList(startNode), false);
+        } else {
+            this.isExecuting = true;
+        }
+
+        int executionId = allocateExecutionId();
+        ChainController controller = new ChainController(startNode, executionId);
+        activeChains.put(startNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(startNode, controller, controller.rootExecutionId);
+        chainFuture.whenComplete((ignored, throwable) ->
+            handleChainCompletion(controller, throwable, controller.rootExecutionId));
+        updateLastStartContext(startNode, presetName);
+        return true;
+    }
     
     /**
      * Start execution with the given start node
@@ -1398,15 +1448,8 @@ public class ExecutionManager {
     }
 
     private Node getNextConnectedNode(Node currentNode, List<NodeConnection> connections, int outputSocket) {
-        // Use O(1) lookup map when available
-        if (currentNode != null && currentNode.getId() != null) {
-            String lookupKey = currentNode.getId() + ":" + outputSocket;
-            Node result = outputNodeLookup.get(lookupKey);
-            if (result != null) {
-                return result;
-            }
-        }
-        // Fallback to linear search if lookup map not populated
+        // Use branch-local object identity when traversing to avoid cross-graph collisions when
+        // multiple loaded presets contain the same persisted node IDs.
         for (NodeConnection connection : connections) {
             if (connection.getOutputNode() == currentNode) {
                 if (connection.getOutputSocket() == outputSocket) {
@@ -1546,20 +1589,11 @@ public class ExecutionManager {
         if (activeConnections == null || activeConnections.isEmpty()) {
             this.activeConnections = new ArrayList<>(branchConnections);
         } else {
-            Map<ConnectionKey, NodeConnection> mergedConnections = new HashMap<>();
-            for (NodeConnection connection : activeConnections) {
-                ConnectionKey key = toKey(connection);
-                if (key != null) {
-                    mergedConnections.put(key, connection);
-                }
-            }
-            for (NodeConnection connection : branchConnections) {
-                ConnectionKey key = toKey(connection);
-                if (key != null && !mergedConnections.containsKey(key)) {
-                    mergedConnections.put(key, connection);
-                }
-            }
-            this.activeConnections = new ArrayList<>(mergedConnections.values());
+            // Keep branch connections by object identity. Different loaded preset runs can reuse the
+            // same persisted node IDs, so deduplicating by IDs drops valid connections for later runs.
+            LinkedHashSet<NodeConnection> mergedConnections = new LinkedHashSet<>(activeConnections);
+            mergedConnections.addAll(branchConnections);
+            this.activeConnections = new ArrayList<>(mergedConnections);
         }
 
         rebuildConnectionState(this.activeNodes, this.activeConnections);

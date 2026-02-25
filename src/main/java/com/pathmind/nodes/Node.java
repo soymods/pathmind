@@ -6099,6 +6099,9 @@ public class Node {
             case RUN_PRESET:
                 executeRunPresetNode(future);
                 break;
+            case TEMPLATE:
+                executeRunPresetNode(future);
+                break;
             case STOP_CHAIN:
                 executeStopChainNode(future);
                 break;
@@ -12654,7 +12657,7 @@ public class Node {
         ExecutionManager manager = ExecutionManager.getInstance();
         int started = 0;
         for (Node startNode : presetStarts) {
-            if (manager.executeBranch(startNode, nodes, connections, presetName)) {
+            if (manager.executeExternalBranch(startNode, nodes, connections, presetName)) {
                 started++;
             }
         }
@@ -14560,8 +14563,12 @@ public class Node {
             return;
         }
 
-        client.player.jump();
-        future.complete(null);
+        client.execute(() -> {
+            if (client.player != null) {
+                client.player.jump();
+            }
+            future.complete(null);
+        });
     }
 
     private void executePressKeyCommand(CompletableFuture<Void> future) {

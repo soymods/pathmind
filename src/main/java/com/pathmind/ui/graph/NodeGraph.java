@@ -5019,15 +5019,26 @@ public class NodeGraph {
         float offsetY = previewTop + (previewHeight - spanY * scale) / 2f + 10f * scale;
 
         Map<String, float[]> centers = new HashMap<>();
-        for (NodeGraphData.NodeData nd : previewNodes) {
+        for (int i = 0; i < previewNodes.size(); i++) {
+            NodeGraphData.NodeData nd = previewNodes.get(i);
+            if (nd == null) {
+                continue;
+            }
             float cx = offsetX + (nd.getX() - minX) * scale;
             float cy = offsetY + (nd.getY() - minY) * scale;
-            centers.put(nd.getId(), new float[]{cx, cy});
+            String nodeId = nd.getId();
+            if (nodeId == null || nodeId.isBlank()) {
+                nodeId = "__preview_node_" + i;
+            }
+            centers.put(nodeId, new float[]{cx, cy});
         }
 
         int lineColor = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
         if (templateData.getConnections() != null) {
             for (NodeGraphData.ConnectionData cd : templateData.getConnections()) {
+                if (cd == null) {
+                    continue;
+                }
                 float[] a = centers.get(cd.getOutputNodeId());
                 float[] b = centers.get(cd.getInputNodeId());
                 if (a == null || b == null) {
@@ -5044,8 +5055,16 @@ public class NodeGraph {
             }
         }
 
-        for (NodeGraphData.NodeData nd : previewNodes) {
-            float[] c = centers.get(nd.getId());
+        for (int i = 0; i < previewNodes.size(); i++) {
+            NodeGraphData.NodeData nd = previewNodes.get(i);
+            if (nd == null) {
+                continue;
+            }
+            String nodeId = nd.getId();
+            if (nodeId == null || nodeId.isBlank()) {
+                nodeId = "__preview_node_" + i;
+            }
+            float[] c = centers.get(nodeId);
             if (c == null) {
                 continue;
             }
@@ -5065,18 +5084,23 @@ public class NodeGraph {
         }
         NodeParameter presetParam = node.getParameter("Preset");
         String presetName = presetParam != null ? presetParam.getStringValue() : null;
-        if (presetName == null || presetName.isBlank()) {
+        String normalized = (presetName == null || presetName.isBlank())
+            ? (activePreset == null ? "" : activePreset.trim())
+            : presetName.trim();
+        if (normalized.isEmpty()) {
             return node.getTemplateGraphData();
         }
-        String normalized = presetName.trim();
         NodeGraphData cached = node.getTemplateGraphData();
         if (cached != null && normalized.equalsIgnoreCase(node.getTemplateName())) {
             return cached;
         }
         NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphForPreset(normalized);
-        node.setTemplateName(normalized);
-        node.setTemplateGraphData(loaded);
-        return loaded;
+        if (loaded != null) {
+            node.setTemplateName(normalized);
+            node.setTemplateGraphData(loaded);
+            return loaded;
+        }
+        return cached;
     }
 
     private int getTemplatePreviewLeft(Node node) {
@@ -10966,6 +10990,7 @@ public class NodeGraph {
         boolean saved = NodeGraphPersistence.saveNodeGraphForPreset(activePreset, nodes, connections);
         if (saved) {
             workspaceDirty = false;
+            invalidateTemplatePreviewCachesForPreset(activePreset);
         }
         return saved;
     }
@@ -10979,6 +11004,7 @@ public class NodeGraph {
             boolean applied = applyLoadedData(data);
             if (applied) {
                 workspaceDirty = false;
+                invalidateAllTemplatePreviewCaches();
             }
             return applied;
         }
@@ -11022,7 +11048,41 @@ public class NodeGraph {
         if (node == null) {
             return;
         }
+        if (node.getType() == NodeType.TEMPLATE) {
+            node.setTemplateGraphData(null);
+        }
         markWorkspaceDirty();
+    }
+
+    private void invalidateTemplatePreviewCachesForPreset(String presetName) {
+        if (nodes == null || nodes.isEmpty()) {
+            return;
+        }
+        String normalizedPreset = presetName == null ? "" : presetName.trim();
+        for (Node candidate : nodes) {
+            if (candidate == null || candidate.getType() != NodeType.TEMPLATE) {
+                continue;
+            }
+            NodeParameter presetParam = candidate.getParameter("Preset");
+            String selected = presetParam != null ? presetParam.getStringValue() : null;
+            String normalizedSelected = selected == null ? "" : selected.trim();
+            boolean usesActivePreset = normalizedSelected.isEmpty();
+            boolean matchesPreset = !normalizedPreset.isEmpty() && normalizedSelected.equalsIgnoreCase(normalizedPreset);
+            if (usesActivePreset || matchesPreset) {
+                candidate.setTemplateGraphData(null);
+            }
+        }
+    }
+
+    private void invalidateAllTemplatePreviewCaches() {
+        if (nodes == null || nodes.isEmpty()) {
+            return;
+        }
+        for (Node candidate : nodes) {
+            if (candidate != null && candidate.getType() == NodeType.TEMPLATE) {
+                candidate.setTemplateGraphData(null);
+            }
+        }
     }
 
     public void clearWorkspace() {
@@ -11301,7 +11361,10 @@ public class NodeGraph {
     }
 
     public void setActivePreset(String presetName) {
+        String previousPreset = this.activePreset;
         this.activePreset = presetName;
+        invalidateTemplatePreviewCachesForPreset(previousPreset);
+        invalidateTemplatePreviewCachesForPreset(presetName);
     }
 
     public String getActivePreset() {

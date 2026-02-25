@@ -288,19 +288,6 @@ public class PathmindClientMod implements ClientModInitializer {
 
     private void registerUseItemCallbackCompat() {
         try {
-            Method registerMethod = null;
-            for (Method method : UseItemCallback.EVENT.getClass().getMethods()) {
-                if ("register".equals(method.getName()) && method.getParameterCount() == 1) {
-                    registerMethod = method;
-                    break;
-                }
-            }
-            if (registerMethod == null) {
-                LOGGER.warn("Pathmind: could not find UseItemCallback register method; use-item event tracking disabled");
-                return;
-            }
-
-            Class<?> callbackType = registerMethod.getParameterTypes()[0];
             InvocationHandler handler = (proxy, method, args) -> {
                 if (method.getDeclaringClass() == Object.class) {
                     return switch (method.getName()) {
@@ -344,13 +331,13 @@ public class PathmindClientMod implements ClientModInitializer {
                 return ActionResult.PASS;
             };
 
-            Object callback = Proxy.newProxyInstance(
-                callbackType.getClassLoader(),
-                new Class<?>[]{callbackType},
+            UseItemCallback callback = (UseItemCallback) Proxy.newProxyInstance(
+                UseItemCallback.class.getClassLoader(),
+                new Class<?>[]{UseItemCallback.class},
                 handler
             );
-            registerMethod.invoke(UseItemCallback.EVENT, callback);
-        } catch (ReflectiveOperationException e) {
+            UseItemCallback.EVENT.register(callback);
+        } catch (RuntimeException e) {
             LOGGER.warn("Pathmind: failed to register use-item callback compatibility bridge", e);
         }
     }

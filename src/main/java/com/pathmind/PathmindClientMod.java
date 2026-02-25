@@ -17,7 +17,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.C2SConfigurationChannelEvents;
@@ -38,6 +37,11 @@ import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.util.ActionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Proxy;
 
 /**
  * The client-side mod class for Pathmind.
@@ -202,8 +206,6 @@ public class PathmindClientMod implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(client -> fireFabricEvent(EVT_CLIENT_TICK_START));
         ClientTickEvents.START_WORLD_TICK.register(world -> fireFabricEvent(EVT_CLIENT_WORLD_TICK_START));
         ClientTickEvents.END_WORLD_TICK.register(world -> fireFabricEvent(EVT_CLIENT_WORLD_TICK_END));
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> fireFabricEvent(EVT_CLIENT_WORLD_AFTER_CHANGE));
-
         // Client networking events
         C2SConfigurationChannelEvents.REGISTER.register((handler, sender, client, channels) -> fireFabricEvent(EVT_CLIENT_CONFIG_CHANNEL_REGISTER));
         C2SConfigurationChannelEvents.UNREGISTER.register((handler, sender, client, channels) -> fireFabricEvent(EVT_CLIENT_CONFIG_CHANNEL_UNREGISTER));
@@ -274,10 +276,7 @@ public class PathmindClientMod implements ClientModInitializer {
             fireFabricEvent(EVT_PLAYER_USE_ENTITY);
             return ActionResult.PASS;
         });
-        UseItemCallback.EVENT.register((player, world, hand) -> {
-            fireFabricEvent(EVT_PLAYER_USE_ITEM);
-            return ActionResult.PASS;
-        });
+        registerUseItemCallbackCompat();
     }
 
     private void fireFabricEvent(String eventName) {
@@ -285,6 +284,75 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
         FabricEventTracker.record(eventName);
+    }
+
+    private void registerUseItemCallbackCompat() {
+        try {
+            Method registerMethod = null;
+            for (Method method : UseItemCallback.EVENT.getClass().getMethods()) {
+                if ("register".equals(method.getName()) && method.getParameterCount() == 1) {
+                    registerMethod = method;
+                    break;
+                }
+            }
+            if (registerMethod == null) {
+                LOGGER.warn("Pathmind: could not find UseItemCallback register method; use-item event tracking disabled");
+                return;
+            }
+
+            Class<?> callbackType = registerMethod.getParameterTypes()[0];
+            InvocationHandler handler = (proxy, method, args) -> {
+                if (method.getDeclaringClass() == Object.class) {
+                    return switch (method.getName()) {
+                        case "toString" -> "PathmindUseItemCallbackCompat";
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == args[0];
+                        default -> null;
+                    };
+                }
+
+                fireFabricEvent(EVT_PLAYER_USE_ITEM);
+                Class<?> returnType = method.getReturnType();
+                if (returnType == void.class) {
+                    return null;
+                }
+                if (returnType == ActionResult.class) {
+                    return ActionResult.PASS;
+                }
+                if ("net.minecraft.util.TypedActionResult".equals(returnType.getName())) {
+                    Object stack = null;
+                    if (args != null && args.length >= 3 && args[0] != null && args[2] != null) {
+                        try {
+                            Method getStackInHand = args[0].getClass().getMethod("getStackInHand", args[2].getClass());
+                            stack = getStackInHand.invoke(args[0], args[2]);
+                        } catch (ReflectiveOperationException ignored) {
+                        }
+                    }
+                    for (Method candidate : returnType.getMethods()) {
+                        if (!Modifier.isStatic(candidate.getModifiers())) {
+                            continue;
+                        }
+                        if (!"pass".equals(candidate.getName()) || candidate.getParameterCount() != 1) {
+                            continue;
+                        }
+                        try {
+                            return candidate.invoke(null, stack);
+                        } catch (ReflectiveOperationException ignored) {
+                        }
+                    }
+                }
+                return ActionResult.PASS;
+            };
+
+            Object callback = Proxy.newProxyInstance(
+                callbackType.getClassLoader(),
+                new Class<?>[]{callbackType},
+                handler
+            );
+            registerMethod.invoke(UseItemCallback.EVENT, callback);
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Pathmind: failed to register use-item callback compatibility bridge", e);
+        }
     }
 
     private void handleClientShutdown(String reason) {

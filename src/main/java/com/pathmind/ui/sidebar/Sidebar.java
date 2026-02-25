@@ -176,7 +176,8 @@ public class Sidebar {
             "Input",
             baritoneAvailable,
             NodeType.SENSOR_KEY_PRESSED,
-            NodeType.SENSOR_CHAT_MESSAGE
+            NodeType.SENSOR_CHAT_MESSAGE,
+            NodeType.SENSOR_FABRIC_EVENT
         ));
         groups.add(new NodeGroup(
             "Position & Blocks",

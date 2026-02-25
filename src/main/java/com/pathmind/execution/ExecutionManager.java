@@ -1531,7 +1531,6 @@ public class ExecutionManager {
         return new BranchData(branchNodes, branchConnections);
     }
 
-
     private void mergeActiveGraph(List<Node> branchNodes, List<NodeConnection> branchConnections) {
         if (branchNodes == null || branchConnections == null) {
             return;

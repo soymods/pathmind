@@ -115,6 +115,7 @@ import java.lang.reflect.Method;
 import com.pathmind.util.CameraCompatibilityBridge;
 import com.pathmind.util.ChatScreenCompatibilityBridge;
 import com.pathmind.util.EntityCompatibilityBridge;
+import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.GuiSelectionMode;
 import com.pathmind.util.GameProfileCompatibilityBridge;
 import com.pathmind.util.InputCompatibilityBridge;
@@ -604,7 +605,8 @@ public class Node {
     }
 
     public boolean shouldRenderInlineParameters() {
-        return type == NodeType.UI_UTILS;
+        return type == NodeType.UI_UTILS
+            || type == NodeType.SENSOR_FABRIC_EVENT;
     }
 
     private boolean isInlineParameterNode() {
@@ -1578,8 +1580,11 @@ public class Node {
         }
         String amountKey = getAmountParameterKey();
         if (getParameter(amountKey) == null) {
-            ParameterType amountType = type == NodeType.USE ? ParameterType.DOUBLE : ParameterType.INTEGER;
-            String defaultValue = type == NodeType.USE ? "0.0" : "1";
+            boolean decimalAmount = type == NodeType.USE
+                || type == NodeType.SENSOR_CHAT_MESSAGE
+                || type == NodeType.SENSOR_FABRIC_EVENT;
+            ParameterType amountType = decimalAmount ? ParameterType.DOUBLE : ParameterType.INTEGER;
+            String defaultValue = decimalAmount ? "0.0" : "1";
             parameters.add(new NodeParameter(amountKey, amountType, defaultValue));
         }
         if (getParameter("UseAmount") == null) {
@@ -2650,6 +2655,9 @@ public class Node {
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "true"));
                 break;
+            case SENSOR_FABRIC_EVENT:
+                parameters.add(new NodeParameter("Event", ParameterType.STRING, "Any"));
+                break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "64"));
@@ -2959,6 +2967,12 @@ public class Node {
         }
         if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
             return "";
+        }
+        if (type == NodeType.SENSOR_FABRIC_EVENT) {
+            String paramName = parameter.getName();
+            if ("Amount".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
+                return "";
+            }
         }
         String name = getParameterDisplayName(parameter);
         if (type == NodeType.PARAM_BOOLEAN && "Toggle".equalsIgnoreCase(name)) {
@@ -6149,6 +6163,7 @@ public class Node {
             case SENSOR_IS_VISIBLE:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_FABRIC_EVENT:
             case SENSOR_TARGETED_BLOCK:
             case SENSOR_LOOK_DIRECTION:
             case SENSOR_TARGETED_BLOCK_FACE:
@@ -16678,6 +16693,21 @@ public class Node {
                     ? Math.max(0.0, getDoubleParameter("Amount", 10.0))
                     : ChatMessageTracker.getMaxRetentionSeconds();
                 result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds, anyPlayer, anyMessage);
+                break;
+            }
+            case SENSOR_FABRIC_EVENT: {
+                String eventName = getParameterString(this, "Event");
+                if (eventName == null || eventName.trim().isEmpty()) {
+                    result = false;
+                    break;
+                }
+                double seconds = FabricEventTracker.getMaxRetentionSeconds();
+                String trimmed = eventName.trim();
+                if (trimmed.isEmpty() || "Any".equalsIgnoreCase(trimmed)) {
+                    result = FabricEventTracker.hasAnyRecentEvent(seconds);
+                    break;
+                }
+                result = FabricEventTracker.hasRecentEvent(trimmed, seconds);
                 break;
             }
             default:

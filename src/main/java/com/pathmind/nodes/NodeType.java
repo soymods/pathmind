@@ -124,6 +124,7 @@ public enum NodeType {
     SENSOR_IS_VISIBLE("pathmind.node.type.sensorIsVisible", 0xFF64B5F6, "pathmind.node.type.sensorIsVisible.desc"),
     SENSOR_KEY_PRESSED("pathmind.node.type.sensorKeyPressed", 0xFF64B5F6, "pathmind.node.type.sensorKeyPressed.desc"),
     SENSOR_CHAT_MESSAGE("pathmind.node.type.sensorChatMessage", 0xFF64B5F6, "pathmind.node.type.sensorChatMessage.desc"),
+    SENSOR_FABRIC_EVENT("pathmind.node.type.sensorFabricEvent", 0xFF64B5F6, "pathmind.node.type.sensorFabricEvent.desc"),
 
     // Utility Commands
     RUN_PRESET("pathmind.node.type.runPreset", 0xFF607D8B, "pathmind.node.type.runPreset.desc"),
@@ -261,6 +262,7 @@ public enum NodeType {
             case SENSOR_IS_VISIBLE:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_FABRIC_EVENT:
                 return NodeCategory.SENSORS;
             case GOTO:
             case GOAL:
@@ -396,6 +398,7 @@ public enum NodeType {
             case SENSOR_IS_RENDERED:
             case SENSOR_IS_VISIBLE:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_FABRIC_EVENT:
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
             case PARAM_ITEM:

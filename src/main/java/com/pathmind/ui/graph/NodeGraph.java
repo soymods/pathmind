@@ -50,6 +50,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.EntityStateOptions;
+import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.InputCompatibilityBridge;
 
 /**
@@ -3181,6 +3182,7 @@ public class NodeGraph {
                         boolean showMessagePlaceholder = false;
                         boolean showSeedPlaceholder = false;
                         boolean showBlockItemPlaceholder = false;
+                        boolean showFabricEventPlaceholder = false;
                         boolean showDirectionPlaceholder = false;
                         boolean showGuiPlaceholder = false;
                         boolean showAmountPlaceholder = false;
@@ -3220,6 +3222,12 @@ public class NodeGraph {
                                 : value.isEmpty() || (!param.isUserEdited() && isAnyBlockItemValue(value));
                             showBlockItemPlaceholder = showPlaceholder;
                         }
+                        if (isFabricEventSensorParameter(node, i)) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty() || "Any".equalsIgnoreCase(value)
+                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            showFabricEventPlaceholder = showPlaceholder;
+                        }
                         if (isDirectionParameter(node, i)) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty() || "Any".equalsIgnoreCase(value)
@@ -3236,8 +3244,13 @@ public class NodeGraph {
                                 ? "Any State"
                                 : "Any";
                         }
+                        if (!editingThis && isFabricEventSensorParameter(node, i)
+                            && (value.isEmpty() || "Any".equalsIgnoreCase(value))) {
+                            value = "Any";
+                        }
                         if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
-                            || showBlockItemPlaceholder || showGuiPlaceholder || showAmountPlaceholder
+                            || showBlockItemPlaceholder || showFabricEventPlaceholder
+                            || showGuiPlaceholder || showAmountPlaceholder
                             || showDirectionPlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
@@ -3307,7 +3320,10 @@ public class NodeGraph {
                             UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, fieldRight - 2, UITheme.CARET_COLOR);
                         }
 
-                        if (editingThis && (isBlockItemParameter(node, i) || isGuiParameter(node, param) || isDirectionParameter(node, i))) {
+                        if (editingThis && (isBlockItemParameter(node, i)
+                            || isGuiParameter(node, param)
+                            || isDirectionParameter(node, i)
+                            || isFabricEventSensorParameter(node, i))) {
                             updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
                         }
 
@@ -3315,6 +3331,9 @@ public class NodeGraph {
                     }
                     if (node.hasRandomRoundingField()) {
                         renderRandomRoundingField(context, textRenderer, node, isOverSidebar);
+                    }
+                    if (node.hasAmountInputField()) {
+                        renderAmountInputField(context, textRenderer, node, isOverSidebar);
                     }
                     if (node.hasPopupEditButton()) {
                         renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -6710,7 +6729,8 @@ public class NodeGraph {
             || isSeedParameter(node, parameter)
             || isAmountParameter(node, parameter)
             || isGuiParameter(node, parameter)
-            || isBlockItemParameter(node, index))) {
+            || isBlockItemParameter(node, index)
+            || isFabricEventSensorParameter(node, index))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
                 || "Any".equalsIgnoreCase(parameterEditBuffer)
                 || "Self".equalsIgnoreCase(parameterEditBuffer)
@@ -6774,7 +6794,8 @@ public class NodeGraph {
             boolean isPlayerParam = isPlayerParameter(parameterEditingNode, parameter);
             boolean isAnyLikeParam = isMessageParameter(parameterEditingNode, parameter)
                 || isSeedParameter(parameterEditingNode, parameter)
-                || isGuiParameter(parameterEditingNode, parameter);
+                || isGuiParameter(parameterEditingNode, parameter)
+                || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
             boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
             if (isAmountParam) {
@@ -8340,6 +8361,14 @@ public class NodeGraph {
         if (isEntityStateParameter(node, index)) {
             return getEntityStateDropdownOptions(node, lowered);
         }
+        if (isFabricEventSensorParameter(node, index)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("Any", "Any"));
+            for (String eventName : FabricEventTracker.getSupportedEvents()) {
+                result.add(new ParameterDropdownOption(eventName, eventName));
+            }
+            return filterDropdownOptions(result, lowered);
+        }
 
         List<String> source;
         if (node != null && node.getType() == NodeType.PARAM_GUI) {
@@ -8436,6 +8465,20 @@ public class NodeGraph {
         return result;
     }
 
+    private boolean isFabricEventSensorParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.SENSOR_FABRIC_EVENT || index < 0) {
+            return false;
+        }
+        List<NodeParameter> parameters = node.getParameters();
+        if (parameters == null || index >= parameters.size()) {
+            return false;
+        }
+        NodeParameter parameter = parameters.get(index);
+        return parameter != null
+            && parameter.getType() == ParameterType.STRING
+            && "Event".equals(parameter.getName());
+    }
+
     private List<ParameterDropdownOption> getBlockStateDropdownOptions(Node node, String loweredQuery) {
         if (node == null) {
             return Collections.emptyList();
@@ -8518,7 +8561,10 @@ public class NodeGraph {
         if (!isEditingParameterField() || parameterEditingNode != node || parameterEditingIndex != index) {
             return;
         }
-        if (!isBlockItemParameter(node, index) && !isGuiParameter(node, null) && !isDirectionParameter(node, index)) {
+        if (!isBlockItemParameter(node, index)
+            && !isGuiParameter(node, null)
+            && !isDirectionParameter(node, index)
+            && !isFabricEventSensorParameter(node, index)) {
             closeParameterDropdown();
             return;
         }
@@ -8609,6 +8655,10 @@ public class NodeGraph {
         setParameterCaretPosition(prefix.length() + replacement.length());
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
         refreshStateParameterPreview();
+        boolean changed = applyParameterEdit();
+        if (changed) {
+            notifyNodeParametersChanged(parameterEditingNode);
+        }
         ParameterSegment updatedSegment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String updatedQuery = updatedSegment.trimmedSegment == null ? "" : updatedSegment.trimmedSegment.trim();
         suppressParameterDropdown(parameterEditingNode, parameterEditingIndex, updatedQuery);

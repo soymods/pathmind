@@ -204,6 +204,8 @@
   "pathmind.node.type.sensorAtCoordinates.desc": "Detect if player is at specific coordinates",
   "pathmind.node.type.sensorChatMessage": "Chat Message",
   "pathmind.node.type.sensorChatMessage.desc": "Detect if a player sent a chat message within a time window",
+  "pathmind.node.type.sensorFabricEvent": "Fabric Event",
+  "pathmind.node.type.sensorFabricEvent.desc": "Detect if a selected Fabric client event fired within a time window",
   "pathmind.node.type.sensorDistanceBetween": "Distance Between",
   "pathmind.node.type.sensorDistanceBetween.desc": "Gets the distance between two targets (entity, block, or item)",
   "pathmind.node.type.sensorGuiFilled": "GUI Filled",

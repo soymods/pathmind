@@ -26,6 +26,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_IS_VISIBLE,
         NodeType.SENSOR_KEY_PRESSED,
         NodeType.SENSOR_CHAT_MESSAGE,
+        NodeType.SENSOR_FABRIC_EVENT,
         NodeType.SENSOR_GUI_FILLED,
         NodeType.OPERATOR_EQUALS,
         NodeType.OPERATOR_NOT,
@@ -46,6 +47,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_IS_FALLING,
         NodeType.SENSOR_HEALTH_BELOW,
         NodeType.SENSOR_HUNGER_BELOW,
+        NodeType.SENSOR_FABRIC_EVENT,
         NodeType.SENSOR_GUI_FILLED,
         NodeType.SENSOR_TARGETED_BLOCK,
         NodeType.SENSOR_TARGETED_BLOCK_FACE,
@@ -161,6 +163,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.SENSOR_VILLAGER_TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_CHAT_MESSAGE, EnumSet.of(NodeValueTrait.PLAYER, NodeValueTrait.MESSAGE, NodeValueTrait.NUMBER));
+        accepted.put(NodeType.SENSOR_FABRIC_EVENT, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_KEY_PRESSED, EnumSet.of(NodeValueTrait.KEY));
         accepted.put(NodeType.SENSOR_IS_RENDERED, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
         accepted.put(NodeType.SENSOR_IS_VISIBLE, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));

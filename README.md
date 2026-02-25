@@ -155,7 +155,7 @@ Found a bug or have an idea? We'd love to hear from you!
 
 - **Bug Reports**: [Open an Issue](https://github.com/soymods/pathmind/issues/new?template=bug_report.md)
 - **Feature Requests**: [Open an Issue](https://github.com/soymods/pathmind/issues/new?template=feature_request.md)
-- **General Discussion**: [Join our Discord](https://discord.gg/zWT2zxQm)
+- **General Discussion**: [Join our Discord](https://discord.gg/7nGRX2d8a6)
 
 ## Acknowledgments
 
@@ -168,7 +168,7 @@ Need help? Here are some resources:
 
 - **Documentation**: Check this README and in-game tooltips
 - **Issues**: [GitHub Issues](https://github.com/soymods/pathmind/issues)
-- **Discord**: [Join our Community](https://discord.gg/zWT2zxQm)
+- **Discord**: [Join our Community](https://discord.gg/7nGRX2d8a6)
 
 ---
 

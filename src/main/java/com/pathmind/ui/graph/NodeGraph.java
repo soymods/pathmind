@@ -11,6 +11,8 @@ import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
+import com.pathmind.ui.animation.AnimatedValue;
+import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
@@ -47,6 +49,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.stream.Stream;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.EntityStateOptions;
@@ -117,6 +120,7 @@ public class NodeGraph {
     private Node actionDropTarget = null;
     private Node parameterDropTarget = null;
     private Integer parameterDropSlotIndex = null;
+    private final Map<Node, AnimatedValue> messageScopeAnimations = new WeakHashMap<>();
 
     // Context menu state
     private com.pathmind.ui.menu.ContextMenu contextMenu = null;
@@ -1136,6 +1140,7 @@ public class NodeGraph {
             }
             if (nodeData.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
                 newNode.setMessageLines(nodeData.getMessageLines());
+                newNode.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
             }
             if (newNode.hasBookTextInput() && nodeData.getBookText() != null) {
                 newNode.setBookText(nodeData.getBookText());
@@ -1235,8 +1240,10 @@ public class NodeGraph {
             nodeData.setStartNodeNumber(node.getStartNodeNumber());
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
+                nodeData.setMessageClientSide(node.isMessageClientSide());
             } else {
                 nodeData.setMessageLines(null);
+                nodeData.setMessageClientSide(null);
             }
             if (node.hasBookTextInput()) {
                 nodeData.setBookText(node.getBookText());
@@ -3379,6 +3386,7 @@ public class NodeGraph {
                 }
                 if (node.hasMessageInputFields()) {
                     renderMessageInputFields(context, textRenderer, node, isOverSidebar);
+                    renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasBookTextInput()) {
@@ -3743,6 +3751,37 @@ public class NodeGraph {
         }
 
         return handled;
+    }
+
+    private boolean isPointInsideMessageScopeToggle(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasMessageInputFields()) {
+            return false;
+        }
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int left = node.getMessageScopeToggleLeft();
+        int top = node.getMessageScopeToggleTop();
+        int width = node.getMessageScopeToggleWidth();
+        int height = node.getMessageScopeToggleHeight();
+        return worldMouseX >= left && worldMouseX <= left + width
+            && worldMouseY >= top && worldMouseY <= top + height;
+    }
+
+    public boolean handleMessageScopeToggleClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideMessageScopeToggle(node, mouseX, mouseY)) {
+            return false;
+        }
+        stopMessageEditing(true);
+        node.toggleMessageClientSide();
+        AnimatedValue animation = getMessageScopeAnimation(node);
+        animation.animateTo(node.isMessageClientSide() ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
+        notifyNodeParametersChanged(node);
+        return true;
+    }
+
+    private AnimatedValue getMessageScopeAnimation(Node node) {
+        boolean clientSide = node != null && node.isMessageClientSide();
+        return messageScopeAnimations.computeIfAbsent(node, key -> AnimatedValue.forToggle(clientSide));
     }
 
     private int adjustColorBrightness(int color, float factor) {
@@ -4873,6 +4912,81 @@ public class NodeGraph {
         int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
         int removeTextColor = canRemove ? UITheme.TEXT_PRIMARY : UITheme.NODE_LABEL_DIMMED;
         drawNodeText(context, textRenderer, Text.literal("-"), removeTextX, removeTextY, removeTextColor);
+    }
+
+    private void renderMessageScopeToggle(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+        int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int borderColor = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int accentColor = getSelectedNodeAccentColor();
+        int activeBackground = isOverSidebar ? adjustColorBrightness(accentColor, 0.72f) : adjustColorBrightness(accentColor, 0.84f);
+        int activeBorderColor = accentColor;
+        int activeTextColor = UITheme.TEXT_EDITING;
+        int inactiveTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int optionGap = 4;
+
+        int labelLeft = node.getMessageScopeToggleLeft() - cameraX;
+        int labelTop = node.getMessageScopeLabelTop() - cameraY;
+        int labelY = labelTop + Math.max(0, (node.getMessageScopeLabelHeight() - textRenderer.fontHeight) / 2);
+        drawNodeText(context, textRenderer, Text.literal("Visibility"), labelLeft + 2, labelY, labelColor);
+
+        int left = node.getMessageScopeToggleLeft() - cameraX;
+        int top = node.getMessageScopeToggleTop() - cameraY;
+        int width = node.getMessageScopeToggleWidth();
+        int height = node.getMessageScopeToggleHeight();
+        int segmentWidth = Math.max(1, (width - optionGap) / 2);
+        boolean hovered = !isOverSidebar && isPointInsideMessageScopeToggle(node, mouseX, mouseY);
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int worldLeft = node.getMessageScopeToggleLeft();
+        int worldTop = node.getMessageScopeToggleTop();
+        AnimatedValue animation = getMessageScopeAnimation(node);
+        float target = node.isMessageClientSide() ? 1f : 0f;
+        if (Math.abs(animation.getTargetValue() - target) > 0.001f) {
+            animation.setValue(target);
+        }
+        animation.tick();
+        float progress = animation.getValue();
+
+        int globalLeft = left;
+        int clientLeft = left + segmentWidth + optionGap;
+        int globalWorldLeft = worldLeft;
+        int clientWorldLeft = worldLeft + segmentWidth + optionGap;
+        boolean globalHovered = hovered
+            && worldMouseX >= globalWorldLeft && worldMouseX <= globalWorldLeft + segmentWidth
+            && worldMouseY >= worldTop && worldMouseY <= worldTop + height;
+        boolean clientHovered = hovered
+            && worldMouseX >= clientWorldLeft && worldMouseX <= clientWorldLeft + segmentWidth
+            && worldMouseY >= worldTop && worldMouseY <= worldTop + height;
+
+        int globalFill = AnimationHelper.lerpColor(activeBackground, fieldBackground, progress);
+        int globalBorder = AnimationHelper.lerpColor(activeBorderColor, borderColor, progress);
+        int clientFill = AnimationHelper.lerpColor(fieldBackground, activeBackground, progress);
+        int clientBorder = AnimationHelper.lerpColor(borderColor, activeBorderColor, progress);
+        if (globalHovered) {
+            globalFill = adjustColorBrightness(globalFill, 1.08f);
+            globalBorder = activeBorderColor;
+        }
+        if (clientHovered) {
+            clientFill = adjustColorBrightness(clientFill, 1.08f);
+            clientBorder = activeBorderColor;
+        }
+
+        context.fill(globalLeft, top, globalLeft + segmentWidth, top + height, globalFill);
+        DrawContextBridge.drawBorderInLayer(context, globalLeft, top, segmentWidth, height, globalBorder);
+        context.fill(clientLeft, top, clientLeft + segmentWidth, top + height, clientFill);
+        DrawContextBridge.drawBorderInLayer(context, clientLeft, top, segmentWidth, height, clientBorder);
+
+        String globalLabel = "Global";
+        String clientLabel = "Client Side";
+        int globalX = globalLeft + Math.max(0, (segmentWidth - textRenderer.getWidth(globalLabel)) / 2);
+        int clientX = clientLeft + Math.max(0, (segmentWidth - textRenderer.getWidth(clientLabel)) / 2);
+        int textY = top + (height - textRenderer.fontHeight) / 2 + 1;
+        int globalTextColor = AnimationHelper.lerpColor(activeTextColor, inactiveTextColor, progress);
+        int clientTextColor = AnimationHelper.lerpColor(inactiveTextColor, activeTextColor, progress);
+
+        drawNodeText(context, textRenderer, Text.literal(globalLabel), globalX, textY, globalTextColor);
+        drawNodeText(context, textRenderer, Text.literal(clientLabel), clientX, textY, clientTextColor);
     }
 
     private void renderBookTextInput(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
@@ -11234,6 +11348,7 @@ public class NodeGraph {
                 Node messageNode = nodeMap.get(nodeData.getId());
                 if (messageNode != null) {
                     messageNode.setMessageLines(nodeData.getMessageLines());
+                    messageNode.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
                 }
             }
             Node textNode = nodeMap.get(nodeData.getId());

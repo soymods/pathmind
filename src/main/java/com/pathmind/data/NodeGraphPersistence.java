@@ -160,6 +160,7 @@ public class NodeGraphPersistence {
             }
             if (node.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
                 node.setMessageLines(nodeData.getMessageLines());
+                node.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
             }
             if (node.hasBookTextInput() && nodeData.getBookText() != null) {
                 node.setBookText(nodeData.getBookText());
@@ -424,8 +425,10 @@ public class NodeGraphPersistence {
             nodeData.setStartNodeNumber(node.getStartNodeNumber());
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
+                nodeData.setMessageClientSide(node.isMessageClientSide());
             } else {
                 nodeData.setMessageLines(null);
+                nodeData.setMessageClientSide(null);
             }
             if (node.hasBookTextInput()) {
                 nodeData.setBookText(node.getBookText());

@@ -214,6 +214,11 @@ public class Node {
     private static final int MESSAGE_BUTTON_SIZE = 10;
     private static final int MESSAGE_BUTTON_PADDING = 4;
     private static final int MESSAGE_BUTTON_SPACING = 4;
+    private static final int MESSAGE_SCOPE_MARGIN_HORIZONTAL = 6;
+    private static final int MESSAGE_SCOPE_TOP_MARGIN = 6;
+    private static final int MESSAGE_SCOPE_LABEL_HEIGHT = 10;
+    private static final int MESSAGE_SCOPE_TOGGLE_HEIGHT = 16;
+    private static final int MESSAGE_SCOPE_BOTTOM_MARGIN = 6;
     private static final int SCHEMATIC_FIELD_TOP_MARGIN = 6;
     private static final int SCHEMATIC_FIELD_LABEL_HEIGHT = 10;
     private static final int SCHEMATIC_FIELD_HEIGHT = 16;
@@ -293,6 +298,7 @@ public class Node {
     private transient Node owningStartNode;
     private int startNodeNumber;
     private final List<String> messageLines;
+    private boolean messageClientSide;
     private String bookText;
     private final List<String> bookPages;
     private int messageFieldContentWidthOverride;
@@ -329,6 +335,7 @@ public class Node {
         if (type == NodeType.MESSAGE) {
             this.messageLines.add("Hello World");
         }
+        this.messageClientSide = false;
         this.bookText = "";
         this.bookPages = new ArrayList<>();
         this.messageFieldContentWidthOverride = 0;
@@ -3667,13 +3674,32 @@ public class Node {
         return true;
     }
 
+    public boolean isMessageClientSide() {
+        return type == NodeType.MESSAGE && messageClientSide;
+    }
+
+    public void setMessageClientSide(boolean messageClientSide) {
+        if (type != NodeType.MESSAGE) {
+            return;
+        }
+        this.messageClientSide = messageClientSide;
+    }
+
+    public void toggleMessageClientSide() {
+        if (type != NodeType.MESSAGE) {
+            return;
+        }
+        messageClientSide = !messageClientSide;
+    }
+
     public int getMessageFieldDisplayHeight() {
         if (!hasMessageInputFields()) {
             return 0;
         }
         int count = getMessageFieldCount();
         int blockHeight = MESSAGE_FIELD_LABEL_HEIGHT + MESSAGE_FIELD_HEIGHT + MESSAGE_FIELD_VERTICAL_GAP;
-        return MESSAGE_FIELD_TOP_MARGIN + (count * blockHeight) - MESSAGE_FIELD_VERTICAL_GAP + MESSAGE_FIELD_BOTTOM_MARGIN;
+        return MESSAGE_FIELD_TOP_MARGIN + (count * blockHeight) - MESSAGE_FIELD_VERTICAL_GAP
+            + MESSAGE_FIELD_BOTTOM_MARGIN + getMessageScopeToggleDisplayHeight();
     }
 
     public int getMessageFieldLabelTop(int index) {
@@ -3765,6 +3791,38 @@ public class Node {
 
     public int getMessageButtonsWidth() {
         return (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
+    }
+
+    public int getMessageScopeToggleDisplayHeight() {
+        if (!hasMessageInputFields()) {
+            return 0;
+        }
+        return MESSAGE_SCOPE_TOP_MARGIN + MESSAGE_SCOPE_LABEL_HEIGHT + MESSAGE_SCOPE_TOGGLE_HEIGHT + MESSAGE_SCOPE_BOTTOM_MARGIN;
+    }
+
+    public int getMessageScopeLabelTop() {
+        return getMessageFieldInputTop(getMessageFieldCount() - 1) + MESSAGE_FIELD_HEIGHT
+            + MESSAGE_FIELD_BOTTOM_MARGIN + MESSAGE_SCOPE_TOP_MARGIN;
+    }
+
+    public int getMessageScopeToggleTop() {
+        return getMessageScopeLabelTop() + MESSAGE_SCOPE_LABEL_HEIGHT;
+    }
+
+    public int getMessageScopeLabelHeight() {
+        return MESSAGE_SCOPE_LABEL_HEIGHT;
+    }
+
+    public int getMessageScopeToggleLeft() {
+        return x + MESSAGE_SCOPE_MARGIN_HORIZONTAL;
+    }
+
+    public int getMessageScopeToggleWidth() {
+        return Math.max(MESSAGE_FIELD_MIN_CONTENT_WIDTH, width - 2 * MESSAGE_SCOPE_MARGIN_HORIZONTAL);
+    }
+
+    public int getMessageScopeToggleHeight() {
+        return MESSAGE_SCOPE_TOGGLE_HEIGHT;
     }
 
     // Text input methods for WRITE_BOOK and WRITE_SIGN nodes
@@ -11351,7 +11409,7 @@ public class Node {
         }
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client != null && client.player != null && client.player.networkHandler != null) {
+        if (client != null && client.player != null) {
             long delayMs = 120L;
             int[] sent = {0};
             for (int i = 0; i < lines.size(); i++) {
@@ -11365,16 +11423,20 @@ public class Node {
                 long scheduledDelay = sent[0] * delayMs;
                 MESSAGE_SCHEDULER.schedule(() -> {
                     MinecraftClient.getInstance().execute(() -> {
-                        if (MinecraftClient.getInstance().player != null
-                            && MinecraftClient.getInstance().player.networkHandler != null) {
-                            boolean isCommand = sendText.startsWith("/");
-                            if (isCommand) {
-                                String cmd = sendText.length() > 1 ? sendText.substring(1) : "";
-                                if (!cmd.isEmpty()) {
-                                    MinecraftClient.getInstance().player.networkHandler.sendChatCommand(cmd);
+                        MinecraftClient currentClient = MinecraftClient.getInstance();
+                        if (currentClient.player != null) {
+                            if (isMessageClientSide()) {
+                                currentClient.player.sendMessage(Text.literal(sendText), false);
+                            } else if (currentClient.player.networkHandler != null) {
+                                boolean isCommand = sendText.startsWith("/");
+                                if (isCommand) {
+                                    String cmd = sendText.length() > 1 ? sendText.substring(1) : "";
+                                    if (!cmd.isEmpty()) {
+                                        currentClient.player.networkHandler.sendChatCommand(cmd);
+                                    }
+                                } else {
+                                    currentClient.player.networkHandler.sendChatMessage(sendText);
                                 }
-                            } else {
-                                MinecraftClient.getInstance().player.networkHandler.sendChatMessage(sendText);
                             }
                         }
                     });
@@ -11386,7 +11448,7 @@ public class Node {
                 future.complete(null);
             }, completionDelay, TimeUnit.MILLISECONDS);
         } else {
-            System.err.println("Unable to send chat message: client or player not available");
+            System.err.println("Unable to send message: client or player not available");
             future.complete(null);
         }
     }

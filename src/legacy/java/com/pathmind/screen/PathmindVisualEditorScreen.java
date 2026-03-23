@@ -172,6 +172,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private final Map<String, AnimatedValue> presetTabAppearAnimations = new HashMap<>();
     private final AnimatedValue presetTabAddButtonFadeAnimation = new AnimatedValue(1f, AnimationHelper::easeOutCubic);
     private boolean presetTabsInitialized = false;
+    private static final long PRESET_TAB_RENAME_DOUBLE_CLICK_MS = 300L;
     private String draggingPresetTabName = null;
     private int draggingPresetTabPointerOffsetX = 0;
     private int draggingPresetTabCurrentX = 0;
@@ -188,9 +189,13 @@ public class PathmindVisualEditorScreen extends Screen {
     private int createPresetStatusColor = UITheme.TEXT_SECONDARY;
     private final PopupAnimationHandler renamePresetPopupAnimation = new PopupAnimationHandler();
     private TextFieldWidget renamePresetField;
+    private TextFieldWidget inlinePresetRenameField;
     private String renamePresetStatus = "";
     private int renamePresetStatusColor = UITheme.TEXT_SECONDARY;
     private String pendingPresetRenameName = "";
+    private String inlinePresetRenameName = "";
+    private long lastPresetTitleClickTime = 0L;
+    private String lastPresetTitleClickName = "";
     private final PopupAnimationHandler infoPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler presetDeletePopupAnimation = new PopupAnimationHandler();
     private String pendingPresetDeletionName = "";
@@ -287,6 +292,16 @@ public class PathmindVisualEditorScreen extends Screen {
             renamePresetField.setUneditableColor(UITheme.TEXT_TERTIARY);
             renamePresetField.setChangedListener(value -> clearRenamePresetStatus());
             this.addSelectableChild(renamePresetField);
+        }
+        if (inlinePresetRenameField == null) {
+            inlinePresetRenameField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
+            inlinePresetRenameField.setMaxLength(64);
+            inlinePresetRenameField.setDrawsBackground(false);
+            inlinePresetRenameField.setVisible(false);
+            inlinePresetRenameField.setEditable(false);
+            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
+            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            this.addSelectableChild(inlinePresetRenameField);
         }
 
         updateImportExportPathFromPreset();
@@ -821,6 +836,13 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (isInlinePresetRenameActive()) {
+            if (inlinePresetRenameField != null && inlinePresetRenameField.mouseClicked(mouseX, mouseY, button)) {
+                return true;
+            }
+            stopInlinePresetRename(true);
+        }
+
         if (presetDeletePopupAnimation.isVisible()) {
             if (handlePresetDeletePopupClick(mouseX, mouseY, button)) {
                 return true;
@@ -1124,6 +1146,11 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleMessageScopeToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
                 if (nodeGraph.isPointInsideAmountField(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     nodeGraph.startAmountEditing(clickedNode);
@@ -1244,6 +1271,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (isInlinePresetRenameActive()) {
+            return true;
+        }
+
         if (clearPopupAnimation.isVisible()) {
             return true;
         }
@@ -1352,6 +1383,13 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (draggingPresetTabName != null) {
             endPresetTabDrag();
+            return true;
+        }
+
+        if (isInlinePresetRenameActive()) {
+            if (inlinePresetRenameField != null) {
+                inlinePresetRenameField.mouseReleased(mouseX, mouseY, button);
+            }
             return true;
         }
 
@@ -1522,6 +1560,21 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (isInlinePresetRenameActive()) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                stopInlinePresetRename(false);
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                stopInlinePresetRename(true);
+                return true;
+            }
+            if (inlinePresetRenameField != null && inlinePresetRenameField.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            return true;
+        }
+
         if (presetDeletePopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closePresetDeletePopup();
@@ -1647,6 +1700,13 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null && renamePresetField.charTyped(chr, modifiers)) {
+                return true;
+            }
+            return true;
+        }
+
+        if (isInlinePresetRenameActive()) {
+            if (inlinePresetRenameField != null && inlinePresetRenameField.charTyped(chr, modifiers)) {
                 return true;
             }
             return true;
@@ -2838,6 +2898,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     applyAlpha(hovered ? 0xFFD0D0D0 : 0xFFB8B8B8, plusAlpha)
             );
         }
+        renderInlinePresetRenameField(context, mouseX, mouseY, tabs, tabWidths, tabXs, y, dragIndex);
     }
 
     private boolean handleWorkspaceTabClick(int mouseX, int mouseY) {
@@ -2874,6 +2935,11 @@ public class PathmindVisualEditorScreen extends Screen {
                         openPresetDeletePopup(label);
                         return true;
                     }
+                }
+                if (!isPresetDeleteDisabled(label) && shouldStartInlinePresetRename(label)) {
+                    clearPendingPresetTabInteraction();
+                    startInlinePresetRename(label);
+                    return true;
                 }
                 beginPendingPresetTabInteraction(label, mouseX, mouseY, x);
                 return true;
@@ -3004,8 +3070,10 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean deletable = !isPresetDeleteDisabled(label);
         int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
         int textMaxWidth = Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
-        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, drawY + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1, textColor);
+        if (!label.equals(inlinePresetRenameName)) {
+            String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, drawY + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1, textColor);
+        }
 
         if (deletable) {
             int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
@@ -3050,6 +3118,137 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         return tabs;
     }
+
+    private boolean isInlinePresetRenameActive() {
+        return inlinePresetRenameField != null
+            && inlinePresetRenameField.isVisible()
+            && inlinePresetRenameName != null
+            && !inlinePresetRenameName.isEmpty();
+    }
+
+    private boolean shouldStartInlinePresetRename(String presetName) {
+        long now = System.currentTimeMillis();
+        boolean doubleClick = presetName != null && presetName.equals(lastPresetTitleClickName)
+            && now - lastPresetTitleClickTime <= PRESET_TAB_RENAME_DOUBLE_CLICK_MS;
+        lastPresetTitleClickName = presetName;
+        lastPresetTitleClickTime = now;
+        return doubleClick;
+    }
+
+    private int getPresetTabTextMaxWidth(String label, int tabWidth) {
+        boolean deletable = !isPresetDeleteDisabled(label);
+        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
+        return Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
+    }
+
+    private int[] getPresetTabTitleBounds(String label, int x, int y, int tabWidth) {
+        int textMaxWidth = getPresetTabTextMaxWidth(label, tabWidth);
+        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
+        int textX = x + PRESET_TAB_TEXT_PADDING;
+        int textY = y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
+        int textWidth = Math.max(4, this.textRenderer.getWidth(drawLabel));
+        return new int[]{textX, textY - 1, Math.min(textWidth, textMaxWidth), this.textRenderer.fontHeight + 2};
+    }
+
+    private boolean isPointInPresetTabTitle(int mouseX, int mouseY, String label, int x, int y, int tabWidth) {
+        int[] bounds = getPresetTabTitleBounds(label, x, y, tabWidth);
+        return isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
+    }
+
+    private void startInlinePresetRename(String presetName) {
+        if (presetName == null || presetName.isEmpty() || isPresetDeleteDisabled(presetName) || inlinePresetRenameField == null) {
+            return;
+        }
+        closeCreatePresetPopup();
+        closeRenamePresetPopup();
+        clearPendingPresetTabInteraction();
+        endPresetTabDrag();
+        inlinePresetRenameName = presetName;
+        inlinePresetRenameField.setText(presetName);
+        inlinePresetRenameField.setVisible(true);
+        inlinePresetRenameField.setEditable(true);
+        inlinePresetRenameField.setFocused(true);
+    }
+
+    private boolean renamePresetInternal(String currentName, String desiredName) {
+        if (currentName == null || currentName.trim().isEmpty()) {
+            return false;
+        }
+        if (desiredName == null || desiredName.trim().isEmpty()) {
+            return false;
+        }
+        boolean renamingActive = currentName.equalsIgnoreCase(activePresetName);
+        if (renamingActive) {
+            nodeGraph.save();
+        }
+        Optional<String> renamedPreset = PresetManager.renamePreset(currentName, desiredName);
+        if (renamedPreset.isEmpty()) {
+            return false;
+        }
+        refreshAvailablePresets();
+        nodeGraph.setActivePreset(activePresetName);
+        presetDropdownOpen = false;
+        if (renamingActive) {
+            updateImportExportPathFromPreset();
+        }
+        return true;
+    }
+
+    private void stopInlinePresetRename(boolean commit) {
+        if (!isInlinePresetRenameActive()) {
+            return;
+        }
+        boolean renamed = false;
+        if (commit && inlinePresetRenameField != null) {
+            renamed = renamePresetInternal(inlinePresetRenameName, inlinePresetRenameField.getText());
+        }
+        if (commit && !renamed) {
+            inlinePresetRenameField.setFocused(true);
+            return;
+        }
+        inlinePresetRenameName = "";
+        if (inlinePresetRenameField != null) {
+            inlinePresetRenameField.setFocused(false);
+            inlinePresetRenameField.setVisible(false);
+            inlinePresetRenameField.setEditable(false);
+        }
+    }
+
+    private void renderInlinePresetRenameField(DrawContext context, int mouseX, int mouseY, List<String> tabs, int[] tabWidths, int[] tabXs, int y, int dragIndex) {
+        if (!isInlinePresetRenameActive() || inlinePresetRenameField == null) {
+            return;
+        }
+        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
+            if (i == dragIndex) {
+                continue;
+            }
+            String label = tabs.get(i);
+            if (!label.equals(inlinePresetRenameName)) {
+                continue;
+            }
+            int tabWidth = tabWidths[i];
+            if (tabWidth <= 0) {
+                break;
+            }
+            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
+            int[] titleBounds = getPresetTabTitleBounds(label, drawX, y, tabWidth);
+            int fieldX = titleBounds[0];
+            int fieldWidth = getPresetTabTextMaxWidth(label, tabWidth);
+            int fieldHeight = Math.max(this.textRenderer.fontHeight + 2, titleBounds[3]);
+            int fieldY = titleBounds[1] + 1;
+            inlinePresetRenameField.setVisible(true);
+            inlinePresetRenameField.setEditable(true);
+            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
+            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            inlinePresetRenameField.setX(fieldX);
+            inlinePresetRenameField.setY(fieldY);
+            inlinePresetRenameField.setWidth(fieldWidth);
+            inlinePresetRenameField.render(context, mouseX, mouseY, 0f);
+            return;
+        }
+        stopInlinePresetRename(false);
+    }
+
 
     private void tickQueuedPresetDeletionAnimation() {
         if (animatingPresetDeletionName == null) {
@@ -3547,6 +3746,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownOpen = false;
         clearCreatePresetStatus();
         closeInfoPopup();
+        stopInlinePresetRename(false);
         closeRenamePresetPopup();
         createPresetPopupAnimation.show();
         if (createPresetField != null) {
@@ -3574,6 +3774,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownOpen = false;
         clearRenamePresetStatus();
         closeInfoPopup();
+        stopInlinePresetRename(false);
         closeCreatePresetPopup();
         pendingPresetRenameName = presetName;
         renamePresetPopupAnimation.show();
@@ -3994,25 +4195,12 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
 
-        boolean renamingActive = pendingPresetRenameName.equalsIgnoreCase(activePresetName);
-        if (renamingActive) {
-            nodeGraph.save();
-        }
-
-        Optional<String> renamedPreset = PresetManager.renamePreset(pendingPresetRenameName, desiredName);
-        if (renamedPreset.isEmpty()) {
+        if (!renamePresetInternal(pendingPresetRenameName, desiredName)) {
             setRenamePresetStatus("Preset name already exists or is invalid.", UITheme.STATE_ERROR);
             return;
         }
 
         closeRenamePresetPopup();
-        refreshAvailablePresets();
-        nodeGraph.setActivePreset(activePresetName);
-        presetDropdownOpen = false;
-
-        if (renamingActive) {
-            updateImportExportPathFromPreset();
-        }
     }
 
     private void openPresetDeletePopup(String presetName) {
@@ -4184,6 +4372,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void refreshAvailablePresets() {
+        stopInlinePresetRename(false);
         availablePresets = new ArrayList<>(PresetManager.getAvailablePresets());
         activePresetName = PresetManager.getActivePreset();
         syncPresetTabOrderWithAvailable();
@@ -4194,6 +4383,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void switchPreset(String presetName) {
+        stopInlinePresetRename(false);
         nodeGraph.save();
         PresetManager.setActivePreset(presetName);
         refreshAvailablePresets();

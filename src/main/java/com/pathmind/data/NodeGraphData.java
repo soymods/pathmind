@@ -58,6 +58,7 @@ public class NodeGraphData {
         private Boolean booleanToggleValue;
         private Integer startNodeNumber;
         private List<String> messageLines;
+        private Boolean messageClientSide;
         private String bookText;
         private Boolean gotoAllowBreakWhileExecuting;
         private Boolean gotoAllowPlaceWhileExecuting;
@@ -147,6 +148,14 @@ public class NodeGraphData {
 
         public void setMessageLines(List<String> messageLines) {
             this.messageLines = messageLines;
+        }
+
+        public Boolean getMessageClientSide() {
+            return messageClientSide;
+        }
+
+        public void setMessageClientSide(Boolean messageClientSide) {
+            this.messageClientSide = messageClientSide;
         }
 
         public String getBookText() {

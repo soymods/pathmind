@@ -79,6 +79,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PRESET_TAB_ADD_WIDTH = 20;
     private static final int PRESET_TAB_HARD_MIN_WIDTH = 24;
     private static final int PRESET_TAB_TITLE_GAP = 8;
+    private static final int PRESET_BROWSER_BUTTON_SIZE = 16;
+    private static final int PRESET_BROWSER_BUTTON_GAP = 3;
     private static final int PRESET_TAB_DRAG_THRESHOLD = 4;
     private static final boolean IS_MAC_OS = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT)
@@ -88,7 +90,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int BOTTOM_BUTTON_SIZE = 18;
     private static final int BOTTOM_BUTTON_MARGIN = 6;
     private static final int BOTTOM_BUTTON_SPACING = 6;
-    private static final int PRESET_DROPDOWN_WIDTH = 160;
+    private static final int PRESET_DROPDOWN_WIDTH = 220;
     private static final int PRESET_DROPDOWN_HEIGHT = 18;
     private static final int PRESET_DROPDOWN_MARGIN = 6;
     private static final int PRESET_OPTION_HEIGHT = 18;
@@ -387,7 +389,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Render title bar above the workspace so nodes never overlap it.
         context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
         context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT - 1, UITheme.BORDER_SUBTLE);
-        drawTitle(context, titleUnderlineAnimation.getValue());
+        drawTitle(context, mouseX, mouseY, titleUnderlineAnimation.getValue());
 
         // Tick all popup animations early so the scrim uses current values
         clearPopupAnimation.tick();
@@ -408,6 +410,7 @@ public class PathmindVisualEditorScreen extends Screen {
             renderPlayButton(context, mouseX, mouseY, controlsDisabled);
         }
         renderWorkspaceTabs(context, mouseX, mouseY, controlsDisabled);
+        renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
 
         if (controlsDisabled) {
@@ -842,6 +845,18 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (button == 0 && presetDropdownOpen) {
+            if (isPresetBrowserButtonClicked((int) mouseX, (int) mouseY)) {
+                presetDropdownOpen = false;
+                return true;
+            }
+            if (handlePresetDropdownSelection(mouseX, mouseY)) {
+                return true;
+            }
+            presetDropdownOpen = false;
+            return true;
+        }
+
         if (!isPopupObscuringWorkspace() && button == 0 && shouldShowExecutionControls()) {
             if (isPointInPlayButton((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = false;
@@ -873,6 +888,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 0) {
+            if (isPresetBrowserButtonClicked((int) mouseX, (int) mouseY)) {
+                presetDropdownOpen = !presetDropdownOpen;
+                return true;
+            }
             if (handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
                 return true;
             }
@@ -882,13 +901,6 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
 
-            if (presetDropdownOpen && handlePresetDropdownSelection(mouseX, mouseY)) {
-                return true;
-            }
-        }
-
-        if (presetDropdownOpen && !isPointInRect((int)mouseX, (int)mouseY, getPresetDropdownX(), getPresetDropdownY(), PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT + getPresetDropdownOptionsHeight())) {
-            presetDropdownOpen = false;
         }
 
         if (nodeGraph.isNodeContextMenuOpen()) {
@@ -1798,7 +1810,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (presetDropdownOpen) {
             int dropdownX = getPresetDropdownX();
-            int optionStartY = getPresetDropdownY() + PRESET_DROPDOWN_HEIGHT;
+            int optionStartY = getPresetDropdownY();
             DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
             int dropdownHeight = layout.height;
             if (layout.maxScrollOffset > 0
@@ -2140,11 +2152,11 @@ public class PathmindVisualEditorScreen extends Screen {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void drawTitle(DrawContext context, float underlineProgress) {
+    private void drawTitle(DrawContext context, int mouseX, int mouseY, float underlineProgress) {
         int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
-        int textRight = this.width - 8;
-        int centerX = textRight - textWidth / 2;
-        int textY = (TITLE_BAR_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
+        int textX = getTitleTextX();
+        int centerX = textX + textWidth / 2;
+        int textY = getTitleTextY();
         context.drawCenteredTextWithShadow(this.textRenderer, TITLE_TEXT, centerX, textY, UITheme.TEXT_PRIMARY);
 
         if (underlineProgress > 0.001f) {
@@ -2154,6 +2166,24 @@ public class PathmindVisualEditorScreen extends Screen {
                 int underlineY = textY + this.textRenderer.fontHeight;
                 context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, UITheme.TEXT_PRIMARY);
             }
+        }
+
+        renderPresetBrowserButton(context, mouseX, mouseY);
+    }
+
+    private void renderPresetBrowserButton(DrawContext context, int mouseX, int mouseY) {
+        int buttonX = getPresetBrowserButtonX();
+        int buttonY = getPresetBrowserButtonY();
+        boolean hovered = isPresetBrowserButtonHovered(mouseX, mouseY);
+        boolean active = presetDropdownOpen;
+        int iconColor = (hovered || active) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        int lineLeft = buttonX + 4;
+        int lineRight = buttonX + PRESET_BROWSER_BUTTON_SIZE - 6;
+        int dotLeft = buttonX + 3;
+        for (int i = 0; i < 3; i++) {
+            int y = buttonY + 4 + i * 4;
+            context.fill(dotLeft, y, dotLeft + 1, y + 1, iconColor);
+            context.fill(lineLeft, y, lineRight, y + 1, iconColor);
         }
     }
 
@@ -2823,7 +2853,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     Text.literal("+"),
                     addTabX + PRESET_TAB_ADD_WIDTH / 2,
                     y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1,
-                    applyAlpha(hovered ? 0xFFD0D0D0 : 0xFFB8B8B8, plusAlpha)
+                    applyAlpha(hovered ? getAccentColor() : 0xFFB8B8B8, plusAlpha)
             );
         }
         renderInlinePresetRenameField(context, mouseX, mouseY, tabs, tabWidths, tabXs, y, dragIndex);
@@ -2946,9 +2976,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getPresetTabRightLimit() {
-        int titleWidth = this.textRenderer.getWidth(TITLE_TEXT);
-        int titleLeft = this.width - 8 - titleWidth;
-        return Math.max(getPresetTabStartX(), titleLeft - PRESET_TAB_TITLE_GAP);
+        return Math.max(getPresetTabStartX(), getPresetBrowserButtonX() - 1);
     }
 
     private int getPresetTabStartX() {
@@ -3378,46 +3406,12 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownAnimation.tick();
         float animProgress = AnimationHelper.easeOutQuad(presetDropdownAnimation.getValue());
 
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, dropdownX, dropdownY, PRESET_DROPDOWN_WIDTH, PRESET_DROPDOWN_HEIGHT);
-        drawToolbarButtonFrame(
-            context,
-            dropdownX,
-            dropdownY,
-            PRESET_DROPDOWN_WIDTH,
-            PRESET_DROPDOWN_HEIGHT,
-            hovered,
-            presetDropdownOpen,
-            disabled,
-            "preset-dropdown"
-        );
-
-        String displayName = activePresetName == null || activePresetName.isEmpty()
-                ? PresetManager.getDefaultPresetName()
-                : activePresetName;
-        int activeTextX = dropdownX + PRESET_TEXT_LEFT_PADDING;
-        int activeTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
-        String trimmedName = TextRenderUtil.trimWithEllipsis(this.textRenderer, displayName, activeTextWidth);
-        int labelColor = (hovered || presetDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(trimmedName), activeTextX, dropdownY + 5, labelColor);
-
-        int arrowCenterX = dropdownX + PRESET_DROPDOWN_WIDTH - 10;
-        int arrowCenterY = dropdownY + PRESET_DROPDOWN_HEIGHT / 2;
-        if (presetDropdownOpen) {
-            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY - 2, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY - 1, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY, labelColor);
-        } else {
-            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY + 1, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY - 1, labelColor);
-        }
-
         // Don't render options if animation is fully closed
         if (animProgress <= 0.001f) {
             return;
         }
 
-        int optionStartY = dropdownY + PRESET_DROPDOWN_HEIGHT;
+        int optionStartY = dropdownY;
         int optionCount = availablePresets.size() + 1;
         DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
         presetDropdownScrollOffset = MathHelper.clamp(presetDropdownScrollOffset, 0, layout.maxScrollOffset);
@@ -3530,14 +3524,12 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getPresetDropdownX() {
-        if (shouldShowExecutionControls()) {
-            return getStopButtonX() - PRESET_DROPDOWN_MARGIN - PRESET_DROPDOWN_WIDTH;
-        }
-        return this.width - PRESET_DROPDOWN_MARGIN - PRESET_DROPDOWN_WIDTH;
+        int preferredX = getPresetBrowserButtonX() + PRESET_BROWSER_BUTTON_SIZE - PRESET_DROPDOWN_WIDTH;
+        return MathHelper.clamp(preferredX, PRESET_DROPDOWN_MARGIN, this.width - PRESET_DROPDOWN_WIDTH - PRESET_DROPDOWN_MARGIN);
     }
 
     private int getPresetDropdownY() {
-        return TITLE_BAR_HEIGHT + PRESET_DROPDOWN_MARGIN;
+        return getPresetBrowserButtonY() + PRESET_BROWSER_BUTTON_SIZE + 2;
     }
 
     private int getPlayButtonX() {
@@ -3580,11 +3572,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private DropdownLayoutHelper.Layout getPresetDropdownLayout(int optionStartY) {
         int optionCount = availablePresets.size() + 1;
-        return DropdownLayoutHelper.calculate(optionCount, PRESET_OPTION_HEIGHT, optionCount, optionStartY, this.height);
+        int visibleCount = Math.min(optionCount, 10);
+        return DropdownLayoutHelper.calculate(optionCount, PRESET_OPTION_HEIGHT, visibleCount, optionStartY, this.height);
     }
 
     private int getPresetDropdownOptionsHeight() {
-        int optionStartY = getPresetDropdownY() + PRESET_DROPDOWN_HEIGHT;
+        int optionStartY = getPresetDropdownY();
         return getPresetDropdownLayout(optionStartY).height;
     }
 
@@ -3631,7 +3624,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean handlePresetDropdownSelection(double mouseX, double mouseY) {
         int dropdownX = getPresetDropdownX();
-        int optionStartY = getPresetDropdownY() + PRESET_DROPDOWN_HEIGHT;
+        int optionStartY = getPresetDropdownY();
         DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
         presetDropdownScrollOffset = MathHelper.clamp(presetDropdownScrollOffset, 0, layout.maxScrollOffset);
         int optionsHeight = layout.height;
@@ -3986,15 +3979,17 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight,
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.BACKGROUND_SECONDARY));
+        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight,
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.BORDER_SUBTLE));
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.translatable("pathmind.popup.deletePreset.title"),
             popupX + scaledWidth / 2,
             popupY + 14,
-            UITheme.TEXT_PRIMARY
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.TEXT_PRIMARY)
         );
 
         String presetLabel = (pendingPresetDeletionName != null && !pendingPresetDeletionName.isEmpty())
@@ -4002,8 +3997,10 @@ public class PathmindVisualEditorScreen extends Screen {
                 : Text.translatable("pathmind.popup.preset.fallbackCurrent").getString();
         String warningLine = Text.translatable("pathmind.popup.deletePreset.message").getString();
         String presetLine = Text.translatable("pathmind.popup.preset.label", presetLabel).getString();
-        drawPopupTextWithEllipsis(context, warningLine, popupX + 20, popupY + 48, scaledWidth - 40, UITheme.TEXT_SECONDARY);
-        drawPopupTextWithEllipsis(context, presetLine, popupX + 20, popupY + 64, scaledWidth - 40, UITheme.TEXT_SECONDARY);
+        drawPopupTextWithEllipsis(context, warningLine, popupX + 20, popupY + 48, scaledWidth - 40,
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.TEXT_SECONDARY));
+        drawPopupTextWithEllipsis(context, presetLine, popupX + 20, popupY + 64, scaledWidth - 40,
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.TEXT_SECONDARY));
 
         int checkboxX = popupX + 20;
         int checkboxY = popupY + 86;
@@ -4020,7 +4017,8 @@ public class PathmindVisualEditorScreen extends Screen {
             context.fill(checkboxX + 6, checkboxY + 4, checkboxX + 7, checkboxY + 5, checkColor);
             context.fill(checkboxX + 7, checkboxY + 3, checkboxX + 8, checkboxY + 4, checkColor);
         }
-        drawPopupTextWithEllipsis(context, "Don't show again", checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE + 8, checkboxY + 1, scaledWidth - 68, UITheme.TEXT_SECONDARY);
+        drawPopupTextWithEllipsis(context, "Don't show again", checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE + 8, checkboxY + 1, scaledWidth - 68,
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.TEXT_SECONDARY));
 
         int buttonWidth = 90;
         int buttonHeight = 20;
@@ -4031,8 +4029,10 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean deleteHovered = isPointInRect(mouseX, mouseY, deleteX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.cancel"), false);
-        drawPopupButton(context, deleteX, buttonY, buttonWidth, buttonHeight, deleteHovered, Text.translatable("pathmind.button.delete"), true);
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
+            Text.translatable("pathmind.button.cancel"), PopupButtonStyle.DEFAULT, presetDeletePopupAnimation);
+        drawPopupButton(context, deleteX, buttonY, buttonWidth, buttonHeight, deleteHovered,
+            Text.translatable("pathmind.button.delete"), PopupButtonStyle.PRIMARY, presetDeletePopupAnimation);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -4888,15 +4888,40 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean isTitleHovered(int mouseX, int mouseY) {
-        int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
         int textHeight = this.textRenderer.fontHeight;
-        int textX = this.width - 8 - textWidth;
-        int textY = (TITLE_BAR_HEIGHT - textHeight) / 2;
+        int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
+        int textX = getTitleTextX();
+        int textY = getTitleTextY() - 1;
         int hitboxX = textX - TITLE_INTERACTION_PADDING;
         int hitboxY = textY - TITLE_INTERACTION_PADDING;
         int hitboxWidth = textWidth + TITLE_INTERACTION_PADDING * 2;
         int hitboxHeight = textHeight + TITLE_INTERACTION_PADDING * 2;
         return isPointInRect(mouseX, mouseY, hitboxX, hitboxY, hitboxWidth, hitboxHeight);
+    }
+
+    private int getTitleTextX() {
+        return this.width - 8 - this.textRenderer.getWidth(TITLE_TEXT);
+    }
+
+    private int getTitleTextY() {
+        return (TITLE_BAR_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
+    }
+
+    private int getPresetBrowserButtonX() {
+        return getTitleTextX() - PRESET_BROWSER_BUTTON_GAP - PRESET_BROWSER_BUTTON_SIZE;
+    }
+
+    private int getPresetBrowserButtonY() {
+        return (TITLE_BAR_HEIGHT - PRESET_BROWSER_BUTTON_SIZE) / 2;
+    }
+
+    private boolean isPresetBrowserButtonHovered(int mouseX, int mouseY) {
+        return isPointInRect(mouseX, mouseY, getPresetBrowserButtonX(), getPresetBrowserButtonY(),
+            PRESET_BROWSER_BUTTON_SIZE, PRESET_BROWSER_BUTTON_SIZE);
+    }
+
+    private boolean isPresetBrowserButtonClicked(int mouseX, int mouseY) {
+        return isPresetBrowserButtonHovered(mouseX, mouseY);
     }
 
     private String getModVersion() {

@@ -168,6 +168,8 @@
   "pathmind.node.type.paramItem.desc": "Repräsentiert einen Gegenstand und Menge",
   "pathmind.node.type.paramKey": "Taste",
   "pathmind.node.type.paramKey.desc": "Repräsentiert eine Tastaturtastenbelegung",
+  "pathmind.node.type.paramMouseButton": "Mouse Button",
+  "pathmind.node.type.paramMouseButton.desc": "Represents a mouse button selection",
   "pathmind.node.type.paramMessage": "Nachricht",
   "pathmind.node.type.paramMessage.desc": "Repräsentiert wiederverwendbaren Chat- oder Schildtext",
   "pathmind.node.type.paramPlaceTarget": "Platzieren",
@@ -320,6 +322,6 @@
   "pathmind.title": "Pathmind Knoten-Editor",
   "screen.pathmind.visual_editor.subtitle": "Knotenbasierte Workflows erstellen und verwalten",
   "screen.pathmind.visual_editor.title": "Pathmind Visueller Editor",
-  "pathmind.node.type.pressKey": "Press Key",
-  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind"
+  "pathmind.node.type.pressKey": "Press Button",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing either a keyboard key or a mouse button"
 }

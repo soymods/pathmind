@@ -168,6 +168,8 @@
   "pathmind.node.type.paramItem.desc": "Représente un objet et une quantité",
   "pathmind.node.type.paramKey": "Touche",
   "pathmind.node.type.paramKey.desc": "Représente une liaison de touche de clavier",
+  "pathmind.node.type.paramMouseButton": "Mouse Button",
+  "pathmind.node.type.paramMouseButton.desc": "Represents a mouse button selection",
   "pathmind.node.type.paramMessage": "Message",
   "pathmind.node.type.paramMessage.desc": "Représente un texte de chat ou de panneau réutilisable",
   "pathmind.node.type.paramPlaceTarget": "Placer",
@@ -320,6 +322,6 @@
   "pathmind.title": "Éditeur de nœuds Pathmind",
   "screen.pathmind.visual_editor.subtitle": "Créer et gérer des flux de travail basés sur des nœuds",
   "screen.pathmind.visual_editor.title": "Éditeur visuel Pathmind",
-  "pathmind.node.type.pressKey": "Press Key",
-  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind"
+  "pathmind.node.type.pressKey": "Press Button",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing either a keyboard key or a mouse button"
 }

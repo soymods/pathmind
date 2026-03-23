@@ -82,6 +82,7 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.PARAM_HAND, EnumSet.of(NodeValueTrait.HAND));
         traits.put(NodeType.PARAM_GUI, EnumSet.of(NodeValueTrait.GUI));
         traits.put(NodeType.PARAM_KEY, EnumSet.of(NodeValueTrait.KEY));
+        traits.put(NodeType.PARAM_MOUSE_BUTTON, EnumSet.of(NodeValueTrait.MOUSE_BUTTON));
         traits.put(NodeType.PARAM_MESSAGE, EnumSet.of(NodeValueTrait.MESSAGE));
         traits.put(NodeType.PARAM_BLOCK, EnumSet.of(NodeValueTrait.BLOCK));
         traits.put(NodeType.PARAM_ITEM, EnumSet.of(NodeValueTrait.ITEM));
@@ -198,7 +199,7 @@ public final class NodeTraitRegistry {
             NodeValueTrait.PLAYER,
             NodeValueTrait.LIST_ITEM
         ));
-        accepted.put(NodeType.PRESS_KEY, EnumSet.of(NodeValueTrait.KEY));
+        accepted.put(NodeType.PRESS_KEY, EnumSet.of(NodeValueTrait.KEY, NodeValueTrait.MOUSE_BUTTON));
 
         accepted.put(NodeType.GOTO, EnumSet.of(
             NodeValueTrait.COORDINATE,
@@ -318,7 +319,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.CLICK_SLOT, new String[]{"Inventory Slot"});
         slotLabels.put(NodeType.WALK, new String[]{"Direction", "Duration/Distance"});
         slotLabels.put(NodeType.BREAK, new String[]{"Target"});
-        slotLabels.put(NodeType.PRESS_KEY, new String[]{"Key"});
+        slotLabels.put(NodeType.PRESS_KEY, new String[]{"Button"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
         slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Slot"});
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});

@@ -148,6 +148,7 @@ public class Sidebar {
             "Input",
             baritoneAvailable,
             NodeType.PARAM_KEY,
+            NodeType.PARAM_MOUSE_BUTTON,
             NodeType.PARAM_MESSAGE
         ));
         groups.add(new NodeGroup(

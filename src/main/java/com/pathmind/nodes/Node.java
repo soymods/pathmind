@@ -372,6 +372,8 @@ public class Node {
         private Float resolvedYaw;
         private Float resolvedPitch;
         private Double resolvedLookDistance;
+        private String resolvedButtonValue;
+        private boolean resolvedButtonIsMouse;
     }
 
     private static final class PlacementFailure extends RuntimeException {
@@ -2747,6 +2749,9 @@ public class Node {
             case PARAM_KEY:
                 parameters.add(new NodeParameter("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
                 break;
+            case PARAM_MOUSE_BUTTON:
+                parameters.add(new NodeParameter("MouseButton", ParameterType.STRING, "Left"));
+                break;
             case PARAM_RANGE:
                 parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "6"));
                 break;
@@ -4630,6 +4635,23 @@ public class Node {
                 handled = true;
             }
             if (parameterType == NodeType.PARAM_INVENTORY_SLOT && parameterNode.parentParameterSlotIndex == 0) {
+                handled = true;
+            }
+        }
+        if (!handled && type == NodeType.PRESS_KEY) {
+            if (providesTrait(parameterNode, NodeValueTrait.KEY)) {
+                String buttonValue = getParameterString(parameterNode, "Key");
+                if (buttonValue != null && !buttonValue.isBlank()) {
+                    runtimeParameterData.resolvedButtonValue = buttonValue;
+                    runtimeParameterData.resolvedButtonIsMouse = false;
+                }
+                handled = true;
+            } else if (providesTrait(parameterNode, NodeValueTrait.MOUSE_BUTTON)) {
+                String buttonValue = getParameterString(parameterNode, "MouseButton");
+                if (buttonValue != null && !buttonValue.isBlank()) {
+                    runtimeParameterData.resolvedButtonValue = buttonValue;
+                    runtimeParameterData.resolvedButtonIsMouse = true;
+                }
                 handled = true;
             }
         }
@@ -14643,10 +14665,44 @@ public class Node {
             return;
         }
 
-        String keyName = getStringParameter("Key", "GLFW_KEY_SPACE");
-        Integer keyCode = resolveKeyCode(keyName);
+        RuntimeParameterData parameterData = runtimeParameterData;
+        String buttonValue = parameterData != null && parameterData.resolvedButtonValue != null
+            ? parameterData.resolvedButtonValue
+            : getStringParameter("Key", "GLFW_KEY_SPACE");
+        boolean useMouseButton = parameterData != null && parameterData.resolvedButtonIsMouse;
+
+        if (useMouseButton) {
+            Integer mouseButton = resolveMouseButtonCode(buttonValue);
+            if (mouseButton == null) {
+                sendNodeErrorMessage(client, "Unknown mouse button: " + buttonValue);
+                future.complete(null);
+                return;
+            }
+            InputUtil.Key inputKey = InputUtil.Type.MOUSE.createFromCode(mouseButton);
+            KeyBinding.onKeyPressed(inputKey);
+            boolean buttonAlreadyDown = InputCompatibilityBridge.isMouseButtonPressed(client, mouseButton);
+            if (buttonAlreadyDown) {
+                future.complete(null);
+                return;
+            }
+            KeyBinding.setKeyPressed(inputKey, true);
+            MESSAGE_SCHEDULER.schedule(() -> {
+                net.minecraft.client.MinecraftClient releaseClient = net.minecraft.client.MinecraftClient.getInstance();
+                if (releaseClient == null) {
+                    future.complete(null);
+                    return;
+                }
+                releaseClient.execute(() -> {
+                    KeyBinding.setKeyPressed(inputKey, false);
+                    future.complete(null);
+                });
+            }, 75L, TimeUnit.MILLISECONDS);
+            return;
+        }
+
+        Integer keyCode = resolveKeyCode(buttonValue);
         if (keyCode == null) {
-            sendNodeErrorMessage(client, "Unknown key: " + keyName);
+            sendNodeErrorMessage(client, "Unknown key: " + buttonValue);
             future.complete(null);
             return;
         }
@@ -17516,6 +17572,31 @@ public class Node {
             return normalizedCode;
         }
         return null;
+    }
+
+    private Integer resolveMouseButtonCode(String buttonName) {
+        if (buttonName == null) {
+            return null;
+        }
+        String trimmed = buttonName.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(trimmed);
+        } catch (NumberFormatException ignored) {
+        }
+        return switch (trimmed.toUpperCase(Locale.ROOT)) {
+            case "GLFW_MOUSE_BUTTON_LEFT", "MOUSE_LEFT", "LEFT" -> GLFW.GLFW_MOUSE_BUTTON_LEFT;
+            case "GLFW_MOUSE_BUTTON_RIGHT", "MOUSE_RIGHT", "RIGHT" -> GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+            case "GLFW_MOUSE_BUTTON_MIDDLE", "MOUSE_MIDDLE", "MIDDLE" -> GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
+            case "GLFW_MOUSE_BUTTON_4", "MOUSE_4", "BUTTON_4" -> GLFW.GLFW_MOUSE_BUTTON_4;
+            case "GLFW_MOUSE_BUTTON_5", "MOUSE_5", "BUTTON_5" -> GLFW.GLFW_MOUSE_BUTTON_5;
+            case "GLFW_MOUSE_BUTTON_6", "MOUSE_6", "BUTTON_6" -> GLFW.GLFW_MOUSE_BUTTON_6;
+            case "GLFW_MOUSE_BUTTON_7", "MOUSE_7", "BUTTON_7" -> GLFW.GLFW_MOUSE_BUTTON_7;
+            case "GLFW_MOUSE_BUTTON_8", "MOUSE_8", "BUTTON_8" -> GLFW.GLFW_MOUSE_BUTTON_8;
+            default -> null;
+        };
     }
 
     private Integer resolveGlfwKeyCode(String keyName) {

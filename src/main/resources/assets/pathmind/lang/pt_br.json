@@ -168,6 +168,8 @@
   "pathmind.node.type.paramItem.desc": "Representa um item e quantidade",
   "pathmind.node.type.paramKey": "Tecla",
   "pathmind.node.type.paramKey.desc": "Representa uma atribuição de tecla do teclado",
+  "pathmind.node.type.paramMouseButton": "Mouse Button",
+  "pathmind.node.type.paramMouseButton.desc": "Represents a mouse button selection",
   "pathmind.node.type.paramMessage": "Mensagem",
   "pathmind.node.type.paramMessage.desc": "Representa texto de chat ou placa reutilizável",
   "pathmind.node.type.paramPlaceTarget": "Colocar",
@@ -320,6 +322,6 @@
   "pathmind.title": "Editor de Nós do Pathmind",
   "screen.pathmind.visual_editor.subtitle": "Criar e gerenciar fluxos de trabalho baseados em nós",
   "screen.pathmind.visual_editor.title": "Editor Visual do Pathmind",
-  "pathmind.node.type.pressKey": "Press Key",
-  "pathmind.node.type.pressKey.desc": "Simulates pressing a keyboard key or keybind"
+  "pathmind.node.type.pressKey": "Press Button",
+  "pathmind.node.type.pressKey.desc": "Simulates pressing either a keyboard key or a mouse button"
 }

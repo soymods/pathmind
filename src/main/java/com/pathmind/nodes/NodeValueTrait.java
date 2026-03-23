@@ -18,6 +18,7 @@ public enum NodeValueTrait {
     MESSAGE,
     GUI,
     KEY,
+    MOUSE_BUTTON,
     HAND,
     VILLAGER_TRADE,
     WAYPOINT,

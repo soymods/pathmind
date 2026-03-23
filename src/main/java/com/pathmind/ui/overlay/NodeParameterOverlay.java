@@ -124,6 +124,16 @@ public class NodeParameterOverlay {
         }
     };
 
+    private static final KeySpec[][] MOUSE_BUTTON_SELECTOR_LAYOUT = new KeySpec[][]{
+        new KeySpec[]{
+            key("Left", "GLFW_MOUSE_BUTTON_LEFT", 1),
+            key("Right", "GLFW_MOUSE_BUTTON_RIGHT", 1),
+            key("Middle", "GLFW_MOUSE_BUTTON_MIDDLE", 1),
+            key("Button 4", "GLFW_MOUSE_BUTTON_4", 1),
+            key("Button 5", "GLFW_MOUSE_BUTTON_5", 1)
+        }
+    };
+
     private static final class KeySpec {
         private final String label;
         private final String value;
@@ -424,8 +434,8 @@ public class NodeParameterOverlay {
                 continue;
             }
 
-            if (usesKeySelectorForIndex(i)) {
-                int selectorHeight = renderKeySelector(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, i, popupAlpha);
+            if (usesButtonSelectorForIndex(i)) {
+                int selectorHeight = renderButtonSelector(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, i, popupAlpha);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }
@@ -695,11 +705,11 @@ public class NodeParameterOverlay {
             int fieldWidth = popupWidth - 40;
             int fieldHeight = FIELD_HEIGHT;
 
-            if (usesKeySelectorForIndex(i)) {
-                int selectorHeight = getKeySelectorHeight();
+            if (usesButtonSelectorForIndex(i)) {
+                int selectorHeight = getButtonSelectorHeight();
                 if (adjustedMouseX >= fieldX && adjustedMouseX <= fieldX + fieldWidth &&
                     adjustedMouseY >= Math.max(fieldY, contentTop) && adjustedMouseY <= Math.min(fieldY + selectorHeight, contentBottom)) {
-                    if (handleKeySelectorClick(adjustedMouseX, adjustedMouseY, fieldX, fieldY, fieldWidth, i)) {
+                    if (handleButtonSelectorClick(adjustedMouseX, adjustedMouseY, fieldX, fieldY, fieldWidth, i)) {
                         return true;
                     }
                     return true;
@@ -1055,8 +1065,8 @@ public class NodeParameterOverlay {
             } else if (villagerTradeEditorActive && i == villagerTradeParamIndex && villagerTradeSelector != null) {
                 int estimatedHeight = villagerTradeSelector.getEstimatedHeight(textLineHeight);
                 contentHeight += LABEL_TO_FIELD_OFFSET + estimatedHeight;
-            } else if (usesKeySelectorForIndex(i)) {
-                contentHeight += LABEL_TO_FIELD_OFFSET + getKeySelectorHeight();
+            } else if (usesButtonSelectorForIndex(i)) {
+                contentHeight += LABEL_TO_FIELD_OFFSET + getButtonSelectorHeight();
             } else {
                 contentHeight += LABEL_TO_FIELD_OFFSET + FIELD_HEIGHT;
             }
@@ -1138,7 +1148,7 @@ public class NodeParameterOverlay {
         }
         for (int attempts = 0; attempts < total; attempts++) {
             startIndex = (startIndex + (backwards ? -1 : 1) + total) % total;
-            if (!usesKeySelectorForIndex(startIndex)) {
+            if (!usesButtonSelectorForIndex(startIndex)) {
                 focusField(startIndex);
                 return;
             }
@@ -1146,20 +1156,27 @@ public class NodeParameterOverlay {
         focusedFieldIndex = -1;
     }
 
-    private boolean usesKeySelectorForIndex(int index) {
-        if (node.getType() != NodeType.PARAM_KEY) {
+    private boolean usesButtonSelectorForIndex(int index) {
+        if (node.getType() != NodeType.PARAM_KEY && node.getType() != NodeType.PARAM_MOUSE_BUTTON) {
             return false;
         }
         if (index < 0 || index >= node.getParameters().size()) {
             return false;
         }
         NodeParameter param = node.getParameters().get(index);
-        return param != null && "Key".equalsIgnoreCase(param.getName());
+        if (param == null) {
+            return false;
+        }
+        if (node.getType() == NodeType.PARAM_KEY) {
+            return "Key".equalsIgnoreCase(param.getName());
+        }
+        return "MouseButton".equalsIgnoreCase(param.getName());
     }
 
-    private int renderKeySelector(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth,
-                                  int mouseX, int mouseY, int paramIndex, float popupAlpha) {
-        int totalHeight = getKeySelectorHeight();
+    private int renderButtonSelector(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth,
+                                     int mouseX, int mouseY, int paramIndex, float popupAlpha) {
+        KeySpec[][] layout = getButtonSelectorLayout();
+        int totalHeight = getButtonSelectorHeight();
         int backgroundColor = UITheme.BACKGROUND_SIDEBAR;
         int borderColor = UITheme.BORDER_HIGHLIGHT;
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + totalHeight, applyPopupAlpha(backgroundColor, popupAlpha));
@@ -1172,7 +1189,7 @@ public class NodeParameterOverlay {
         int usableWidth = fieldWidth - 2 * KEY_SELECTOR_PADDING;
         int keyHeight = KEY_SELECTOR_KEY_HEIGHT;
 
-        for (KeySpec[] row : KEY_SELECTOR_LAYOUT) {
+        for (KeySpec[] row : layout) {
             int totalUnits = 0;
             for (KeySpec key : row) {
                 totalUnits += key.units;
@@ -1215,11 +1232,12 @@ public class NodeParameterOverlay {
         return totalHeight;
     }
 
-    private boolean handleKeySelectorClick(double mouseX, double mouseY, int fieldX, int fieldY, int fieldWidth, int paramIndex) {
+    private boolean handleButtonSelectorClick(double mouseX, double mouseY, int fieldX, int fieldY, int fieldWidth, int paramIndex) {
+        KeySpec[][] layout = getButtonSelectorLayout();
         int rowTop = fieldY + KEY_SELECTOR_PADDING;
         int usableWidth = fieldWidth - 2 * KEY_SELECTOR_PADDING;
         int keyHeight = KEY_SELECTOR_KEY_HEIGHT;
-        for (KeySpec[] row : KEY_SELECTOR_LAYOUT) {
+        for (KeySpec[] row : layout) {
             int totalUnits = 0;
             for (KeySpec key : row) {
                 totalUnits += key.units;
@@ -1242,9 +1260,13 @@ public class NodeParameterOverlay {
         return false;
     }
 
-    private int getKeySelectorHeight() {
-        int rows = KEY_SELECTOR_LAYOUT.length;
+    private int getButtonSelectorHeight() {
+        int rows = getButtonSelectorLayout().length;
         return KEY_SELECTOR_PADDING * 2 + rows * KEY_SELECTOR_KEY_HEIGHT + (rows - 1) * KEY_SELECTOR_ROW_GAP;
+    }
+
+    private KeySpec[][] getButtonSelectorLayout() {
+        return node.getType() == NodeType.PARAM_MOUSE_BUTTON ? MOUSE_BUTTON_SELECTOR_LAYOUT : KEY_SELECTOR_LAYOUT;
     }
 
     private static KeySpec key(String label, String value, int units) {

@@ -152,6 +152,7 @@ public enum NodeType {
     PARAM_HAND("pathmind.node.type.paramHand", 0xFF8BC34A, "pathmind.node.type.paramHand.desc"),
     PARAM_GUI("pathmind.node.type.paramGui", 0xFF8BC34A, "pathmind.node.type.paramGui.desc"),
     PARAM_KEY("pathmind.node.type.paramKey", 0xFF8BC34A, "pathmind.node.type.paramKey.desc"),
+    PARAM_MOUSE_BUTTON("pathmind.node.type.paramMouseButton", 0xFF8BC34A, "pathmind.node.type.paramMouseButton.desc"),
     PARAM_RANGE("pathmind.node.type.paramRange", 0xFF8BC34A, "pathmind.node.type.paramRange.desc"),
     PARAM_DISTANCE("pathmind.node.type.paramDistance", 0xFF8BC34A, "pathmind.node.type.paramDistance.desc"),
     PARAM_DIRECTION("pathmind.node.type.paramDirection", 0xFF8BC34A, "pathmind.node.type.paramDirection.desc"),
@@ -333,6 +334,7 @@ public enum NodeType {
             case PARAM_HAND:
             case PARAM_GUI:
             case PARAM_KEY:
+            case PARAM_MOUSE_BUTTON:
             case PARAM_RANGE:
             case PARAM_DISTANCE:
             case PARAM_DIRECTION:
@@ -416,6 +418,7 @@ public enum NodeType {
             case PARAM_HAND:
             case PARAM_GUI:
             case PARAM_KEY:
+            case PARAM_MOUSE_BUTTON:
             case PARAM_RANGE:
             case PARAM_DISTANCE:
             case PARAM_DIRECTION:

@@ -3198,6 +3198,7 @@ public class NodeGraph {
                         boolean isMessageParam = isMessageParameter(node, param);
                         boolean isSeedParam = isSeedParameter(node, param);
                         boolean isGuiParam = isGuiParameter(node, param);
+                        boolean isMouseButtonParam = isMouseButtonParameter(node, param);
                         boolean isAmountParam = isAmountParameter(node, param);
                         boolean showPlayerPlaceholder = false;
                         boolean showMessagePlaceholder = false;
@@ -3206,6 +3207,7 @@ public class NodeGraph {
                         boolean showFabricEventPlaceholder = false;
                         boolean showDirectionPlaceholder = false;
                         boolean showGuiPlaceholder = false;
+                        boolean showMouseButtonPlaceholder = false;
                         boolean showAmountPlaceholder = false;
                         if (isPlayerParam) {
                             boolean showPlaceholder = editingThis
@@ -3230,6 +3232,12 @@ public class NodeGraph {
                                 ? value.isEmpty() || "Any".equalsIgnoreCase(value)
                                 : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
                             showGuiPlaceholder = showPlaceholder;
+                        }
+                        if (isMouseButtonParam) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty()
+                                : value.isEmpty() || (!param.isUserEdited() && isDefaultMouseButtonValue(value));
+                            showMouseButtonPlaceholder = showPlaceholder;
                         }
                         if (isAmountParam) {
                             boolean showPlaceholder = editingThis
@@ -3269,14 +3277,19 @@ public class NodeGraph {
                             && (value.isEmpty() || "Any".equalsIgnoreCase(value))) {
                             value = "Any";
                         }
+                        if (!editingThis && isMouseButtonParam) {
+                            value = formatMouseButtonValue(value);
+                        }
                         if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
                             || showBlockItemPlaceholder || showFabricEventPlaceholder
-                            || showGuiPlaceholder || showAmountPlaceholder
+                            || showGuiPlaceholder || showMouseButtonPlaceholder || showAmountPlaceholder
                             || showDirectionPlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
                             } else if (showPlayerPlaceholder) {
                                 value = "Self";
+                            } else if (showMouseButtonPlaceholder) {
+                                value = "Left";
                             } else if (showAmountPlaceholder) {
                                 value = "0";
                             } else if (showDirectionPlaceholder) {
@@ -3342,6 +3355,7 @@ public class NodeGraph {
                         }
 
                         if (editingThis && (isBlockItemParameter(node, i)
+                            || isMouseButtonParameter(node, param)
                             || isGuiParameter(node, param)
                             || isDirectionParameter(node, i)
                             || isFabricEventSensorParameter(node, i))) {
@@ -7115,6 +7129,7 @@ public class NodeGraph {
             || isMessageParameter(node, parameter)
             || isSeedParameter(node, parameter)
             || isAmountParameter(node, parameter)
+            || isMouseButtonParameter(node, parameter)
             || isGuiParameter(node, parameter)
             || isBlockItemParameter(node, index)
             || isFabricEventSensorParameter(node, index))) {
@@ -7122,6 +7137,7 @@ public class NodeGraph {
                 || "Any".equalsIgnoreCase(parameterEditBuffer)
                 || "Self".equalsIgnoreCase(parameterEditBuffer)
                 || "Any State".equalsIgnoreCase(parameterEditBuffer)
+                || isDefaultMouseButtonValue(parameterEditBuffer)
                 || "0".equals(parameterEditBuffer)) {
                 parameterEditBuffer = "";
             }
@@ -7183,6 +7199,7 @@ public class NodeGraph {
                 || isSeedParameter(parameterEditingNode, parameter)
                 || isGuiParameter(parameterEditingNode, parameter)
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
+            boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
             boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
             if (isAmountParam) {
@@ -7201,6 +7218,17 @@ public class NodeGraph {
                 boolean isDefaultSelf = trimmed.isEmpty() || "Self".equalsIgnoreCase(trimmed);
                 if (isDefaultSelf) {
                     appliedValue = "Self";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    parameter.setStringValueFromUser(value);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+                }
+            } else if (isMouseButtonParam) {
+                String trimmed = value.trim();
+                if (trimmed.isEmpty() || isDefaultMouseButtonValue(trimmed)) {
+                    appliedValue = "Left";
                     parameter.setStringValue(appliedValue);
                     parameter.setUserEdited(false);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
@@ -7306,6 +7334,44 @@ public class NodeGraph {
         }
         NodeParameter guiParam = node.getParameter("GUI");
         return guiParam != null;
+    }
+
+    private boolean isMouseButtonParameter(Node node, NodeParameter parameter) {
+        if (node == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_MOUSE_BUTTON) {
+            return false;
+        }
+        if (parameter != null) {
+            return "MouseButton".equalsIgnoreCase(parameter.getName());
+        }
+        NodeParameter mouseButtonParam = node.getParameter("MouseButton");
+        return mouseButtonParam != null;
+    }
+
+    private boolean isDefaultMouseButtonValue(String value) {
+        return value == null
+            || value.isEmpty()
+            || "GLFW_MOUSE_BUTTON_LEFT".equalsIgnoreCase(value)
+            || "LEFT".equalsIgnoreCase(value);
+    }
+
+    private String formatMouseButtonValue(String value) {
+        if (value == null || value.isEmpty()) {
+            return "Left";
+        }
+        return switch (value.toUpperCase(Locale.ROOT)) {
+            case "GLFW_MOUSE_BUTTON_LEFT", "LEFT" -> "Left";
+            case "GLFW_MOUSE_BUTTON_RIGHT", "RIGHT" -> "Right";
+            case "GLFW_MOUSE_BUTTON_MIDDLE", "MIDDLE" -> "Middle";
+            case "GLFW_MOUSE_BUTTON_4", "BUTTON_4" -> "Button 4";
+            case "GLFW_MOUSE_BUTTON_5", "BUTTON_5" -> "Button 5";
+            case "GLFW_MOUSE_BUTTON_6", "BUTTON_6" -> "Button 6";
+            case "GLFW_MOUSE_BUTTON_7", "BUTTON_7" -> "Button 7";
+            case "GLFW_MOUSE_BUTTON_8", "BUTTON_8" -> "Button 8";
+            default -> value;
+        };
     }
 
     private boolean isDirectionParameter(Node node, int index) {
@@ -8766,6 +8832,18 @@ public class NodeGraph {
             }
             return filterDropdownOptions(result, lowered);
         }
+        if (isMouseButtonParameter(node, null)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("Left", "Left"));
+            result.add(new ParameterDropdownOption("Right", "Right"));
+            result.add(new ParameterDropdownOption("Middle", "Middle"));
+            result.add(new ParameterDropdownOption("Button 4", "Button 4"));
+            result.add(new ParameterDropdownOption("Button 5", "Button 5"));
+            result.add(new ParameterDropdownOption("Button 6", "Button 6"));
+            result.add(new ParameterDropdownOption("Button 7", "Button 7"));
+            result.add(new ParameterDropdownOption("Button 8", "Button 8"));
+            return filterDropdownOptions(result, lowered);
+        }
         if (isDirectionParameter(node, index)) {
             List<ParameterDropdownOption> result = new ArrayList<>();
             result.add(new ParameterDropdownOption("Any", ""));
@@ -8837,10 +8915,11 @@ public class NodeGraph {
                 continue;
             }
             String labelLower = option.label().toLowerCase(Locale.ROOT);
-            if (!labelLower.contains(lowered)) {
+            String valueLower = option.value() == null ? "" : option.value().toLowerCase(Locale.ROOT);
+            if (!labelLower.contains(lowered) && !valueLower.contains(lowered)) {
                 continue;
             }
-            if (labelLower.startsWith(lowered)) {
+            if (labelLower.startsWith(lowered) || valueLower.startsWith(lowered)) {
                 starts.add(option);
             } else {
                 contains.add(option);
@@ -8950,6 +9029,7 @@ public class NodeGraph {
         }
         if (!isBlockItemParameter(node, index)
             && !isGuiParameter(node, null)
+            && !isMouseButtonParameter(node, null)
             && !isDirectionParameter(node, index)
             && !isFabricEventSensorParameter(node, index)) {
             closeParameterDropdown();
@@ -9037,7 +9117,10 @@ public class NodeGraph {
         ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String prefix = parameterEditBuffer.substring(0, segment.start);
         String suffix = parameterEditBuffer.substring(segment.end);
-        String replacement = segment.leadingWhitespace + option.value();
+        boolean keepMouseButtonDefaultPlaceholder = isMouseButtonParameter(parameterEditingNode, null)
+            && "Left".equalsIgnoreCase(option.value())
+            && (segment.trimmedSegment == null || segment.trimmedSegment.trim().isEmpty());
+        String replacement = keepMouseButtonDefaultPlaceholder ? "" : segment.leadingWhitespace + option.value();
         parameterEditBuffer = prefix + replacement + suffix;
         setParameterCaretPosition(prefix.length() + replacement.length());
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);

@@ -1,6 +1,7 @@
 package com.pathmind;
 
 import com.pathmind.data.PresetManager;
+import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.screen.PathmindMainMenuIntegration;
@@ -181,10 +182,12 @@ public class PathmindClientMod implements ClientModInitializer {
         HudRenderCallback.EVENT.register((drawContext, tickDelta) -> {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.player != null && client.textRenderer != null) {
-                if (activeNodeOverlay != null) {
+                boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays == null
+                    || SettingsManager.getCurrent().showHudOverlays;
+                if (showHudOverlays && activeNodeOverlay != null) {
                     activeNodeOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
                 }
-                if (variablesOverlay != null) {
+                if (showHudOverlays && variablesOverlay != null) {
                     variablesOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
                 }
             }

@@ -33,6 +33,7 @@ public final class SettingsManager {
         public Boolean showGrid = true;
         public Boolean showTooltips = true;
         public Boolean showChatErrors = true;
+        public Boolean showHudOverlays = true;
         public Boolean skipPresetDeleteConfirm = false;
         public Integer nodeDelayMs = 150;
 
@@ -191,6 +192,9 @@ public final class SettingsManager {
         }
         if (settings.showChatErrors == null) {
             settings.showChatErrors = true;
+        }
+        if (settings.showHudOverlays == null) {
+            settings.showHudOverlays = true;
         }
         if (settings.skipPresetDeleteConfirm == null) {
             settings.skipPresetDeleteConfirm = false;

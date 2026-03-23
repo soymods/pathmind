@@ -325,6 +325,7 @@
   "pathmind.settings.on": "On",
   "pathmind.settings.showChatErrors": "Show chat errors",
   "pathmind.settings.showGrid": "Show grid",
+  "pathmind.settings.showHudOverlays": "Show HUD overlays",
   "pathmind.settings.showTooltips": "Show tooltips",
   "pathmind.settings.title": "Settings",
   "pathmind.title": "Pathmind Node Editor",

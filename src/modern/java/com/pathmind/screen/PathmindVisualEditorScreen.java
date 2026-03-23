@@ -218,6 +218,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
     private boolean showChatErrors = true;
+    private boolean showHudOverlays = true;
     private boolean skipPresetDeleteConfirm = false;
     private int nodeDelayMs = 150;
     private boolean nodeDelayDragging = false;
@@ -278,6 +279,7 @@ public class PathmindVisualEditorScreen extends Screen {
         this.showGrid = currentSettings.showGrid == null || currentSettings.showGrid;
         this.showWorkspaceTooltips = currentSettings.showTooltips == null || currentSettings.showTooltips;
         this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
+        this.showHudOverlays = currentSettings.showHudOverlays == null || currentSettings.showHudOverlays;
         this.skipPresetDeleteConfirm = currentSettings.skipPresetDeleteConfirm != null && currentSettings.skipPresetDeleteConfirm;
         this.nodeDelayMs = currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150;
     }
@@ -4762,8 +4764,14 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, chatDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
-        int delayDividerY = chatDividerY + 26;
-        int delayRowCenterY = (chatDividerY + delayDividerY) / 2;
+        int overlayDividerY = chatDividerY + 22;
+        int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
+        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.showHudOverlays").getString(), showHudOverlays, popupX, scaledWidth);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+        int delayDividerY = overlayDividerY + 26;
+        int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
         renderNodeDelayRow(context, mouseX, mouseY, contentX, delayRowCenterY, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
@@ -5242,8 +5250,19 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        int delayDividerY = chatDividerY + 26;
-        int delayRowCenterY = (chatDividerY + delayDividerY) / 2;
+        int overlayDividerY = chatDividerY + 22;
+        int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
+        int overlayToggleX = gridToggleX;
+        int overlayToggleY = overlayRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (isPointInRect(mouseXi, mouseYi, overlayToggleX, overlayToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            showHudOverlays = !showHudOverlays;
+            currentSettings.showHudOverlays = showHudOverlays;
+            SettingsManager.save(currentSettings);
+            return true;
+        }
+
+        int delayDividerY = overlayDividerY + 26;
+        int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
         int sliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
         String delayText = nodeDelayField != null ? nodeDelayField.getText() : Integer.toString(nodeDelayMs);

@@ -814,6 +814,31 @@ public class Node {
         return owningStartNode;
     }
 
+    private Node resolveExecutionStartNode() {
+        if (owningStartNode != null) {
+            return owningStartNode;
+        }
+        if (parentParameterHost != null) {
+            Node hostStart = parentParameterHost.resolveExecutionStartNode();
+            if (hostStart != null) {
+                return hostStart;
+            }
+        }
+        if (parentControl != null) {
+            Node controlStart = parentControl.resolveExecutionStartNode();
+            if (controlStart != null) {
+                return controlStart;
+            }
+        }
+        if (parentActionControl != null) {
+            Node actionStart = parentActionControl.resolveExecutionStartNode();
+            if (actionStart != null) {
+                return actionStart;
+            }
+        }
+        return null;
+    }
+
     public int getStartNodeNumber() {
         return startNodeNumber;
     }
@@ -2008,12 +2033,7 @@ public class Node {
 
     public boolean attachParameter(Node parameter, int slotIndex) {
         if (parameter == null
-            || (!parameter.isParameterNode()
-                && parameter.getType() != NodeType.SENSOR_POSITION_OF
-                && parameter.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
-                && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK_FACE
-                && parameter.getType() != NodeType.SENSOR_TARGETED_BLOCK
-                && parameter.getType() != NodeType.SENSOR_LOOK_DIRECTION)
+            || (!parameter.isParameterNode() && !parameter.isSensorNode())
             || parameter == this) {
             return false;
         }
@@ -4799,10 +4819,7 @@ public class Node {
         }
 
         ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = getOwningStartNode();
-        if (startNode == null && getParentControl() != null) {
-            startNode = getParentControl().getOwningStartNode();
-        }
+        Node startNode = resolveExecutionStartNode();
         ExecutionManager.RuntimeVariable runtimeVariable = manager.getRuntimeVariable(startNode, variableName.trim());
         if (runtimeVariable == null) {
             runtimeVariable = manager.getRuntimeVariableFromAnyActiveChain(variableName.trim());
@@ -6876,10 +6893,7 @@ public class Node {
             }
 
             ExecutionManager manager = ExecutionManager.getInstance();
-            Node startNode = getOwningStartNode();
-            if (startNode == null && getParentControl() != null) {
-                startNode = getParentControl().getOwningStartNode();
-            }
+            Node startNode = resolveExecutionStartNode();
             if (startNode == null) {
                 sendNodeErrorMessage(client, "No active node tree available for list creation.");
                 future.complete(null);
@@ -6899,10 +6913,7 @@ public class Node {
                 List<String> configuredEntityIds = resolveEntityIdsFromParameter(parameterNode);
                 if (!configuredEntityIds.isEmpty()) {
                     ExecutionManager manager = ExecutionManager.getInstance();
-                    Node startNode = getOwningStartNode();
-                    if (startNode == null && getParentControl() != null) {
-                        startNode = getParentControl().getOwningStartNode();
-                    }
+                    Node startNode = resolveExecutionStartNode();
                     if (startNode != null) {
                         manager.setRuntimeList(startNode, listName.trim(),
                             new ExecutionManager.RuntimeList(parameterType, configuredEntityIds));
@@ -6926,10 +6937,7 @@ public class Node {
         }
 
         ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = getOwningStartNode();
-        if (startNode == null && getParentControl() != null) {
-            startNode = getParentControl().getOwningStartNode();
-        }
+        Node startNode = resolveExecutionStartNode();
         if (startNode == null) {
             if (client != null) {
                 sendNodeErrorMessage(client, "No active node tree available for list creation.");
@@ -16399,10 +16407,7 @@ public class Node {
             return null;
         }
         ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = getOwningStartNode();
-        if (startNode == null && getParentControl() != null) {
-            startNode = getParentControl().getOwningStartNode();
-        }
+        Node startNode = resolveExecutionStartNode();
         return manager.getRuntimeList(startNode, listName.trim());
     }
 

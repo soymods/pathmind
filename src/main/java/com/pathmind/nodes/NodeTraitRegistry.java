@@ -173,6 +173,7 @@ public final class NodeTraitRegistry {
 
         accepted.put(NodeType.USE, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.BLOCK));
         accepted.put(NodeType.INTERACT, EnumSet.of(
+            NodeValueTrait.HAND,
             NodeValueTrait.COORDINATE,
             NodeValueTrait.BLOCK,
             NodeValueTrait.ITEM,

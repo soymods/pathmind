@@ -2596,6 +2596,8 @@ public class NodeGraph {
             return true;
         }
         return node.isParameterNode()
+            && node.getType() != NodeType.CREATE_LIST
+            && node.getType() != NodeType.LIST_LENGTH
             && node.getType() != NodeType.OPERATOR_MOD
             && node.getType() != NodeType.PARAM_DURATION
             && node.getType() != NodeType.SENSOR_POSITION_OF

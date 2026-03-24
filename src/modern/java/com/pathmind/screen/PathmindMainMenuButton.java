@@ -1,6 +1,7 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindMod;
+import java.util.List;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -13,7 +14,10 @@ import com.pathmind.util.TextCompatibilityBridge;
  * A small icon button used on the title screen to open the Pathmind visual editor.
  */
 public class PathmindMainMenuButton extends ButtonWidget {
-    private static final Identifier ICON_TEXTURE = PathmindMod.id("textures/gui/button_logo.png");
+    private static final List<Identifier> ICON_TEXTURES = List.of(
+        PathmindMod.id("pathmind/button_logo"),
+        PathmindMod.id("textures/gui/button_logo.png")
+    );
     private static final int ICON_PADDING = 2;
     private static final int BUTTON_FILL = 0xFF1F232C;
     private static final int BUTTON_HOVER = 0xFF2A2F3A;
@@ -52,7 +56,7 @@ public class PathmindMainMenuButton extends ButtonWidget {
         }
         int color = (alphaComponent << 24) | rgb;
 
-        GuiTextureRenderer.drawIcon(context, ICON_TEXTURE, iconX, iconY, iconSize, color);
+        GuiTextureRenderer.drawIcon(context, ICON_TEXTURES, iconX, iconY, iconSize, color);
     }
 
     private void drawButtonBackground(DrawContext context) {

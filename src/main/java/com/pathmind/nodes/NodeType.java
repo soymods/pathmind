@@ -115,6 +115,7 @@ public enum NodeType {
     SENSOR_ITEM_IN_SLOT("pathmind.node.type.sensorItemInSlot", 0xFF64B5F6, "pathmind.node.type.sensorItemInSlot.desc"),
     SENSOR_SLOT_ITEM_COUNT("pathmind.node.type.sensorSlotItemCount", 0xFF64B5F6, "pathmind.node.type.sensorSlotItemCount.desc"),
     SENSOR_VILLAGER_TRADE("pathmind.node.type.sensorVillagerTrade", 0xFF64B5F6, "pathmind.node.type.sensorVillagerTrade.desc"),
+    SENSOR_IN_STOCK("pathmind.node.type.sensorInStock", 0xFF64B5F6, "pathmind.node.type.sensorInStock.desc"),
     SENSOR_IS_SWIMMING("pathmind.node.type.sensorIsSwimming", 0xFF64B5F6, "pathmind.node.type.sensorIsSwimming.desc"),
     SENSOR_IS_IN_LAVA("pathmind.node.type.sensorIsInLava", 0xFF64B5F6, "pathmind.node.type.sensorIsInLava.desc"),
     SENSOR_IS_UNDERWATER("pathmind.node.type.sensorIsUnderwater", 0xFF64B5F6, "pathmind.node.type.sensorIsUnderwater.desc"),
@@ -198,7 +199,8 @@ public enum NodeType {
     }
 
     public boolean isDraggableFromSidebar() {
-        if (this == STOP || this == PLACE_HAND || this == RUN_PRESET) {
+        if (this == STOP || this == PLACE_HAND || this == RUN_PRESET
+            || this == PARAM_VILLAGER_TRADE || this == SENSOR_VILLAGER_TRADE) {
             return false;
         }
         return true;
@@ -255,6 +257,7 @@ public enum NodeType {
             case SENSOR_ITEM_IN_SLOT:
             case SENSOR_SLOT_ITEM_COUNT:
             case SENSOR_VILLAGER_TRADE:
+            case SENSOR_IN_STOCK:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -398,6 +401,7 @@ public enum NodeType {
             case SENSOR_ITEM_IN_SLOT:
             case SENSOR_SLOT_ITEM_COUNT:
             case SENSOR_VILLAGER_TRADE:
+            case SENSOR_IN_STOCK:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
             case SENSOR_IS_VISIBLE:

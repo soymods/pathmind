@@ -180,6 +180,7 @@ public class NodeGraphPersistence {
             if (node.getType() == NodeType.RUN_PRESET && node.getParameter("Preset") == null) {
                 node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
             }
+            node.ensureVillagerTradeNumberParameter();
             Integer startNodeNumber = nodeData.getStartNodeNumber();
             if (startNodeNumber != null) {
                 node.setStartNodeNumber(startNodeNumber);

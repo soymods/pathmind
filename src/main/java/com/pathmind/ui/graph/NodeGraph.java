@@ -1138,6 +1138,7 @@ public class NodeGraph {
                     newNode.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 }
             }
+            newNode.ensureVillagerTradeNumberParameter();
             if (nodeData.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
                 newNode.setMessageLines(nodeData.getMessageLines());
                 newNode.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
@@ -3209,6 +3210,7 @@ public class NodeGraph {
                         boolean showGuiPlaceholder = false;
                         boolean showMouseButtonPlaceholder = false;
                         boolean showAmountPlaceholder = false;
+                        boolean showTradePlaceholder = false;
                         if (isPlayerParam) {
                             boolean showPlaceholder = editingThis
                                 ? value.isEmpty()
@@ -3244,6 +3246,9 @@ public class NodeGraph {
                                 ? value.isEmpty()
                                 : value.isEmpty() || (!param.isUserEdited() && "0".equalsIgnoreCase(value));
                             showAmountPlaceholder = showPlaceholder;
+                        }
+                        if (isTradeInlinePlaceholder(node, param, editingThis)) {
+                            showTradePlaceholder = true;
                         }
                         if (isBlockItemParameter(node, i)) {
                             boolean showPlaceholder = editingThis
@@ -3283,13 +3288,15 @@ public class NodeGraph {
                         if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
                             || showBlockItemPlaceholder || showFabricEventPlaceholder
                             || showGuiPlaceholder || showMouseButtonPlaceholder || showAmountPlaceholder
-                            || showDirectionPlaceholder) {
+                            || showDirectionPlaceholder || showTradePlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
                             } else if (showPlayerPlaceholder) {
                                 value = "Self";
                             } else if (showMouseButtonPlaceholder) {
                                 value = "Left";
+                            } else if (showTradePlaceholder) {
+                                value = "1";
                             } else if (showAmountPlaceholder) {
                                 value = "0";
                             } else if (showDirectionPlaceholder) {
@@ -4213,6 +4220,10 @@ public class NodeGraph {
         if (showPlaceholder) {
             if (node.getType() == NodeType.MOVE_ITEM) {
                 display = "Any";
+            } else if (node.getType() == NodeType.TRADE
+                || node.getType() == NodeType.SENSOR_VILLAGER_TRADE
+                || node.getType() == NodeType.SENSOR_IN_STOCK) {
+                display = "1";
             } else {
                 display = "0";
             }
@@ -6239,6 +6250,10 @@ public class NodeGraph {
         if (value.isEmpty()) {
             if (amountEditingNode.getType() == NodeType.MOVE_ITEM) {
                 value = "0";
+            } else if (amountEditingNode.getType() == NodeType.TRADE
+                || amountEditingNode.getType() == NodeType.SENSOR_VILLAGER_TRADE
+                || amountEditingNode.getType() == NodeType.SENSOR_IN_STOCK) {
+                value = "1";
             } else if (amountEditingNode.getType() == NodeType.PARAM_DURATION
                 || amountEditingNode.getType() == NodeType.USE) {
                 value = "";
@@ -7132,6 +7147,7 @@ public class NodeGraph {
             || isMessageParameter(node, parameter)
             || isSeedParameter(node, parameter)
             || isAmountParameter(node, parameter)
+            || isTradeInlineParameter(node, parameter)
             || isMouseButtonParameter(node, parameter)
             || isGuiParameter(node, parameter)
             || isBlockItemParameter(node, index)
@@ -7141,7 +7157,8 @@ public class NodeGraph {
                 || "Self".equalsIgnoreCase(parameterEditBuffer)
                 || "Any State".equalsIgnoreCase(parameterEditBuffer)
                 || isDefaultMouseButtonValue(parameterEditBuffer)
-                || "0".equals(parameterEditBuffer)) {
+                || "0".equals(parameterEditBuffer)
+                || (isTradeInlineParameter(node, parameter) && "1".equals(parameterEditBuffer))) {
                 parameterEditBuffer = "";
             }
         }
@@ -7204,11 +7221,23 @@ public class NodeGraph {
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
+            boolean isTradeInlineParam = isTradeInlineParameter(parameterEditingNode, parameter);
             boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
             if (isAmountParam) {
                 String trimmed = value.trim();
                 if (trimmed.isEmpty()) {
                     appliedValue = "0";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    parameter.setStringValueFromUser(value);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+                }
+            } else if (isTradeInlineParam) {
+                String trimmed = value.trim();
+                if (trimmed.isEmpty() || "1".equals(trimmed)) {
+                    appliedValue = "1";
                     parameter.setStringValue(appliedValue);
                     parameter.setUserEdited(false);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
@@ -7323,6 +7352,23 @@ public class NodeGraph {
             return false;
         }
         return "Amount".equalsIgnoreCase(parameter.getName());
+    }
+
+    private boolean isTradeInlineParameter(Node node, NodeParameter parameter) {
+        if (node == null || parameter == null || node.getType() != NodeType.TRADE) {
+            return false;
+        }
+        return "Count".equalsIgnoreCase(parameter.getName());
+    }
+
+    private boolean isTradeInlinePlaceholder(Node node, NodeParameter parameter, boolean editing) {
+        if (!isTradeInlineParameter(node, parameter)) {
+            return false;
+        }
+        String value = parameter.getStringValue();
+        return editing
+            ? value == null || value.isEmpty()
+            : value == null || value.isEmpty() || (!parameter.isUserEdited() && "1".equals(value));
     }
 
     private boolean isGuiParameter(Node node, NodeParameter parameter) {
@@ -11389,6 +11435,7 @@ public class NodeGraph {
             if ((node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE) && node.getParameter("Preset") == null) {
                 node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
             }
+            node.ensureVillagerTradeNumberParameter();
             Integer startNodeNumber = nodeData.getStartNodeNumber();
             if (startNodeNumber != null) {
                 node.setStartNodeNumber(startNodeNumber);

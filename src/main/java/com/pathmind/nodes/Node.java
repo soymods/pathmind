@@ -621,7 +621,8 @@ public class Node {
 
     public boolean shouldRenderInlineParameters() {
         return type == NodeType.UI_UTILS
-            || type == NodeType.SENSOR_FABRIC_EVENT;
+            || type == NodeType.SENSOR_FABRIC_EVENT
+            || type == NodeType.TRADE;
     }
 
     private boolean isInlineParameterNode() {
@@ -650,6 +651,9 @@ public class Node {
 
     public boolean canAcceptParameter() {
         if (!NodeCompatibility.canHostSlot(type, NodeSlotType.PARAMETER)) {
+            return false;
+        }
+        if (usesVillagerTradeNumberField()) {
             return false;
         }
         if (!NodeTraitRegistry.canHostParameter(type)) {
@@ -1196,7 +1200,10 @@ public class Node {
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return true;
         }
-        if (type == NodeType.TRADE) {
+        if (type == NodeType.SENSOR_VILLAGER_TRADE) {
+            return true;
+        }
+        if (type == NodeType.SENSOR_IN_STOCK) {
             return true;
         }
         if (type == NodeType.CHANGE_VARIABLE) {
@@ -1278,6 +1285,9 @@ public class Node {
     }
 
     public String getAmountFieldLabel() {
+        if (usesVillagerTradeNumberField()) {
+            return "Number";
+        }
         if (type == NodeType.USE) {
             return "Hold Duration";
         }
@@ -1319,6 +1329,9 @@ public class Node {
     }
 
     public String getAmountParameterKey() {
+        if (usesVillagerTradeNumberField()) {
+            return "Number";
+        }
         if (type == NodeType.MOVE_ITEM) {
             return "Count";
         }
@@ -1363,7 +1376,6 @@ public class Node {
         return type == NodeType.SENSOR_ITEM_IN_INVENTORY
             || type == NodeType.SENSOR_ITEM_IN_SLOT
             || type == NodeType.SENSOR_CHAT_MESSAGE
-            || type == NodeType.TRADE
             || type == NodeType.USE;
     }
 
@@ -1605,6 +1617,80 @@ public class Node {
         if (getParameter("UseAmount") == null) {
             parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
         }
+    }
+
+    private boolean usesVillagerTradeNumberField() {
+        return type == NodeType.TRADE
+            || type == NodeType.SENSOR_VILLAGER_TRADE
+            || type == NodeType.SENSOR_IN_STOCK;
+    }
+
+    public void ensureVillagerTradeNumberParameter() {
+        if (!usesVillagerTradeNumberField()) {
+            return;
+        }
+        if (type == NodeType.TRADE) {
+            NodeParameter number = getParameter("Number");
+            NodeParameter count = getParameter("Count");
+            NodeParameter legacyAmount = getParameter("Amount");
+            if (number == null) {
+                number = new NodeParameter("Number", ParameterType.INTEGER, "1");
+                parameters.add(number);
+            }
+            if (count == null) {
+                String countValue = legacyAmount != null && legacyAmount.getStringValue() != null && !legacyAmount.getStringValue().isEmpty()
+                    ? legacyAmount.getStringValue()
+                    : "1";
+                count = new NodeParameter("Count", ParameterType.INTEGER, countValue);
+                if (legacyAmount != null) {
+                    count.setUserEdited(legacyAmount.isUserEdited());
+                }
+                parameters.add(count);
+            }
+            if (legacyAmount != null) {
+                parameters.remove(legacyAmount);
+            }
+            NodeParameter legacyToggle = getParameter("UseAmount");
+            if (legacyToggle != null) {
+                parameters.remove(legacyToggle);
+            }
+            return;
+        }
+        NodeParameter number = getParameter("Number");
+        if (number == null) {
+            NodeParameter legacy = getParameter("Amount");
+            String value = legacy != null && legacy.getStringValue() != null && !legacy.getStringValue().isEmpty()
+                ? legacy.getStringValue()
+                : "1";
+            number = new NodeParameter("Number", ParameterType.INTEGER, value);
+            if (legacy != null) {
+                number.setUserEdited(legacy.isUserEdited());
+                parameters.remove(legacy);
+            }
+            parameters.add(number);
+        }
+    }
+
+    private boolean shouldUseLegacyVillagerTradeSelection() {
+        if (!usesVillagerTradeNumberField()) {
+            return false;
+        }
+        Node attached = resolveSensorParameterNode(getAttachedParameter(), 0);
+        if (attached == null || !providesTrait(attached, NodeValueTrait.VILLAGER_TRADE)) {
+            return false;
+        }
+        NodeParameter numberParam = getParameter("Number");
+        return numberParam == null || !numberParam.isUserEdited();
+    }
+
+    private int getConfiguredVillagerTradeNumber() {
+        ensureVillagerTradeNumberParameter();
+        return Math.max(1, getIntParameter("Number", 1));
+    }
+
+    private int getConfiguredVillagerTradeCount() {
+        ensureVillagerTradeNumberParameter();
+        return Math.max(1, getIntParameter("Count", 1));
     }
 
     private void ensureRandomRoundingParameters() {
@@ -2577,8 +2663,8 @@ public class Node {
                 parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
                 break;
             case TRADE:
-                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
-                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
+                parameters.add(new NodeParameter("Number", ParameterType.INTEGER, "1"));
+                parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "1"));
                 break;
             case LOOK:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
@@ -2664,6 +2750,8 @@ public class Node {
             case SENSOR_SLOT_ITEM_COUNT:
                 break;
             case SENSOR_VILLAGER_TRADE:
+            case SENSOR_IN_STOCK:
+                parameters.add(new NodeParameter("Number", ParameterType.INTEGER, "1"));
                 break;
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
@@ -5902,6 +5990,76 @@ public class Node {
         return itemId + "@" + stack.getCount();
     }
 
+    private int findTradeIndexFromLegacySelection(net.minecraft.village.TradeOfferList tradeOffers, boolean requireInStock, boolean requireAffordable) {
+        if (tradeOffers == null || tradeOffers.isEmpty()) {
+            return -1;
+        }
+
+        String desiredItemId = null;
+        String desiredTradeKey = null;
+        RuntimeParameterData parameterData = runtimeParameterData;
+        if (parameterData != null && parameterData.targetItemId != null && !parameterData.targetItemId.isEmpty()) {
+            desiredItemId = parameterData.targetItemId;
+        }
+        if (parameterData != null && parameterData.targetTradeKey != null && !parameterData.targetTradeKey.isEmpty()) {
+            desiredTradeKey = parameterData.targetTradeKey;
+        }
+
+        Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
+        if ((desiredTradeKey == null || desiredTradeKey.isEmpty()) && parameterNode != null
+            && providesTrait(parameterNode, NodeValueTrait.VILLAGER_TRADE)) {
+            desiredTradeKey = resolveTradeKeyFromParameter(parameterNode);
+            List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+            if ((desiredItemId == null || desiredItemId.isEmpty()) && !itemIds.isEmpty()) {
+                desiredItemId = itemIds.get(0);
+            }
+            if ((desiredItemId == null || desiredItemId.isEmpty()) && desiredTradeKey != null && !desiredTradeKey.isEmpty()) {
+                desiredItemId = getTradeKeySellItemId(desiredTradeKey);
+            }
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.screen.MerchantScreenHandler screenHandler = null;
+        if (client != null && client.currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen) {
+            screenHandler = merchantScreen.getScreenHandler();
+        }
+
+        for (int i = 0; i < tradeOffers.size(); i++) {
+            net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
+            if (offer == null) {
+                continue;
+            }
+            if (requireInStock && offer.isDisabled()) {
+                continue;
+            }
+            if (requireAffordable && (client == null || client.player == null || screenHandler == null
+                || !canAffordTrade(client.player, screenHandler, offer))) {
+                continue;
+            }
+            if (desiredTradeKey != null && !desiredTradeKey.isEmpty()) {
+                String offerKey = buildTradeKey(
+                    offer.getDisplayedFirstBuyItem(),
+                    offer.getDisplayedSecondBuyItem(),
+                    offer.getSellItem()
+                );
+                if (desiredTradeKey.equals(offerKey)) {
+                    return i;
+                }
+            } else if (desiredItemId != null && !desiredItemId.isEmpty()) {
+                String offerItemId = getTradeKeySellItemId(buildTradeKey(
+                    offer.getDisplayedFirstBuyItem(),
+                    offer.getDisplayedSecondBuyItem(),
+                    offer.getSellItem()
+                ));
+                if (desiredItemId.equals(offerItemId)) {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
+    }
+
     private List<String> resolveEntityIdsFromParameter(Node parameterNode) {
         List<String> entityIds = new ArrayList<>();
         if (parameterNode == null) {
@@ -6300,6 +6458,7 @@ public class Node {
             case SENSOR_ITEM_IN_INVENTORY:
             case SENSOR_ITEM_IN_SLOT:
             case SENSOR_VILLAGER_TRADE:
+            case SENSOR_IN_STOCK:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -15245,6 +15404,7 @@ public class Node {
         if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
             return;
         }
+        ensureVillagerTradeNumberParameter();
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null || client.interactionManager == null) {
@@ -15278,90 +15438,38 @@ public class Node {
             future.complete(null);
             return;
         }
-
-        // Get the desired item from attached parameter
-        String desiredItemId = null;
-        String desiredTradeKey = null;
-        RuntimeParameterData parameterData = runtimeParameterData;
-        if (parameterData != null && parameterData.targetItemId != null && !parameterData.targetItemId.isEmpty()) {
-            desiredItemId = parameterData.targetItemId;
-        }
-        if (parameterData != null && parameterData.targetTradeKey != null && !parameterData.targetTradeKey.isEmpty()) {
-            desiredTradeKey = parameterData.targetTradeKey;
-        }
-
-        if (desiredItemId == null || desiredItemId.isEmpty()) {
-            sendNodeErrorMessage(client, "No trade specified. Attach a PARAM_VILLAGER_TRADE to select what to buy.");
-            future.complete(null);
-            return;
-        }
-
-        // Normalize the item ID
-        String sanitized = sanitizeResourceId(desiredItemId);
-        String normalized = normalizeResourceId(sanitized, "minecraft");
-        net.minecraft.util.Identifier identifier = net.minecraft.util.Identifier.tryParse(normalized);
-
-        if (identifier == null || !net.minecraft.registry.Registries.ITEM.containsId(identifier)) {
-            sendNodeErrorMessage(client, "Unknown item: " + desiredItemId);
-            future.complete(null);
-            return;
-        }
-
-        net.minecraft.item.Item desiredItem = net.minecraft.registry.Registries.ITEM.get(identifier);
-
-        // Find a trade that matches the selected trade key (if provided), otherwise match by item
-        int tradeIndex = -1;
-        if (desiredTradeKey != null && !desiredTradeKey.isEmpty()) {
-            for (int i = 0; i < tradeOffers.size(); i++) {
-                net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
-                if (offer == null || offer.isDisabled()) {
-                    continue;
-                }
-                String offerKey = buildTradeKey(
-                    offer.getDisplayedFirstBuyItem(),
-                    offer.getDisplayedSecondBuyItem(),
-                    offer.getSellItem()
-                );
-                if (desiredTradeKey.equals(offerKey) && canAffordTrade(client.player, screenHandler, offer)) {
-                    tradeIndex = i;
-                    break;
-                }
+        int tradeIndex;
+        if (shouldUseLegacyVillagerTradeSelection()) {
+            tradeIndex = findTradeIndexFromLegacySelection(tradeOffers, true, true);
+            if (tradeIndex == -1) {
+                sendNodeErrorMessage(client, "No available trade found for the legacy villager trade selection.");
+                future.complete(null);
+                return;
             }
-        }
-        if (tradeIndex == -1) {
-            for (int i = 0; i < tradeOffers.size(); i++) {
-                net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
-                if (offer != null && !offer.isDisabled() && offer.getSellItem().getItem() == desiredItem) {
-                    if (canAffordTrade(client.player, screenHandler, offer)) {
-                        tradeIndex = i;
-                        break;
-                    }
-                }
+        } else {
+            int selectedTradeNumber = getConfiguredVillagerTradeNumber();
+            tradeIndex = selectedTradeNumber - 1;
+            if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
+                sendNodeErrorMessage(client, "Trade #" + selectedTradeNumber + " is not available.");
+                future.complete(null);
+                return;
             }
-        }
-
-        if (tradeIndex == -1) {
-            String message = desiredTradeKey != null && !desiredTradeKey.isEmpty()
-                ? "No available trade found for the selected trade."
-                : "No available trade found for " + desiredItemId + " or missing required items.";
-            sendNodeErrorMessage(client, message);
-            future.complete(null);
-            return;
+            net.minecraft.village.TradeOffer offer = tradeOffers.get(tradeIndex);
+            if (offer.isDisabled()) {
+                sendNodeErrorMessage(client, "Trade #" + selectedTradeNumber + " is out of stock.");
+                future.complete(null);
+                return;
+            }
+            if (!canAffordTrade(client.player, screenHandler, offer)) {
+                sendNodeErrorMessage(client, "Not enough items for trade #" + selectedTradeNumber + ".");
+                future.complete(null);
+                return;
+            }
         }
 
         final net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
-
-        // Get the quantity to trade (amount is desired output items, not number of trades)
-        boolean useAmount = isAmountInputEnabled();
-        int desiredAmount = useAmount
-            ? Math.max(1, getIntParameter("Amount", 1))
-            : Math.max(1, selectedOffer.getSellItem().getCount());
         final int finalTradeIndex = tradeIndex;
-        int sellCount = Math.max(1, selectedOffer.getSellItem().getCount());
-        int tradesToExecute = Math.max(1, (int) Math.ceil(desiredAmount / (double) sellCount));
-
-        // Debug: Log the trade quantity
-        System.out.println("[TRADE DEBUG] Trading " + tradesToExecute + " times for " + desiredItemId);
+        int tradesToExecute = getConfiguredVillagerTradeCount();
 
         // Execute trades with proper server synchronization
         new Thread(() -> {
@@ -16769,31 +16877,41 @@ public class Node {
                 break;
             }
             case SENSOR_VILLAGER_TRADE: {
-                Node parameterNode = resolveSensorParameterNode(getAttachedParameter(), 0);
-                if (parameterNode == null) {
+                ensureVillagerTradeNumberParameter();
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client == null) {
                     result = false;
                     break;
                 }
-                if (!providesTrait(parameterNode, NodeValueTrait.VILLAGER_TRADE)) {
-                    sendIncompatibleParameterMessage(parameterNode);
+                net.minecraft.client.gui.screen.Screen currentScreen = client.currentScreen;
+                if (!(currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen)) {
+                    sendNodeErrorMessage(client, "No villager trading screen is open.");
                     result = false;
                     break;
                 }
-                String tradeKey = resolveTradeKeyFromParameter(parameterNode);
-                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
-                if ((itemIds == null || itemIds.isEmpty()) && tradeKey != null && !tradeKey.isEmpty()
-                    && !tradeKey.contains("|")) {
-                    itemIds = new ArrayList<>();
-                    addItemIdentifier(itemIds, tradeKey);
-                }
-                if ((tradeKey == null || tradeKey.isEmpty()) && itemIds.isEmpty()) {
-                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-                    if (client != null) {
-                        sendNodeErrorMessage(client, "No trade selected for " + type.getDisplayName() + ".");
-                    }
+                net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen =
+                    (net.minecraft.client.gui.screen.ingame.MerchantScreen) currentScreen;
+                net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+                if (screenHandler == null) {
                     result = false;
                     break;
                 }
+                net.minecraft.village.TradeOfferList tradeOffers = screenHandler.getRecipes();
+                if (tradeOffers == null || tradeOffers.isEmpty()) {
+                    result = false;
+                    break;
+                }
+                if (shouldUseLegacyVillagerTradeSelection()) {
+                    result = findTradeIndexFromLegacySelection(tradeOffers, false, false) >= 0;
+                    break;
+                }
+                int selectedTradeNumber = getConfiguredVillagerTradeNumber();
+                int tradeIndex = selectedTradeNumber - 1;
+                result = tradeIndex >= 0 && tradeIndex < tradeOffers.size() && tradeOffers.get(tradeIndex) != null;
+                break;
+            }
+            case SENSOR_IN_STOCK: {
+                ensureVillagerTradeNumberParameter();
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client == null) {
                     result = false;
@@ -16819,30 +16937,16 @@ public class Node {
                     result = false;
                     break;
                 }
-                boolean found = false;
-                for (int i = 0; i < tradeOffers.size(); i++) {
-                    net.minecraft.village.TradeOffer offer = tradeOffers.get(i);
-                    if (offer == null || offer.isDisabled()) {
-                        continue;
-                    }
-                    ItemStack sellStack = offer.getSellItem();
-                    if (tradeKey != null && !tradeKey.isEmpty()) {
-                        String offerKey = buildTradeKey(
-                            offer.getDisplayedFirstBuyItem(),
-                            offer.getDisplayedSecondBuyItem(),
-                            offer.getSellItem()
-                        );
-                        if (tradeKey.equals(offerKey)) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!itemIds.isEmpty() && stackMatchesAnyItem(sellStack, itemIds)) {
-                        found = true;
-                        break;
-                    }
+                if (shouldUseLegacyVillagerTradeSelection()) {
+                    result = findTradeIndexFromLegacySelection(tradeOffers, true, false) >= 0;
+                    break;
                 }
-                result = found;
+                int selectedTradeNumber = getConfiguredVillagerTradeNumber();
+                int tradeIndex = selectedTradeNumber - 1;
+                result = tradeIndex >= 0
+                    && tradeIndex < tradeOffers.size()
+                    && tradeOffers.get(tradeIndex) != null
+                    && !tradeOffers.get(tradeIndex).isDisabled();
                 break;
             }
             case SENSOR_CHAT_MESSAGE: {

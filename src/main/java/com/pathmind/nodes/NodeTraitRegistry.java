@@ -17,6 +17,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_ITEM_IN_INVENTORY,
         NodeType.SENSOR_ITEM_IN_SLOT,
         NodeType.SENSOR_VILLAGER_TRADE,
+        NodeType.SENSOR_IN_STOCK,
         NodeType.SENSOR_IS_SWIMMING,
         NodeType.SENSOR_IS_IN_LAVA,
         NodeType.SENSOR_IS_UNDERWATER,
@@ -60,7 +61,6 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_DISTANCE_BETWEEN,
         NodeType.SENSOR_ITEM_IN_INVENTORY,
         NodeType.SENSOR_ITEM_IN_SLOT,
-        NodeType.SENSOR_VILLAGER_TRADE,
         NodeType.SENSOR_CHAT_MESSAGE
     );
 
@@ -163,6 +163,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_ITEM_IN_SLOT, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.SENSOR_VILLAGER_TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
+        accepted.put(NodeType.SENSOR_IN_STOCK, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_CHAT_MESSAGE, EnumSet.of(NodeValueTrait.PLAYER, NodeValueTrait.MESSAGE, NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_FABRIC_EVENT, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_KEY_PRESSED, EnumSet.of(NodeValueTrait.KEY));
@@ -325,6 +326,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_DISTANCE_BETWEEN, new String[]{"Target A", "Target B"});
         slotLabels.put(NodeType.SENSOR_VILLAGER_TRADE, new String[]{"Villager Trade"});
+        slotLabels.put(NodeType.SENSOR_IN_STOCK, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.CREATE_LIST, new String[]{"Target"});
         slotLabels.put(NodeType.TRADE, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.WAIT, new String[]{"Duration"});

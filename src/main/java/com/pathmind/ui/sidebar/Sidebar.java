@@ -139,7 +139,6 @@ public class Sidebar {
         groups.add(new NodeGroup(
             "Inventory & Equipment",
             baritoneAvailable,
-            NodeType.PARAM_VILLAGER_TRADE,
             NodeType.PARAM_INVENTORY_SLOT,
             NodeType.PARAM_HAND,
             NodeType.PARAM_GUI
@@ -203,7 +202,7 @@ public class Sidebar {
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
-            NodeType.SENSOR_VILLAGER_TRADE,
+            NodeType.SENSOR_IN_STOCK,
             NodeType.SENSOR_GUI_FILLED
         ));
         groups.add(new NodeGroup(

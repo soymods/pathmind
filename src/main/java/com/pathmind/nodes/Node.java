@@ -2886,6 +2886,9 @@ public class Node {
             return "";
         }
         String name = parameter.getName();
+        if (type == NodeType.USE && "UseDurationSeconds".equalsIgnoreCase(name)) {
+            return "Hold Duration";
+        }
         if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
             return "Message";
         }
@@ -3000,6 +3003,12 @@ public class Node {
         }
         if (isRandomRoundingParameter(parameter)) {
             return "";
+        }
+        if (type == NodeType.USE) {
+            String paramName = parameter.getName();
+            if ("UseDurationSeconds".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
+                return "";
+            }
         }
         if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
             return "";

@@ -1,5 +1,7 @@
 package com.pathmind.ui.control;
 
+import com.pathmind.ui.animation.AnimatedValue;
+import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.DropdownLayoutHelper;
@@ -46,6 +48,7 @@ public class InventorySlotSelector {
     private int lastRenderHeight;
 
     private boolean dropdownOpen = false;
+    private final AnimatedValue dropdownAnimation = AnimatedValue.forHover();
     private int dropdownHoverIndex = -1;
     private int buttonX;
     private int buttonY;
@@ -157,7 +160,7 @@ public class InventorySlotSelector {
         );
         sectionY += textRenderer.fontHeight;
 
-        if (dropdownOpen) {
+        if (dropdownOpen || dropdownAnimation.getValue() > 0.001f || dropdownAnimation.isAnimating()) {
             renderDropdown(context, textRenderer, mouseX, mouseY, alpha);
         }
 
@@ -235,6 +238,12 @@ public class InventorySlotSelector {
     }
 
     private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float alpha) {
+        dropdownAnimation.animateTo(dropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
+        dropdownAnimation.tick();
+        float animProgress = AnimationHelper.easeOutQuad(dropdownAnimation.getValue());
+        if (animProgress <= 0.001f) {
+            return;
+        }
         int dropdownX = buttonX;
         int dropdownY = buttonY + buttonHeight;
         int dropdownWidth = buttonWidth;
@@ -250,7 +259,9 @@ public class InventorySlotSelector {
         int visibleCount = layout.visibleCount;
         dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, layout.maxScrollOffset));
         int dropdownHeight = layout.height;
+        int animatedHeight = Math.max(1, (int) (dropdownHeight * animProgress));
 
+        context.enableScissor(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + animatedHeight);
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
         context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
@@ -261,7 +272,8 @@ public class InventorySlotSelector {
             int optionIndex = dropdownScrollIndex + i;
             InventoryGuiMode option = modes[optionIndex];
             int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
-            boolean hovered = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+            boolean hovered = animProgress >= 1f &&
+                              mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
                               mouseY >= optionTop && mouseY <= optionTop + DROPDOWN_OPTION_HEIGHT;
             if (hovered) {
                 dropdownHoverIndex = optionIndex;
@@ -302,6 +314,7 @@ public class InventorySlotSelector {
             dropdownHeight,
             applyAlpha(UITheme.BORDER_DEFAULT, alpha)
         );
+        context.disableScissor();
     }
 
     private int applyAlpha(int color, float alpha) {

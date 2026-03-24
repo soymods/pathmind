@@ -214,11 +214,13 @@ public class NodeGraph {
     private int variableSelectionAnchor = -1;
     private Node schematicDropdownNode = null;
     private boolean schematicDropdownOpen = false;
+    private final AnimatedValue schematicDropdownAnimation = AnimatedValue.forHover();
     private java.util.List<String> schematicDropdownOptions = new java.util.ArrayList<>();
     private int schematicDropdownScrollOffset = 0;
     private int schematicDropdownHoverIndex = -1;
     private Node runPresetDropdownNode = null;
     private boolean runPresetDropdownOpen = false;
+    private final AnimatedValue runPresetDropdownAnimation = AnimatedValue.forHover();
     private java.util.List<String> runPresetDropdownOptions = new java.util.ArrayList<>();
     private int runPresetDropdownScrollOffset = 0;
     private int runPresetDropdownHoverIndex = -1;
@@ -228,6 +230,7 @@ public class NodeGraph {
     private Node parameterDropdownNode = null;
     private int parameterDropdownIndex = -1;
     private boolean parameterDropdownOpen = false;
+    private final AnimatedValue parameterDropdownAnimation = AnimatedValue.forHover();
     private int parameterDropdownHoverIndex = -1;
     private int parameterDropdownScrollOffset = 0;
     private int parameterDropdownFieldX = 0;
@@ -241,10 +244,12 @@ public class NodeGraph {
     private String parameterDropdownSuppressedQuery = "";
     private Node randomRoundingDropdownNode = null;
     private boolean randomRoundingDropdownOpen = false;
+    private final AnimatedValue randomRoundingDropdownAnimation = AnimatedValue.forHover();
     private int randomRoundingDropdownHoverIndex = -1;
     private int randomRoundingDropdownScrollOffset = 0;
     private Node modeDropdownNode = null;
     private boolean modeDropdownOpen = false;
+    private final AnimatedValue modeDropdownAnimation = AnimatedValue.forHover();
     private int modeDropdownHoverIndex = -1;
     private int modeDropdownScrollOffset = 0;
     private int modeDropdownFieldX = 0;
@@ -254,11 +259,15 @@ public class NodeGraph {
     private final java.util.List<ModeDropdownOption> modeDropdownOptions = new java.util.ArrayList<>();
     private Node amountSignDropdownNode = null;
     private boolean amountSignDropdownOpen = false;
+    private final AnimatedValue amountSignDropdownAnimation = AnimatedValue.forHover();
     private int amountSignDropdownHoverIndex = -1;
     private int amountSignDropdownScrollOffset = 0;
     private static final int AMOUNT_SIGN_DROPDOWN_MAX_ROWS = 5;
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
     private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
+    private static final int DROPDOWN_SIDE_PADDING = 6;
+    private static final int DROPDOWN_SCROLLBAR_ALLOWANCE = 8;
+    private static final int PARAMETER_DROPDOWN_ICON_ALLOWANCE = 24;
     private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
     private static final float ZOOM_SCROLL_STEP = 1.12f;
@@ -2455,18 +2464,10 @@ public class NodeGraph {
         }
 
         if (!onlyDragged) {
-            if (parameterDropdownOpen) {
-                renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
-            }
-            if (randomRoundingDropdownOpen) {
-                renderRandomRoundingDropdownList(context, textRenderer, mouseX, mouseY);
-            }
-            if (modeDropdownOpen) {
-                renderModeDropdownList(context, textRenderer, mouseX, mouseY);
-            }
-            if (amountSignDropdownOpen) {
-                renderAmountSignDropdownList(context, textRenderer, mouseX, mouseY);
-            }
+            renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
+            renderRandomRoundingDropdownList(context, textRenderer, mouseX, mouseY);
+            renderModeDropdownList(context, textRenderer, mouseX, mouseY);
+            renderAmountSignDropdownList(context, textRenderer, mouseX, mouseY);
         }
 
         MatrixStackBridge.pop(matrices);
@@ -4390,7 +4391,12 @@ public class NodeGraph {
     }
 
     private void renderRandomRoundingDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        if (!randomRoundingDropdownOpen || randomRoundingDropdownNode == null) {
+        float animProgress = getDropdownAnimationProgress(randomRoundingDropdownAnimation, randomRoundingDropdownOpen);
+        if (randomRoundingDropdownNode == null) {
+            return;
+        }
+        if (animProgress <= 0.001f) {
+            clearRandomRoundingDropdownState();
             return;
         }
         Node node = randomRoundingDropdownNode;
@@ -4401,7 +4407,7 @@ public class NodeGraph {
         int transformedMouseY = Math.round(mouseY / zoom);
 
         int rowHeight = SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-        int dropdownWidth = node.getRandomRoundingFieldWidth();
+        int dropdownWidth = getRandomRoundingDropdownWidth(node);
         int listTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
         int listLeft = node.getRandomRoundingFieldLeft() - cameraX;
         int listRight = listLeft + dropdownWidth;
@@ -4415,13 +4421,16 @@ public class NodeGraph {
         );
         int listHeight = layout.height;
         int listBottom = listTop + listHeight;
+        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
 
+        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
         context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
         DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
 
         randomRoundingDropdownScrollOffset = MathHelper.clamp(randomRoundingDropdownScrollOffset, 0, layout.maxScrollOffset);
         randomRoundingDropdownHoverIndex = -1;
-        if (transformedMouseX >= listLeft && transformedMouseX <= listRight
+        if (animProgress >= 1f
+            && transformedMouseX >= listLeft && transformedMouseX <= listRight
             && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
             int row = (transformedMouseY - listTop) / rowHeight;
             if (row >= 0 && row < layout.visibleCount) {
@@ -4440,7 +4449,7 @@ public class NodeGraph {
                 context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.BACKGROUND_TERTIARY);
             }
             int textPadding = 5;
-            int maxTextWidth = dropdownWidth - (textPadding * 2);
+        int maxTextWidth = dropdownWidth - (textPadding * 2) - DROPDOWN_SCROLLBAR_ALLOWANCE;
             String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
             int textOffsetY = 4;
             drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + textPadding, rowTop + textOffsetY, UITheme.TEXT_PRIMARY);
@@ -4459,6 +4468,15 @@ public class NodeGraph {
             UITheme.BORDER_DEFAULT,
             UITheme.BORDER_HIGHLIGHT
         );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            listLeft,
+            listTop,
+            dropdownWidth,
+            listHeight,
+            UITheme.BORDER_DEFAULT
+        );
+        context.disableScissor();
     }
 
     private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
@@ -5644,7 +5662,12 @@ public class NodeGraph {
     }
 
     private void renderSchematicDropdownList(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        if (!schematicDropdownOpen || schematicDropdownNode != node) {
+        float animProgress = getDropdownAnimationProgress(schematicDropdownAnimation, schematicDropdownOpen);
+        if (schematicDropdownNode != node) {
+            return;
+        }
+        if (animProgress <= 0.001f) {
+            clearSchematicDropdownState();
             return;
         }
 
@@ -5668,17 +5691,21 @@ public class NodeGraph {
 
         int listHeight = layout.height;
         int listBottom = listTop + listHeight;
+        int dropdownWidth = getSchematicDropdownWidth(node);
         int listLeft = node.getSchematicFieldLeft() - cameraX;
-        int listRight = listLeft + node.getSchematicFieldWidth();
+        int listRight = listLeft + dropdownWidth;
+        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
 
+        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
         context.fill(listLeft, listTop, listRight, listBottom, fieldBackground);
-        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getSchematicFieldWidth(), listHeight, fieldBorder);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, fieldBorder);
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
         schematicDropdownHoverIndex = -1;
-        if (worldMouseX >= node.getSchematicFieldLeft()
-            && worldMouseX <= node.getSchematicFieldLeft() + node.getSchematicFieldWidth()
+        if (animProgress >= 1f
+            && worldMouseX >= node.getSchematicFieldLeft()
+            && worldMouseX <= node.getSchematicFieldLeft() + dropdownWidth
             && worldMouseY >= node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2
             && worldMouseY <= node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 + listHeight) {
             int row = (worldMouseY - (node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2)) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
@@ -5696,7 +5723,7 @@ public class NodeGraph {
             if (hovered) {
                 context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.DROP_ROW_HIGHLIGHT);
             }
-            String rowText = trimTextToWidth(optionLabel, textRenderer, node.getSchematicFieldWidth() - 6);
+            String rowText = trimTextToWidth(optionLabel, textRenderer, dropdownWidth - 6 - DROPDOWN_SCROLLBAR_ALLOWANCE);
             drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + 3, rowTop + 4, textColor);
         }
 
@@ -5704,7 +5731,7 @@ public class NodeGraph {
             context,
             listLeft,
             listTop,
-            node.getSchematicFieldWidth(),
+            dropdownWidth,
             listHeight,
             optionCount,
             layout.visibleCount,
@@ -5717,14 +5744,20 @@ public class NodeGraph {
             context,
             listLeft,
             listTop,
-            node.getSchematicFieldWidth(),
+            dropdownWidth,
             listHeight,
             UITheme.BORDER_DEFAULT
         );
+        context.disableScissor();
     }
 
     private void renderRunPresetDropdownList(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        if (!runPresetDropdownOpen || runPresetDropdownNode != node) {
+        float animProgress = getDropdownAnimationProgress(runPresetDropdownAnimation, runPresetDropdownOpen);
+        if (runPresetDropdownNode != node) {
+            return;
+        }
+        if (animProgress <= 0.001f) {
+            clearRunPresetDropdownState();
             return;
         }
 
@@ -5749,17 +5782,21 @@ public class NodeGraph {
 
         int listHeight = layout.height;
         int listBottom = listTop + listHeight;
+        int dropdownWidth = getRunPresetDropdownWidth(node);
         int listLeft = node.getStopTargetFieldLeft() - cameraX;
-        int listRight = listLeft + node.getStopTargetFieldWidth();
+        int listRight = listLeft + dropdownWidth;
+        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
 
+        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
         context.fill(listLeft, listTop, listRight, listBottom, listBackground);
-        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getStopTargetFieldWidth(), listHeight, listBorder);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, listBorder);
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
         runPresetDropdownHoverIndex = -1;
-        if (worldMouseX >= node.getStopTargetFieldLeft()
-            && worldMouseX <= node.getStopTargetFieldLeft() + node.getStopTargetFieldWidth()
+        if (animProgress >= 1f
+            && worldMouseX >= node.getStopTargetFieldLeft()
+            && worldMouseX <= node.getStopTargetFieldLeft() + dropdownWidth
             && worldMouseY >= node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2
             && worldMouseY <= node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 + listHeight) {
             int row = (worldMouseY - (node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2)) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
@@ -5777,7 +5814,7 @@ public class NodeGraph {
             if (hovered) {
                 context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, rowHoverFill);
             }
-            String rowText = trimTextToWidth(optionLabel, textRenderer, node.getStopTargetFieldWidth() - 6);
+            String rowText = trimTextToWidth(optionLabel, textRenderer, dropdownWidth - 6 - DROPDOWN_SCROLLBAR_ALLOWANCE);
             drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + 3, rowTop + 4, textColor);
         }
 
@@ -5785,7 +5822,7 @@ public class NodeGraph {
             context,
             listLeft,
             listTop,
-            node.getStopTargetFieldWidth(),
+            dropdownWidth,
             listHeight,
             optionCount,
             layout.visibleCount,
@@ -5798,14 +5835,20 @@ public class NodeGraph {
             context,
             listLeft,
             listTop,
-            node.getStopTargetFieldWidth(),
+            dropdownWidth,
             listHeight,
             UITheme.BORDER_DEFAULT
         );
+        context.disableScissor();
     }
 
     private void renderAmountSignDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        if (!amountSignDropdownOpen || amountSignDropdownNode == null) {
+        float animProgress = getDropdownAnimationProgress(amountSignDropdownAnimation, amountSignDropdownOpen);
+        if (amountSignDropdownNode == null) {
+            return;
+        }
+        if (animProgress <= 0.001f) {
+            clearAmountSignDropdownState();
             return;
         }
 
@@ -5824,17 +5867,21 @@ public class NodeGraph {
 
         int listHeight = layout.height;
         int listBottom = listTop + listHeight;
+        int dropdownWidth = getAmountSignDropdownWidth(node);
         int listLeft = node.getAmountSignToggleLeft() - cameraX;
-        int listRight = listLeft + node.getAmountSignToggleWidth();
+        int listRight = listLeft + dropdownWidth;
+        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
 
+        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
         context.fill(listLeft, listTop, listRight, listBottom, fieldBackground);
-        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, node.getAmountSignToggleWidth(), listHeight, fieldBorder);
+        DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, fieldBorder);
 
         float zoom = Math.max(0.01f, getZoomScale());
         int transformedMouseX = Math.round(mouseX / zoom);
         int transformedMouseY = Math.round(mouseY / zoom);
         amountSignDropdownHoverIndex = -1;
-        if (transformedMouseX >= listLeft
+        if (animProgress >= 1f
+            && transformedMouseX >= listLeft
             && transformedMouseX <= listRight
             && transformedMouseY >= listTop
             && transformedMouseY <= listBottom) {
@@ -5853,7 +5900,7 @@ public class NodeGraph {
             if (hovered) {
                 context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.DROP_ROW_HIGHLIGHT);
             }
-            int textX = listLeft + Math.max(2, (node.getAmountSignToggleWidth() - textRenderer.getWidth(optionLabel)) / 2);
+            int textX = listLeft + Math.max(DROPDOWN_SIDE_PADDING, (dropdownWidth - textRenderer.getWidth(optionLabel)) / 2);
             drawNodeText(context, textRenderer, Text.literal(optionLabel), textX, rowTop + 4, textColor);
         }
 
@@ -5861,7 +5908,7 @@ public class NodeGraph {
             context,
             listLeft,
             listTop,
-            node.getAmountSignToggleWidth(),
+            dropdownWidth,
             listHeight,
             optionCount,
             layout.visibleCount,
@@ -5874,10 +5921,11 @@ public class NodeGraph {
             context,
             listLeft,
             listTop,
-            node.getAmountSignToggleWidth(),
+            dropdownWidth,
             listHeight,
             UITheme.BORDER_DEFAULT
         );
+        context.disableScissor();
     }
 
     public boolean isEditingCoordinateField() {
@@ -9120,12 +9168,7 @@ public class NodeGraph {
 
     private void closeParameterDropdown() {
         parameterDropdownOpen = false;
-        parameterDropdownNode = null;
-        parameterDropdownIndex = -1;
         parameterDropdownHoverIndex = -1;
-        parameterDropdownScrollOffset = 0;
-        parameterDropdownQuery = "";
-        parameterDropdownOptions.clear();
     }
 
     private void suppressParameterDropdown(Node node, int index, String query) {
@@ -9190,7 +9233,17 @@ public class NodeGraph {
     }
 
     private int getDropdownWidth() {
-        return Math.max(200, Math.round(parameterDropdownFieldWidth * 1.5f));
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null) {
+            return parameterDropdownFieldWidth;
+        }
+        int longestLabelWidth = textRenderer.getWidth("No matches");
+        for (ParameterDropdownOption option : parameterDropdownOptions) {
+            if (option != null && option.label() != null) {
+                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.getWidth(option.label()));
+            }
+        }
+        return longestLabelWidth + PARAMETER_DROPDOWN_ICON_ALLOWANCE + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
     }
 
     private int getDropdownRowHeight() {
@@ -9300,7 +9353,12 @@ public class NodeGraph {
     }
 
     private void renderParameterDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        if (!parameterDropdownOpen) {
+        float animProgress = getDropdownAnimationProgress(parameterDropdownAnimation, parameterDropdownOpen);
+        if (parameterDropdownNode == null) {
+            return;
+        }
+        if (animProgress <= 0.001f) {
+            clearParameterDropdownState();
             return;
         }
         List<ParameterDropdownOption> options = parameterDropdownOptions;
@@ -9318,13 +9376,17 @@ public class NodeGraph {
         int listRight = listLeft + dropdownWidth;
         int listHeight = layout.height;
         int listBottom = listTop + listHeight;
+        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
 
+        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
         context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
         DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
 
         parameterDropdownScrollOffset = MathHelper.clamp(parameterDropdownScrollOffset, 0, layout.maxScrollOffset);
         parameterDropdownHoverIndex = -1;
-        if (transformedMouseX >= listLeft && transformedMouseX <= listRight && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
+        if (animProgress >= 1f
+            && transformedMouseX >= listLeft && transformedMouseX <= listRight
+            && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
             int row = (transformedMouseY - listTop) / rowHeight;
             if (row >= 0 && row < layout.visibleCount) {
                 parameterDropdownHoverIndex = parameterDropdownScrollOffset + row;
@@ -9356,7 +9418,7 @@ public class NodeGraph {
             if (!icon.isEmpty()) {
                 textX = iconX + iconSize + padding;
             }
-            int maxTextWidth = dropdownWidth - (textX - listLeft) - textPadding;
+            int maxTextWidth = dropdownWidth - (textX - listLeft) - textPadding - DROPDOWN_SCROLLBAR_ALLOWANCE;
             String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
             int textOffsetY = 4;
             drawNodeText(context, textRenderer, Text.literal(rowText), textX, rowTop + textOffsetY, UITheme.TEXT_PRIMARY);
@@ -9383,6 +9445,7 @@ public class NodeGraph {
             listHeight,
             UITheme.BORDER_DEFAULT
         );
+        context.disableScissor();
     }
 
     public boolean handleModeDropdownClick(double screenX, double screenY) {
@@ -9480,10 +9543,7 @@ public class NodeGraph {
 
     public void closeModeDropdown() {
         modeDropdownOpen = false;
-        modeDropdownNode = null;
         modeDropdownHoverIndex = -1;
-        modeDropdownScrollOffset = 0;
-        modeDropdownOptions.clear();
     }
 
     private void refreshModeDropdownAnchor() {
@@ -9505,7 +9565,12 @@ public class NodeGraph {
     }
 
     private void renderModeDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        if (!modeDropdownOpen) {
+        float animProgress = getDropdownAnimationProgress(modeDropdownAnimation, modeDropdownOpen);
+        if (modeDropdownNode == null) {
+            return;
+        }
+        if (animProgress <= 0.001f) {
+            clearModeDropdownState();
             return;
         }
         refreshModeDropdownAnchor();
@@ -9523,13 +9588,17 @@ public class NodeGraph {
         int listRight = listLeft + dropdownWidth;
         int listHeight = layout.height;
         int listBottom = listTop + listHeight;
+        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
 
+        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
         context.fill(listLeft, listTop, listRight, listBottom, UITheme.BACKGROUND_SIDEBAR);
         DrawContextBridge.drawBorderInLayer(context, listLeft, listTop, dropdownWidth, listHeight, UITheme.BORDER_HIGHLIGHT);
 
         modeDropdownScrollOffset = MathHelper.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
         modeDropdownHoverIndex = -1;
-        if (transformedMouseX >= listLeft && transformedMouseX <= listRight && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
+        if (animProgress >= 1f
+            && transformedMouseX >= listLeft && transformedMouseX <= listRight
+            && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
             int row = (transformedMouseY - listTop) / rowHeight;
             if (row >= 0 && row < layout.visibleCount) {
                 modeDropdownHoverIndex = modeDropdownScrollOffset + row;
@@ -9547,7 +9616,7 @@ public class NodeGraph {
                 context.fill(listLeft + 1, rowTop + 1, listRight - 1, rowBottom - 1, UITheme.BACKGROUND_TERTIARY);
             }
             int textPadding = 5;
-            int maxTextWidth = dropdownWidth - (textPadding * 2);
+            int maxTextWidth = dropdownWidth - (textPadding * 2) - DROPDOWN_SCROLLBAR_ALLOWANCE;
             String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
             int textOffsetY = 4;
             drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + textPadding, rowTop + textOffsetY, UITheme.TEXT_PRIMARY);
@@ -9574,6 +9643,7 @@ public class NodeGraph {
             listHeight,
             UITheme.BORDER_DEFAULT
         );
+        context.disableScissor();
     }
 
     private int getModeDropdownListTop() {
@@ -9581,7 +9651,73 @@ public class NodeGraph {
     }
 
     private int getModeDropdownWidth() {
-        return Math.max(200, Math.round(modeDropdownFieldWidth * 1.5f));
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null) {
+            return modeDropdownFieldWidth;
+        }
+        int longestLabelWidth = textRenderer.getWidth("No modes");
+        for (ModeDropdownOption option : modeDropdownOptions) {
+            if (option != null && option.label() != null) {
+                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.getWidth(option.label()));
+            }
+        }
+        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
+    }
+
+    private int getRandomRoundingDropdownWidth(Node node) {
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null || node == null) {
+            return node != null ? node.getRandomRoundingFieldWidth() : 0;
+        }
+        int longestLabelWidth = textRenderer.getWidth("No options");
+        for (ParameterDropdownOption option : getRandomRoundingDropdownOptions()) {
+            if (option != null && option.label() != null) {
+                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.getWidth(option.label()));
+            }
+        }
+        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
+    }
+
+    private int getSchematicDropdownWidth(Node node) {
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null || node == null) {
+            return node != null ? node.getSchematicFieldWidth() : 0;
+        }
+        int longestLabelWidth = textRenderer.getWidth("No schematics found");
+        for (String option : schematicDropdownOptions) {
+            if (option != null) {
+                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.getWidth(option));
+            }
+        }
+        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
+    }
+
+    private int getRunPresetDropdownWidth(Node node) {
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null || node == null) {
+            return node != null ? node.getStopTargetFieldWidth() : 0;
+        }
+        int longestLabelWidth = textRenderer.getWidth("No presets found");
+        for (String option : runPresetDropdownOptions) {
+            if (option != null) {
+                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.getWidth(option));
+            }
+        }
+        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
+    }
+
+    private int getAmountSignDropdownWidth(Node node) {
+        TextRenderer textRenderer = getClientTextRenderer();
+        if (textRenderer == null || node == null) {
+            return node != null ? node.getAmountSignToggleWidth() : 0;
+        }
+        int longestLabelWidth = 0;
+        for (String option : getAmountSignDropdownOptions()) {
+            if (option != null) {
+                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.getWidth(option));
+            }
+        }
+        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
     }
 
     private DropdownLayoutHelper.Layout getModeDropdownLayout() {
@@ -9913,7 +10049,7 @@ public class NodeGraph {
         DropdownLayoutHelper.Layout layout = getAmountSignDropdownLayout(node);
         int listHeight = layout.height;
         int listLeft = node.getAmountSignToggleLeft() - cameraX;
-        int listWidth = node.getAmountSignToggleWidth();
+        int listWidth = getAmountSignDropdownWidth(node);
         return transformedX >= listLeft && transformedX <= listLeft + listWidth
             && transformedY >= listTop && transformedY <= listTop + listHeight;
     }
@@ -9977,7 +10113,7 @@ public class NodeGraph {
         );
         int listHeight = layout.height;
         int listLeft = node.getRandomRoundingFieldLeft();
-        int listWidth = node.getRandomRoundingFieldWidth();
+        int listWidth = getRandomRoundingDropdownWidth(node);
         int worldListTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2;
         return worldX >= listLeft && worldX <= listLeft + listWidth
             && worldY >= worldListTop && worldY <= worldListTop + listHeight;
@@ -10458,7 +10594,8 @@ public class NodeGraph {
         int listLeft = node.getSchematicFieldLeft();
         int worldListTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
 
-        return worldX >= listLeft && worldX <= listLeft + node.getSchematicFieldWidth()
+        int dropdownWidth = getSchematicDropdownWidth(node);
+        return worldX >= listLeft && worldX <= listLeft + dropdownWidth
             && worldY >= worldListTop && worldY <= worldListTop + listHeight;
     }
 
@@ -10483,7 +10620,8 @@ public class NodeGraph {
         int listLeft = node.getStopTargetFieldLeft();
         int worldListTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2;
 
-        return worldX >= listLeft && worldX <= listLeft + node.getStopTargetFieldWidth()
+        int dropdownWidth = getRunPresetDropdownWidth(node);
+        return worldX >= listLeft && worldX <= listLeft + dropdownWidth
             && worldY >= worldListTop && worldY <= worldListTop + listHeight;
     }
 
@@ -10561,9 +10699,7 @@ public class NodeGraph {
 
     private void closeSchematicDropdown() {
         schematicDropdownOpen = false;
-        schematicDropdownNode = null;
         schematicDropdownHoverIndex = -1;
-        schematicDropdownScrollOffset = 0;
     }
 
     private void openRunPresetDropdown(Node node) {
@@ -10589,10 +10725,7 @@ public class NodeGraph {
 
     private void closeRunPresetDropdown() {
         runPresetDropdownOpen = false;
-        runPresetDropdownNode = null;
-        runPresetDropdownOptions = new ArrayList<>();
         runPresetDropdownHoverIndex = -1;
-        runPresetDropdownScrollOffset = 0;
     }
 
     private void openAmountSignDropdown(Node node) {
@@ -10604,9 +10737,7 @@ public class NodeGraph {
 
     private void closeAmountSignDropdown() {
         amountSignDropdownOpen = false;
-        amountSignDropdownNode = null;
         amountSignDropdownHoverIndex = -1;
-        amountSignDropdownScrollOffset = 0;
     }
 
     private void openRandomRoundingDropdown(Node node) {
@@ -10618,9 +10749,76 @@ public class NodeGraph {
 
     private void closeRandomRoundingDropdown() {
         randomRoundingDropdownOpen = false;
+        randomRoundingDropdownHoverIndex = -1;
+    }
+
+    private float getDropdownAnimationProgress(AnimatedValue animation, boolean open) {
+        animation.animateTo(open ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
+        animation.tick();
+        return AnimationHelper.easeOutQuad(animation.getValue());
+    }
+
+    private void enableDropdownScissor(DrawContext context, int x, int y, int width, int height) {
+        context.enableScissor(x, y, x + Math.max(1, width), y + Math.max(1, height));
+    }
+
+    private void clearSchematicDropdownState() {
+        if (schematicDropdownOpen) {
+            return;
+        }
+        schematicDropdownNode = null;
+        schematicDropdownHoverIndex = -1;
+        schematicDropdownScrollOffset = 0;
+    }
+
+    private void clearRunPresetDropdownState() {
+        if (runPresetDropdownOpen) {
+            return;
+        }
+        runPresetDropdownNode = null;
+        runPresetDropdownOptions = new ArrayList<>();
+        runPresetDropdownHoverIndex = -1;
+        runPresetDropdownScrollOffset = 0;
+    }
+
+    private void clearAmountSignDropdownState() {
+        if (amountSignDropdownOpen) {
+            return;
+        }
+        amountSignDropdownNode = null;
+        amountSignDropdownHoverIndex = -1;
+        amountSignDropdownScrollOffset = 0;
+    }
+
+    private void clearRandomRoundingDropdownState() {
+        if (randomRoundingDropdownOpen) {
+            return;
+        }
         randomRoundingDropdownNode = null;
         randomRoundingDropdownHoverIndex = -1;
         randomRoundingDropdownScrollOffset = 0;
+    }
+
+    private void clearParameterDropdownState() {
+        if (parameterDropdownOpen) {
+            return;
+        }
+        parameterDropdownNode = null;
+        parameterDropdownIndex = -1;
+        parameterDropdownHoverIndex = -1;
+        parameterDropdownScrollOffset = 0;
+        parameterDropdownQuery = "";
+        parameterDropdownOptions.clear();
+    }
+
+    private void clearModeDropdownState() {
+        if (modeDropdownOpen) {
+            return;
+        }
+        modeDropdownNode = null;
+        modeDropdownHoverIndex = -1;
+        modeDropdownScrollOffset = 0;
+        modeDropdownOptions.clear();
     }
 
     private void applySchematicSelection(Node node, String value) {

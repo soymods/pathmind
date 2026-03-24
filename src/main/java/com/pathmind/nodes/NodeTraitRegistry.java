@@ -151,6 +151,7 @@ public final class NodeTraitRegistry {
 
         accepted.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY));
         accepted.put(NodeType.SENSOR_DISTANCE_BETWEEN, EnumSet.of(
+            NodeValueTrait.COORDINATE,
             NodeValueTrait.BLOCK,
             NodeValueTrait.ITEM,
             NodeValueTrait.ENTITY,

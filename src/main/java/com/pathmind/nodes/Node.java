@@ -3280,12 +3280,14 @@ public class Node {
                     break;
                 }
                 if (!providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
+                    && !providesTrait(parameterNodeA, NodeValueTrait.COORDINATE)
                     && !providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
                     && !providesTrait(parameterNodeA, NodeValueTrait.ITEM)
                     && !providesTrait(parameterNodeA, NodeValueTrait.PLAYER)) {
                     break;
                 }
                 if (!providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
+                    && !providesTrait(parameterNodeB, NodeValueTrait.COORDINATE)
                     && !providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
                     && !providesTrait(parameterNodeB, NodeValueTrait.ITEM)
                     && !providesTrait(parameterNodeB, NodeValueTrait.PLAYER)) {
@@ -6596,22 +6598,24 @@ public class Node {
                 + " paramB=" + (parameterNodeB != null ? parameterNodeB.getType() : "null"));
             if (parameterNodeA == null || parameterNodeB == null) {
                 if (client != null) {
-                    sendNodeErrorMessage(client, "Distance Between requires two parameters (entity, user, block, or item).");
+                    sendNodeErrorMessage(client, "Distance Between requires two parameters (coordinate, entity, user, block, or item).");
                 }
                 setNextOutputSocket(NO_OUTPUT);
                 future.complete(null);
                 return;
             }
             if ((!valueNode.providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
+                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.COORDINATE)
                 && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
                 && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.ITEM)
                 && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.PLAYER))
                 || (!valueNode.providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
+                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.COORDINATE)
                 && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
                 && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.ITEM)
                 && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.PLAYER))) {
                 if (client != null) {
-                    sendNodeErrorMessage(client, "Distance Between only accepts entity, user, block, or item parameters.");
+                    sendNodeErrorMessage(client, "Distance Between only accepts coordinate, entity, user, block, or item parameters.");
                 }
                 setNextOutputSocket(NO_OUTPUT);
                 future.complete(null);

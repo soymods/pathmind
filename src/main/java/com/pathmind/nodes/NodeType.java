@@ -172,6 +172,9 @@ public enum NodeType {
     }
 
     public String getDisplayName() {
+        if (this == DROP_SLOT) {
+            return Text.translatable("pathmind.node.type.dropItem").getString();
+        }
         return Text.translatable(translationKey).getString();
     }
 
@@ -187,6 +190,9 @@ public enum NodeType {
     }
 
     public String getDescription() {
+        if (this == DROP_SLOT) {
+            return Text.translatable("pathmind.node.type.dropItem.desc").getString();
+        }
         return Text.translatable(descriptionKey).getString();
     }
 
@@ -200,7 +206,8 @@ public enum NodeType {
 
     public boolean isDraggableFromSidebar() {
         if (this == STOP || this == PLACE_HAND || this == RUN_PRESET
-            || this == PARAM_VILLAGER_TRADE || this == SENSOR_VILLAGER_TRADE) {
+            || this == PARAM_VILLAGER_TRADE || this == SENSOR_VILLAGER_TRADE
+            || this == DROP_SLOT) {
             return false;
         }
         return true;

@@ -15574,10 +15574,12 @@ public class Node {
                     if (startPos != null) {
                         double targetDistanceSquared = distance * distance;
                         long startTime = System.currentTimeMillis();
-                        long maxDurationMs = Long.MAX_VALUE;
-                        if (!distanceDrivenByParameter || durationExplicitlyEdited) {
-                            maxDurationMs = durationSeconds > 0.0 ? (long) (durationSeconds * 1000) : Long.MAX_VALUE;
-                        }
+                        // Always keep a finite timeout fallback so a stalled distance-based walk
+                        // can't hold the forward key forever if the guard never trips or movement
+                        // fails to advance.
+                        long maxDurationMs = durationSeconds > 0.0
+                            ? (long) (durationSeconds * 1000)
+                            : Long.MAX_VALUE;
                         String stopReason = "unknown";
                         while (true) {
                             Thread.sleep(CONTROL_POLL_INTERVAL_MS);
@@ -18120,6 +18122,10 @@ public class Node {
         }
         Map<String, String> leftValues = left.exportParameterValues();
         Map<String, String> rightValues = right.exportParameterValues();
+        Optional<Boolean> emptyTargetedBlockComparison = compareEmptyTargetedBlockValues(left, leftValues, right, rightValues);
+        if (emptyTargetedBlockComparison.isPresent()) {
+            return emptyTargetedBlockComparison;
+        }
         if (leftValues == null || rightValues == null || leftValues.isEmpty() || rightValues.isEmpty()) {
             return Optional.empty();
         }
@@ -18128,6 +18134,39 @@ public class Node {
             return blockComparison;
         }
         return Optional.of(leftValues.equals(rightValues));
+    }
+
+    private Optional<Boolean> compareEmptyTargetedBlockValues(Node left, Map<String, String> leftValues,
+                                                              Node right, Map<String, String> rightValues) {
+        if (left == null || right == null) {
+            return Optional.empty();
+        }
+        boolean leftMissingTargetedBlock = left.getType() == NodeType.SENSOR_TARGETED_BLOCK
+            && (leftValues == null || leftValues.isEmpty());
+        boolean rightMissingTargetedBlock = right.getType() == NodeType.SENSOR_TARGETED_BLOCK
+            && (rightValues == null || rightValues.isEmpty());
+
+        if (leftMissingTargetedBlock && rightMissingTargetedBlock) {
+            return Optional.of(true);
+        }
+        if (leftMissingTargetedBlock && isBlockComparableNode(right)) {
+            return Optional.of(false);
+        }
+        if (rightMissingTargetedBlock && isBlockComparableNode(left)) {
+            return Optional.of(false);
+        }
+        return Optional.empty();
+    }
+
+    private boolean isBlockComparableNode(Node node) {
+        if (node == null) {
+            return false;
+        }
+        if (node.getType() == NodeType.PARAM_BLOCK || node.getType() == NodeType.SENSOR_TARGETED_BLOCK) {
+            return true;
+        }
+        Map<String, String> values = node.exportParameterValues();
+        return values != null && !getRuntimeValue(values, "block").isEmpty();
     }
 
     private Optional<Boolean> compareBlockSelectionValues(Map<String, String> leftValues, Map<String, String> rightValues) {

@@ -328,7 +328,7 @@
   "pathmind.settings.nodeDelay": "Délai du nœud",
   "pathmind.settings.off": "Désactivé",
   "pathmind.settings.on": "Activé",
-  "pathmind.settings.showChatErrors": "Afficher les erreurs du chat",
+  "pathmind.settings.showChatErrors": "Afficher les notifications d'erreur",
   "pathmind.settings.showGrid": "Afficher la grille",
   "pathmind.settings.showHudOverlays": "Afficher les superpositions HUD",
   "pathmind.settings.showTooltips": "Afficher les infobulles",

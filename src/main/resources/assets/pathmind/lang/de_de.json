@@ -328,7 +328,7 @@
   "pathmind.settings.nodeDelay": "Knotenverzögerung",
   "pathmind.settings.off": "Aus",
   "pathmind.settings.on": "An",
-  "pathmind.settings.showChatErrors": "Chatfehler anzeigen",
+  "pathmind.settings.showChatErrors": "Fehlerbenachrichtigungen anzeigen",
   "pathmind.settings.showGrid": "Raster anzeigen",
   "pathmind.settings.showHudOverlays": "HUD-Overlays anzeigen",
   "pathmind.settings.showTooltips": "Tooltips anzeigen",

@@ -330,7 +330,7 @@
   "pathmind.settings.nodeDelay": "Node delay",
   "pathmind.settings.off": "Off",
   "pathmind.settings.on": "On",
-  "pathmind.settings.showChatErrors": "Show chat errors",
+  "pathmind.settings.showChatErrors": "Show error notifications",
   "pathmind.settings.showGrid": "Show grid",
   "pathmind.settings.showHudOverlays": "Show HUD overlays",
   "pathmind.settings.showTooltips": "Show tooltips",

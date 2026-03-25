@@ -328,7 +328,7 @@
   "pathmind.settings.nodeDelay": "Atraso do nó",
   "pathmind.settings.off": "Desativado",
   "pathmind.settings.on": "Ativado",
-  "pathmind.settings.showChatErrors": "Mostrar erros no chat",
+  "pathmind.settings.showChatErrors": "Mostrar notificações de erro",
   "pathmind.settings.showGrid": "Mostrar grade",
   "pathmind.settings.showHudOverlays": "Mostrar sobreposições do HUD",
   "pathmind.settings.showTooltips": "Mostrar dicas",

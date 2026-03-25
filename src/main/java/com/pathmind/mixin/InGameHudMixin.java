@@ -1,5 +1,6 @@
 package com.pathmind.mixin;
 
+import com.pathmind.PathmindClientMod;
 import com.pathmind.screen.PathmindScreens;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -31,5 +32,14 @@ public class InGameHudMixin {
         if (client.currentScreen != null && PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
             ci.cancel();
         }
+    }
+
+    @Inject(method = "render", at = @At("TAIL"))
+    private void pathmind$renderHudOverlaysAboveVanilla(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.currentScreen != null && PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
+            return;
+        }
+        PathmindClientMod.renderHudOverlays(context, client);
     }
 }

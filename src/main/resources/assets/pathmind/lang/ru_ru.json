@@ -328,7 +328,7 @@
   "pathmind.settings.nodeDelay": "Задержка узла",
   "pathmind.settings.off": "Выкл",
   "pathmind.settings.on": "Вкл",
-  "pathmind.settings.showChatErrors": "Показывать ошибки в чате",
+  "pathmind.settings.showChatErrors": "Показывать уведомления об ошибках",
   "pathmind.settings.showGrid": "Показать сетку",
   "pathmind.settings.showHudOverlays": "Показывать HUD-накладки",
   "pathmind.settings.showTooltips": "Показать подсказки",

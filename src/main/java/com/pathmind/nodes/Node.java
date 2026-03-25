@@ -27,6 +27,8 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
+import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
+import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
@@ -424,7 +426,7 @@ public class Node {
         return keySet;
     }
 
-    /** Sends a chat message error to the player (e.g. for invalid numeric/variable input). */
+    /** Sends a HUD notification error to the player (e.g. for invalid numeric/variable input). */
     public void sendNodeErrorMessageToPlayer(String message) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client != null) {
@@ -444,11 +446,11 @@ public class Node {
     }
 
     private void sendNodeErrorMessageOnClientThread(net.minecraft.client.MinecraftClient client, String message) {
-        if (client == null || client.player == null || message == null || message.isEmpty()) {
+        if (client == null || message == null || message.isEmpty()) {
             return;
         }
 
-        client.player.sendMessage(Text.literal(CHAT_MESSAGE_PREFIX + message), false);
+        NodeErrorNotificationOverlay.getInstance().show(message, type != null ? type.getColor() : UITheme.STATE_ERROR);
     }
 
     private void sendNodeInfoMessage(net.minecraft.client.MinecraftClient client, String message) {

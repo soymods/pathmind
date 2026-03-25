@@ -7,6 +7,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
+import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.ui.control.VillagerTradeSelector;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -33,6 +34,7 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.MerchantScreen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.util.ActionResult;
@@ -50,8 +52,9 @@ import java.lang.reflect.Proxy;
  */
 public class PathmindClientMod implements ClientModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/Client");
-    private ActiveNodeOverlay activeNodeOverlay;
-    private VariablesOverlay variablesOverlay;
+    private static ActiveNodeOverlay activeNodeOverlay;
+    private static NodeErrorNotificationOverlay nodeErrorNotificationOverlay;
+    private static VariablesOverlay variablesOverlay;
     private volatile boolean worldShutdownHandled;
     private boolean baritoneAvailable;
     private boolean recipeCacheWarmed;
@@ -120,8 +123,9 @@ public class PathmindClientMod implements ClientModInitializer {
 
         PresetManager.initialize();
         baritoneAvailable = BaritoneDependencyChecker.isBaritonePresent();
-        this.activeNodeOverlay = new ActiveNodeOverlay();
-        this.variablesOverlay = new VariablesOverlay();
+        activeNodeOverlay = new ActiveNodeOverlay();
+        nodeErrorNotificationOverlay = NodeErrorNotificationOverlay.getInstance();
+        variablesOverlay = new VariablesOverlay();
 
         // Register keybindings
         PathmindKeybinds.registerKeybinds();
@@ -147,6 +151,9 @@ public class PathmindClientMod implements ClientModInitializer {
             worldShutdownHandled = false;
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.clear();
+            }
             recipeCacheWarmed = false;
             recipeCacheWarmupCooldownTicks = 0;
             villagerTradeCacheWarmed = false;
@@ -158,6 +165,9 @@ public class PathmindClientMod implements ClientModInitializer {
             handleClientShutdown("play disconnect", false);
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.clear();
+            }
             fireFabricEvent(EVT_CLIENT_PLAY_DISCONNECT);
         });
 
@@ -165,6 +175,9 @@ public class PathmindClientMod implements ClientModInitializer {
             handleClientShutdown("client stopping", true);
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.clear();
+            }
             fireFabricEvent(EVT_CLIENT_LIFECYCLE_STOPPING);
         });
 
@@ -178,23 +191,36 @@ public class PathmindClientMod implements ClientModInitializer {
             fireFabricEvent(EVT_MESSAGE_RECEIVE_CHAT);
         });
         
-        // Register HUD render callback for the active node overlay
         HudRenderCallback.EVENT.register((drawContext, tickDelta) -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null && client.textRenderer != null) {
-                boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays == null
-                    || SettingsManager.getCurrent().showHudOverlays;
-                if (showHudOverlays && activeNodeOverlay != null) {
-                    activeNodeOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
-                }
-                if (showHudOverlays && variablesOverlay != null) {
-                    variablesOverlay.render(drawContext, client.textRenderer, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
-                }
-            }
             fireFabricEvent(EVT_RENDER_HUD);
         });
         
         LOGGER.info("Pathmind client mod initialized successfully");
+    }
+
+    public static void renderHudOverlays(DrawContext drawContext, MinecraftClient client) {
+        if (client == null || client.player == null || client.textRenderer == null) {
+            return;
+        }
+
+        boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays == null
+            || SettingsManager.getCurrent().showHudOverlays;
+        if (!showHudOverlays) {
+            return;
+        }
+
+        int scaledWidth = client.getWindow().getScaledWidth();
+        int scaledHeight = client.getWindow().getScaledHeight();
+
+        if (activeNodeOverlay != null) {
+            activeNodeOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+        }
+        if (variablesOverlay != null) {
+            variablesOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+        }
+        if (nodeErrorNotificationOverlay != null) {
+            nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+        }
     }
 
     private void registerFabricEventForwarders() {

@@ -328,7 +328,7 @@
   "pathmind.settings.nodeDelay": "Opóźnienie węzła",
   "pathmind.settings.off": "Wył.",
   "pathmind.settings.on": "Wł.",
-  "pathmind.settings.showChatErrors": "Pokaż błędy czatu",
+  "pathmind.settings.showChatErrors": "Pokaż powiadomienia o błędach",
   "pathmind.settings.showGrid": "Pokaż siatkę",
   "pathmind.settings.showHudOverlays": "Pokaż nakładki HUD",
   "pathmind.settings.showTooltips": "Pokaż podpowiedzi",

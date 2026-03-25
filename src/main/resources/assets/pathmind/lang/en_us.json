@@ -1,6 +1,7 @@
 {
   "_comment": "Pathmind Visual Editor - English (US) Translations",
   "category.pathmind.general": "Pathmind",
+  "gui.pathmind.open_editor": "Open Pathmind Editor",
   "key.category.pathmind.general": "Pathmind",
   "key.pathmind.open_visual_editor": "Open Pathmind Visual Editor",
   "key.pathmind.play_graphs": "Play Graphs",

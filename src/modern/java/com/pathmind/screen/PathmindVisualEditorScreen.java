@@ -2117,6 +2117,16 @@ public class PathmindVisualEditorScreen extends Screen {
         draggingPresetTabCurrentX = tabLeft;
     }
 
+    private void normalizePresetTabOrder() {
+        String defaultPresetName = PresetManager.getDefaultPresetName();
+        if (defaultPresetName == null || defaultPresetName.isEmpty()) {
+            return;
+        }
+        if (presetTabOrder.remove(defaultPresetName)) {
+            presetTabOrder.add(0, defaultPresetName);
+        }
+    }
+
     private void updatePresetTabDrag(int mouseX) {
         if (draggingPresetTabName == null) {
             return;
@@ -2147,30 +2157,15 @@ public class PathmindVisualEditorScreen extends Screen {
                 targetIndex++;
             }
         }
-        int lockedIndex = -1;
-        String lockedName = null;
-        for (int i = 0; i < presetTabOrder.size(); i++) {
-            if (isPresetDeleteDisabled(presetTabOrder.get(i))) {
-                lockedIndex = i;
-                lockedName = presetTabOrder.get(i);
-                break;
-            }
-        }
         int orderIndex = presetTabOrder.indexOf(draggingPresetTabName);
         if (orderIndex < 0) {
             return;
         }
-        int clampedTarget = MathHelper.clamp(targetIndex, 0, presetTabOrder.size() - 1);
+        int clampedTarget = MathHelper.clamp(targetIndex, 1, presetTabOrder.size() - 1);
         if (clampedTarget != orderIndex) {
             presetTabOrder.remove(orderIndex);
             presetTabOrder.add(clampedTarget, draggingPresetTabName);
-            if (lockedIndex >= 0 && lockedName != null) {
-                int currentLocked = presetTabOrder.indexOf(lockedName);
-                if (currentLocked >= 0 && currentLocked != lockedIndex) {
-                    presetTabOrder.remove(currentLocked);
-                    presetTabOrder.add(MathHelper.clamp(lockedIndex, 0, presetTabOrder.size()), lockedName);
-                }
-            }
+            normalizePresetTabOrder();
         }
     }
 
@@ -2255,6 +2250,10 @@ public class PathmindVisualEditorScreen extends Screen {
             if (!tabs.contains(name)) {
                 tabs.add(name);
             }
+        }
+        String defaultPresetName = PresetManager.getDefaultPresetName();
+        if (defaultPresetName != null && tabs.remove(defaultPresetName)) {
+            tabs.add(0, defaultPresetName);
         }
         return tabs;
     }
@@ -4530,6 +4529,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
             }
         }
+
+        normalizePresetTabOrder();
 
         presetTabXAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
         presetTabAppearAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));

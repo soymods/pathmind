@@ -3274,8 +3274,8 @@ public class NodeGraph {
                         }
                         if (isDirectionParameter(node, i)) {
                             boolean showPlaceholder = editingThis
-                                ? value.isEmpty() || "Any".equalsIgnoreCase(value)
-                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                                ? value.isEmpty()
+                                : value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value));
                             showDirectionPlaceholder = showPlaceholder;
                         }
                         if (isBlockFaceParameter(node, i)) {
@@ -3321,7 +3321,7 @@ public class NodeGraph {
                             } else if (showBlockFacePlaceholder) {
                                 value = "North";
                             } else if (showDirectionPlaceholder) {
-                                value = "Any";
+                                value = "North";
                             } else {
                                 value = "Any";
                             }
@@ -7378,10 +7378,10 @@ public class NodeGraph {
         String appliedValue = value;
         if (parameter != null) {
             boolean isPlayerParam = isPlayerParameter(parameterEditingNode, parameter);
+            boolean isDirectionParam = isDirectionParameter(parameterEditingNode, parameterEditingIndex);
             boolean isAnyLikeParam = isMessageParameter(parameterEditingNode, parameter)
                 || isSeedParameter(parameterEditingNode, parameter)
                 || isGuiParameter(parameterEditingNode, parameter)
-                || isDirectionParameter(parameterEditingNode, parameterEditingIndex)
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isBlockFaceParam = isBlockFaceParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
@@ -7436,6 +7436,17 @@ public class NodeGraph {
             } else if (isBlockFaceParam) {
                 String trimmed = value.trim();
                 if (trimmed.isEmpty() || "North".equalsIgnoreCase(trimmed) || "north".equalsIgnoreCase(trimmed)) {
+                    appliedValue = "north";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    parameter.setStringValueFromUser(trimmed.toLowerCase(Locale.ROOT));
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), trimmed.toLowerCase(Locale.ROOT));
+                }
+            } else if (isDirectionParam) {
+                String trimmed = value.trim();
+                if (trimmed.isEmpty()) {
                     appliedValue = "north";
                     parameter.setStringValue(appliedValue);
                     parameter.setUserEdited(false);
@@ -9085,7 +9096,6 @@ public class NodeGraph {
         }
         if (isDirectionParameter(node, index)) {
             List<ParameterDropdownOption> result = new ArrayList<>();
-            result.add(new ParameterDropdownOption("Any", ""));
             result.add(new ParameterDropdownOption("North", "north"));
             result.add(new ParameterDropdownOption("South", "south"));
             result.add(new ParameterDropdownOption("East", "east"));
@@ -9365,7 +9375,11 @@ public class NodeGraph {
         boolean keepMouseButtonDefaultPlaceholder = isMouseButtonParameter(parameterEditingNode, null)
             && "Left".equalsIgnoreCase(option.value())
             && (segment.trimmedSegment == null || segment.trimmedSegment.trim().isEmpty());
-        String replacement = keepMouseButtonDefaultPlaceholder ? "" : segment.leadingWhitespace + option.value();
+        boolean keepDirectionDefaultPlaceholder = isDirectionParameter(parameterEditingNode, parameterEditingIndex)
+            && "north".equalsIgnoreCase(option.value());
+        String replacement = (keepMouseButtonDefaultPlaceholder || keepDirectionDefaultPlaceholder)
+            ? ""
+            : segment.leadingWhitespace + option.value();
         parameterEditBuffer = prefix + replacement + suffix;
         setParameterCaretPosition(prefix.length() + replacement.length());
         updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);

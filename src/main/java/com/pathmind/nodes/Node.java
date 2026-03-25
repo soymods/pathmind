@@ -153,6 +153,7 @@ public class Node {
     private static final String LIST_SLOT_GUI_PREFIX = "gui:";
     private static final String LIST_SLOT_PLAYER_PREFIX = "player:";
     private static final long CRAFTING_ACTION_DELAY_MS = 75L;
+    private static final long CONTROL_POLL_INTERVAL_MS = 10L;
     private static final int CRAFTING_OUTPUT_POLL_LIMIT = 5;
     private static final int SENSOR_SLOT_MARGIN_HORIZONTAL = 8;
     private static final int SENSOR_SLOT_INNER_PADDING = 4;
@@ -12108,7 +12109,7 @@ public class Node {
                         future.complete(null);
                         return;
                     }
-                    Thread.sleep(25L);
+                    Thread.sleep(CONTROL_POLL_INTERVAL_MS);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -12182,7 +12183,7 @@ public class Node {
                         future.complete(null);
                         return;
                     }
-                    Thread.sleep(50L);
+                    Thread.sleep(CONTROL_POLL_INTERVAL_MS);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -14616,6 +14617,11 @@ public class Node {
                     if ((stack == null || stack.isEmpty()) && stopIfUnavailable) {
                         break;
                     }
+                    final Block expectedPlacedBlock = stack != null && stack.getItem() instanceof BlockItem blockItem
+                        ? blockItem.getBlock()
+                        : null;
+                    final boolean[] acceptedBlockInteraction = {false};
+                    final BlockHitResult[] acceptedBlockHit = {null};
 
                     if (sneakWhileUsing) {
                         runOnClientThread(client, () -> {
@@ -14636,6 +14642,10 @@ public class Node {
                         if (!performed && allowBlock && target instanceof BlockHitResult blockHit) {
                             ActionResult blockResult = client.interactionManager.interactBlock(client.player, hand, blockHit);
                             performed = blockResult.isAccepted();
+                            if (performed && expectedPlacedBlock != null) {
+                                acceptedBlockInteraction[0] = true;
+                                acceptedBlockHit[0] = blockHit;
+                            }
                         }
                         if (!performed) {
                             client.interactionManager.interactItem(client.player, hand);
@@ -14652,6 +14662,10 @@ public class Node {
                             }
                         }
                     });
+
+                    if (acceptedBlockInteraction[0] && acceptedBlockHit[0] != null && expectedPlacedBlock != null) {
+                        waitForUseBlockPlacement(client, acceptedBlockHit[0], expectedPlacedBlock);
+                    }
 
                     if (durationSeconds > 0.0) {
                         Thread.sleep((long) (durationSeconds * 1000));
@@ -15111,6 +15125,39 @@ public class Node {
         return false;
     }
 
+    private boolean waitForUseBlockPlacement(net.minecraft.client.MinecraftClient client,
+                                             BlockHitResult blockHit,
+                                             Block desiredBlock) throws InterruptedException {
+        if (client == null || blockHit == null || desiredBlock == null) {
+            return false;
+        }
+        BlockPos hitPos = blockHit.getBlockPos();
+        Direction side = blockHit.getSide();
+        if (hitPos == null || side == null) {
+            return false;
+        }
+
+        BlockPos offsetPos = hitPos.offset(side);
+        for (int attempt = 0; attempt < 20; attempt++) {
+            boolean placed = supplyFromClient(client, () -> {
+                if (client.world == null) {
+                    return false;
+                }
+                BlockState hitState = client.world.getBlockState(hitPos);
+                if (hitState.isOf(desiredBlock)) {
+                    return true;
+                }
+                BlockState offsetState = client.world.getBlockState(offsetPos);
+                return offsetState.isOf(desiredBlock);
+            });
+            if (placed) {
+                return true;
+            }
+            Thread.sleep(50L);
+        }
+        return false;
+    }
+
     private int findHotbarSlotWithItem(PlayerInventory inventory, Item targetItem) {
         int hotbarSize = PlayerInventory.getHotbarSize();
         for (int slot = 0; slot < hotbarSize; slot++) {
@@ -15503,6 +15550,7 @@ public class Node {
         }
 
         new Thread(() -> {
+            boolean interrupted = false;
             try {
                 runOnClientThread(client, () -> {
                     orientPlayerTowardsRuntimeTarget(client, runtimeParameterData);
@@ -15532,7 +15580,7 @@ public class Node {
                         }
                         String stopReason = "unknown";
                         while (true) {
-                            Thread.sleep(50L);
+                            Thread.sleep(CONTROL_POLL_INTERVAL_MS);
                             if (shouldAbortForRepeatUntilGuard()) {
                                 stopReason = "repeatUntilConditionMet";
                                 break;
@@ -15578,14 +15626,12 @@ public class Node {
                             break;
                         }
                         long remaining = durationMs - (System.currentTimeMillis() - startTime);
-                        Thread.sleep(Math.min(50L, Math.max(1L, remaining)));
+                        Thread.sleep(Math.min(CONTROL_POLL_INTERVAL_MS, Math.max(1L, remaining)));
                     }
                 }
-
-                future.complete(null);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                future.completeExceptionally(e);
+                interrupted = true;
             } finally {
                 try {
                     runOnClientThread(client, () -> {
@@ -15595,6 +15641,12 @@ public class Node {
                     });
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                    interrupted = true;
+                }
+                if (interrupted) {
+                    future.completeExceptionally(new InterruptedException());
+                } else {
+                    future.complete(null);
                 }
             }
         }, "Pathmind-Walk").start();

@@ -3216,6 +3216,7 @@ public class NodeGraph {
                         boolean showBlockItemPlaceholder = false;
                         boolean showFabricEventPlaceholder = false;
                         boolean showDirectionPlaceholder = false;
+                        boolean showBlockFacePlaceholder = false;
                         boolean showGuiPlaceholder = false;
                         boolean showMouseButtonPlaceholder = false;
                         boolean showAmountPlaceholder = false;
@@ -3277,6 +3278,12 @@ public class NodeGraph {
                                 : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
                             showDirectionPlaceholder = showPlaceholder;
                         }
+                        if (isBlockFaceParameter(node, i)) {
+                            boolean showPlaceholder = editingThis
+                                ? value.isEmpty()
+                                : value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value));
+                            showBlockFacePlaceholder = showPlaceholder;
+                        }
                         if (!editingThis
                             && node.getType() == NodeType.PARAM_VILLAGER_TRADE
                             && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
@@ -3294,10 +3301,13 @@ public class NodeGraph {
                         if (!editingThis && isMouseButtonParam) {
                             value = formatMouseButtonValue(value);
                         }
+                        if (!editingThis && isBlockFaceParameter(node, i) && !value.isEmpty()) {
+                            value = Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase(Locale.ROOT);
+                        }
                         if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
                             || showBlockItemPlaceholder || showFabricEventPlaceholder
                             || showGuiPlaceholder || showMouseButtonPlaceholder || showAmountPlaceholder
-                            || showDirectionPlaceholder || showTradePlaceholder) {
+                            || showDirectionPlaceholder || showBlockFacePlaceholder || showTradePlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
                             } else if (showPlayerPlaceholder) {
@@ -3308,6 +3318,8 @@ public class NodeGraph {
                                 value = "1";
                             } else if (showAmountPlaceholder) {
                                 value = "0";
+                            } else if (showBlockFacePlaceholder) {
+                                value = "North";
                             } else if (showDirectionPlaceholder) {
                                 value = "Any";
                             } else {
@@ -3374,6 +3386,7 @@ public class NodeGraph {
                             || isMouseButtonParameter(node, param)
                             || isGuiParameter(node, param)
                             || isDirectionParameter(node, i)
+                            || isBlockFaceParameter(node, i)
                             || isFabricEventSensorParameter(node, i))) {
                             updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
                         }
@@ -3382,6 +3395,12 @@ public class NodeGraph {
                     }
                     if (node.hasRandomRoundingField()) {
                         renderRandomRoundingField(context, textRenderer, node, isOverSidebar);
+                    }
+                    if (node.hasParameterSlot()) {
+                        int slotCount = node.getParameterSlotCount();
+                        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+                            renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+                        }
                     }
                     if (node.hasAmountInputField()) {
                         renderAmountInputField(context, textRenderer, node, isOverSidebar);
@@ -7291,12 +7310,14 @@ public class NodeGraph {
             || isMouseButtonParameter(node, parameter)
             || isGuiParameter(node, parameter)
             || isDirectionParameter(node, index)
+            || isBlockFaceParameter(node, index)
             || isBlockItemParameter(node, index)
             || isFabricEventSensorParameter(node, index))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
                 || "Any".equalsIgnoreCase(parameterEditBuffer)
                 || "Self".equalsIgnoreCase(parameterEditBuffer)
                 || "Any State".equalsIgnoreCase(parameterEditBuffer)
+                || "North".equalsIgnoreCase(parameterEditBuffer)
                 || isDefaultMouseButtonValue(parameterEditBuffer)
                 || "0".equals(parameterEditBuffer)
                 || (isTradeInlineParameter(node, parameter) && "1".equals(parameterEditBuffer))) {
@@ -7361,6 +7382,7 @@ public class NodeGraph {
                 || isGuiParameter(parameterEditingNode, parameter)
                 || isDirectionParameter(parameterEditingNode, parameterEditingIndex)
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
+            boolean isBlockFaceParam = isBlockFaceParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
             boolean isTradeInlineParam = isTradeInlineParameter(parameterEditingNode, parameter);
@@ -7409,6 +7431,17 @@ public class NodeGraph {
                 } else {
                     parameter.setStringValueFromUser(value);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+                }
+            } else if (isBlockFaceParam) {
+                String trimmed = value.trim();
+                if (trimmed.isEmpty() || "North".equalsIgnoreCase(trimmed) || "north".equalsIgnoreCase(trimmed)) {
+                    appliedValue = "north";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    parameter.setStringValueFromUser(trimmed.toLowerCase(Locale.ROOT));
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), trimmed.toLowerCase(Locale.ROOT));
                 }
             } else if (isAnyLikeParam || isBlockItemParam) {
                 String trimmed = value.trim();
@@ -7577,6 +7610,20 @@ public class NodeGraph {
             return false;
         }
         return "Direction".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isBlockFaceParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.PARAM_BLOCK_FACE) {
+            return false;
+        }
+        if (index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "Face".equalsIgnoreCase(param.getName());
     }
 
     private void revertParameterEdit() {
@@ -9046,6 +9093,16 @@ public class NodeGraph {
             result.add(new ParameterDropdownOption("Down", "down"));
             return filterDropdownOptions(result, lowered);
         }
+        if (isBlockFaceParameter(node, index)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("North", "north"));
+            result.add(new ParameterDropdownOption("South", "south"));
+            result.add(new ParameterDropdownOption("East", "east"));
+            result.add(new ParameterDropdownOption("West", "west"));
+            result.add(new ParameterDropdownOption("Up", "up"));
+            result.add(new ParameterDropdownOption("Down", "down"));
+            return filterDropdownOptions(result, lowered);
+        }
         if (isBlockParameter(node, index)) {
             source = RegistryStringCache.BLOCK_IDS;
         } else if (isItemParameter(node, index)) {
@@ -9222,6 +9279,7 @@ public class NodeGraph {
             && !isGuiParameter(node, null)
             && !isMouseButtonParameter(node, null)
             && !isDirectionParameter(node, index)
+            && !isBlockFaceParameter(node, index)
             && !isFabricEventSensorParameter(node, index)) {
             closeParameterDropdown();
             return;

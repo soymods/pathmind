@@ -152,6 +152,8 @@
   "pathmind.node.type.paramCoordinate.desc": "Dane współrzędnych XYZ wielokrotnego użytku",
   "pathmind.node.type.paramDirection": "Kierunek Kardynalny",
   "pathmind.node.type.paramDirection.desc": "Represents a direction (north, south, east, west, up, down)",
+  "pathmind.node.type.paramBlockFace": "Block Face",
+  "pathmind.node.type.paramBlockFace.desc": "Represents a single block face direction",
   "pathmind.node.type.paramDistance": "Odległość",
   "pathmind.node.type.paramDistance.desc": "Reprezentuje wartość odległości liniowej",
   "pathmind.node.type.paramDuration": "Czas trwania",

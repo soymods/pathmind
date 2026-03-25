@@ -74,6 +74,7 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.PARAM_COORDINATE, EnumSet.of(NodeValueTrait.COORDINATE));
         traits.put(NodeType.PARAM_ROTATION, EnumSet.of(NodeValueTrait.ROTATION));
         traits.put(NodeType.PARAM_DIRECTION, EnumSet.of(NodeValueTrait.DIRECTION, NodeValueTrait.ROTATION));
+        traits.put(NodeType.PARAM_BLOCK_FACE, EnumSet.of(NodeValueTrait.DIRECTION));
         traits.put(NodeType.PARAM_RANGE, EnumSet.of(NodeValueTrait.RANGE));
         traits.put(NodeType.PARAM_DISTANCE, EnumSet.of(NodeValueTrait.DISTANCE));
         traits.put(NodeType.PARAM_DURATION, EnumSet.of(NodeValueTrait.DURATION));
@@ -282,6 +283,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.GUI));
         accepted.put(NodeType.TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE, NodeValueTrait.NUMBER));
         accepted.put(NodeType.WAIT, EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.NUMBER));
+        accepted.put(NodeType.PARAM_BLOCK_FACE, EnumSet.of(NodeValueTrait.COORDINATE, NodeValueTrait.BLOCK));
 
         PARAMETER_ACCEPTED_TRAITS = accepted;
 
@@ -305,6 +307,7 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.SENSOR_CHAT_MESSAGE, 2);
         slotCounts.put(NodeType.SENSOR_ITEM_IN_SLOT, 2);
         slotCounts.put(NodeType.SENSOR_DISTANCE_BETWEEN, 2);
+        slotCounts.put(NodeType.PARAM_BLOCK_FACE, 1);
         PARAMETER_SLOT_COUNTS = slotCounts;
 
         EnumMap<NodeType, String[]> slotLabels = new EnumMap<>(NodeType.class);
@@ -334,6 +337,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.CREATE_LIST, new String[]{"Target"});
         slotLabels.put(NodeType.TRADE, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.WAIT, new String[]{"Duration"});
+        slotLabels.put(NodeType.PARAM_BLOCK_FACE, new String[]{"Target"});
         PARAMETER_SLOT_LABELS = slotLabels;
     }
 

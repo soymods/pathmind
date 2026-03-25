@@ -122,6 +122,7 @@ public class Sidebar {
             NodeType.PARAM_COORDINATE,
             NodeType.PARAM_ROTATION,
             NodeType.PARAM_DIRECTION,
+            NodeType.PARAM_BLOCK_FACE,
             NodeType.PARAM_RANGE,
             NodeType.PARAM_DISTANCE,
             NodeType.PARAM_CLOSEST

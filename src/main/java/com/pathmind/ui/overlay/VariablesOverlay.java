@@ -154,6 +154,9 @@ public class VariablesOverlay {
             case PARAM_ROTATION:
                 result = formatPair(values, "Yaw", "Pitch", "yaw", "pitch");
                 break;
+            case PARAM_BLOCK_FACE:
+                result = formatSingle(values, "Face", "face");
+                break;
             case PARAM_RANGE:
             case PARAM_CLOSEST:
                 result = formatSingle(values, "Range", "range");

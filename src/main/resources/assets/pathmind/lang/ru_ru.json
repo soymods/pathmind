@@ -152,6 +152,8 @@
   "pathmind.node.type.paramCoordinate.desc": "Многоразовые данные координат XYZ",
   "pathmind.node.type.paramDirection": "Кардинальное направление",
   "pathmind.node.type.paramDirection.desc": "Represents a direction (north, south, east, west, up, down)",
+  "pathmind.node.type.paramBlockFace": "Block Face",
+  "pathmind.node.type.paramBlockFace.desc": "Represents a single block face direction",
   "pathmind.node.type.paramDistance": "Расстояние",
   "pathmind.node.type.paramDistance.desc": "Представляет значение линейного расстояния",
   "pathmind.node.type.paramDuration": "Длительность",

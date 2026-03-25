@@ -152,6 +152,8 @@
   "pathmind.node.type.paramCoordinate.desc": "Datos de coordenadas XYZ reutilizables",
   "pathmind.node.type.paramDirection": "Dirección Cardinal",
   "pathmind.node.type.paramDirection.desc": "Representa una dirección (north, south, east, west, up, down)",
+  "pathmind.node.type.paramBlockFace": "Block Face",
+  "pathmind.node.type.paramBlockFace.desc": "Represents a single block face direction",
   "pathmind.node.type.paramDistance": "Distancia",
   "pathmind.node.type.paramDistance.desc": "Representa un valor de distancia lineal",
   "pathmind.node.type.paramDuration": "Duración",

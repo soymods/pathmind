@@ -663,6 +663,7 @@ public class Node {
         }
         if (isParameterNode()
             && type != NodeType.OPERATOR_MOD
+            && type != NodeType.PARAM_BLOCK_FACE
             && type != NodeType.SENSOR_POSITION_OF
             && type != NodeType.SENSOR_DISTANCE_BETWEEN) {
             return false;
@@ -982,6 +983,12 @@ public class Node {
                 if (hasPopupEditButton()) {
                     top += getPopupEditButtonDisplayHeight();
                 }
+                if (hasParameterSlot()) {
+                    int slotCount = getParameterSlotCount();
+                    for (int i = 0; i < slotCount; i++) {
+                        top += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
+                    }
+                }
             } else {
                 top += BODY_PADDING_NO_PARAMS;
             }
@@ -1080,6 +1087,18 @@ public class Node {
 
     public int getParameterSlotTop(int slotIndex) {
         int top = y + HEADER_HEIGHT + PARAMETER_SLOT_LABEL_HEIGHT;
+        if (isInlineParameterNode() && hasParameterSlot()) {
+            top = y + HEADER_HEIGHT;
+            int lineCount = parameters.size();
+            if (supportsModeSelection()) {
+                lineCount++;
+            }
+            top += PARAM_PADDING_TOP + lineCount * PARAM_LINE_HEIGHT + PARAM_PADDING_BOTTOM;
+            if (hasPopupEditButton()) {
+                top += getPopupEditButtonDisplayHeight();
+            }
+            top += PARAMETER_SLOT_LABEL_HEIGHT;
+        }
         if (hasSchematicDropdownField()) {
             top += getSchematicFieldDisplayHeight();
         }
@@ -2877,6 +2896,9 @@ public class Node {
                 parameters.add(new NodeParameter("PitchOffset", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
                 break;
+            case PARAM_BLOCK_FACE:
+                parameters.add(new NodeParameter("Face", ParameterType.STRING, "north"));
+                break;
             case PARAM_ROTATION:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
                 parameters.add(new NodeParameter("Pitch", ParameterType.DOUBLE, "0.0"));
@@ -3657,6 +3679,16 @@ public class Node {
                 if (pitch != null) {
                     values.put("PitchOffset", pitch);
                     values.put(normalizeParameterKey("PitchOffset"), pitch);
+                }
+                break;
+            }
+            case PARAM_BLOCK_FACE: {
+                String face = values.get("Face");
+                if (face != null && !face.trim().isEmpty()) {
+                    values.put("Side", face);
+                    values.put(normalizeParameterKey("Side"), face);
+                    values.put("Direction", face);
+                    values.put(normalizeParameterKey("Direction"), face);
                 }
                 break;
             }
@@ -4478,6 +4510,12 @@ public class Node {
                 if (hasRandomRoundingField()) {
                     contentHeight += getRandomRoundingFieldDisplayHeight();
                 }
+                if (hasParameterSlot()) {
+                    int slotCount = getParameterSlotCount();
+                    for (int i = 0; i < slotCount; i++) {
+                        contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
+                    }
+                }
                 if (hasSlots) {
                     contentHeight += SLOT_AREA_PADDING_TOP;
                 }
@@ -4767,6 +4805,21 @@ public class Node {
     private ParameterHandlingResult preprocessParameterNode(Node parameterNode, int slotIndex, EnumSet<ParameterUsage> usages, CompletableFuture<Void> future) {
         if (parameterNode == null) {
             return ParameterHandlingResult.CONTINUE;
+        }
+        if (parameterNode.hasParameterSlot()) {
+            int requiredSlotCount = parameterNode.getParameterSlotCount();
+            for (int i = 0; i < requiredSlotCount; i++) {
+                if (parameterNode.isParameterSlotRequired(i) && parameterNode.getAttachedParameter(i) == null) {
+                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    if (future != null && !future.isDone()) {
+                        String label = parameterNode.getParameterSlotLabel(i);
+                        sendNodeErrorMessage(client, parameterNode.getType().getDisplayName()
+                            + " requires a " + label.toLowerCase(Locale.ROOT) + " parameter before it can run.");
+                        future.complete(null);
+                    }
+                    return ParameterHandlingResult.COMPLETE;
+                }
+            }
         }
         if (runtimeParameterData == null) {
             runtimeParameterData = new RuntimeParameterData();
@@ -5248,7 +5301,8 @@ public class Node {
                 return Optional.of(Vec3d.ofCenter(match.get()));
             }
             case PARAM_ROTATION:
-            case PARAM_DIRECTION: {
+            case PARAM_DIRECTION:
+            case PARAM_BLOCK_FACE: {
                 if (client == null || client.player == null) {
                     return Optional.empty();
                 }
@@ -5263,6 +5317,39 @@ public class Node {
 
                 if (parameterType == NodeType.PARAM_DIRECTION && parameterNode.isDirectionModeCardinal()) {
                     String direction = getParameterString(parameterNode, "Direction");
+                    if (direction != null) {
+                        switch (direction.trim().toLowerCase(Locale.ROOT)) {
+                            case "north":
+                                yaw = 180.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "south":
+                                yaw = 0.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "west":
+                                yaw = 90.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "east":
+                                yaw = -90.0F;
+                                pitch = 0.0F;
+                                break;
+                            case "up":
+                                pitch = -90.0F;
+                                break;
+                            case "down":
+                                pitch = 90.0F;
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                } else if (parameterType == NodeType.PARAM_BLOCK_FACE) {
+                    String direction = getParameterString(parameterNode, "Face");
+                    if (direction == null || direction.trim().isEmpty()) {
+                        direction = getParameterString(parameterNode, "Side");
+                    }
                     if (direction != null) {
                         switch (direction.trim().toLowerCase(Locale.ROOT)) {
                             case "north":
@@ -5310,6 +5397,8 @@ public class Node {
                 double distance = Math.max(0.0, parseNodeDouble(parameterNode, "Distance",
                     parameterType == NodeType.PARAM_DIRECTION
                         ? (parameterNode.isDirectionModeExact() ? DEFAULT_DIRECTION_DISTANCE : 1.0)
+                        : parameterType == NodeType.PARAM_BLOCK_FACE
+                            ? 1.0
                         : DEFAULT_DIRECTION_DISTANCE));
                 double yawRad = Math.toRadians(yaw);
                 double pitchRad = Math.toRadians(pitch);
@@ -5491,6 +5580,75 @@ public class Node {
             return false;
         }
 
+        if (parameterNode != null && parameterNode.getType() == NodeType.PARAM_BLOCK_FACE) {
+            Node targetNode = parameterNode.getAttachedParameter(0);
+            if (targetNode == null) {
+                return false;
+            }
+            if (targetNode.getType() == NodeType.VARIABLE) {
+                targetNode = resolveVariableValueNode(targetNode, 0, future);
+                if (targetNode == null) {
+                    return false;
+                }
+            }
+
+            String faceName = getParameterString(parameterNode, "Face");
+            if (faceName == null || faceName.trim().isEmpty()) {
+                faceName = getParameterString(parameterNode, "Side");
+            }
+            Direction targetFace = parseDirectionValue(faceName);
+            if (targetFace == null) {
+                targetFace = Direction.NORTH;
+            }
+
+            // Resolve the nested target independently so any temporary vector state on the outer
+            // runtime context cannot override the actual block/coordinate target.
+            RuntimeParameterData targetData = new RuntimeParameterData();
+            Optional<Vec3d> resolvedTarget = resolvePositionTarget(targetNode, targetData, future);
+            if (resolvedTarget.isEmpty()) {
+                return false;
+            }
+
+            BlockPos targetBlockPos = targetData.targetBlockPos;
+            if (targetBlockPos == null) {
+                Vec3d targetVec = resolvedTarget.get();
+                targetBlockPos = new BlockPos(
+                    MathHelper.floor(targetVec.x),
+                    MathHelper.floor(targetVec.y),
+                    MathHelper.floor(targetVec.z)
+                );
+                if (data != null) {
+                    data.targetBlockPos = targetBlockPos;
+                }
+            }
+
+            Vec3d faceCenter = Vec3d.ofCenter(targetBlockPos).add(
+                targetFace.getOffsetX() * 0.5D,
+                targetFace.getOffsetY() * 0.5D,
+                targetFace.getOffsetZ() * 0.5D
+            );
+            Vec3d eyes = client.player.getEyePos();
+            Vec3d delta = faceCenter.subtract(eyes);
+            if (delta.lengthSquared() < 1.0E-6) {
+                return false;
+            }
+
+            float yaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
+            float pitch = (float) (-Math.toDegrees(Math.atan2(delta.y, Math.sqrt(delta.x * delta.x + delta.z * delta.z))));
+            float clampedPitch = MathHelper.clamp(pitch, -90.0F, 90.0F);
+
+            setParameterIfPresent("Yaw", formatFloat(yaw));
+            setParameterIfPresent("Pitch", formatFloat(clampedPitch));
+
+            if (data != null) {
+                data.targetBlockPos = targetBlockPos;
+                data.targetVector = faceCenter;
+                data.resolvedYaw = yaw;
+                data.resolvedPitch = clampedPitch;
+            }
+            return true;
+        }
+
         boolean allowDirectRotation = parameterNode.getType() != NodeType.PARAM_DIRECTION || parameterNode.isDirectionModeExact();
         Float yawParam = allowDirectRotation ? parseNodeFloat(parameterNode, "Yaw") : null;
         Float pitchParam = allowDirectRotation ? parseNodeFloat(parameterNode, "Pitch") : null;
@@ -5638,6 +5796,21 @@ public class Node {
             data.resolvedPitch = clampedPitch;
         }
         return true;
+    }
+
+    private Direction parseDirectionValue(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "north" -> Direction.NORTH;
+            case "south" -> Direction.SOUTH;
+            case "east" -> Direction.EAST;
+            case "west" -> Direction.WEST;
+            case "up" -> Direction.UP;
+            case "down" -> Direction.DOWN;
+            default -> null;
+        };
     }
 
     private void orientPlayerTowardsRuntimeTarget(net.minecraft.client.MinecraftClient client, RuntimeParameterData data) {
@@ -6808,7 +6981,7 @@ public class Node {
         } else {
             values = valueNode.exportParameterValues();
             if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
-                valueType = NodeType.PARAM_MESSAGE;
+                valueType = NodeType.PARAM_BLOCK_FACE;
             } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
                 valueType = NodeType.PARAM_DISTANCE;
             } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
@@ -11306,7 +11479,9 @@ public class Node {
         if (coordinateParameterNode != null) {
             NodeType coordType = coordinateParameterNode.getType();
             EnumSet<ParameterUsage> coordinateUsages;
-            if (coordType == NodeType.PARAM_ROTATION || coordType == NodeType.PARAM_DIRECTION) {
+            if (coordType == NodeType.PARAM_ROTATION
+                || coordType == NodeType.PARAM_DIRECTION
+                || coordType == NodeType.PARAM_BLOCK_FACE) {
                 coordinateUsages = EnumSet.of(ParameterUsage.LOOK_ORIENTATION);
             } else if (parameterProvidesCoordinates(coordinateParameterNode)) {
                 coordinateUsages = EnumSet.of(ParameterUsage.POSITION);
@@ -11322,7 +11497,8 @@ public class Node {
             || (coordinateParameterNode != null
                 && parameterProvidesCoordinates(coordinateParameterNode)
                 && coordinateParameterNode.getType() != NodeType.PARAM_ROTATION
-                && coordinateParameterNode.getType() != NodeType.PARAM_DIRECTION);
+                && coordinateParameterNode.getType() != NodeType.PARAM_DIRECTION
+                && coordinateParameterNode.getType() != NodeType.PARAM_BLOCK_FACE);
         String block = "stone";
         int x = 0, y = 0, z = 0;
 
@@ -11402,7 +11578,8 @@ public class Node {
         if (!inheritPlacementCoordinates
             && coordinateParameterNode != null
             && (coordinateParameterNode.getType() == NodeType.PARAM_ROTATION
-                || coordinateParameterNode.getType() == NodeType.PARAM_DIRECTION)) {
+                || coordinateParameterNode.getType() == NodeType.PARAM_DIRECTION
+                || coordinateParameterNode.getType() == NodeType.PARAM_BLOCK_FACE)) {
             try {
                 float yaw = parameterData != null && parameterData.resolvedYaw != null
                     ? parameterData.resolvedYaw
@@ -12152,6 +12329,17 @@ public class Node {
                 return getRuntimeValue(values, "range");
             case PARAM_DISTANCE:
                 return getRuntimeValue(values, "distance");
+            case PARAM_BLOCK_FACE: {
+                String face = getRuntimeValue(values, "face");
+                if (!face.isEmpty()) {
+                    return face;
+                }
+                face = getRuntimeValue(values, "side");
+                if (!face.isEmpty()) {
+                    return face;
+                }
+                return getRuntimeValue(values, "direction");
+            }
             case PARAM_DIRECTION: {
                 String direction = getRuntimeValue(values, "direction");
                 if (!direction.isEmpty()) {
@@ -17755,10 +17943,10 @@ public class Node {
         } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
             valueType = NodeType.PARAM_DISTANCE;
         } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
-            valueType = NodeType.PARAM_MESSAGE;
-        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
-            valueType = NodeType.PARAM_BLOCK;
-        } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
+                valueType = NodeType.PARAM_BLOCK_FACE;
+            } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
+                valueType = NodeType.PARAM_BLOCK;
+            } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
             valueType = NodeType.PARAM_DIRECTION;
         } else if (valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
             valueType = NodeType.PARAM_AMOUNT;
@@ -17868,6 +18056,19 @@ public class Node {
                     return Optional.empty();
                 }
                 return Optional.of(direction.trim());
+            }
+            case PARAM_BLOCK_FACE: {
+                String face = getParameterString(node, "Face");
+                if (face == null || face.trim().isEmpty()) {
+                    face = getParameterString(node, "Side");
+                }
+                if (face == null || face.trim().isEmpty()) {
+                    face = getParameterString(node, "Direction");
+                }
+                if (face == null || face.trim().isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.of(face.trim());
             }
             case SENSOR_TARGETED_BLOCK_FACE: {
                 Map<String, String> values = node.exportParameterValues();

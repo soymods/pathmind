@@ -156,6 +156,8 @@
   "pathmind.node.type.paramCoordinate.desc": "Reusable XYZ coordinate data",
   "pathmind.node.type.paramDirection": "Direction",
   "pathmind.node.type.paramDirection.desc": "Represents either an exact yaw/pitch direction or a cardinal direction",
+  "pathmind.node.type.paramBlockFace": "Block Face",
+  "pathmind.node.type.paramBlockFace.desc": "Represents a single block face direction",
   "pathmind.node.type.paramDistance": "Distance",
   "pathmind.node.type.paramDistance.desc": "Represents a linear distance value",
   "pathmind.node.type.paramDuration": "Duration",

@@ -157,6 +157,7 @@ public enum NodeType {
     PARAM_RANGE("pathmind.node.type.paramRange", 0xFF8BC34A, "pathmind.node.type.paramRange.desc"),
     PARAM_DISTANCE("pathmind.node.type.paramDistance", 0xFF8BC34A, "pathmind.node.type.paramDistance.desc"),
     PARAM_DIRECTION("pathmind.node.type.paramDirection", 0xFF8BC34A, "pathmind.node.type.paramDirection.desc"),
+    PARAM_BLOCK_FACE("pathmind.node.type.paramBlockFace", 0xFF8BC34A, "pathmind.node.type.paramBlockFace.desc"),
     PARAM_ROTATION("pathmind.node.type.paramRotation", 0xFF8BC34A, "pathmind.node.type.paramRotation.desc"),
     PARAM_PLACE_TARGET("pathmind.node.type.paramPlaceTarget", 0xFF8BC34A, "pathmind.node.type.paramPlaceTarget.desc"),
     PARAM_CLOSEST("pathmind.node.type.paramClosest", 0xFF8BC34A, "pathmind.node.type.paramClosest.desc");
@@ -348,6 +349,7 @@ public enum NodeType {
             case PARAM_RANGE:
             case PARAM_DISTANCE:
             case PARAM_DIRECTION:
+            case PARAM_BLOCK_FACE:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:
@@ -433,6 +435,7 @@ public enum NodeType {
             case PARAM_RANGE:
             case PARAM_DISTANCE:
             case PARAM_DIRECTION:
+            case PARAM_BLOCK_FACE:
             case PARAM_ROTATION:
             case PARAM_PLACE_TARGET:
             case PARAM_CLOSEST:

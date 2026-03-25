@@ -529,10 +529,19 @@ public final class RecipeCompatibilityBridge {
         if (entry instanceof Ingredient ingredientValue) {
             return ingredientValue;
         }
+        if (entry instanceof Item item) {
+            return Ingredient.ofItems(item);
+        }
+        if (entry instanceof ItemStack stack && !stack.isEmpty()) {
+            return Ingredient.ofItems(stack.getItem());
+        }
         if (entry instanceof RegistryEntry<?> registryEntry) {
             Object value = registryEntry.value();
             if (value instanceof Ingredient registryIngredient) {
                 return registryIngredient;
+            }
+            if (value instanceof Item item) {
+                return Ingredient.ofItems(item);
             }
         }
         Ingredient candidate = tryCreateIngredientFromEntry(entry);
@@ -541,8 +550,8 @@ public final class RecipeCompatibilityBridge {
         }
         if (entry instanceof Optional<?> optional) {
             Object value = optional.orElse(null);
-            if (value instanceof Ingredient optionalIngredient) {
-                return optionalIngredient;
+            if (value != null) {
+                return extractIngredient(value);
             }
         }
         if (entry != null) {
@@ -613,6 +622,18 @@ public final class RecipeCompatibilityBridge {
             Object result = invokeMatchingItems(ingredient, registryManager);
             if (result instanceof java.util.stream.Stream<?> stream) {
                 stream.forEach(entry -> collectItemStack(entry, stacks));
+            } else if (result instanceof Iterable<?> iterable) {
+                for (Object entry : iterable) {
+                    collectItemStack(entry, stacks);
+                }
+            } else if (result instanceof Object[] array) {
+                for (Object entry : array) {
+                    collectItemStack(entry, stacks);
+                }
+            } else if (result instanceof Optional<?> optional) {
+                optional.ifPresent(entry -> collectItemStack(entry, stacks));
+            } else if (result != null) {
+                collectItemStack(result, stacks);
             }
         } catch (IllegalAccessException | InvocationTargetException | RuntimeException ignored) {
             // Return whatever we collected so far.
@@ -696,10 +717,44 @@ public final class RecipeCompatibilityBridge {
     }
 
     private static void collectItemStack(Object entry, List<ItemStack> stacks) {
+        if (entry == null || stacks == null) {
+            return;
+        }
+        if (entry instanceof ItemStack stack) {
+            if (!stack.isEmpty()) {
+                stacks.add(stack.copy());
+            }
+            return;
+        }
+        if (entry instanceof Item item) {
+            stacks.add(new ItemStack(item));
+            return;
+        }
         if (entry instanceof RegistryEntry<?> registryEntry) {
             Object value = registryEntry.value();
             if (value instanceof Item item) {
                 stacks.add(new ItemStack(item));
+            }
+            return;
+        }
+        Item holderItem = resolveItemFromHolder(entry);
+        if (holderItem != null) {
+            stacks.add(new ItemStack(holderItem));
+            return;
+        }
+        if (entry instanceof Optional<?> optional) {
+            optional.ifPresent(value -> collectItemStack(value, stacks));
+            return;
+        }
+        if (entry instanceof Iterable<?> iterable) {
+            for (Object nested : iterable) {
+                collectItemStack(nested, stacks);
+            }
+            return;
+        }
+        if (entry instanceof Object[] array) {
+            for (Object nested : array) {
+                collectItemStack(nested, stacks);
             }
         }
     }

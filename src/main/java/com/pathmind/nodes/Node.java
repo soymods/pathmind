@@ -9249,6 +9249,9 @@ public class Node {
                 continue;
             }
             ItemStack output = getRecipeOutput(craftingRecipe, serverRegistryManager);
+            if ((output == null || output.isEmpty()) && registryManager != serverRegistryManager) {
+                output = getRecipeOutput(craftingRecipe, registryManager);
+            }
             if (output == null || output.isEmpty()) {
                 continue;
             }
@@ -9259,6 +9262,110 @@ public class Node {
                 cacheRecipeForMode(book, outputItem, craftingRecipe, count, NodeMode.CRAFT_PLAYER_GUI, registryManager);
             }
         }
+    }
+
+    private void cacheAllCraftingDisplays(CachedRecipeBook book,
+                                          net.minecraft.client.MinecraftClient client,
+                                          Object registryManager) {
+        if (book == null || client == null || client.player == null) {
+            return;
+        }
+        if (!(client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook)) {
+            return;
+        }
+        List<RecipeResultCollection> collections = clientRecipeBook.getOrderedResults();
+        if (collections == null || collections.isEmpty()) {
+            return;
+        }
+        for (RecipeResultCollection collection : collections) {
+            if (collection == null) {
+                continue;
+            }
+            List<?> entries = RecipeCompatibilityBridge.getAllRecipesFromCollection(collection);
+            if (entries == null || entries.isEmpty()) {
+                continue;
+            }
+            for (Object entry : entries) {
+                if (entry == null) {
+                    continue;
+                }
+                Object display = RecipeCompatibilityBridge.getDisplayFromEntry(entry);
+                if (!RecipeCompatibilityBridge.isCraftingDisplay(display)) {
+                    continue;
+                }
+                ItemStack output = getDisplayOutput(display, registryManager);
+                if (output == null || output.isEmpty()) {
+                    continue;
+                }
+                cacheDisplayForMode(book, output.getItem(), output.getCount(), display, NodeMode.CRAFT_CRAFTING_TABLE, registryManager);
+                if (displayFitsPlayerGrid(display, registryManager)) {
+                    cacheDisplayForMode(book, output.getItem(), output.getCount(), display, NodeMode.CRAFT_PLAYER_GUI, registryManager);
+                }
+            }
+        }
+    }
+
+    private void cacheDisplayForMode(CachedRecipeBook book,
+                                     Item targetItem,
+                                     int outputCount,
+                                     Object display,
+                                     NodeMode mode,
+                                     Object registryManager) {
+        if (book == null || targetItem == null || display == null || mode == null) {
+            return;
+        }
+        List<GridIngredient> grid = resolveDisplayGridIngredients(display, mode, registryManager);
+        if (grid == null || grid.isEmpty()) {
+            return;
+        }
+        List<CachedGridIngredient> cachedGrid = new ArrayList<>();
+        for (GridIngredient ingredient : grid) {
+            if (ingredient == null || ingredient.ingredient() == null) {
+                continue;
+            }
+            List<ItemStack> stacks = RecipeCompatibilityBridge.getIngredientStacks(ingredient.ingredient(), registryManager);
+            if (stacks == null || stacks.isEmpty()) {
+                stacks = resolveIngredientStacksByTesting(ingredient.ingredient());
+            }
+            if (stacks == null || stacks.isEmpty()) {
+                continue;
+            }
+            List<String> itemIds = new ArrayList<>();
+            for (ItemStack stack : stacks) {
+                if (stack == null || stack.isEmpty()) {
+                    continue;
+                }
+                Identifier id = Registries.ITEM.getId(stack.getItem());
+                if (id != null) {
+                    itemIds.add(id.toString());
+                }
+            }
+            if (itemIds.isEmpty()) {
+                continue;
+            }
+            CachedGridIngredient cachedIngredient = new CachedGridIngredient();
+            cachedIngredient.slotIndex = ingredient.slotIndex();
+            cachedIngredient.itemIds = itemIds;
+            cachedGrid.add(cachedIngredient);
+        }
+        if (cachedGrid.isEmpty()) {
+            return;
+        }
+
+        CachedRecipe cachedRecipe = new CachedRecipe();
+        cachedRecipe.mode = mode.name();
+        cachedRecipe.outputCount = Math.max(1, outputCount);
+        cachedRecipe.grid = cachedGrid;
+
+        Identifier outputId = Registries.ITEM.getId(targetItem);
+        if (outputId == null) {
+            return;
+        }
+        String key = outputId.toString();
+        book.recipesByOutput.computeIfAbsent(key, unused -> new ArrayList<>());
+        List<CachedRecipe> list = book.recipesByOutput.get(key);
+        list.removeIf(existing -> existing != null && mode.name().equals(existing.mode));
+        list.add(cachedRecipe);
     }
 
     private void cacheRecipeForMode(CachedRecipeBook book,
@@ -9280,6 +9387,9 @@ public class Node {
                 continue;
             }
             List<ItemStack> stacks = RecipeCompatibilityBridge.getIngredientStacks(ingredient.ingredient(), registryManager);
+            if (stacks == null || stacks.isEmpty()) {
+                stacks = resolveIngredientStacksByTesting(ingredient.ingredient());
+            }
             if (stacks == null || stacks.isEmpty()) {
                 continue;
             }
@@ -9337,6 +9447,27 @@ public class Node {
             result.add(new GridIngredient(cachedIngredient.slotIndex, ingredient, false));
         }
         return result;
+    }
+
+    private List<ItemStack> resolveIngredientStacksByTesting(Ingredient ingredient) {
+        List<ItemStack> stacks = new ArrayList<>();
+        if (ingredient == null) {
+            return stacks;
+        }
+        for (Item item : Registries.ITEM) {
+            if (item == null || item == Items.AIR) {
+                continue;
+            }
+            ItemStack stack = new ItemStack(item);
+            try {
+                if (ingredient.test(stack)) {
+                    stacks.add(stack);
+                }
+            } catch (RuntimeException ignored) {
+                // Skip items that trip custom ingredient checks.
+            }
+        }
+        return stacks;
     }
 
     private Ingredient buildIngredientFromItemIds(List<String> itemIds) {
@@ -9680,8 +9811,7 @@ public class Node {
         }
         RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
         Object registryArg = registryManager;
-        List<ItemStack> emptyGrid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
-        CraftingRecipeInput input = CraftingRecipeInput.create(3, 3, emptyGrid);
+        CraftingRecipeInput input = buildRecipeOutputInput(recipe, registryManager);
         for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
             if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
                 continue;
@@ -9753,6 +9883,95 @@ public class Node {
                 }
             } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
                 // Keep scanning.
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private CraftingRecipeInput buildRecipeOutputInput(CraftingRecipe recipe, Object registryManager) {
+        List<ItemStack> grid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
+        if (recipe == null) {
+            return CraftingRecipeInput.create(3, 3, grid);
+        }
+
+        List<GridIngredient> resolvedGrid = resolveGridIngredients(recipe, NodeMode.CRAFT_CRAFTING_TABLE, registryManager);
+        if (resolvedGrid != null && !resolvedGrid.isEmpty()) {
+            for (GridIngredient gridIngredient : resolvedGrid) {
+                if (gridIngredient == null || gridIngredient.ingredient() == null) {
+                    continue;
+                }
+                ItemStack stack = getRepresentativeIngredientStack(gridIngredient.ingredient(), registryManager);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                int slot = gridIngredient.slotIndex() - 1;
+                if (slot >= 0 && slot < grid.size()) {
+                    grid.set(slot, stack);
+                }
+            }
+            return CraftingRecipeInput.create(3, 3, grid);
+        }
+
+        if (recipe instanceof ShapedRecipe shapedRecipe) {
+            List<?> ingredients = RecipeCompatibilityBridge.getRecipeIngredients(recipe);
+            if ((ingredients == null || ingredients.isEmpty())) {
+                ingredients = readRecipeIngredients(recipe);
+            }
+            int width = Math.min(3, Math.max(1, shapedRecipe.getWidth()));
+            int height = Math.min(3, Math.max(1, shapedRecipe.getHeight()));
+            int limit = Math.min(ingredients != null ? ingredients.size() : 0, width * height);
+            for (int i = 0; i < limit; i++) {
+                Ingredient ingredient = unwrapRecipeIngredient(ingredients.get(i));
+                ItemStack stack = getRepresentativeIngredientStack(ingredient, registryManager);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                int x = i % width;
+                int y = i / width;
+                int slot = x + (y * 3);
+                if (slot >= 0 && slot < grid.size()) {
+                    grid.set(slot, stack);
+                }
+            }
+            return CraftingRecipeInput.create(3, 3, grid);
+        }
+
+        List<?> ingredients = RecipeCompatibilityBridge.getRecipeIngredients(recipe);
+        if ((ingredients == null || ingredients.isEmpty())) {
+            ingredients = readRecipeIngredients(recipe);
+        }
+        if (ingredients != null && !ingredients.isEmpty()) {
+            int placed = 0;
+            for (Object entry : ingredients) {
+                if (placed >= 9) {
+                    break;
+                }
+                Ingredient ingredient = unwrapRecipeIngredient(entry);
+                ItemStack stack = getRepresentativeIngredientStack(ingredient, registryManager);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                grid.set(placed, stack);
+                placed++;
+            }
+        }
+        return CraftingRecipeInput.create(3, 3, grid);
+    }
+
+    private ItemStack getRepresentativeIngredientStack(Ingredient ingredient, Object registryManager) {
+        if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+            return ItemStack.EMPTY;
+        }
+        List<ItemStack> stacks = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager);
+        if (stacks == null || stacks.isEmpty()) {
+            stacks = resolveIngredientStacksByTesting(ingredient);
+        }
+        if (stacks == null || stacks.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        for (ItemStack stack : stacks) {
+            if (stack != null && !stack.isEmpty()) {
+                return stack.copy();
             }
         }
         return ItemStack.EMPTY;
@@ -10740,10 +10959,19 @@ public class Node {
         if (entry instanceof Ingredient ingredientValue) {
             return ingredientValue;
         }
+        if (entry instanceof Item item) {
+            return Ingredient.ofItems(item);
+        }
+        if (entry instanceof ItemStack stack && !stack.isEmpty()) {
+            return Ingredient.ofItems(stack.getItem());
+        }
         if (entry instanceof RegistryEntry<?> registryEntry) {
             Object value = registryEntry.value();
             if (value instanceof Ingredient registryIngredient) {
                 return registryIngredient;
+            }
+            if (value instanceof Item item) {
+                return Ingredient.ofItems(item);
             }
         }
         Ingredient candidate = RecipeCompatibilityBridge.tryCreateIngredientFromEntry(entry);
@@ -10752,8 +10980,8 @@ public class Node {
         }
         if (entry instanceof Optional<?> optional) {
             Object value = optional.orElse(null);
-            if (value instanceof Ingredient optionalIngredient) {
-                return optionalIngredient;
+            if (value != null) {
+                return unwrapRecipeIngredient(value);
             }
         }
         if (entry != null) {
@@ -10865,14 +11093,12 @@ public class Node {
         if (book == null) {
             return false;
         }
-        if (book.recipesByOutput != null && !book.recipesByOutput.isEmpty()) {
-            return false;
-        }
         Object registryManager = client.world;
         if (registryManager == null && client.getServer() != null) {
             registryManager = client.getServer().getRegistryManager();
         }
         cacheAllCraftingRecipes(book, client, registryManager);
+        cacheAllCraftingDisplays(book, client, registryManager);
         saveRecipeCache(client, book);
         return book.recipesByOutput != null && !book.recipesByOutput.isEmpty();
     }

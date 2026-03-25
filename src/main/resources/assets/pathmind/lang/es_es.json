@@ -70,6 +70,8 @@
   "pathmind.node.type.controlRepeat.desc": "Repite nodos encerrados un número determinado de veces",
   "pathmind.node.type.controlRepeatUntil": "Repetir Hasta",
   "pathmind.node.type.controlRepeatUntil.desc": "Repite hasta que una condición se vuelva verdadera",
+  "pathmind.node.type.controlWaitUntil": "Esperar Hasta",
+  "pathmind.node.type.controlWaitUntil.desc": "Pausa esta rama hasta que una condición se vuelva verdadera",
   "pathmind.node.type.craft": "Fabricar",
   "pathmind.node.type.craft.desc": "Fabrica objetos usando materiales disponibles",
   "pathmind.node.type.crawl": "Gatear",

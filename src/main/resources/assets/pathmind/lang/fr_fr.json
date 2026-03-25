@@ -70,6 +70,8 @@
   "pathmind.node.type.controlRepeat.desc": "Répète les nœuds internes un nombre défini de fois",
   "pathmind.node.type.controlRepeatUntil": "Répéter jusqu'à",
   "pathmind.node.type.controlRepeatUntil.desc": "Répète jusqu'à ce qu'une condition devienne vraie",
+  "pathmind.node.type.controlWaitUntil": "Attendre jusqu'à",
+  "pathmind.node.type.controlWaitUntil.desc": "Met cette branche en pause jusqu'à ce qu'une condition devienne vraie",
   "pathmind.node.type.craft": "Fabriquer",
   "pathmind.node.type.craft.desc": "Fabrique des objets à partir des matériaux disponibles",
   "pathmind.node.type.crawl": "Ramper",

@@ -298,6 +298,7 @@ public class Node {
     private boolean booleanToggleValue = true;
     private RuntimeParameterData runtimeParameterData;
     private transient Node owningStartNode;
+    private transient Node activeRepeatUntilGuard;
     private int startNodeNumber;
     private final List<String> messageLines;
     private boolean messageClientSide;
@@ -332,6 +333,7 @@ public class Node {
         this.parentParameterSlotIndex = -1;
         this.socketsHidden = false;
         this.owningStartNode = null;
+        this.activeRepeatUntilGuard = null;
         this.startNodeNumber = 0;
         this.messageLines = new ArrayList<>();
         if (type == NodeType.MESSAGE) {
@@ -894,6 +896,10 @@ public class Node {
 
     public String getParentActionControlId() {
         return parentActionControl != null ? parentActionControl.getId() : null;
+    }
+
+    public void setActiveRepeatUntilGuard(Node guard) {
+        this.activeRepeatUntilGuard = guard;
     }
 
     public int getInputSocketCount() {
@@ -2729,6 +2735,7 @@ public class Node {
             case CONTROL_REPEAT:
                 parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "10"));
                 break;
+            case CONTROL_WAIT_UNTIL:
             case CONTROL_IF:
                 break;
             case CONTROL_IF_ELSE:
@@ -3392,7 +3399,8 @@ public class Node {
                 Node parameterNode = getAttachedParameterOfType(
                     NodeType.PARAM_ENTITY,
                     NodeType.PARAM_BLOCK,
-                    NodeType.PARAM_ITEM
+                    NodeType.PARAM_ITEM,
+                    NodeType.PARAM_PLAYER
                 );
                 if (parameterNode == null) {
                     break;
@@ -4643,7 +4651,8 @@ public class Node {
     private boolean showsSensorSlotHeader() {
         return type == NodeType.CONTROL_IF
             || type == NodeType.CONTROL_IF_ELSE
-            || type == NodeType.CONTROL_REPEAT_UNTIL;
+            || type == NodeType.CONTROL_REPEAT_UNTIL
+            || type == NodeType.CONTROL_WAIT_UNTIL;
     }
 
     private boolean showsActionSlotHeader() {
@@ -6676,6 +6685,9 @@ public class Node {
             case CONTROL_REPEAT_UNTIL:
                 executeControlRepeatUntil(future);
                 break;
+            case CONTROL_WAIT_UNTIL:
+                executeControlWaitUntil(future);
+                break;
             case CONTROL_FOREVER:
                 executeControlForever(future);
                 break;
@@ -6903,11 +6915,12 @@ public class Node {
             Node parameterNode = valueNode.getAttachedParameterOfType(
                 NodeType.PARAM_ENTITY,
                 NodeType.PARAM_BLOCK,
-                NodeType.PARAM_ITEM
+                NodeType.PARAM_ITEM,
+                NodeType.PARAM_PLAYER
             );
             if (parameterNode == null) {
                 if (client != null) {
-                    sendNodeErrorMessage(client, "Position Of requires an entity, block, or item parameter.");
+                    sendNodeErrorMessage(client, "Position Of requires an entity, user, block, or item parameter.");
                 }
                 future.complete(null);
                 return;
@@ -12082,6 +12095,10 @@ public class Node {
                 long waitMs = (long) (waitSeconds * 1000);
 
                 while (true) {
+                    if (shouldAbortForRepeatUntilGuard()) {
+                        future.complete(null);
+                        return;
+                    }
                     Node active = manager.getActiveNode();
                     if (active == null || nodeId == null || !nodeId.equals(active.getId())) {
                         future.complete(null);
@@ -12135,7 +12152,45 @@ public class Node {
         }
         future.complete(null);
     }
-    
+
+    private void executeControlWaitUntil(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        if (evaluateConditionFromParameters()) {
+            setNextOutputSocket(0);
+            future.complete(null);
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                ExecutionManager manager = ExecutionManager.getInstance();
+                String nodeId = getId();
+                while (true) {
+                    if (shouldAbortForRepeatUntilGuard()) {
+                        future.complete(null);
+                        return;
+                    }
+                    Node active = manager.getActiveNode();
+                    if (active == null || nodeId == null || !nodeId.equals(active.getId())) {
+                        future.complete(null);
+                        return;
+                    }
+                    if (evaluateConditionFromParameters()) {
+                        setNextOutputSocket(0);
+                        future.complete(null);
+                        return;
+                    }
+                    Thread.sleep(50L);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            }
+        }, "Pathmind-Wait-Until").start();
+    }
+
     private void executeControlForever(CompletableFuture<Void> future) {
         if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
             return;
@@ -15478,6 +15533,10 @@ public class Node {
                         String stopReason = "unknown";
                         while (true) {
                             Thread.sleep(50L);
+                            if (shouldAbortForRepeatUntilGuard()) {
+                                stopReason = "repeatUntilConditionMet";
+                                break;
+                            }
                             if (System.currentTimeMillis() - startTime >= maxDurationMs) {
                                 stopReason = "timeout";
                                 break;
@@ -15512,7 +15571,15 @@ public class Node {
                     }
                 } else {
                     System.out.println("[Pathmind DEBUG] WALK complete duration mode durationSeconds=" + durationSeconds);
-                    Thread.sleep((long) (durationSeconds * 1000));
+                    long durationMs = (long) (durationSeconds * 1000);
+                    long startTime = System.currentTimeMillis();
+                    while (System.currentTimeMillis() - startTime < durationMs) {
+                        if (shouldAbortForRepeatUntilGuard()) {
+                            break;
+                        }
+                        long remaining = durationMs - (System.currentTimeMillis() - startTime);
+                        Thread.sleep(Math.min(50L, Math.max(1L, remaining)));
+                    }
                 }
 
                 future.complete(null);
@@ -15549,6 +15616,19 @@ public class Node {
             }
             future.complete(null);
         });
+    }
+
+    public boolean isRepeatUntilConditionMetForPolling() {
+        if (type != NodeType.CONTROL_REPEAT_UNTIL) {
+            return false;
+        }
+        return preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), null) != ParameterHandlingResult.COMPLETE
+            && evaluateConditionFromParameters();
+    }
+
+    private boolean shouldAbortForRepeatUntilGuard() {
+        Node guard = activeRepeatUntilGuard;
+        return guard != null && guard != this && guard.isRepeatUntilConditionMetForPolling();
     }
 
     private void executePressKeyCommand(CompletableFuture<Void> future) {

@@ -3798,7 +3798,8 @@ public class NodeGraph {
         NodeType type = node.getType();
         return type == NodeType.CONTROL_IF
             || type == NodeType.CONTROL_IF_ELSE
-            || type == NodeType.CONTROL_REPEAT_UNTIL;
+            || type == NodeType.CONTROL_REPEAT_UNTIL
+            || type == NodeType.CONTROL_WAIT_UNTIL;
     }
 
     private boolean usesLogicActionSlotTitle(Node node) {

@@ -73,6 +73,7 @@ public class ExecutionManager {
         final Node startNode;
         final int rootExecutionId;
         volatile boolean cancelRequested;
+        volatile Node pendingRepeatUntilExitControl;
         final AtomicInteger activeExecutions;
         final Map<String, RuntimeVariable> runtimeVariables;
         final Map<String, RuntimeList> runtimeLists;
@@ -81,6 +82,7 @@ public class ExecutionManager {
             this.startNode = startNode;
             this.rootExecutionId = rootExecutionId;
             this.cancelRequested = false;
+            this.pendingRepeatUntilExitControl = null;
             this.activeExecutions = new AtomicInteger(1);
             this.runtimeVariables = new ConcurrentHashMap<>();
             this.runtimeLists = new ConcurrentHashMap<>();
@@ -925,16 +927,27 @@ public class ExecutionManager {
     }
 
     private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId) {
+        return runChain(currentNode, controller, executionId, null);
+    }
+
+    private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId, Node repeatUntilGuard) {
         if (cancelRequested || controller == null || controller.cancelRequested) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (shouldExitRepeatUntilGuard(currentNode, controller, repeatUntilGuard)) {
             return CompletableFuture.completedFuture(null);
         }
 
         currentNode.setOwningStartNode(controller.startNode);
+        currentNode.setActiveRepeatUntilGuard(repeatUntilGuard);
 
         return waitForExecutionResume()
             .thenCompose(ignored -> scheduleNodeStartDelay())
             .thenCompose(ignored -> {
                 if (cancelRequested || controller.cancelRequested) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                if (shouldExitRepeatUntilGuard(currentNode, controller, repeatUntilGuard)) {
                     return CompletableFuture.completedFuture(null);
                 }
 
@@ -945,15 +958,21 @@ public class ExecutionManager {
                 }
 
                 return waitForExecutionResume()
+                    .thenCompose(pausedIgnored -> {
+                        if (shouldExitRepeatUntilGuard(currentNode, controller, repeatUntilGuard)) {
+                            return CompletableFuture.completedFuture(null);
+                        }
+                        return CompletableFuture.completedFuture(null);
+                    })
                     .thenCompose(pausedIgnored -> currentNode.execute())
                     .thenCompose(ignoredFuture -> {
                         if (cancelRequested || controller.cancelRequested) {
                             return CompletableFuture.completedFuture(null);
                         }
-                        return handleEventCallIfNeeded(currentNode, controller);
+                        return handleEventCallIfNeeded(currentNode, controller, repeatUntilGuard);
                     })
                     .thenCompose(ignoredFuture -> waitForExecutionResume())
-                    .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller, executionId));
+                    .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller, executionId, repeatUntilGuard));
             });
     }
 
@@ -991,7 +1010,7 @@ public class ExecutionManager {
         }, CompletableFuture.delayedExecutor(50L, TimeUnit.MILLISECONDS));
     }
 
-    private CompletableFuture<Void> handleEventCallIfNeeded(Node node, ChainController controller) {
+    private CompletableFuture<Void> handleEventCallIfNeeded(Node node, ChainController controller, Node repeatUntilGuard) {
         if (cancelRequested || controller.cancelRequested || node.getType() != NodeType.EVENT_CALL) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1030,7 +1049,7 @@ public class ExecutionManager {
             }
             retainChainExecution(controller);
             int handlerExecutionId = allocateExecutionId();
-            CompletableFuture<Void> handlerFuture = runEventHandler(handler, controller, handlerExecutionId);
+            CompletableFuture<Void> handlerFuture = runEventHandler(handler, controller, handlerExecutionId, repeatUntilGuard);
             handlerFuture.whenComplete((ignored, throwable) ->
                 handleChainCompletion(controller, throwable, handlerExecutionId));
             handlerFutures.add(handlerFuture);
@@ -1041,12 +1060,12 @@ public class ExecutionManager {
             return CompletableFuture.completedFuture(null);
         }
 
-        CompletableFuture.allOf(handlerFutures.toArray(new CompletableFuture[0]))
-            .whenComplete((ignored, throwable) -> executingEvents.remove(eventName));
-        return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> handlersComplete = CompletableFuture.allOf(
+            handlerFutures.toArray(new CompletableFuture[0]));
+        return handlersComplete.whenComplete((ignored, throwable) -> executingEvents.remove(eventName));
     }
 
-    private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller, int executionId) {
+    private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller, int executionId, Node repeatUntilGuard) {
         if (cancelRequested || controller == null || controller.cancelRequested) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1059,22 +1078,38 @@ public class ExecutionManager {
 
             if (attachedAction != null) {
                 if (type == NodeType.CONTROL_FOREVER && nextSocket != Node.NO_OUTPUT) {
-                    return runChain(attachedAction, controller, executionId)
+                    return runChain(attachedAction, controller, executionId, repeatUntilGuard)
                         .thenCompose(ignored -> {
                             if (cancelRequested || controller.cancelRequested) {
                                 return CompletableFuture.completedFuture(null);
                             }
-                            return runChain(currentNode, controller, executionId);
+                            return runChain(currentNode, controller, executionId, repeatUntilGuard);
                         });
                 }
 
                 if ((type == NodeType.CONTROL_REPEAT || type == NodeType.CONTROL_REPEAT_UNTIL) && nextSocket == 0) {
-                    return runChain(attachedAction, controller, executionId)
+                    if (type == NodeType.CONTROL_REPEAT_UNTIL) {
+                        controller.pendingRepeatUntilExitControl = null;
+                    }
+                    Node actionGuard = type == NodeType.CONTROL_REPEAT_UNTIL ? currentNode : repeatUntilGuard;
+                    return runChain(attachedAction, controller, executionId, actionGuard)
                         .thenCompose(ignored -> {
                             if (cancelRequested || controller.cancelRequested) {
                                 return CompletableFuture.completedFuture(null);
                             }
-                            return runChain(currentNode, controller, executionId);
+                            if (type == NodeType.CONTROL_REPEAT_UNTIL
+                                && controller.pendingRepeatUntilExitControl == currentNode) {
+                                controller.pendingRepeatUntilExitControl = null;
+                                Node exitNode = getNextConnectedNode(currentNode, activeConnections, 1);
+                                if (exitNode == null) {
+                                    exitNode = getNextConnectedNode(currentNode, activeConnections, 0);
+                                }
+                                if (exitNode != null) {
+                                    return runChain(exitNode, controller, executionId, repeatUntilGuard);
+                                }
+                                return CompletableFuture.completedFuture(null);
+                            }
+                            return runChain(currentNode, controller, executionId, repeatUntilGuard);
                         });
                 }
             }
@@ -1089,19 +1124,30 @@ public class ExecutionManager {
             nextNode = getNextConnectedNode(currentNode, activeConnections, 0);
         }
         if (nextNode != null) {
-            return runChain(nextNode, controller, executionId);
+            return runChain(nextNode, controller, executionId, repeatUntilGuard);
         }
         return CompletableFuture.completedFuture(null);
     }
 
-    private CompletableFuture<Void> runEventHandler(Node handler, ChainController controller, int executionId) {
+    private CompletableFuture<Void> runEventHandler(Node handler, ChainController controller, int executionId, Node repeatUntilGuard) {
         if (handler == null) {
             return CompletableFuture.completedFuture(null);
         }
 
         setEventFunctionActive(handler, true);
-        return runChain(handler, controller, executionId)
+        return runChain(handler, controller, executionId, repeatUntilGuard)
             .whenComplete((ignored, throwable) -> setEventFunctionActive(handler, false));
+    }
+
+    private boolean shouldExitRepeatUntilGuard(Node currentNode, ChainController controller, Node repeatUntilGuard) {
+        if (currentNode == null || controller == null || repeatUntilGuard == null || currentNode == repeatUntilGuard) {
+            return false;
+        }
+        if (!repeatUntilGuard.isRepeatUntilConditionMetForPolling()) {
+            return false;
+        }
+        controller.pendingRepeatUntilExitControl = repeatUntilGuard;
+        return true;
     }
 
     private void handleChainCompletion(ChainController controller, Throwable throwable, int executionId) {

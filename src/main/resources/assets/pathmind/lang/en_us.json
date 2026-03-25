@@ -70,6 +70,8 @@
   "pathmind.node.type.controlRepeat.desc": "Repeat enclosed nodes a set number of times",
   "pathmind.node.type.controlRepeatUntil": "Repeat Until",
   "pathmind.node.type.controlRepeatUntil.desc": "Repeat until a condition becomes true",
+  "pathmind.node.type.controlWaitUntil": "Wait Until",
+  "pathmind.node.type.controlWaitUntil.desc": "Pause this branch until a condition becomes true",
   "pathmind.node.type.craft": "Craft",
   "pathmind.node.type.craft.desc": "Crafts items using available materials",
   "pathmind.node.type.crawl": "Crawl",

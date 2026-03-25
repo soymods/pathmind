@@ -56,6 +56,7 @@ public enum NodeType {
     // Control flow Commands
     CONTROL_REPEAT("pathmind.node.type.controlRepeat", 0xFFFFC107, "pathmind.node.type.controlRepeat.desc"),
     CONTROL_REPEAT_UNTIL("pathmind.node.type.controlRepeatUntil", 0xFFFFC107, "pathmind.node.type.controlRepeatUntil.desc"),
+    CONTROL_WAIT_UNTIL("pathmind.node.type.controlWaitUntil", 0xFFFFC107, "pathmind.node.type.controlWaitUntil.desc"),
     CONTROL_FOREVER("pathmind.node.type.controlForever", 0xFFFFC107, "pathmind.node.type.controlForever.desc"),
     CONTROL_IF("pathmind.node.type.controlIf", 0xFFFFC107, "pathmind.node.type.controlIf.desc"),
     CONTROL_IF_ELSE("pathmind.node.type.controlIfElse", 0xFFFFC107, "pathmind.node.type.controlIfElse.desc"),
@@ -244,6 +245,7 @@ public enum NodeType {
                 return NodeCategory.OPERATORS;
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
+            case CONTROL_WAIT_UNTIL:
             case CONTROL_FOREVER:
             case CONTROL_IF:
             case CONTROL_IF_ELSE:
@@ -400,6 +402,7 @@ public enum NodeType {
             case RUN_PRESET:
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
+            case CONTROL_WAIT_UNTIL:
             case CONTROL_IF_ELSE:
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:

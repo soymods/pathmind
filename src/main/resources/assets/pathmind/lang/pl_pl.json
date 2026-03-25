@@ -70,6 +70,8 @@
   "pathmind.node.type.controlRepeat.desc": "Powtarza zamknięte węzły określoną liczbę razy",
   "pathmind.node.type.controlRepeatUntil": "Powtarzaj aż",
   "pathmind.node.type.controlRepeatUntil.desc": "Powtarza, aż warunek stanie się prawdziwy",
+  "pathmind.node.type.controlWaitUntil": "Czekaj aż",
+  "pathmind.node.type.controlWaitUntil.desc": "Wstrzymuje tę gałąź, aż warunek stanie się prawdziwy",
   "pathmind.node.type.craft": "Stwórz",
   "pathmind.node.type.craft.desc": "Tworzy przedmioty z dostępnych materiałów",
   "pathmind.node.type.crawl": "Czołgaj się",

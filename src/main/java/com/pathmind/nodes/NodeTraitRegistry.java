@@ -150,7 +150,12 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.OPERATOR_BOOLEAN_AND, EnumSet.of(NodeValueTrait.BOOLEAN));
         accepted.put(NodeType.OPERATOR_BOOLEAN_XOR, EnumSet.of(NodeValueTrait.BOOLEAN));
 
-        accepted.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY));
+        accepted.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER
+        ));
         accepted.put(NodeType.SENSOR_DISTANCE_BETWEEN, EnumSet.of(
             NodeValueTrait.COORDINATE,
             NodeValueTrait.BLOCK,

@@ -14,7 +14,8 @@ public final class NodeCompatibility {
             case SENSOR:
                 return hostType == NodeType.CONTROL_IF
                     || hostType == NodeType.CONTROL_IF_ELSE
-                    || hostType == NodeType.CONTROL_REPEAT_UNTIL;
+                    || hostType == NodeType.CONTROL_REPEAT_UNTIL
+                    || hostType == NodeType.CONTROL_WAIT_UNTIL;
             case ACTION:
                 return hostType == NodeType.CONTROL_REPEAT
                     || hostType == NodeType.CONTROL_REPEAT_UNTIL

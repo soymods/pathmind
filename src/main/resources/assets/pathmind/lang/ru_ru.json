@@ -70,6 +70,8 @@
   "pathmind.node.type.controlRepeat.desc": "Повторяет вложенные узлы заданное количество раз",
   "pathmind.node.type.controlRepeatUntil": "Повторить до",
   "pathmind.node.type.controlRepeatUntil.desc": "Повторяет, пока условие не станет истинным",
+  "pathmind.node.type.controlWaitUntil": "Ждать до",
+  "pathmind.node.type.controlWaitUntil.desc": "Приостанавливает эту ветвь, пока условие не станет истинным",
   "pathmind.node.type.craft": "Крафт",
   "pathmind.node.type.craft.desc": "Создает предметы из доступных материалов",
   "pathmind.node.type.crawl": "Ползти",

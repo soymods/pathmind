@@ -70,6 +70,8 @@
   "pathmind.node.type.controlRepeat.desc": "Wiederholt eingeschlossene Knoten eine festgelegte Anzahl von Malen",
   "pathmind.node.type.controlRepeatUntil": "Wiederholen bis",
   "pathmind.node.type.controlRepeatUntil.desc": "Wiederholt, bis eine Bedingung wahr wird",
+  "pathmind.node.type.controlWaitUntil": "Warten bis",
+  "pathmind.node.type.controlWaitUntil.desc": "Pausiert diesen Zweig, bis eine Bedingung wahr wird",
   "pathmind.node.type.craft": "Herstellen",
   "pathmind.node.type.craft.desc": "Stellt Gegenstände mit verfügbaren Materialien her",
   "pathmind.node.type.crawl": "Kriechen",

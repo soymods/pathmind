@@ -145,6 +145,7 @@ public class NodeGraph {
     private static final String[] COORDINATE_AXES = {"X", "Y", "Z"};
     private static final int PARAMETER_INPUT_HEIGHT = 16;
     private static final int PARAMETER_INPUT_GAP = 4;
+    private static final int DIRECTION_MODE_TAB_HEIGHT = 18;
 
     private Node coordinateEditingNode = null;
     private int coordinateEditingAxis = -1;
@@ -3154,6 +3155,11 @@ public class NodeGraph {
                         paramY += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
                     }
 
+                    if (isCombinedDirectionNode(node)) {
+                        renderDirectionModeTabs(context, textRenderer, node, isOverSidebar, paramY, mouseX, mouseY);
+                        paramY += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
+                    }
+
                     for (int i = 0; i < parameters.size(); i++) {
                         NodeParameter param = parameters.get(i);
                         String displayLabel = node.getParameterLabel(param);
@@ -3440,12 +3446,96 @@ public class NodeGraph {
         return node.getX() + 5;
     }
 
+    private boolean isCombinedDirectionNode(Node node) {
+        return node != null && node.getType() == NodeType.PARAM_DIRECTION;
+    }
+
+    private int getDirectionModeTabTop(Node node) {
+        int top = node.getY() + 18;
+        if (node != null && node.supportsModeSelection()) {
+            top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
+        }
+        return top;
+    }
+
+    private int getInlineParameterFieldsTop(Node node) {
+        int top = node.getY() + 18;
+        if (node != null && node.supportsModeSelection()) {
+            top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
+        }
+        if (isCombinedDirectionNode(node)) {
+            top += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
+        }
+        return top;
+    }
+
     private int getParameterFieldWidth(Node node) {
         return Math.max(20, node.getWidth() - 10);
     }
 
     private int getParameterFieldHeight() {
         return PARAMETER_INPUT_HEIGHT;
+    }
+
+    private void renderDirectionModeTabs(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                         int fieldTop, int mouseX, int mouseY) {
+        if (!isCombinedDirectionNode(node)) {
+            return;
+        }
+        int fieldLeft = getParameterFieldLeft(node) - cameraX;
+        int fieldWidth = getParameterFieldWidth(node);
+        int fieldHeight = DIRECTION_MODE_TAB_HEIGHT;
+        int splitX = fieldLeft + fieldWidth / 2;
+        int accentColor = getSelectedNodeAccentColor();
+        int inactiveBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int inactiveBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int activeBackground = isOverSidebar ? adjustColorBrightness(accentColor, 0.72f) : adjustColorBrightness(accentColor, 0.84f);
+        int activeText = UITheme.TEXT_EDITING;
+        int inactiveText = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        boolean exactMode = node.isDirectionModeExact();
+
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int worldLeft = getParameterFieldLeft(node);
+        int worldTop = fieldTop + cameraY;
+        int halfWidth = Math.max(1, fieldWidth / 2);
+        boolean hoverExact = !isOverSidebar
+            && worldMouseX >= worldLeft
+            && worldMouseX < worldLeft + halfWidth
+            && worldMouseY >= worldTop
+            && worldMouseY <= worldTop + fieldHeight;
+        boolean hoverCardinal = !isOverSidebar
+            && worldMouseX >= worldLeft + halfWidth
+            && worldMouseX <= worldLeft + fieldWidth
+            && worldMouseY >= worldTop
+            && worldMouseY <= worldTop + fieldHeight;
+
+        int exactLeft = fieldLeft;
+        int exactWidth = Math.max(1, halfWidth);
+        int cardinalLeft = splitX;
+        int cardinalWidth = Math.max(1, fieldLeft + fieldWidth - splitX);
+
+        int exactBackground = exactMode ? activeBackground : inactiveBackground;
+        int cardinalBackground = exactMode ? inactiveBackground : activeBackground;
+        int exactBorder = exactMode ? accentColor : inactiveBorder;
+        int cardinalBorder = exactMode ? inactiveBorder : accentColor;
+        if (hoverExact && !exactMode) {
+            exactBackground = UITheme.BACKGROUND_TERTIARY;
+        }
+        if (hoverCardinal && exactMode) {
+            cardinalBackground = UITheme.BACKGROUND_TERTIARY;
+        }
+
+        context.fill(exactLeft, fieldTop, exactLeft + exactWidth, fieldTop + fieldHeight, exactBackground);
+        DrawContextBridge.drawBorderInLayer(context, exactLeft, fieldTop, exactWidth, fieldHeight, exactBorder);
+        context.fill(cardinalLeft, fieldTop, cardinalLeft + cardinalWidth, fieldTop + fieldHeight, cardinalBackground);
+        DrawContextBridge.drawBorderInLayer(context, cardinalLeft, fieldTop, cardinalWidth, fieldHeight, cardinalBorder);
+
+        int exactLabelX = exactLeft + Math.max(0, (exactWidth - textRenderer.getWidth("Exact")) / 2);
+        int cardinalLabelX = cardinalLeft + Math.max(0, (cardinalWidth - textRenderer.getWidth("Cardinal")) / 2);
+        int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal("Exact"), exactLabelX, labelY, exactMode ? activeText : inactiveText);
+        drawNodeText(context, textRenderer, Text.literal("Cardinal"), cardinalLabelX, labelY, exactMode ? inactiveText : activeText);
     }
 
     private String getParameterLabelText(Node node, NodeParameter parameter, TextRenderer textRenderer, int maxWidth) {
@@ -7200,6 +7290,7 @@ public class NodeGraph {
             || isTradeInlineParameter(node, parameter)
             || isMouseButtonParameter(node, parameter)
             || isGuiParameter(node, parameter)
+            || isDirectionParameter(node, index)
             || isBlockItemParameter(node, index)
             || isFabricEventSensorParameter(node, index))) {
             if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
@@ -7268,6 +7359,7 @@ public class NodeGraph {
             boolean isAnyLikeParam = isMessageParameter(parameterEditingNode, parameter)
                 || isSeedParameter(parameterEditingNode, parameter)
                 || isGuiParameter(parameterEditingNode, parameter)
+                || isDirectionParameter(parameterEditingNode, parameterEditingIndex)
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
@@ -10433,11 +10525,7 @@ public class NodeGraph {
         int fieldLeft = getParameterFieldLeft(node);
         int fieldWidth = getParameterFieldWidth(node);
         int fieldHeight = getParameterFieldHeight();
-        int fieldTop = node.getY() + 18;
-
-        if (node.supportsModeSelection()) {
-            fieldTop += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
-        }
+        int fieldTop = getInlineParameterFieldsTop(node);
 
         List<NodeParameter> parameters = node.getParameters();
         for (int i = 0; i < parameters.size(); i++) {
@@ -10452,6 +10540,50 @@ public class NodeGraph {
             fieldTop += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
         }
         return -1;
+    }
+
+    public boolean handleDirectionModeTabClick(Node ignoredNode, int screenX, int screenY) {
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        Node node = findDirectionModeNodeAt(worldX, worldY);
+        if (!isCombinedDirectionNode(node)) {
+            return false;
+        }
+        int fieldLeft = getParameterFieldLeft(node);
+        int fieldTop = getDirectionModeTabTop(node);
+        int fieldWidth = getParameterFieldWidth(node);
+        if (worldX < fieldLeft || worldX > fieldLeft + fieldWidth
+            || worldY < fieldTop || worldY > fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
+            return false;
+        }
+
+        boolean exactMode = worldX < fieldLeft + fieldWidth / 2;
+        if (isEditingParameterField()) {
+            stopParameterEditing(true);
+        }
+        if (node.isDirectionModeExact() != exactMode) {
+            node.setDirectionModeExact(exactMode);
+            node.recalculateDimensions();
+            notifyNodeParametersChanged(node);
+        }
+        return true;
+    }
+
+    private Node findDirectionModeNodeAt(int worldX, int worldY) {
+        for (int i = nodes.size() - 1; i >= 0; i--) {
+            Node candidate = nodes.get(i);
+            if (!isCombinedDirectionNode(candidate)) {
+                continue;
+            }
+            int fieldLeft = getParameterFieldLeft(candidate);
+            int fieldTop = getDirectionModeTabTop(candidate);
+            int fieldWidth = getParameterFieldWidth(candidate);
+            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     public boolean handleSchematicDropdownClick(Node clickedNode, int screenX, int screenY) {

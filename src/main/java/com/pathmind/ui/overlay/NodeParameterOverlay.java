@@ -1,5 +1,6 @@
 package com.pathmind.ui.overlay;
 
+import com.pathmind.data.SettingsManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
@@ -48,6 +49,7 @@ public class NodeParameterOverlay {
     private static final int POPUP_VERTICAL_MARGIN = 40;
     private static final int SCROLL_STEP = 18;
     private static final int SCROLLBAR_WIDTH = 6;
+    private static final int DIRECTION_MODE_TAB_HEIGHT = 20;
     private static final int KEY_SELECTOR_KEY_HEIGHT = 18;
     private static final int KEY_SELECTOR_ROW_GAP = 6;
     private static final int KEY_SELECTOR_KEY_GAP = 4;
@@ -405,6 +407,13 @@ public class NodeParameterOverlay {
 
         int sectionY = contentTop - scrollOffset;
 
+        if (isCombinedDirectionNode()) {
+            int fieldX = popupX + 20;
+            int fieldWidth = popupWidth - 40;
+            renderDirectionModeTabs(context, textRenderer, fieldX, sectionY, fieldWidth, mouseX, mouseY, popupAlpha);
+            sectionY += DIRECTION_MODE_TAB_HEIGHT + SECTION_SPACING;
+        }
+
         this.textLineHeight = textRenderer.fontHeight;
         for (int i = 0; i < node.getParameters().size(); i++) {
             if (!shouldDisplayParameter(i)) {
@@ -648,7 +657,94 @@ public class NodeParameterOverlay {
     private void handleParameterValueChanged(int index) {
     }
 
+    private boolean isCombinedDirectionNode() {
+        return node != null && node.getType() == NodeType.PARAM_DIRECTION;
+    }
+
+    private int getAccentColor() {
+        SettingsManager.Settings settings = SettingsManager.getCurrent();
+        if (settings == null || settings.accentColor == null) {
+            return UITheme.ACCENT_DEFAULT;
+        }
+        return switch (settings.accentColor.toLowerCase(java.util.Locale.ROOT)) {
+            case "sky" -> UITheme.ACCENT_SKY;
+            case "mint" -> UITheme.ACCENT_MINT;
+            case "amber" -> UITheme.ACCENT_AMBER;
+            default -> UITheme.ACCENT_DEFAULT;
+        };
+    }
+
+    private void renderDirectionModeTabs(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY,
+                                         int fieldWidth, int mouseX, int mouseY, float popupAlpha) {
+        if (!isCombinedDirectionNode()) {
+            return;
+        }
+        int accentColor = getAccentColor();
+        boolean exactMode = node.isDirectionModeExact();
+        int splitX = fieldX + fieldWidth / 2;
+        int exactWidth = Math.max(1, fieldWidth / 2);
+        int cardinalWidth = Math.max(1, fieldWidth - exactWidth);
+        boolean hoverExact = mouseX >= fieldX && mouseX < fieldX + exactWidth
+            && mouseY >= fieldY && mouseY <= fieldY + DIRECTION_MODE_TAB_HEIGHT;
+        boolean hoverCardinal = mouseX >= splitX && mouseX <= fieldX + fieldWidth
+            && mouseY >= fieldY && mouseY <= fieldY + DIRECTION_MODE_TAB_HEIGHT;
+
+        int inactiveBackground = UITheme.BACKGROUND_SIDEBAR;
+        int inactiveBorder = UITheme.BORDER_HIGHLIGHT;
+        int activeBackground = AnimationHelper.darken(accentColor, 0.84f);
+        int exactBackground = exactMode ? activeBackground : inactiveBackground;
+        int cardinalBackground = exactMode ? inactiveBackground : activeBackground;
+        if (hoverExact && !exactMode) {
+            exactBackground = UITheme.BACKGROUND_TERTIARY;
+        }
+        if (hoverCardinal && exactMode) {
+            cardinalBackground = UITheme.BACKGROUND_TERTIARY;
+        }
+
+        context.fill(fieldX, fieldY, fieldX + exactWidth, fieldY + DIRECTION_MODE_TAB_HEIGHT,
+            applyPopupAlpha(exactBackground, popupAlpha));
+        DrawContextBridge.drawBorder(context, fieldX, fieldY, exactWidth, DIRECTION_MODE_TAB_HEIGHT,
+            applyPopupAlpha(exactMode ? accentColor : inactiveBorder, popupAlpha));
+
+        context.fill(splitX, fieldY, fieldX + fieldWidth, fieldY + DIRECTION_MODE_TAB_HEIGHT,
+            applyPopupAlpha(cardinalBackground, popupAlpha));
+        DrawContextBridge.drawBorder(context, splitX, fieldY, cardinalWidth, DIRECTION_MODE_TAB_HEIGHT,
+            applyPopupAlpha(exactMode ? inactiveBorder : accentColor, popupAlpha));
+
+        int textY = fieldY + (DIRECTION_MODE_TAB_HEIGHT - textRenderer.fontHeight) / 2 + 1;
+        int exactTextX = fieldX + Math.max(0, (exactWidth - textRenderer.getWidth("Exact")) / 2);
+        int cardinalTextX = splitX + Math.max(0, (cardinalWidth - textRenderer.getWidth("Cardinal")) / 2);
+        context.drawTextWithShadow(textRenderer, Text.literal("Exact"), exactTextX, textY,
+            applyPopupAlpha(exactMode ? UITheme.TEXT_EDITING : UITheme.TEXT_PRIMARY, popupAlpha));
+        context.drawTextWithShadow(textRenderer, Text.literal("Cardinal"), cardinalTextX, textY,
+            applyPopupAlpha(exactMode ? UITheme.TEXT_PRIMARY : UITheme.TEXT_EDITING, popupAlpha));
+    }
+
     private boolean shouldDisplayParameter(int index) {
+        if (isCombinedDirectionNode()) {
+            if (index < 0 || index >= node.getParameters().size()) {
+                return false;
+            }
+            NodeParameter parameter = node.getParameters().get(index);
+            if (parameter == null) {
+                return false;
+            }
+            String name = parameter.getName();
+            boolean exactMode = node.isDirectionModeExact();
+            if ("Mode".equalsIgnoreCase(name)) {
+                return false;
+            }
+            if ("Direction".equalsIgnoreCase(name)) {
+                return !exactMode;
+            }
+            if ("Yaw".equalsIgnoreCase(name)
+                || "Pitch".equalsIgnoreCase(name)
+                || "YawOffset".equalsIgnoreCase(name)
+                || "PitchOffset".equalsIgnoreCase(name)
+                || "Distance".equalsIgnoreCase(name)) {
+                return exactMode;
+            }
+        }
         if (inventorySlotEditorActive && index == inventoryModeParamIndex) {
             return false;
         }
@@ -694,6 +790,23 @@ public class NodeParameterOverlay {
         int contentTop = getScrollAreaTop();
         int contentBottom = getScrollAreaBottom();
         int labelY = contentTop - scrollOffset;
+
+        if (isCombinedDirectionNode()) {
+            int fieldX = popupX + 20;
+            int fieldY = labelY;
+            int fieldWidth = popupWidth - 40;
+            if (adjustedMouseX >= fieldX && adjustedMouseX <= fieldX + fieldWidth
+                && adjustedMouseY >= Math.max(fieldY, contentTop)
+                && adjustedMouseY <= Math.min(fieldY + DIRECTION_MODE_TAB_HEIGHT, contentBottom)) {
+                boolean exactMode = adjustedMouseX < fieldX + fieldWidth / 2;
+                node.setDirectionModeExact(exactMode);
+                updatePopupDimensions();
+                recreateButtons();
+                focusedFieldIndex = -1;
+                return true;
+            }
+            labelY += DIRECTION_MODE_TAB_HEIGHT + SECTION_SPACING;
+        }
 
         boolean shiftClick = InputCompatibilityBridge.hasShiftDown();
         for (int i = 0; i < node.getParameters().size(); i++) {
@@ -1047,6 +1160,10 @@ public class NodeParameterOverlay {
 
         int contentHeight = CONTENT_START_OFFSET;
 
+        if (isCombinedDirectionNode()) {
+            contentHeight += DIRECTION_MODE_TAB_HEIGHT + SECTION_SPACING;
+        }
+
         int paramCount = node.getParameters().size();
         int visibleProcessed = 0;
         int visibleTotal = 0;
@@ -1148,7 +1265,7 @@ public class NodeParameterOverlay {
         }
         for (int attempts = 0; attempts < total; attempts++) {
             startIndex = (startIndex + (backwards ? -1 : 1) + total) % total;
-            if (!usesButtonSelectorForIndex(startIndex)) {
+            if (shouldDisplayParameter(startIndex) && !usesButtonSelectorForIndex(startIndex)) {
                 focusField(startIndex);
                 return;
             }

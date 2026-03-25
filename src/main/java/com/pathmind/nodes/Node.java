@@ -140,6 +140,8 @@ public class Node {
     private static final int PARAM_PADDING_TOP = 2;
     private static final int PARAM_PADDING_BOTTOM = 4;
     private static final int MAX_PARAMETER_LABEL_LENGTH = 20;
+    private static final String DIRECTION_MODE_EXACT = "exact";
+    private static final String DIRECTION_MODE_CARDINAL = "cardinal";
     private static final String RECIPE_CACHE_FILE_NAME = "recipe_cache.json";
     private static final int RECIPE_CACHE_VERSION = 1;
     private static final Gson RECIPE_CACHE_GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -2867,7 +2869,13 @@ public class Node {
                 parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
                 break;
             case PARAM_DIRECTION:
+                parameters.add(new NodeParameter("Mode", ParameterType.STRING, DIRECTION_MODE_EXACT));
                 parameters.add(new NodeParameter("Direction", ParameterType.STRING, ""));
+                parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("Pitch", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("YawOffset", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("PitchOffset", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
                 break;
             case PARAM_ROTATION:
                 parameters.add(new NodeParameter("Yaw", ParameterType.DOUBLE, "0.0"));
@@ -3025,6 +3033,68 @@ public class Node {
         return value;
     }
 
+    public boolean isDirectionModeExact() {
+        if (type != NodeType.PARAM_DIRECTION) {
+            return false;
+        }
+        ensureCombinedDirectionParameters();
+        NodeParameter modeParameter = getParameter("Mode");
+        String rawMode = modeParameter != null ? modeParameter.getStringValue() : null;
+        if (rawMode != null && !rawMode.trim().isEmpty()) {
+            return !DIRECTION_MODE_CARDINAL.equalsIgnoreCase(rawMode.trim());
+        }
+        NodeParameter directionParameter = getParameter("Direction");
+        String directionValue = directionParameter != null ? directionParameter.getStringValue() : null;
+        if (directionValue != null && !directionValue.trim().isEmpty()) {
+            return false;
+        }
+        return true;
+    }
+
+    public boolean isDirectionModeCardinal() {
+        return type == NodeType.PARAM_DIRECTION && !isDirectionModeExact();
+    }
+
+    public void setDirectionModeExact(boolean exact) {
+        if (type != NodeType.PARAM_DIRECTION) {
+            return;
+        }
+        ensureCombinedDirectionParameters();
+        String modeValue = exact ? DIRECTION_MODE_EXACT : DIRECTION_MODE_CARDINAL;
+        setParameterValueAndPropagate("Mode", modeValue);
+        NodeParameter modeParameter = getParameter("Mode");
+        if (modeParameter != null) {
+            modeParameter.setUserEdited(true);
+        }
+    }
+
+    private void ensureCombinedDirectionParameters() {
+        if (type != NodeType.PARAM_DIRECTION) {
+            return;
+        }
+        NodeParameter directionParameter = getParameter("Direction");
+        String directionValue = directionParameter != null ? directionParameter.getStringValue() : null;
+        String inferredMode = directionValue != null && !directionValue.trim().isEmpty()
+            ? DIRECTION_MODE_CARDINAL
+            : DIRECTION_MODE_EXACT;
+        ensureDirectionParameter("Mode", ParameterType.STRING, inferredMode, 0);
+        ensureDirectionParameter("Direction", ParameterType.STRING, "", 1);
+        ensureDirectionParameter("Yaw", ParameterType.DOUBLE, "0.0", 2);
+        ensureDirectionParameter("Pitch", ParameterType.DOUBLE, "0.0", 3);
+        ensureDirectionParameter("YawOffset", ParameterType.DOUBLE, "0.0", 4);
+        ensureDirectionParameter("PitchOffset", ParameterType.DOUBLE, "0.0", 5);
+        ensureDirectionParameter("Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE), 6);
+    }
+
+    private void ensureDirectionParameter(String name, ParameterType parameterType, String defaultValue, int targetIndex) {
+        if (getParameter(name) != null) {
+            return;
+        }
+        NodeParameter parameter = new NodeParameter(name, parameterType, defaultValue);
+        int insertIndex = Math.max(0, Math.min(targetIndex, parameters.size()));
+        parameters.add(insertIndex, parameter);
+    }
+
     private String formatVillagerTradeDisplayValue(String value) {
         if (value == null || value.isEmpty()) {
             return "";
@@ -3109,6 +3179,24 @@ public class Node {
         if (parameter == null) {
             return "";
         }
+        if (type == NodeType.PARAM_DIRECTION) {
+            String parameterName = parameter.getName();
+            boolean exactMode = isDirectionModeExact();
+            if ("Mode".equalsIgnoreCase(parameterName)) {
+                return "";
+            }
+            if ("Direction".equalsIgnoreCase(parameterName) && exactMode) {
+                return "";
+            }
+            if (("Yaw".equalsIgnoreCase(parameterName)
+                || "Pitch".equalsIgnoreCase(parameterName)
+                || "YawOffset".equalsIgnoreCase(parameterName)
+                || "PitchOffset".equalsIgnoreCase(parameterName)
+                || "Distance".equalsIgnoreCase(parameterName))
+                && !exactMode) {
+                return "";
+            }
+        }
         if (isRandomRoundingParameter(parameter)) {
             return "";
         }
@@ -3142,6 +3230,19 @@ public class Node {
     private int getVisibleParameterLineCount() {
         if (type == NodeType.PARAM_BOOLEAN) {
             return 0;
+        }
+        if (type == NodeType.PARAM_DIRECTION) {
+            int count = 1;
+            for (NodeParameter param : parameters) {
+                if (param == null) {
+                    continue;
+                }
+                String label = getParameterLabel(param);
+                if (label != null && !label.isEmpty()) {
+                    count++;
+                }
+            }
+            return count;
         }
         int count = 0;
         for (NodeParameter param : parameters) {
@@ -3560,8 +3661,11 @@ public class Node {
                 break;
             }
             case PARAM_DIRECTION: {
+                String modeValue = isDirectionModeExact() ? DIRECTION_MODE_EXACT : DIRECTION_MODE_CARDINAL;
+                values.put("Mode", modeValue);
+                values.put(normalizeParameterKey("Mode"), modeValue);
                 String direction = values.get("Direction");
-                if (direction != null && !direction.trim().isEmpty()) {
+                if (DIRECTION_MODE_CARDINAL.equals(modeValue) && direction != null && !direction.trim().isEmpty()) {
                     String normalized = direction.trim().toLowerCase(Locale.ROOT);
                     Double yaw = null;
                     Double pitch = null;
@@ -4198,7 +4302,7 @@ public class Node {
         int maxTextLength = Math.max(type.getDisplayName().length(), 1);
         if (isInlineParameterNode() || shouldRenderInlineParameters()) {
             for (NodeParameter param : parameters) {
-                String paramText = getParameterLabel(param);
+                String paramText = getParameterWidthLabel(param);
                 if (paramText == null || paramText.isEmpty()) {
                     continue;
                 }
@@ -4222,11 +4326,12 @@ public class Node {
                 if (param == null) {
                     continue;
                 }
-                if (getParameterLabel(param).isEmpty()) {
+                String widthLabel = getParameterWidthLabel(param);
+                if (widthLabel.isEmpty()) {
                     continue;
                 }
                 String label = getParameterDisplayName(param);
-                String value = getParameterDisplayValue(param);
+                String value = getParameterWidthDisplayValue(param);
                 int labelLength = label != null ? label.length() : 0;
                 int valueLength = value != null ? value.length() : 0;
                 int estimatedWidth = (labelLength + valueLength) * CHAR_PIXEL_WIDTH + PARAMETER_FIELD_PADDING;
@@ -4524,6 +4629,45 @@ public class Node {
             return 0;
         }
         return PARAM_PADDING_TOP + (parameterLineCount * PARAM_LINE_HEIGHT) + PARAM_PADDING_BOTTOM;
+    }
+
+    private String getParameterWidthLabel(NodeParameter parameter) {
+        if (parameter == null) {
+            return "";
+        }
+        if (type != NodeType.PARAM_DIRECTION) {
+            return getParameterLabel(parameter);
+        }
+        String parameterName = parameter.getName();
+        if ("Mode".equalsIgnoreCase(parameterName) || "Direction".equalsIgnoreCase(parameterName)) {
+            return "";
+        }
+        if ("Yaw".equalsIgnoreCase(parameterName)
+            || "Pitch".equalsIgnoreCase(parameterName)
+            || "YawOffset".equalsIgnoreCase(parameterName)
+            || "PitchOffset".equalsIgnoreCase(parameterName)
+            || "Distance".equalsIgnoreCase(parameterName)) {
+            return getParameterDisplayName(parameter) + ": " + parameter.getDisplayValue();
+        }
+        return getParameterLabel(parameter);
+    }
+
+    private String getParameterWidthDisplayValue(NodeParameter parameter) {
+        if (parameter == null) {
+            return "";
+        }
+        if (type != NodeType.PARAM_DIRECTION) {
+            return getParameterDisplayValue(parameter);
+        }
+        String parameterName = parameter.getName();
+        if ("Yaw".equalsIgnoreCase(parameterName)
+            || "Pitch".equalsIgnoreCase(parameterName)
+            || "YawOffset".equalsIgnoreCase(parameterName)
+            || "PitchOffset".equalsIgnoreCase(parameterName)
+            || "Distance".equalsIgnoreCase(parameterName)) {
+            return getParameterDisplayValue(parameter);
+        }
+        return getParameterDisplayValue(parameter);
     }
 
     public String getModeDisplayLabel() {
@@ -5117,7 +5261,7 @@ public class Node {
                 float yaw = yawParam != null ? yawParam : client.player.getYaw();
                 float pitch = pitchParam != null ? pitchParam : client.player.getPitch();
 
-                if (parameterType == NodeType.PARAM_DIRECTION) {
+                if (parameterType == NodeType.PARAM_DIRECTION && parameterNode.isDirectionModeCardinal()) {
                     String direction = getParameterString(parameterNode, "Direction");
                     if (direction != null) {
                         switch (direction.trim().toLowerCase(Locale.ROOT)) {
@@ -5164,7 +5308,9 @@ public class Node {
                     pitch += pitchOffset;
                 }
                 double distance = Math.max(0.0, parseNodeDouble(parameterNode, "Distance",
-                    parameterType == NodeType.PARAM_DIRECTION ? 1.0 : DEFAULT_DIRECTION_DISTANCE));
+                    parameterType == NodeType.PARAM_DIRECTION
+                        ? (parameterNode.isDirectionModeExact() ? DEFAULT_DIRECTION_DISTANCE : 1.0)
+                        : DEFAULT_DIRECTION_DISTANCE));
                 double yawRad = Math.toRadians(yaw);
                 double pitchRad = Math.toRadians(pitch);
                 double xDir = -Math.sin(yawRad) * Math.cos(pitchRad);
@@ -5345,9 +5491,12 @@ public class Node {
             return false;
         }
 
-        Float yawParam = parseNodeFloat(parameterNode, "Yaw");
-        Float pitchParam = parseNodeFloat(parameterNode, "Pitch");
-        if (yawParam == null && pitchParam == null && providesTrait(parameterNode, NodeValueTrait.ROTATION)) {
+        boolean allowDirectRotation = parameterNode.getType() != NodeType.PARAM_DIRECTION || parameterNode.isDirectionModeExact();
+        Float yawParam = allowDirectRotation ? parseNodeFloat(parameterNode, "Yaw") : null;
+        Float pitchParam = allowDirectRotation ? parseNodeFloat(parameterNode, "Pitch") : null;
+        if (allowDirectRotation
+            && yawParam == null && pitchParam == null
+            && providesTrait(parameterNode, NodeValueTrait.ROTATION)) {
             Map<String, String> exported = parameterNode.exportParameterValues();
             yawParam = parseFloatOrNull(exported.get("Yaw"));
             pitchParam = parseFloatOrNull(exported.get("Pitch"));
@@ -5387,7 +5536,8 @@ public class Node {
             return true;
         }
 
-        if (providesTrait(parameterNode, NodeValueTrait.DIRECTION)) {
+        if (providesTrait(parameterNode, NodeValueTrait.DIRECTION)
+            && (parameterNode.getType() != NodeType.PARAM_DIRECTION || parameterNode.isDirectionModeCardinal())) {
             String direction = getParameterString(parameterNode, "Direction");
             if (direction == null || direction.isEmpty()) {
                 direction = getParameterString(parameterNode, "Side");

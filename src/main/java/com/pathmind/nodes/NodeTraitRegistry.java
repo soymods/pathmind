@@ -73,7 +73,7 @@ public final class NodeTraitRegistry {
         EnumMap<NodeType, EnumSet<NodeValueTrait>> traits = new EnumMap<>(NodeType.class);
         traits.put(NodeType.PARAM_COORDINATE, EnumSet.of(NodeValueTrait.COORDINATE));
         traits.put(NodeType.PARAM_ROTATION, EnumSet.of(NodeValueTrait.ROTATION));
-        traits.put(NodeType.PARAM_DIRECTION, EnumSet.of(NodeValueTrait.DIRECTION));
+        traits.put(NodeType.PARAM_DIRECTION, EnumSet.of(NodeValueTrait.DIRECTION, NodeValueTrait.ROTATION));
         traits.put(NodeType.PARAM_RANGE, EnumSet.of(NodeValueTrait.RANGE));
         traits.put(NodeType.PARAM_DISTANCE, EnumSet.of(NodeValueTrait.DISTANCE));
         traits.put(NodeType.PARAM_DURATION, EnumSet.of(NodeValueTrait.DURATION));

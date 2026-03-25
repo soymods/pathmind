@@ -2617,6 +2617,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (importedPreset.isPresent()) {
                     PresetManager.setActivePreset(importedPreset.get());
                     refreshAvailablePresets();
+                    movePresetTabToEnd(importedPreset.get());
                     nodeGraph.setActivePreset(activePresetName);
                     updateImportExportPathFromPreset();
                     setImportExportStatus(
@@ -4375,6 +4376,16 @@ public class PathmindVisualEditorScreen extends Screen {
         availablePresets = new ArrayList<>(PresetManager.getAvailablePresets());
         activePresetName = PresetManager.getActivePreset();
         syncPresetTabOrderWithAvailable();
+    }
+
+    private void movePresetTabToEnd(String presetName) {
+        if (presetName == null || presetName.isEmpty()) {
+            return;
+        }
+
+        if (presetTabOrder.remove(presetName)) {
+            presetTabOrder.add(presetName);
+        }
     }
 
     private void updateImportExportPathFromPreset() {

@@ -17,10 +17,11 @@ import java.util.List;
  * Hovering over a category shows a submenu with nodes in that category.
  */
 public class ContextMenu {
-
+    private static final String SEARCH_LABEL = "Search Nodes...";
     private static final int MENU_WIDTH = UITheme.CONTEXT_MENU_WIDTH;
     private static final int ITEM_HEIGHT = UITheme.CONTEXT_MENU_ITEM_HEIGHT;
     private static final int PADDING = UITheme.CONTEXT_MENU_PADDING;
+    private static final int SEARCH_ICON_X_OFFSET = 16;
 
     private final PopupAnimationHandler popupAnimation;
     private final List<NodeCategory> categories;
@@ -35,6 +36,7 @@ public class ContextMenu {
     private boolean isOpen;
     private float scale;
 
+    private boolean searchHovered;
     private NodeCategory hoveredCategory;
     private ContextMenuSubmenu activeSubmenu;
 
@@ -43,6 +45,7 @@ public class ContextMenu {
         this.categories = new ArrayList<>();
         this.popupAnimation = new PopupAnimationHandler();
         this.isOpen = false;
+        this.searchHovered = false;
         this.hoveredCategory = null;
         this.activeSubmenu = null;
         this.scale = 1.0f;
@@ -78,6 +81,7 @@ public class ContextMenu {
      */
     public void close() {
         this.isOpen = false;
+        this.searchHovered = false;
         this.hoveredCategory = null;
         this.activeSubmenu = null;
         this.popupAnimation.hide();
@@ -119,7 +123,7 @@ public class ContextMenu {
 
         int transformedMouseX = toMenuSpaceX(mouseX);
         int transformedMouseY = toMenuSpaceY(mouseY);
-        int menuHeight = PADDING * 2 + (categories.size() * ITEM_HEIGHT);
+        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
         if (ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, menuY, MENU_WIDTH, menuHeight)) {
             return true;
         }
@@ -132,6 +136,7 @@ public class ContextMenu {
      */
     public void updateHover(int mouseX, int mouseY) {
         if (!isOpen) {
+            searchHovered = false;
             hoveredCategory = null;
             activeSubmenu = null;
             return;
@@ -139,7 +144,7 @@ public class ContextMenu {
 
         int transformedMouseX = toMenuSpaceX(mouseX);
         int transformedMouseY = toMenuSpaceY(mouseY);
-        int menuHeight = PADDING * 2 + (categories.size() * ITEM_HEIGHT);
+        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
 
         if (activeSubmenu != null) {
             positionActiveSubmenu();
@@ -158,8 +163,9 @@ public class ContextMenu {
             return;
         }
 
-        // Find hovered category
         int itemY = menuY + PADDING;
+        searchHovered = ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT);
+        itemY += ITEM_HEIGHT;
         NodeCategory newHovered = null;
 
         for (NodeCategory category : categories) {
@@ -190,7 +196,7 @@ public class ContextMenu {
     /**
      * Handles a click event. Returns the selected NodeType, or null if nothing was clicked.
      */
-    public NodeType handleClick(int mouseX, int mouseY) {
+    public ContextMenuSelection handleClick(int mouseX, int mouseY) {
         if (!isOpen) {
             return null;
         }
@@ -202,11 +208,11 @@ public class ContextMenu {
         if (activeSubmenu != null) {
             NodeType clicked = activeSubmenu.handleClick(transformedMouseX, transformedMouseY);
             if (clicked != null) {
-                return clicked;
+                return ContextMenuSelection.forNode(clicked);
             }
         }
 
-        int menuHeight = PADDING * 2 + (categories.size() * ITEM_HEIGHT);
+        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
 
         // Check if click is in menu bounds
         if (!ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, menuY, MENU_WIDTH, menuHeight)) {
@@ -215,7 +221,11 @@ public class ContextMenu {
             return null;
         }
 
-        // Categories themselves are not clickable - only nodes in submenus are
+        int searchItemY = menuY + PADDING;
+        if (ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, searchItemY, MENU_WIDTH, ITEM_HEIGHT)) {
+            return ContextMenuSelection.openSearch();
+        }
+
         return null;
     }
 
@@ -241,7 +251,7 @@ public class ContextMenu {
             return;
         }
 
-        int menuHeight = PADDING * 2 + (categories.size() * ITEM_HEIGHT);
+        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
 
         var matrices = context.getMatrices();
         MatrixStackBridge.push(matrices);
@@ -253,8 +263,19 @@ public class ContextMenu {
         // Render menu background
         ContextMenuRenderer.renderMenuBackground(context, menuX, menuY, MENU_WIDTH, menuHeight);
 
-        // Render category items
         int itemY = menuY + PADDING;
+        ContextMenuRenderer.renderMenuItem(context, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT, searchHovered);
+        int separatorY = itemY + ITEM_HEIGHT - 1;
+        ContextMenuRenderer.renderSeparator(context, menuX + 4, separatorY, MENU_WIDTH - 8);
+        int searchTextX = menuX + 8;
+        int searchTextY = itemY + (ITEM_HEIGHT - textRenderer.fontHeight) / 2;
+        context.drawTextWithShadow(textRenderer, net.minecraft.text.Text.literal(SEARCH_LABEL), searchTextX, searchTextY, UITheme.CONTEXT_MENU_TEXT);
+        int iconColor = searchHovered ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY;
+        int iconX = menuX + MENU_WIDTH - SEARCH_ICON_X_OFFSET;
+        int iconY = itemY + (ITEM_HEIGHT - 8) / 2;
+        ContextMenuRenderer.renderMagnifyingGlass(context, iconX, iconY, iconColor);
+        itemY += ITEM_HEIGHT;
+
         for (NodeCategory category : categories) {
             boolean hovered = (category == hoveredCategory);
             ContextMenuRenderer.renderCategoryItem(

@@ -11,8 +11,10 @@ import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
+import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
@@ -55,6 +57,10 @@ import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.InputCompatibilityBridge;
+import com.pathmind.validation.GraphValidationIssue;
+import com.pathmind.validation.GraphValidationResult;
+import com.pathmind.validation.GraphValidationSeverity;
+import com.pathmind.validation.GraphValidator;
 
 /**
  * Manages the node graph for the Pathmind visual editor.
@@ -271,6 +277,9 @@ public class NodeGraph {
     private static final int PARAMETER_DROPDOWN_ICON_ALLOWANCE = 24;
     private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
+    private boolean validationDirty = true;
+    private GraphValidationResult cachedValidationResult = GraphValidationResult.empty();
+    private int lastValidationIssueCount = 0;
     private static final float ZOOM_SCROLL_STEP = 1.12f;
     private static final float ZOOM_EPSILON = 0.0001f;
     private ZoomLevel zoomLevel = ZoomLevel.FOCUSED;
@@ -510,6 +519,7 @@ public class NodeGraph {
         Node startNode = new Node(NodeType.START, centerX, centerY - 50);
         assignNewStartNodeNumber(startNode);
         nodes.add(startNode);
+        invalidateValidation();
     }
 
     private void assignNewStartNodeNumber(Node node) {
@@ -2125,7 +2135,7 @@ public class NodeGraph {
     /**
      * Handles a click on the context menu. Returns the selected NodeType, or null.
      */
-    public NodeType handleContextMenuClick(int mouseX, int mouseY) {
+    public ContextMenuSelection handleContextMenuClick(int mouseX, int mouseY) {
         if (contextMenu != null && contextMenu.isOpen()) {
             int anchorScreenX = worldToScreenX(contextMenuWorldX);
             int anchorScreenY = worldToScreenY(contextMenuWorldY);
@@ -2257,6 +2267,143 @@ public class NodeGraph {
         cameraY = 0;
         zoomLevel = ZoomLevel.FOCUSED;
         zoomScale = ZoomLevel.FOCUSED.getScale();
+    }
+
+    public boolean focusNodeById(String nodeId, int screenWidth, int screenHeight, int sidebarWidth, int titleBarHeight) {
+        if (nodeId == null || nodeId.isBlank()) {
+            return false;
+        }
+        for (Node node : nodes) {
+            if (node != null && nodeId.equals(node.getId())) {
+                focusNode(node, screenWidth, screenHeight, sidebarWidth, titleBarHeight);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void focusNode(Node node, int screenWidth, int screenHeight, int sidebarWidth, int titleBarHeight) {
+        if (node == null) {
+            return;
+        }
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+        stopMessageEditing(true);
+        stopParameterEditing(true);
+        stopStopTargetEditing(true);
+        stopVariableEditing(true);
+        stopEventNameEditing(true);
+        clearSelection();
+        selectNode(node);
+
+        int workspaceLeft = Math.max(0, sidebarWidth);
+        int workspaceTop = Math.max(0, titleBarHeight);
+        int workspaceWidth = Math.max(1, screenWidth - workspaceLeft);
+        int workspaceHeight = Math.max(1, screenHeight - workspaceTop);
+        float scale = getZoomScale();
+        if (scale <= 0.0f) {
+            scale = 1.0f;
+        }
+
+        int desiredScreenX = workspaceLeft + workspaceWidth / 2 - Math.round(node.getWidth() * scale / 2f);
+        int desiredScreenY = workspaceTop + workspaceHeight / 2 - Math.round(node.getHeight() * scale / 2f);
+        cameraX = node.getX() - Math.round((desiredScreenX - workspaceLeft) / scale);
+        cameraY = node.getY() - Math.round((desiredScreenY - workspaceTop) / scale);
+    }
+
+    public boolean focusBestMatchingNode(String query, int screenWidth, int screenHeight, int sidebarWidth, int titleBarHeight) {
+        Node match = findBestMatchingNode(query);
+        if (match == null) {
+            return false;
+        }
+        focusNode(match, screenWidth, screenHeight, sidebarWidth, titleBarHeight);
+        return true;
+    }
+
+    public String getBestMatchingNodeLabel(String query) {
+        Node match = findBestMatchingNode(query);
+        if (match == null || match.getType() == null) {
+            return null;
+        }
+        return match.getType().getDisplayName();
+    }
+
+    private Node findBestMatchingNode(String query) {
+        if (query == null) {
+            return null;
+        }
+        String normalizedQuery = query.trim().toLowerCase(Locale.ROOT);
+        if (normalizedQuery.isEmpty()) {
+            return null;
+        }
+
+        Node bestNode = null;
+        int bestScore = 0;
+        for (Node node : nodes) {
+            if (node == null || node.getType() == null) {
+                continue;
+            }
+            int score = scoreNodeSearch(node, normalizedQuery);
+            if (score > bestScore) {
+                bestScore = score;
+                bestNode = node;
+            }
+        }
+        return bestNode;
+    }
+
+    private int scoreNodeSearch(Node node, String query) {
+        int bestScore = 0;
+        bestScore = Math.max(bestScore, scoreSearchCandidate(node.getType().getDisplayName(), query));
+        if (node.getMode() != null) {
+            bestScore = Math.max(bestScore, scoreSearchCandidate(node.getMode().getDisplayName(), query) - 20);
+        }
+        if (node.getId() != null) {
+            bestScore = Math.max(bestScore, scoreSearchCandidate(node.getId(), query) - 40);
+        }
+        return bestScore;
+    }
+
+    private int scoreSearchCandidate(String candidate, String query) {
+        if (candidate == null || query == null) {
+            return 0;
+        }
+        String normalizedCandidate = candidate.trim().toLowerCase(Locale.ROOT);
+        if (normalizedCandidate.isEmpty() || query.isEmpty()) {
+            return 0;
+        }
+        if (normalizedCandidate.equals(query)) {
+            return 1000;
+        }
+        if (normalizedCandidate.startsWith(query)) {
+            return 800 - Math.max(0, normalizedCandidate.length() - query.length());
+        }
+        int containsIndex = normalizedCandidate.indexOf(query);
+        if (containsIndex >= 0) {
+            return 650 - containsIndex * 6;
+        }
+
+        int fuzzyScore = fuzzySubsequenceScore(normalizedCandidate, query);
+        return fuzzyScore > 0 ? 300 + fuzzyScore : 0;
+    }
+
+    private int fuzzySubsequenceScore(String candidate, String query) {
+        int score = 0;
+        int streak = 0;
+        int queryIndex = 0;
+        for (int i = 0; i < candidate.length() && queryIndex < query.length(); i++) {
+            if (candidate.charAt(i) == query.charAt(queryIndex)) {
+                score += 8 + streak * 4;
+                streak++;
+                queryIndex++;
+            } else {
+                streak = 0;
+            }
+        }
+        if (queryIndex != query.length()) {
+            return 0;
+        }
+        return Math.max(1, score - Math.max(0, candidate.length() - query.length()));
     }
     
     // Convert screen coordinates to world coordinates
@@ -11684,11 +11831,13 @@ public class NodeGraph {
 
     public void markWorkspaceDirty() {
         workspaceDirty = true;
+        invalidateValidation();
         save();
     }
 
     public void markWorkspaceClean() {
         workspaceDirty = false;
+        invalidateValidation();
     }
 
     public boolean isWorkspaceDirty() {
@@ -11703,6 +11852,41 @@ public class NodeGraph {
             node.setTemplateGraphData(null);
         }
         markWorkspaceDirty();
+    }
+
+    public GraphValidationResult getValidationResult(boolean baritoneAvailable, boolean uiUtilsAvailable) {
+        if (validationDirty) {
+            cachedValidationResult = GraphValidator.validate(nodes, connections, activePreset, baritoneAvailable, uiUtilsAvailable);
+            validationDirty = false;
+            maybeNotifyValidationSummary(cachedValidationResult);
+        }
+        return cachedValidationResult;
+    }
+
+    private void invalidateValidation() {
+        validationDirty = true;
+    }
+
+    private void maybeNotifyValidationSummary(GraphValidationResult result) {
+        int issueCount = result == null ? 0 : result.getIssues().size();
+        if (issueCount <= 0 || issueCount == lastValidationIssueCount) {
+            lastValidationIssueCount = issueCount;
+            return;
+        }
+        for (GraphValidationIssue issue : result.getIssues()) {
+            if (issue != null && issue.getSeverity() == GraphValidationSeverity.ERROR) {
+                NodeErrorNotificationOverlay.getInstance().show(
+                    "Validation: " + result.getErrorCount() + " error"
+                        + (result.getErrorCount() == 1 ? "" : "s")
+                        + (result.getWarningCount() > 0
+                        ? ", " + result.getWarningCount() + " warning" + (result.getWarningCount() == 1 ? "" : "s")
+                        : ""),
+                    UITheme.STATE_ERROR
+                );
+                break;
+            }
+        }
+        lastValidationIssueCount = issueCount;
     }
 
     private void invalidateTemplatePreviewCachesForPreset(String presetName) {
@@ -11778,6 +11962,7 @@ public class NodeGraph {
         hoveredSocketNode = null;
         hoveredSocketIndex = -1;
         hoveredSocket = -1;
+        invalidateValidation();
         hoveredSocketIsInput = false;
         hoveringStartButton = false;
         hoveredStartNode = null;
@@ -11982,6 +12167,7 @@ public class NodeGraph {
         lastClickedNode = null;
         lastClickTime = 0;
         cascadeDeletionPreviewNodes.clear();
+        invalidateValidation();
 
         System.out.println("Loaded " + nodes.size() + " nodes and " + connections.size() + " connections");
         return true;
@@ -12009,6 +12195,7 @@ public class NodeGraph {
             } else {
                 workspaceDirty = false;
             }
+            invalidateValidation();
         }
         return applied;
     }
@@ -12018,6 +12205,7 @@ public class NodeGraph {
         this.activePreset = presetName;
         invalidateTemplatePreviewCachesForPreset(previousPreset);
         invalidateTemplatePreviewCachesForPreset(presetName);
+        invalidateValidation();
     }
 
     public String getActivePreset() {

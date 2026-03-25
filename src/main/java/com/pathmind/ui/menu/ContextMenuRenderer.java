@@ -159,6 +159,17 @@ public final class ContextMenuRenderer {
         context.fill(x, y, x + width, y + 1, UITheme.CONTEXT_MENU_SEPARATOR);
     }
 
+    public static void renderMagnifyingGlass(DrawContext context, int x, int y, int color) {
+        context.drawHorizontalLine(x + 1, x + 3, y, color);
+        context.drawHorizontalLine(x, x + 4, y + 1, color);
+        context.drawVerticalLine(x, y + 2, y + 4, color);
+        context.drawVerticalLine(x + 4, y + 2, y + 4, color);
+        context.drawHorizontalLine(x + 1, x + 3, y + 5, color);
+        context.drawHorizontalLine(x + 5, x + 6, y + 5, color);
+        context.drawHorizontalLine(x + 6, x + 7, y + 6, color);
+        context.drawHorizontalLine(x + 7, x + 8, y + 7, color);
+    }
+
     /**
      * Renders a submenu arrow indicator (►).
      */

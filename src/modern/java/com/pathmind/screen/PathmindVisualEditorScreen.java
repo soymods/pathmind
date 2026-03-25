@@ -15,6 +15,7 @@ import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
+import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
 import com.pathmind.ui.overlay.NodeParameterOverlay;
 import com.pathmind.ui.sidebar.Sidebar;
@@ -22,6 +23,9 @@ import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.validation.GraphValidationIssue;
+import com.pathmind.validation.GraphValidationResult;
+import com.pathmind.validation.GraphValidationSeverity;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
@@ -110,6 +114,18 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PLAY_BUTTON_MARGIN = 6;
     private static final int STOP_BUTTON_SIZE = 18;
     private static final int CONTROL_BUTTON_GAP = 6;
+    private static final int VALIDATION_BUTTON_SIZE = 18;
+    private static final int VALIDATION_BUTTON_WIDE_WIDTH = STOP_BUTTON_SIZE + CONTROL_BUTTON_GAP + PLAY_BUTTON_SIZE;
+    private static final int VALIDATION_BUTTON_WIDE_HEIGHT = 16;
+    private static final int VALIDATION_PANEL_WIDTH = 292;
+    private static final int VALIDATION_PANEL_MAX_VISIBLE_ROWS = 8;
+    private static final int VALIDATION_PANEL_ROW_HEIGHT = 22;
+    private static final int VALIDATION_PANEL_PADDING = 8;
+    private static final int VALIDATION_PANEL_TOP_GAP = 6;
+    private static final int VALIDATION_PANEL_SECTION_GAP = 4;
+    private static final int VALIDATION_PANEL_BOTTOM_PADDING = 2;
+    private static final int VALIDATION_PANEL_HEADER_HEIGHT = 34;
+    private static final int VALIDATION_PANEL_FOOTER_HEIGHT = 18;
     private static final int ZOOM_BUTTON_SIZE = 14;
     private static final int ZOOM_BUTTON_MARGIN = 6;
     private static final int ZOOM_BUTTON_SPACING = 4;
@@ -138,6 +154,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int NODE_DELAY_MAX_MS = 500;
     private static final int TITLE_INTERACTION_PADDING = 4;
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
+    private static final int NODE_SEARCH_FIELD_WIDTH = 180;
+    private static final int NODE_SEARCH_FIELD_HEIGHT = 22;
     private static final String INFO_POPUP_AUTHOR = "soymods";
     private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
     private static final Text TITLE_TEXT = Text.literal("Pathmind");
@@ -160,6 +178,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private int rightClickStartX = -1;
     private int rightClickStartY = -1;
     private long rightClickStartTime = 0;
+    private TextFieldWidget nodeSearchField;
+    private boolean nodeSearchOpen = false;
+    private int nodeSearchFieldX = 0;
+    private int nodeSearchFieldY = 0;
 
     // Workspace dialogs
     private final PopupAnimationHandler clearPopupAnimation = new PopupAnimationHandler();
@@ -208,6 +230,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private final PopupAnimationHandler missingBaritonePopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler missingUiUtilsPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler settingsPopupAnimation = new PopupAnimationHandler();
+    private final AnimatedValue validationPanelAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
+    private boolean validationPanelOpen = false;
     private Settings currentSettings;
     private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
     private boolean languageDropdownOpen = false;
@@ -362,6 +386,18 @@ public class PathmindVisualEditorScreen extends Screen {
             });
             this.addSelectableChild(nodeDelayField);
         }
+        if (nodeSearchField == null) {
+            nodeSearchField = new TextFieldWidget(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.literal("Search nodes"));
+            nodeSearchField.setMaxLength(64);
+            nodeSearchField.setDrawsBackground(false);
+            nodeSearchField.setVisible(false);
+            nodeSearchField.setEditable(false);
+            nodeSearchField.setEditableColor(UITheme.TEXT_PRIMARY);
+            nodeSearchField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            nodeSearchField.setHeight(Math.max(10, NODE_SEARCH_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
+            nodeSearchField.setChangedListener(value -> updateNodeSearchMatch());
+            this.addSelectableChild(nodeSearchField);
+        }
 
         updateImportExportPathFromPreset();
 
@@ -403,6 +439,7 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean titleActive = titleHovered || infoPopupAnimation.isVisible();
         titleUnderlineAnimation.animateTo(titleActive ? 1f : 0f, UITheme.HOVER_ANIM_MS);
         titleUnderlineAnimation.tick();
+        GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
 
         // Update mouse hover for socket highlighting
         nodeGraph.updateMouseHover(mouseX, mouseY);
@@ -457,14 +494,21 @@ public class PathmindVisualEditorScreen extends Screen {
         missingBaritonePopupAnimation.tick();
         missingUiUtilsPopupAnimation.tick();
         settingsPopupAnimation.tick();
+        validationPanelAnimation.animateTo(validationPanelOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
+        validationPanelAnimation.tick();
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
+        if (controlsDisabled && validationPanelOpen) {
+            validationPanelOpen = false;
+        }
         renderZoomControls(context, mouseX, mouseY, controlsDisabled);
 
         if (shouldShowExecutionControls()) {
             renderStopButton(context, mouseX, mouseY, controlsDisabled);
             renderPlayButton(context, mouseX, mouseY, controlsDisabled);
         }
+        renderValidationPanel(context, mouseX, mouseY, validationResult);
+        renderValidationButton(context, mouseX, mouseY, controlsDisabled, validationResult);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
 
         if (controlsDisabled) {
@@ -539,6 +583,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.renderNodeContextMenu(context, this.textRenderer);
         nodeGraph.updateContextMenuHover(mouseX, mouseY);
         nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
+        renderNodeSearchField(context, mouseX, mouseY, delta);
         } finally {
             OverlayProtection.setPathmindRendering(false);
         }
@@ -923,6 +968,14 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (!isPopupObscuringWorkspace() && button == 0) {
+            if (handleValidationPanelClick((int) mouseX, (int) mouseY)) {
+                return true;
+            }
+        } else if (button == 0) {
+            validationPanelOpen = false;
+        }
+
         if (!isPopupObscuringWorkspace() && button == 0 && shouldShowExecutionControls()) {
             if (isPointInPlayButton((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = false;
@@ -947,6 +1000,10 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.zoomIn(getWorkspaceCenterX(), getWorkspaceCenterY());
                 return true;
             }
+            if (isValidationButtonClicked((int) mouseX, (int) mouseY, button)) {
+                validationPanelOpen = !validationPanelOpen;
+                return true;
+            }
             if (isSettingsButtonClicked((int) mouseX, (int) mouseY, button)) {
                 openSettingsPopup();
                 return true;
@@ -965,6 +1022,17 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 0 && handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
+            return true;
+        }
+
+        if (nodeSearchOpen) {
+            if (button == 0 && nodeSearchField != null) {
+                nodeSearchField.mouseClicked(click, inBounds);
+            }
+            if (!isPointInRect((int) mouseX, (int) mouseY, nodeSearchFieldX - 6, nodeSearchFieldY - 18,
+                NODE_SEARCH_FIELD_WIDTH + 12, NODE_SEARCH_FIELD_HEIGHT + 24)) {
+                closeNodeSearch();
+            }
             return true;
         }
 
@@ -1036,10 +1104,13 @@ public class PathmindVisualEditorScreen extends Screen {
         if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
             // Check if context menu is open and handle click
             if (nodeGraph.isContextMenuOpen()) {
-                NodeType clickedNode = nodeGraph.handleContextMenuClick((int)mouseX, (int)mouseY);
-                if (clickedNode != null) {
+                ContextMenuSelection selection = nodeGraph.handleContextMenuClick((int)mouseX, (int)mouseY);
+                if (selection != null && selection.shouldOpenSearch()) {
+                    nodeGraph.closeContextMenu();
+                    openNodeSearch((int) mouseX, (int) mouseY);
+                } else if (selection != null && selection.getNodeType() != null) {
                     // Create node at the stored right-click position
-                    nodeGraph.addNodeFromContextMenu(clickedNode);
+                    nodeGraph.addNodeFromContextMenu(selection.getNodeType());
                     nodeGraph.closeContextMenu();
                 }
                 // Menu handled the click (either selected node or closed)
@@ -1558,6 +1629,16 @@ public class PathmindVisualEditorScreen extends Screen {
         int keyCode = input.key();
         int scanCode = input.scancode();
         int modifiers = input.modifiers();
+        if (nodeSearchOpen) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                closeNodeSearch();
+                return true;
+            }
+            if (nodeSearchField != null && nodeSearchField.keyPressed(input)) {
+                return true;
+            }
+            return true;
+        }
         if (missingBaritonePopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 missingBaritonePopupAnimation.hide();
@@ -1766,6 +1847,12 @@ public class PathmindVisualEditorScreen extends Screen {
     public boolean charTyped(CharInput input) {
         int modifiers = input.modifiers();
         char chr = (char) input.codepoint();
+        if (nodeSearchOpen) {
+            if (nodeSearchField != null && nodeSearchField.charTyped(input)) {
+                return true;
+            }
+            return true;
+        }
         if (settingsPopupAnimation.isVisible()) {
             if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(input)) {
                 return true;
@@ -3767,6 +3854,20 @@ public class PathmindVisualEditorScreen extends Screen {
         return TITLE_BAR_HEIGHT + PLAY_BUTTON_MARGIN;
     }
 
+    private int getValidationButtonX() {
+        if (shouldShowExecutionControls()) {
+            return getPlayButtonX();
+        }
+        return this.width - VALIDATION_BUTTON_SIZE - PLAY_BUTTON_MARGIN;
+    }
+
+    private int getValidationButtonY() {
+        if (shouldShowExecutionControls()) {
+            return getPlayButtonY() + PLAY_BUTTON_SIZE + CONTROL_BUTTON_GAP;
+        }
+        return TITLE_BAR_HEIGHT + PLAY_BUTTON_MARGIN;
+    }
+
     private int getZoomPlusButtonX() {
         return this.width - ZOOM_BUTTON_MARGIN - ZOOM_BUTTON_SIZE;
     }
@@ -3946,6 +4047,87 @@ public class PathmindVisualEditorScreen extends Screen {
             renamePresetField.setVisible(false);
             renamePresetField.setEditable(false);
         }
+    }
+
+    private void openNodeSearch(int anchorX, int anchorY) {
+        int minX = sidebar.getWidth() + 8;
+        int maxX = this.width - NODE_SEARCH_FIELD_WIDTH - 8;
+        nodeSearchFieldX = MathHelper.clamp(anchorX, minX, Math.max(minX, maxX));
+        nodeSearchFieldY = MathHelper.clamp(anchorY, TITLE_BAR_HEIGHT + 8,
+            Math.max(TITLE_BAR_HEIGHT + 8, this.height - NODE_SEARCH_FIELD_HEIGHT - 8));
+        nodeSearchOpen = true;
+        if (nodeSearchField != null) {
+            nodeSearchField.setX(nodeSearchFieldX);
+            nodeSearchField.setY(nodeSearchFieldY);
+            nodeSearchField.setText("");
+            nodeSearchField.setVisible(true);
+            nodeSearchField.setEditable(true);
+            nodeSearchField.setFocused(true);
+            nodeSearchField.setSuggestion(null);
+        }
+    }
+
+    private void closeNodeSearch() {
+        nodeSearchOpen = false;
+        if (nodeSearchField != null) {
+            nodeSearchField.setFocused(false);
+            nodeSearchField.setVisible(false);
+            nodeSearchField.setEditable(false);
+            nodeSearchField.setSuggestion(null);
+        }
+    }
+
+    private void updateNodeSearchMatch() {
+        if (!nodeSearchOpen || nodeSearchField == null) {
+            return;
+        }
+        String query = nodeSearchField.getText();
+        if (query == null || query.isBlank()) {
+            nodeSearchField.setSuggestion(null);
+            return;
+        }
+        String bestLabel = nodeGraph.getBestMatchingNodeLabel(query);
+        if (bestLabel != null && bestLabel.regionMatches(true, 0, query, 0, query.length()) && bestLabel.length() > query.length()) {
+            nodeSearchField.setSuggestion(bestLabel.substring(query.length()));
+        } else {
+            nodeSearchField.setSuggestion(null);
+        }
+        nodeGraph.focusBestMatchingNode(query, this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+    }
+
+    private void renderNodeSearchField(DrawContext context, int mouseX, int mouseY, float delta) {
+        if (!nodeSearchOpen || nodeSearchField == null) {
+            return;
+        }
+
+        int panelX = nodeSearchFieldX - 4;
+        int panelY = nodeSearchFieldY - 4;
+        int panelWidth = NODE_SEARCH_FIELD_WIDTH + 8;
+        int panelHeight = NODE_SEARCH_FIELD_HEIGHT + 8;
+        UIStyleHelper.drawBeveledPanel(context, panelX, panelY, panelWidth, panelHeight,
+            UITheme.BACKGROUND_SECTION, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
+        context.fill(nodeSearchFieldX, nodeSearchFieldY, nodeSearchFieldX + NODE_SEARCH_FIELD_WIDTH,
+            nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT, UITheme.BACKGROUND_SECONDARY);
+        DrawContextBridge.drawBorder(context, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH,
+            NODE_SEARCH_FIELD_HEIGHT, UITheme.BORDER_SUBTLE);
+        int iconX = nodeSearchFieldX + 6;
+        int iconY = nodeSearchFieldY + (NODE_SEARCH_FIELD_HEIGHT - 9) / 2;
+        drawNodeSearchIcon(context, iconX, iconY, UITheme.TEXT_PRIMARY);
+        nodeSearchField.setPosition(nodeSearchFieldX + 20, nodeSearchFieldY + 6);
+        nodeSearchField.setWidth(NODE_SEARCH_FIELD_WIDTH - 26);
+        nodeSearchField.setHeight(NODE_SEARCH_FIELD_HEIGHT);
+        nodeSearchField.render(context, mouseX, mouseY, delta);
+    }
+
+    private void drawNodeSearchIcon(DrawContext context, int x, int y, int color) {
+        context.drawHorizontalLine(x + 1, x + 3, y, color);
+        context.drawHorizontalLine(x, x + 4, y + 1, color);
+        context.drawVerticalLine(x, y + 2, y + 4, color);
+        context.drawVerticalLine(x + 4, y + 2, y + 4, color);
+        context.drawHorizontalLine(x + 1, x + 3, y + 5, color);
+        context.drawHorizontalLine(x + 5, x + 6, y + 5, color);
+        context.drawHorizontalLine(x + 6, x + 7, y + 6, color);
+        context.drawHorizontalLine(x + 7, x + 8, y + 7, color);
     }
 
     private boolean handleCreatePresetPopupClick(double mouseX, double mouseY, int button) {
@@ -4655,6 +4837,211 @@ public class PathmindVisualEditorScreen extends Screen {
         TooltipRenderer.render(context, this.textRenderer, text, mouseX, mouseY, this.width, this.height);
     }
 
+    private void renderValidationButton(DrawContext context, int mouseX, int mouseY, boolean disabled,
+                                        GraphValidationResult validationResult) {
+        int buttonX = getValidationButtonX();
+        int buttonY = getValidationButtonY();
+        boolean active = validationPanelOpen;
+        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
+        if (!active) {
+            hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, false, disabled, "validation-button");
+        }
+
+        int statusColor = UITheme.TEXT_PRIMARY;
+        if (validationResult != null) {
+            if (validationResult.hasErrors()) {
+                statusColor = UITheme.STATE_ERROR;
+            } else if (validationResult.hasWarnings()) {
+                statusColor = UITheme.ACCENT_AMBER;
+            }
+        }
+        if (disabled) {
+            statusColor = UITheme.DROPDOWN_ACTION_DISABLED;
+        } else if (hovered || active) {
+            statusColor = validationResult != null && validationResult.hasIssues() ? statusColor : getAccentColor();
+        }
+
+        if (!disabled && validationResult != null && validationResult.hasIssues() && !validationPanelOpen) {
+            int severityBorder = validationResult.hasErrors() ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
+            DrawContextBridge.drawBorder(context, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE, severityBorder);
+        }
+
+        if (validationResult != null && validationResult.hasIssues()) {
+            drawValidationAlertIcon(context, buttonX, buttonY, statusColor);
+            drawValidationCountBadge(context, validationResult, buttonX, buttonY, disabled);
+        } else {
+            drawValidationConsoleIcon(context, buttonX, buttonY, statusColor);
+        }
+
+    }
+
+    private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
+        float progress = validationPanelAnimation.getValue();
+        if (progress <= 0.001f || validationResult == null) {
+            return;
+        }
+
+        int[] bounds = getValidationPanelBounds(validationResult, progress);
+        int panelX = bounds[0];
+        int panelY = bounds[1];
+        int panelWidth = bounds[2];
+        int panelHeight = bounds[3];
+        if (panelWidth <= 0 || panelHeight <= 0) {
+            return;
+        }
+
+        int outlineColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
+            : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
+            : UITheme.BORDER_DEFAULT;
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            panelX,
+            panelY,
+            panelWidth,
+            panelHeight,
+            UITheme.BACKGROUND_SECTION,
+            outlineColor,
+            UITheme.PANEL_INNER_BORDER
+        );
+
+        int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
+            : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
+            : UITheme.TEXT_PRIMARY;
+        context.drawTextWithShadow(this.textRenderer, Text.literal("Validation"), panelX + VALIDATION_PANEL_PADDING,
+            panelY + 8, textColor);
+
+        String summary = validationResult.getErrorCount() + " error" + (validationResult.getErrorCount() == 1 ? "" : "s")
+            + "  " + validationResult.getWarningCount() + " warning" + (validationResult.getWarningCount() == 1 ? "" : "s");
+        context.drawTextWithShadow(this.textRenderer, Text.literal(summary), panelX + VALIDATION_PANEL_PADDING,
+            panelY + 19, UITheme.TEXT_SECONDARY);
+
+        List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
+        int contentTop = panelY + VALIDATION_PANEL_HEADER_HEIGHT;
+        for (int index = 0; index < visibleIssues.size(); index++) {
+            GraphValidationIssue issue = visibleIssues.get(index);
+            int rowY = contentTop + index * VALIDATION_PANEL_ROW_HEIGHT;
+            boolean clickable = issue != null && issue.hasNodeTarget();
+            boolean hovered = clickable && isPointInRect(mouseX, mouseY, panelX + 1, rowY, panelWidth - 2, VALIDATION_PANEL_ROW_HEIGHT);
+            int rowBg = hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.BACKGROUND_SECONDARY;
+            context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + VALIDATION_PANEL_ROW_HEIGHT, rowBg);
+            context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
+
+            int severityColor = issue.getSeverity() == GraphValidationSeverity.ERROR ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
+            int dotTop = rowY + 7;
+            context.fill(panelX + 8, dotTop, panelX + 12, dotTop + 4, severityColor);
+
+            String prefix = issue.getSeverity() == GraphValidationSeverity.ERROR ? "Error" : "Warning";
+            String message = TextRenderUtil.trimWithEllipsis(this.textRenderer,
+                prefix + ": " + issue.getMessage(), panelWidth - 34);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(message), panelX + 18, rowY + 7,
+                hovered ? UITheme.TEXT_PRIMARY : UITheme.TEXT_HEADER);
+        }
+
+        int hiddenCount = validationResult.getIssues().size() - visibleIssues.size();
+        if (hiddenCount > 0) {
+            int footerY = panelY + panelHeight - VALIDATION_PANEL_FOOTER_HEIGHT;
+            context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, footerY, UITheme.BORDER_SUBTLE);
+            context.drawTextWithShadow(this.textRenderer,
+                Text.literal(hiddenCount + " more issue" + (hiddenCount == 1 ? "" : "s")),
+                panelX + VALIDATION_PANEL_PADDING,
+                footerY + 5,
+                UITheme.TEXT_SECONDARY
+            );
+        }
+    }
+
+    private boolean handleValidationPanelClick(int mouseX, int mouseY) {
+        if (isValidationButtonClicked(mouseX, mouseY, 0)) {
+            return false;
+        }
+        GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
+        if (!validationPanelOpen) {
+            return false;
+        }
+        int[] bounds = getValidationPanelBounds(validationResult, 1f);
+        if (!isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3])) {
+            validationPanelOpen = false;
+            return false;
+        }
+
+        List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
+        int contentTop = bounds[1] + VALIDATION_PANEL_HEADER_HEIGHT;
+        for (int index = 0; index < visibleIssues.size(); index++) {
+            GraphValidationIssue issue = visibleIssues.get(index);
+            int rowY = contentTop + index * VALIDATION_PANEL_ROW_HEIGHT;
+            if (!isPointInRect(mouseX, mouseY, bounds[0] + 1, rowY, bounds[2] - 2, VALIDATION_PANEL_ROW_HEIGHT)) {
+                continue;
+            }
+            if (issue != null && issue.hasNodeTarget()) {
+                nodeGraph.focusNodeById(issue.getNodeId(), this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+            }
+            return true;
+        }
+        return true;
+    }
+
+    private List<GraphValidationIssue> getVisibleValidationIssues(GraphValidationResult validationResult) {
+        if (validationResult == null || !validationResult.hasIssues()) {
+            return List.of();
+        }
+        int limit = Math.min(VALIDATION_PANEL_MAX_VISIBLE_ROWS, validationResult.getIssues().size());
+        return validationResult.getIssues().subList(0, limit);
+    }
+
+    private int[] getValidationPanelBounds(GraphValidationResult validationResult, float progress) {
+        List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
+        int rowCount = visibleIssues.size();
+        int footerHeight = validationResult != null && validationResult.getIssues().size() > rowCount
+            ? VALIDATION_PANEL_FOOTER_HEIGHT : 0;
+        int fullWidth = VALIDATION_PANEL_WIDTH;
+        int fullHeight = VALIDATION_PANEL_HEADER_HEIGHT
+            + rowCount * VALIDATION_PANEL_ROW_HEIGHT
+            + footerHeight
+            + VALIDATION_PANEL_BOTTOM_PADDING;
+        int width = Math.max(1, Math.round(fullWidth * progress));
+        int height = Math.max(1, Math.round(fullHeight * progress));
+        int x = getValidationButtonX() + VALIDATION_BUTTON_SIZE - width;
+        int y = getValidationButtonY();
+        return new int[]{x, y, width, height};
+    }
+
+    private void drawValidationConsoleIcon(DrawContext context, int buttonX, int buttonY, int color) {
+        int left = buttonX + 4;
+        int top = buttonY + 5;
+        context.drawHorizontalLine(left, left + 9, top, color);
+        context.drawHorizontalLine(left, left + 9, top + 7, color);
+        context.drawVerticalLine(left, top, top + 7, color);
+        context.drawVerticalLine(left + 9, top, top + 7, color);
+        context.drawHorizontalLine(left + 2, left + 4, top + 2, color);
+        context.drawHorizontalLine(left + 2, left + 3, top + 3, color);
+        context.drawHorizontalLine(left + 5, left + 7, top + 4, color);
+    }
+
+    private void drawValidationAlertIcon(DrawContext context, int buttonX, int buttonY, int color) {
+        int centerX = buttonX + VALIDATION_BUTTON_SIZE / 2;
+        int top = buttonY + 4;
+        context.drawVerticalLine(centerX, top, top + 6, color);
+        context.fill(centerX, top + 8, centerX + 1, top + 9, color);
+    }
+
+    private void drawValidationCountBadge(DrawContext context, GraphValidationResult validationResult, int buttonX, int buttonY,
+                                          boolean disabled) {
+        int count = validationResult.getErrorCount() > 0 ? validationResult.getErrorCount() : validationResult.getWarningCount();
+        int badgeColor = validationResult.getErrorCount() > 0 ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
+        if (disabled) {
+            badgeColor = UITheme.DROPDOWN_ACTION_DISABLED;
+        }
+        String text = count > 9 ? "9+" : String.valueOf(count);
+        int textWidth = this.textRenderer.getWidth(text);
+        int badgeSize = Math.max(9, textWidth + 4);
+        int badgeX = buttonX + VALIDATION_BUTTON_SIZE - badgeSize + 1;
+        int badgeY = buttonY - 2;
+        context.fill(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize, badgeColor);
+        DrawContextBridge.drawBorder(context, badgeX, badgeY, badgeSize, badgeSize, UITheme.BORDER_HIGHLIGHT);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1,
+            UITheme.TEXT_PRIMARY);
+    }
+
     private float getHoverProgress(Object key, boolean hovered) {
         return HoverAnimator.getProgress(key, hovered);
     }
@@ -5121,6 +5508,13 @@ public class PathmindVisualEditorScreen extends Screen {
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
+    private boolean isValidationButtonClicked(int mouseX, int mouseY, int button) {
+        if (button != 0) return false;
+        int buttonX = getValidationButtonX();
+        int buttonY = getValidationButtonY();
+        return isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
+    }
+
     private boolean isPointInPlayButton(int mouseX, int mouseY) {
         return isPointInRect(mouseX, mouseY, getPlayButtonX(), getPlayButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
     }
@@ -5339,6 +5733,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void startExecutingAllGraphs() {
+        GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
+        if (validationResult.hasErrors()) {
+            validationPanelOpen = true;
+            return;
+        }
         dismissParameterOverlay();
         isDraggingFromSidebar = false;
         draggingNodeType = null;

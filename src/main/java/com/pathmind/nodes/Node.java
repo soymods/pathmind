@@ -14624,12 +14624,8 @@ public class Node {
                     final BlockHitResult[] acceptedBlockHit = {null};
 
                     if (sneakWhileUsing) {
-                        runOnClientThread(client, () -> {
-                            client.player.setSneaking(true);
-                            if (client.options != null && client.options.sneakKey != null) {
-                                client.options.sneakKey.setPressed(true);
-                            }
-                        });
+                        runOnClientThread(client, () -> applySneakState(client, true));
+                        waitForSneakSync(client, previousSneak, true);
                     }
 
                     runOnClientThread(client, () -> {
@@ -14678,12 +14674,7 @@ public class Node {
 
                     if (sneakWhileUsing && restoreSneak) {
                         boolean sneakState = previousSneak;
-                        runOnClientThread(client, () -> {
-                            client.player.setSneaking(sneakState);
-                            if (client.options != null && client.options.sneakKey != null) {
-                                client.options.sneakKey.setPressed(sneakState);
-                            }
-                        });
+                        runOnClientThread(client, () -> applySneakState(client, sneakState));
                     }
 
                     if (useUntilEmpty) {
@@ -15000,15 +14991,13 @@ public class Node {
                 BlockHitResult placementHitResult = supplyFromClient(client, () ->
                     preparePlacementHitResult(client, placementPos, resolvedBlockId, resolvedHand, reachSquared)
                 );
-                runOnClientThread(client, () -> {
-                    boolean initialSneak = client.player.isSneaking();
-                    if (shouldSneak) {
-                        client.player.setSneaking(true);
-                        if (client.options != null && client.options.sneakKey != null) {
-                            client.options.sneakKey.setPressed(true);
-                        }
-                    }
-                    try {
+                boolean initialSneak = supplyFromClient(client, () -> client.player.isSneaking());
+                if (shouldSneak) {
+                    runOnClientThread(client, () -> applySneakState(client, true));
+                    waitForSneakSync(client, initialSneak, true);
+                }
+                try {
+                    runOnClientThread(client, () -> {
                         if (client.world.getBlockState(placementPos).isOf(resolvedBlock)) {
                             return;
                         }
@@ -15022,15 +15011,12 @@ public class Node {
                                 client.player.networkHandler.sendPacket(new HandSwingC2SPacket(resolvedHand));
                             }
                         }
-                    } finally {
-                        if (shouldSneak && shouldRestoreSneak) {
-                            client.player.setSneaking(initialSneak);
-                            if (client.options != null && client.options.sneakKey != null) {
-                                client.options.sneakKey.setPressed(initialSneak);
-                            }
-                        }
+                    });
+                } finally {
+                    if (shouldSneak && shouldRestoreSneak) {
+                        runOnClientThread(client, () -> applySneakState(client, initialSneak));
                     }
-                });
+                }
                 boolean placed = waitForBlockPlacement(client, placementPos, resolvedBlock);
                 if (!placed) {
                     sendNodeErrorMessage(client, "Attempted to place block \"" + resolvedBlockId + "\" at " + formatBlockPos(placementPos) + " but it did not appear. Make sure the space is clear and within reach.");
@@ -15367,6 +15353,7 @@ public class Node {
         return bestResult;
     }
 
+    private static final long SNEAK_SYNC_DELAY_MS = 75L;
     private static final double[] FACE_OFFSET_SAMPLES = {0.0D, 0.32D, -0.32D, 0.48D, -0.48D};
     private static final Vec3d FACE_AXIS_X = new Vec3d(1.0D, 0.0D, 0.0D);
     private static final Vec3d FACE_AXIS_Y = new Vec3d(0.0D, 1.0D, 0.0D);
@@ -15795,6 +15782,10 @@ public class Node {
     }
 
     private void applyCrouchState(net.minecraft.client.MinecraftClient client, boolean active) {
+        applySneakState(client, active);
+    }
+
+    private void applySneakState(net.minecraft.client.MinecraftClient client, boolean active) {
         if (client == null || client.player == null) {
             return;
         }
@@ -15802,6 +15793,13 @@ public class Node {
         if (client.options != null && client.options.sneakKey != null) {
             client.options.sneakKey.setPressed(active);
         }
+    }
+
+    private void waitForSneakSync(net.minecraft.client.MinecraftClient client, boolean previousState, boolean desiredState) throws InterruptedException {
+        if (client == null || client.isOnThread() || previousState == desiredState) {
+            return;
+        }
+        Thread.sleep(SNEAK_SYNC_DELAY_MS);
     }
 
     private BlockHitResult raycastBlockFromOrientation(net.minecraft.client.MinecraftClient client, float yaw, float pitch, double distance) {

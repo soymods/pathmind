@@ -1,7 +1,6 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindMod;
-import java.util.List;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -14,16 +13,14 @@ import com.pathmind.util.TextCompatibilityBridge;
  * A small icon button used on the title screen to open the Pathmind visual editor.
  */
 public class PathmindMainMenuButton extends ButtonWidget {
-    private static final List<Identifier> ICON_TEXTURES = List.of(
-        PathmindMod.id("pathmind/button_logo"),
-        PathmindMod.id("textures/gui/button_logo.png")
-    );
+    private static final Identifier ICON_TEXTURE = PathmindMod.id("textures/gui/button_logo.png");
     private static final int ICON_PADDING = 2;
-    private static final int BUTTON_FILL = 0xFF1F232C;
-    private static final int BUTTON_HOVER = 0xFF2A2F3A;
+    private static final int BUTTON_FILL = 0xFF343434;
+    private static final int BUTTON_HOVER = 0xFF444444;
     private static final int BUTTON_DISABLED = 0xFF252A33;
     private static final int BORDER_LIGHT = 0xFF3A3F4C;
     private static final int BORDER_DARK = 0xFF000000;
+    private static final int BORDER_HOVER = 0xFFFFFFFF;
     private static final String OPEN_EDITOR_KEY = "gui.pathmind.open_editor";
     private static final String OPEN_EDITOR_FALLBACK = "Open Pathmind Editor";
 
@@ -45,7 +42,7 @@ public class PathmindMainMenuButton extends ButtonWidget {
         if (!this.active) {
             rgb = 0xA0A0A0;
         } else if (this.isHovered()) {
-            rgb = 0xFFFFA0;
+            rgb = 0xFFFFFF;
         } else {
             rgb = 0xFFFFFF;
         }
@@ -56,14 +53,15 @@ public class PathmindMainMenuButton extends ButtonWidget {
         }
         int color = (alphaComponent << 24) | rgb;
 
-        GuiTextureRenderer.drawIcon(context, ICON_TEXTURES, iconX, iconY, iconSize, color);
+        GuiTextureRenderer.drawIcon(context, ICON_TEXTURE, iconX, iconY, iconSize, color);
     }
 
     private void drawButtonBackground(DrawContext context) {
         int baseFill = !this.active ? BUTTON_DISABLED : (this.isHovered() ? BUTTON_HOVER : BUTTON_FILL);
         int fill = applyAlpha(baseFill, this.alpha);
-        int topBorder = applyAlpha(BORDER_LIGHT, this.alpha);
-        int bottomBorder = applyAlpha(BORDER_DARK, this.alpha);
+        boolean hovered = this.active && this.isHovered();
+        int topBorder = applyAlpha(hovered ? BORDER_HOVER : BORDER_LIGHT, this.alpha);
+        int bottomBorder = applyAlpha(hovered ? BORDER_HOVER : BORDER_DARK, this.alpha);
 
         int x = this.getX();
         int y = this.getY();

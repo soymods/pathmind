@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Locale;
 import java.util.EnumSet;
@@ -242,6 +243,10 @@ public class Node {
     private static final int VARIABLE_FIELD_TEXT_PADDING = 3;
     private static final int VARIABLE_FIELD_BOTTOM_MARGIN = 6;
     private static final int VARIABLE_FIELD_MIN_WIDTH = 80;
+    private static final int MODE_FIELD_TOP_MARGIN = 6;
+    private static final int MODE_FIELD_LABEL_HEIGHT = 0;
+    private static final int MODE_FIELD_HEIGHT = 16;
+    private static final int MODE_FIELD_BOTTOM_MARGIN = 6;
     private static final int BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL = 6;
     private static final int BOOK_TEXT_TOP_MARGIN = 6;
     private static final int BOOK_TEXT_BUTTON_HEIGHT = 16;
@@ -508,6 +513,17 @@ public class Node {
     
     public NodeMode getMode() {
         return mode;
+    }
+
+    public EnumSet<NodeValueTrait> getProvidedTraits() {
+        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(type);
+        if (type == NodeType.SENSOR_POSITION_OF) {
+            if (isSensorPositionSingleAxisMode()) {
+                return EnumSet.of(NodeValueTrait.NUMBER);
+            }
+            return EnumSet.of(NodeValueTrait.COORDINATE);
+        }
+        return traits;
     }
     
     public void setMode(NodeMode mode) {
@@ -1122,6 +1138,9 @@ public class Node {
         if (hasVariableInputField()) {
             top += getVariableFieldDisplayHeight();
         }
+        if (showsModeFieldAboveParameterSlot()) {
+            top += getModeFieldDisplayHeight();
+        }
         if (isComparisonOperator()) {
             if (usesMinimalNodePresentation()) {
                 int slotHeight = getParameterSlotHeight(slotIndex);
@@ -1201,6 +1220,90 @@ public class Node {
             return 0;
         }
         return COORDINATE_FIELD_TOP_MARGIN + COORDINATE_FIELD_LABEL_HEIGHT + COORDINATE_FIELD_HEIGHT + COORDINATE_FIELD_BOTTOM_MARGIN;
+    }
+
+    public boolean showsModeFieldAboveParameterSlot() {
+        return type == NodeType.SENSOR_POSITION_OF
+            && supportsModeSelection()
+            && hasParameterSlot()
+            && !isInlineParameterNode()
+            && !shouldRenderInlineParameters()
+            && type != NodeType.WAIT
+            && type != NodeType.PARAM_DURATION;
+    }
+
+    public int getModeFieldDisplayHeight() {
+        if (!showsModeFieldAboveParameterSlot()) {
+            return 0;
+        }
+        return MODE_FIELD_TOP_MARGIN + MODE_FIELD_LABEL_HEIGHT + MODE_FIELD_HEIGHT + MODE_FIELD_BOTTOM_MARGIN;
+    }
+
+    public int getModeFieldTop() {
+        int top = y + HEADER_HEIGHT;
+        if (hasSchematicDropdownField()) {
+            top += getSchematicFieldDisplayHeight();
+        }
+        if (hasVariableInputField()) {
+            top += getVariableFieldDisplayHeight();
+        }
+        return top + MODE_FIELD_TOP_MARGIN + MODE_FIELD_LABEL_HEIGHT;
+    }
+
+    public int getModeFieldLeft() {
+        return getParameterSlotLeft();
+    }
+
+    public int getModeFieldWidth() {
+        return getParameterSlotWidth();
+    }
+
+    public int getModeFieldHeight() {
+        return MODE_FIELD_HEIGHT;
+    }
+
+    public String getModeFieldLabelText() {
+        if (type == NodeType.SENSOR_POSITION_OF) {
+            return "Axis:";
+        }
+        return "Mode:";
+    }
+
+    public boolean isSensorPositionSingleAxisMode() {
+        if (type != NodeType.SENSOR_POSITION_OF) {
+            return false;
+        }
+        return mode == NodeMode.SENSOR_POSITION_X
+            || mode == NodeMode.SENSOR_POSITION_Y
+            || mode == NodeMode.SENSOR_POSITION_Z;
+    }
+
+    public String getSensorPositionComponentKey() {
+        if (type != NodeType.SENSOR_POSITION_OF) {
+            return "";
+        }
+        if (mode == NodeMode.SENSOR_POSITION_X) {
+            return "X";
+        }
+        if (mode == NodeMode.SENSOR_POSITION_Y) {
+            return "Y";
+        }
+        if (mode == NodeMode.SENSOR_POSITION_Z) {
+            return "Z";
+        }
+        return "";
+    }
+
+    public NodeType getResolvedValueType() {
+        return switch (type) {
+            case SENSOR_POSITION_OF -> isSensorPositionSingleAxisMode() ? NodeType.PARAM_AMOUNT : NodeType.PARAM_COORDINATE;
+            case SENSOR_DISTANCE_BETWEEN -> NodeType.PARAM_DISTANCE;
+            case SENSOR_TARGETED_BLOCK_FACE -> NodeType.PARAM_BLOCK_FACE;
+            case SENSOR_TARGETED_BLOCK -> NodeType.PARAM_BLOCK;
+            case SENSOR_LOOK_DIRECTION -> NodeType.PARAM_DIRECTION;
+            case SENSOR_SLOT_ITEM_COUNT -> NodeType.PARAM_AMOUNT;
+            default -> type;
+        };
     }
 
     public int getCoordinateFieldLabelTop() {
@@ -3426,15 +3529,35 @@ public class Node {
                 int x = MathHelper.floor(position.x);
                 int y = MathHelper.floor(position.y);
                 int z = MathHelper.floor(position.z);
-                String xValue = Integer.toString(x);
-                String yValue = Integer.toString(y);
-                String zValue = Integer.toString(z);
-                values.put("X", xValue);
-                values.put(normalizeParameterKey("X"), xValue);
-                values.put("Y", yValue);
-                values.put(normalizeParameterKey("Y"), yValue);
-                values.put("Z", zValue);
-                values.put(normalizeParameterKey("Z"), zValue);
+                if (isSensorPositionSingleAxisMode()) {
+                    String componentKey = getSensorPositionComponentKey();
+                    String componentValue = switch (componentKey) {
+                        case "X" -> Integer.toString(x);
+                        case "Y" -> Integer.toString(y);
+                        case "Z" -> Integer.toString(z);
+                        default -> "";
+                    };
+                    if (!componentValue.isEmpty()) {
+                        values.put("Amount", componentValue);
+                        values.put(normalizeParameterKey("Amount"), componentValue);
+                        values.put("Count", componentValue);
+                        values.put(normalizeParameterKey("Count"), componentValue);
+                        values.put("Threshold", componentValue);
+                        values.put(normalizeParameterKey("Threshold"), componentValue);
+                        values.put("Value", componentValue);
+                        values.put(normalizeParameterKey("Value"), componentValue);
+                    }
+                } else {
+                    String xValue = Integer.toString(x);
+                    String yValue = Integer.toString(y);
+                    String zValue = Integer.toString(z);
+                    values.put("X", xValue);
+                    values.put(normalizeParameterKey("X"), xValue);
+                    values.put("Y", yValue);
+                    values.put(normalizeParameterKey("Y"), yValue);
+                    values.put("Z", zValue);
+                    values.put(normalizeParameterKey("Z"), zValue);
+                }
                 break;
             }
             case SENSOR_DISTANCE_BETWEEN: {
@@ -4593,6 +4716,9 @@ public class Node {
                 }
                 if (hasVariableInputField()) {
                     contentHeight += getVariableFieldDisplayHeight();
+                }
+                if (showsModeFieldAboveParameterSlot()) {
+                    contentHeight += getModeFieldDisplayHeight();
                 }
                 int slotCount = getParameterSlotCount();
                 for (int i = 0; i < slotCount; i++) {
@@ -6061,29 +6187,16 @@ public class Node {
         if (value == null || value.isEmpty()) {
             return defaultValue;
         }
+        Double evaluated = evaluateNumericExpression(value);
+        if (evaluated != null) {
+            return (int) Math.round(evaluated);
+        }
         try {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException e) {
-            try {
-                // Allow numeric variables that resolve to decimal strings (e.g. "1.0").
-                return (int) Math.round(Double.parseDouble(value.trim()));
-            } catch (NumberFormatException ignored) {
-                // Fall through to existing user-facing error handling.
-            }
             net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
             if (client != null) {
-                String raw = getParameterStringRaw(node, name);
-                if (raw != null) {
-                    String trimmed = raw.trim();
-                    if (trimmed.startsWith("~")) {
-                        String varName = trimmed.substring(1).trim();
-                        if (!varName.isEmpty() && isRawInlineVariableName(varName)) {
-                            node.sendNodeErrorMessage(client, "Variable \"" + varName + "\" is not a numeric value.");
-                            return defaultValue;
-                        }
-                    }
-                }
-                node.sendNodeErrorMessage(client, "Please enter a number or a variable (~variable_name).");
+                node.sendNodeErrorMessage(client, "Please enter a number, arithmetic expression, or variable (~variable_name).");
             }
             return defaultValue;
         }
@@ -6127,23 +6240,16 @@ public class Node {
         if (value == null || value.isEmpty()) {
             return defaultValue;
         }
+        Double evaluated = evaluateNumericExpression(value);
+        if (evaluated != null) {
+            return evaluated;
+        }
         try {
             return Double.parseDouble(value.trim());
         } catch (NumberFormatException e) {
             net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
             if (client != null) {
-                String raw = getParameterStringRaw(node, name);
-                if (raw != null) {
-                    String trimmed = raw.trim();
-                    if (trimmed.startsWith("~")) {
-                        String varName = trimmed.substring(1).trim();
-                        if (!varName.isEmpty() && isRawInlineVariableName(varName)) {
-                            node.sendNodeErrorMessage(client, "Variable \"" + varName + "\" is not a numeric value.");
-                            return defaultValue;
-                        }
-                    }
-                }
-                node.sendNodeErrorMessage(client, "Please enter a number or a variable (~variable_name).");
+                node.sendNodeErrorMessage(client, "Please enter a number, arithmetic expression, or variable (~variable_name).");
             }
             return defaultValue;
         }
@@ -6974,15 +7080,8 @@ public class Node {
                 future.complete(null);
                 return;
             }
-            Vec3d position = resolved.get();
-            int x = MathHelper.floor(position.x);
-            int y = MathHelper.floor(position.y);
-            int z = MathHelper.floor(position.z);
-            values = new HashMap<>();
-            values.put("X", Integer.toString(x));
-            values.put("Y", Integer.toString(y));
-            values.put("Z", Integer.toString(z));
-            valueType = NodeType.PARAM_COORDINATE;
+            values = valueNode.exportParameterValues();
+            valueType = valueNode.getResolvedValueType();
         } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
             Node parameterNodeA = valueNode.getAttachedParameter(0);
             Node parameterNodeB = valueNode.getAttachedParameter(1);
@@ -7033,16 +7132,9 @@ public class Node {
             valueType = NodeType.PARAM_DISTANCE;
         } else {
             values = valueNode.exportParameterValues();
-            if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
-                valueType = NodeType.PARAM_BLOCK_FACE;
-            } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
-                valueType = NodeType.PARAM_DISTANCE;
-            } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
-                valueType = NodeType.PARAM_BLOCK;
-            } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
-                valueType = NodeType.PARAM_DIRECTION;
-            } else if (valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
-                valueType = NodeType.PARAM_AMOUNT;
+            NodeType resolvedValueType = valueNode.getResolvedValueType();
+            if (resolvedValueType != valueNode.getType()) {
+                valueType = resolvedValueType;
             }
         }
         ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
@@ -11736,7 +11828,20 @@ public class Node {
         if (parameterNode == null) {
             return false;
         }
-        return parameterProvidesCoordinates(parameterNode.getType());
+        EnumSet<NodeValueTrait> traits = parameterNode.getProvidedTraits();
+        if (traits.isEmpty()) {
+            return false;
+        }
+        return traits.contains(NodeValueTrait.COORDINATE)
+            || traits.contains(NodeValueTrait.DIRECTION)
+            || traits.contains(NodeValueTrait.ROTATION)
+            || traits.contains(NodeValueTrait.BLOCK)
+            || traits.contains(NodeValueTrait.ITEM)
+            || traits.contains(NodeValueTrait.ENTITY)
+            || traits.contains(NodeValueTrait.PLAYER)
+            || traits.contains(NodeValueTrait.WAYPOINT)
+            || traits.contains(NodeValueTrait.SCHEMATIC)
+            || traits.contains(NodeValueTrait.LIST_ITEM);
     }
 
     private boolean parameterProvidesCoordinates(NodeType parameterType) {
@@ -12326,24 +12431,16 @@ public class Node {
         while (index < raw.length()) {
             char current = raw.charAt(index);
             if (current == '~') {
-                int nameStart = index + 1;
-                if (nameStart < raw.length() && isInlineVariableChar(raw.charAt(nameStart))) {
-                    int end = nameStart + 1;
-                    while (end < raw.length() && isInlineVariableChar(raw.charAt(end))) {
-                        end++;
+                RuntimeVariableInlineMatch match = findInlineRuntimeVariableReference(raw, index, manager, startNode);
+                if (match != null) {
+                    String replacement = formatRuntimeVariableValue(match.variable);
+                    if (replacement != null && !replacement.isEmpty()) {
+                        output.append(replacement);
+                        index = match.endIndex;
+                        continue;
                     }
-                    String name = raw.substring(nameStart, end);
-                    ExecutionManager.RuntimeVariable variable = resolveRuntimeVariableForName(manager, startNode, name);
-                    if (variable != null) {
-                        String replacement = formatRuntimeVariableValue(variable);
-                        if (replacement != null && !replacement.isEmpty()) {
-                            output.append(replacement);
-                            index = end;
-                            continue;
-                        }
-                    }
-                    output.append(raw, index, end);
-                    index = end;
+                    output.append(raw, index, match.endIndex);
+                    index = match.endIndex;
                     continue;
                 }
             }
@@ -12351,6 +12448,70 @@ public class Node {
             index++;
         }
         return output.toString();
+    }
+
+    private RuntimeVariableInlineMatch findInlineRuntimeVariableReference(String raw, int tildeIndex,
+                                                                          ExecutionManager manager, Node startNode) {
+        if (raw == null || manager == null || tildeIndex < 0 || tildeIndex >= raw.length() || raw.charAt(tildeIndex) != '~') {
+            return null;
+        }
+        int nameStart = tildeIndex + 1;
+        if (nameStart >= raw.length()) {
+            return null;
+        }
+        RuntimeVariableInlineMatch bestMatch = null;
+        Set<String> candidateNames = collectRuntimeVariableNamesForParsing(manager, startNode);
+        for (String candidateName : candidateNames) {
+            if (candidateName == null || candidateName.isEmpty()) {
+                continue;
+            }
+            if (!raw.regionMatches(nameStart, candidateName, 0, candidateName.length())) {
+                continue;
+            }
+            int endIndex = nameStart + candidateName.length();
+            if (endIndex < raw.length()) {
+                char boundary = raw.charAt(endIndex);
+                if (!Character.isWhitespace(boundary) && !isInlineMathOperator(boundary)) {
+                    continue;
+                }
+            }
+            ExecutionManager.RuntimeVariable variable = resolveRuntimeVariableForName(manager, startNode, candidateName);
+            if (variable == null) {
+                continue;
+            }
+            if (bestMatch == null || candidateName.length() > bestMatch.name.length()) {
+                bestMatch = new RuntimeVariableInlineMatch(candidateName, endIndex, variable);
+            }
+        }
+        return bestMatch;
+    }
+
+    private Set<String> collectRuntimeVariableNamesForParsing(ExecutionManager manager, Node startNode) {
+        Set<String> names = new LinkedHashSet<>();
+        if (manager == null) {
+            return names;
+        }
+        if (startNode != null) {
+            for (ExecutionManager.RuntimeVariableEntry entry : manager.getRuntimeVariableEntries()) {
+                if (entry == null || entry.getStartNodeId() == null || !startNode.getId().equals(entry.getStartNodeId())) {
+                    continue;
+                }
+                String name = entry.getName();
+                if (name != null && !name.trim().isEmpty()) {
+                    names.add(name.trim());
+                }
+            }
+        }
+        for (ExecutionManager.RuntimeVariableEntry entry : manager.getRuntimeVariableEntries()) {
+            if (entry == null) {
+                continue;
+            }
+            String name = entry.getName();
+            if (name != null && !name.trim().isEmpty()) {
+                names.add(name.trim());
+            }
+        }
+        return names;
     }
 
     private ExecutionManager.RuntimeVariable resolveRuntimeVariableForName(ExecutionManager manager, Node startNode, String name) {
@@ -12478,6 +12639,16 @@ public class Node {
             case VARIABLE:
                 return getRuntimeValue(values, "variable");
             case SENSOR_POSITION_OF:
+                if (isSensorPositionSingleAxisMode()) {
+                    String amount = getRuntimeValue(values, "amount");
+                    if (!amount.isEmpty()) {
+                        return amount;
+                    }
+                    amount = getRuntimeValue(values, "value");
+                    if (!amount.isEmpty()) {
+                        return amount;
+                    }
+                }
                 return formatCoordinateValues(values);
             case SENSOR_DISTANCE_BETWEEN:
                 return getRuntimeValue(values, "distance");
@@ -14404,7 +14575,7 @@ public class Node {
         }
 
         PlayerInventory inventory = client.player.getInventory();
-        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(parameterNode.getType());
+        EnumSet<NodeValueTrait> traits = parameterNode.getProvidedTraits();
         boolean isListItem = parameterNode.getType() == NodeType.LIST_ITEM;
         boolean treatAsItem = traits.contains(NodeValueTrait.ITEM)
             || (isListItem && runtimeParameterData != null && runtimeParameterData.targetItemId != null);
@@ -16821,6 +16992,10 @@ public class Node {
         return true;
     }
 
+    private static boolean isInlineMathOperator(char c) {
+        return c == '+' || c == '-' || c == '*' || c == '/';
+    }
+
     private String getBlockParameterValue(Node node) {
         if (node == null) {
             return null;
@@ -16911,10 +17086,163 @@ public class Node {
         if (value == null || value.isEmpty()) {
             return defaultValue;
         }
+        Double evaluated = evaluateNumericExpression(value);
+        if (evaluated != null) {
+            return evaluated;
+        }
         try {
             return Double.parseDouble(value);
         } catch (NumberFormatException e) {
             return defaultValue;
+        }
+    }
+
+    private static Double evaluateNumericExpression(String value) {
+        if (value == null) {
+            return null;
+        }
+        NumericExpressionParser parser = new NumericExpressionParser(value);
+        return parser.parse();
+    }
+
+    private static final class NumericExpressionParser {
+        private final String input;
+        private int index;
+
+        private NumericExpressionParser(String input) {
+            this.input = input == null ? "" : input;
+        }
+
+        private Double parse() {
+            skipWhitespace();
+            Double result = parseExpression();
+            if (result == null) {
+                return null;
+            }
+            skipWhitespace();
+            return index == input.length() ? result : null;
+        }
+
+        private Double parseExpression() {
+            Double value = parseTerm();
+            if (value == null) {
+                return null;
+            }
+            while (true) {
+                skipWhitespace();
+                if (consume('+')) {
+                    Double rhs = parseTerm();
+                    if (rhs == null) {
+                        return null;
+                    }
+                    value += rhs;
+                } else if (consume('-')) {
+                    Double rhs = parseTerm();
+                    if (rhs == null) {
+                        return null;
+                    }
+                    value -= rhs;
+                } else {
+                    return value;
+                }
+            }
+        }
+
+        private Double parseTerm() {
+            Double value = parseFactor();
+            if (value == null) {
+                return null;
+            }
+            while (true) {
+                skipWhitespace();
+                if (consume('*')) {
+                    Double rhs = parseFactor();
+                    if (rhs == null) {
+                        return null;
+                    }
+                    value *= rhs;
+                } else if (consume('/')) {
+                    Double rhs = parseFactor();
+                    if (rhs == null || rhs == 0.0D) {
+                        return null;
+                    }
+                    value /= rhs;
+                } else {
+                    return value;
+                }
+            }
+        }
+
+        private Double parseFactor() {
+            skipWhitespace();
+            if (consume('+')) {
+                return parseFactor();
+            }
+            if (consume('-')) {
+                Double value = parseFactor();
+                return value != null ? -value : null;
+            }
+            return parseNumber();
+        }
+
+        private Double parseNumber() {
+            skipWhitespace();
+            int start = index;
+            boolean sawDigit = false;
+            boolean sawDecimal = false;
+            while (index < input.length()) {
+                char current = input.charAt(index);
+                if (Character.isDigit(current)) {
+                    sawDigit = true;
+                    index++;
+                    continue;
+                }
+                if (current == '.') {
+                    if (sawDecimal) {
+                        break;
+                    }
+                    sawDecimal = true;
+                    index++;
+                    continue;
+                }
+                break;
+            }
+            if (!sawDigit) {
+                index = start;
+                return null;
+            }
+            try {
+                return Double.parseDouble(input.substring(start, index));
+            } catch (NumberFormatException e) {
+                index = start;
+                return null;
+            }
+        }
+
+        private void skipWhitespace() {
+            while (index < input.length() && Character.isWhitespace(input.charAt(index))) {
+                index++;
+            }
+        }
+
+        private boolean consume(char expected) {
+            if (index >= input.length() || input.charAt(index) != expected) {
+                return false;
+            }
+            index++;
+            return true;
+        }
+    }
+
+    private static final class RuntimeVariableInlineMatch {
+        private final String name;
+        private final int endIndex;
+        private final ExecutionManager.RuntimeVariable variable;
+
+        private RuntimeVariableInlineMatch(String name, int endIndex, ExecutionManager.RuntimeVariable variable) {
+            this.name = name;
+            this.endIndex = endIndex;
+            this.variable = variable;
         }
     }
 
@@ -17407,7 +17735,7 @@ public class Node {
         if (node == null || trait == null) {
             return false;
         }
-        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(node.getType());
+        EnumSet<NodeValueTrait> traits = node.getProvidedTraits();
         return traits.contains(trait);
     }
 
@@ -18109,18 +18437,13 @@ public class Node {
             return Optional.empty();
         }
         NodeType valueType = valueNode.getType();
-        if (valueType == NodeType.SENSOR_POSITION_OF) {
-            valueType = NodeType.PARAM_COORDINATE;
-        } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
-            valueType = NodeType.PARAM_DISTANCE;
-        } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE) {
-                valueType = NodeType.PARAM_BLOCK_FACE;
-            } else if (valueType == NodeType.SENSOR_TARGETED_BLOCK) {
-                valueType = NodeType.PARAM_BLOCK;
-            } else if (valueType == NodeType.SENSOR_LOOK_DIRECTION) {
-            valueType = NodeType.PARAM_DIRECTION;
-        } else if (valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
-            valueType = NodeType.PARAM_AMOUNT;
+        if (valueType == NodeType.SENSOR_POSITION_OF
+            || valueType == NodeType.SENSOR_DISTANCE_BETWEEN
+            || valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            || valueType == NodeType.SENSOR_TARGETED_BLOCK
+            || valueType == NodeType.SENSOR_LOOK_DIRECTION
+            || valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
+            valueType = valueNode.getResolvedValueType();
         } else if (NodeTraitRegistry.isBooleanSensor(valueType)) {
             valueType = NodeType.PARAM_BOOLEAN;
         }
@@ -18334,6 +18657,20 @@ public class Node {
                 String amountValue = getRuntimeValue(values, "amount");
                 if (amountValue.isEmpty()) {
                     amountValue = getRuntimeValue(values, "count");
+                }
+                if (amountValue.isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(parseDoubleOrNull(amountValue));
+            }
+            case SENSOR_POSITION_OF: {
+                if (!node.isSensorPositionSingleAxisMode()) {
+                    return Optional.empty();
+                }
+                Map<String, String> values = node.exportParameterValues();
+                String amountValue = getRuntimeValue(values, "amount");
+                if (amountValue.isEmpty()) {
+                    amountValue = getRuntimeValue(values, "value");
                 }
                 if (amountValue.isEmpty()) {
                     return Optional.empty();

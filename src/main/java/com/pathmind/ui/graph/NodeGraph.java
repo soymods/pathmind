@@ -3652,6 +3652,9 @@ public class NodeGraph {
                 if (node.hasVariableInputField()) {
                     renderVariableInputField(context, textRenderer, node, isOverSidebar);
                 }
+                if (node.showsModeFieldAboveParameterSlot()) {
+                    renderModeField(context, textRenderer, node, isOverSidebar);
+                }
                 if (node.hasParameterSlot()) {
                     int slotCount = node.getParameterSlotCount();
                     for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
@@ -3727,6 +3730,40 @@ public class NodeGraph {
 
     private int getParameterFieldHeight() {
         return PARAMETER_INPUT_HEIGHT;
+    }
+
+    private void renderModeField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        if (node == null || !node.showsModeFieldAboveParameterSlot()) {
+            return;
+        }
+        int fieldLeft = node.getModeFieldLeft() - cameraX;
+        int fieldTop = node.getModeFieldTop() - cameraY;
+        int fieldWidth = node.getModeFieldWidth();
+        int fieldHeight = node.getModeFieldHeight();
+        int fieldRight = fieldLeft + fieldWidth;
+
+        int fieldBackground = isOverSidebar
+            ? UITheme.BACKGROUND_SECONDARY
+            : UITheme.BACKGROUND_SIDEBAR;
+        int fieldBorder = isOverSidebar
+            ? UITheme.BORDER_SUBTLE
+            : UITheme.BORDER_DEFAULT;
+
+        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+
+        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+        int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        String labelText = node.getModeFieldLabelText();
+        int labelX = fieldLeft + 4;
+        int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
+        drawNodeText(context, textRenderer, Text.literal(labelText), labelX, labelY, labelColor);
+
+        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
+        int valueStartX = labelX + textRenderer.getWidth(labelText) + 6;
+        int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
+        String displayValue = trimTextToWidth(modeValue, textRenderer, maxValueWidth);
+        drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, labelY, valueColor);
     }
 
     private void renderDirectionModeTabs(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
@@ -4960,36 +4997,24 @@ public class NodeGraph {
         List<InlineTextSegment> segments = new ArrayList<>();
         List<Integer> removedPositions = new ArrayList<>();
         StringBuilder displayBuilder = new StringBuilder();
+        int operatorColor = UITheme.DROP_ACCENT_GREEN;
         int cursor = 0;
         while (cursor < rawText.length()) {
             int tildeIndex = rawText.indexOf('~', cursor);
             if (tildeIndex < 0) {
-                String tail = rawText.substring(cursor);
-                if (!tail.isEmpty()) {
-                    segments.add(new InlineTextSegment(tail, baseColor));
-                    displayBuilder.append(tail);
-                }
+                appendStyledPlainSegments(rawText.substring(cursor), baseColor, operatorColor, segments, displayBuilder);
                 break;
             }
             if (tildeIndex > cursor) {
-                String plain = rawText.substring(cursor, tildeIndex);
-                segments.add(new InlineTextSegment(plain, baseColor));
-                displayBuilder.append(plain);
+                appendStyledPlainSegments(rawText.substring(cursor, tildeIndex), baseColor, operatorColor, segments, displayBuilder);
             }
-            int nameStart = tildeIndex + 1;
-            if (nameStart < rawText.length() && isInlineVariableChar(rawText.charAt(nameStart))) {
-                int end = nameStart + 1;
-                while (end < rawText.length() && isInlineVariableChar(rawText.charAt(end))) {
-                    end++;
-                }
-                String name = rawText.substring(nameStart, end);
-                if (variableNames.contains(name)) {
-                    removedPositions.add(tildeIndex);
-                    segments.add(new InlineTextSegment(name, highlightColor));
-                    displayBuilder.append(name);
-                    cursor = end;
-                    continue;
-                }
+            VariableReferenceMatch match = findInlineVariableReference(rawText, tildeIndex, variableNames);
+            if (match != null) {
+                removedPositions.add(tildeIndex);
+                segments.add(new InlineTextSegment(match.name, highlightColor));
+                displayBuilder.append(match.name);
+                cursor = match.endIndex;
+                continue;
             }
             segments.add(new InlineTextSegment("~", baseColor));
             displayBuilder.append("~");
@@ -5006,6 +5031,69 @@ public class NodeGraph {
         return Character.isLetterOrDigit(character) || character == '_' || character == '-';
     }
 
+    private boolean isInlineArithmeticOperator(char character) {
+        return character == '+' || character == '-' || character == '*' || character == '/';
+    }
+
+    private void appendStyledPlainSegments(String text, int baseColor, int operatorColor,
+                                           List<InlineTextSegment> segments, StringBuilder displayBuilder) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        int start = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char current = text.charAt(i);
+            if (!isInlineArithmeticOperator(current)) {
+                continue;
+            }
+            if (i > start) {
+                String plain = text.substring(start, i);
+                segments.add(new InlineTextSegment(plain, baseColor));
+                displayBuilder.append(plain);
+            }
+            String operator = Character.toString(current);
+            segments.add(new InlineTextSegment(operator, operatorColor));
+            displayBuilder.append(operator);
+            start = i + 1;
+        }
+        if (start < text.length()) {
+            String tail = text.substring(start);
+            segments.add(new InlineTextSegment(tail, baseColor));
+            displayBuilder.append(tail);
+        }
+    }
+
+    private VariableReferenceMatch findInlineVariableReference(String rawText, int tildeIndex, Set<String> variableNames) {
+        if (rawText == null || tildeIndex < 0 || tildeIndex >= rawText.length() || rawText.charAt(tildeIndex) != '~'
+            || variableNames == null || variableNames.isEmpty()) {
+            return null;
+        }
+        int nameStart = tildeIndex + 1;
+        if (nameStart >= rawText.length()) {
+            return null;
+        }
+        VariableReferenceMatch bestMatch = null;
+        for (String variableName : variableNames) {
+            if (variableName == null || variableName.isEmpty()) {
+                continue;
+            }
+            if (!rawText.regionMatches(nameStart, variableName, 0, variableName.length())) {
+                continue;
+            }
+            int endIndex = nameStart + variableName.length();
+            if (endIndex < rawText.length()) {
+                char boundary = rawText.charAt(endIndex);
+                if (!Character.isWhitespace(boundary) && !isInlineArithmeticOperator(boundary)) {
+                    continue;
+                }
+            }
+            if (bestMatch == null || variableName.length() > bestMatch.name.length()) {
+                bestMatch = new VariableReferenceMatch(variableName, endIndex);
+            }
+        }
+        return bestMatch;
+    }
+
     private boolean isSingleKnownInlineVariableReference(String rawText, Set<String> variableNames) {
         if (rawText == null || variableNames == null || variableNames.isEmpty()) {
             return false;
@@ -5014,19 +5102,11 @@ public class NodeGraph {
         if (!trimmed.equals(rawText) || !trimmed.startsWith("~")) {
             return false;
         }
-        String name = trimmed.substring(1);
-        if (name.isEmpty() || !variableNames.contains(name)) {
-            return false;
-        }
-        for (int i = 0; i < name.length(); i++) {
-            if (!isInlineVariableChar(name.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
+        VariableReferenceMatch match = findInlineVariableReference(trimmed, 0, variableNames);
+        return match != null && match.endIndex == trimmed.length();
     }
 
-    /** Returns true if value is empty, a valid number, or a single ~variable_name reference (known variable). */
+    /** Returns true if value is empty or a valid arithmetic expression using numbers and/or known ~variable references. */
     private boolean isNumericOrVariableReference(String value, Node node, boolean allowDecimal, boolean requireCoordinateValid) {
         if (value == null) {
             value = "";
@@ -5038,33 +5118,21 @@ public class NodeGraph {
         if (requireCoordinateValid && "-".equals(value)) {
             return true;
         }
-        if (value.startsWith("~")) {
-            String name = value.substring(1).trim();
-            if (name.isEmpty()) {
-                return false;
-            }
-            for (int i = 0; i < name.length(); i++) {
-                if (!isInlineVariableChar(name.charAt(i))) {
-                    return false;
-                }
-            }
-            return collectRuntimeVariableNames(node).contains(name);
+        return isValidNumericExpression(value, collectRuntimeVariableNames(node), allowDecimal, requireCoordinateValid);
+    }
+
+    private boolean isValidNumericExpression(String value, Set<String> variableNames, boolean allowDecimal, boolean requireCoordinateValid) {
+        if (value == null) {
+            return false;
         }
-        if (allowDecimal) {
-            try {
-                Double.parseDouble(value);
-                return !requireCoordinateValid || isValidCoordinateValue(value);
-            } catch (NumberFormatException e) {
-                return false;
-            }
-        } else {
-            try {
-                Integer.parseInt(value);
-                return !requireCoordinateValid || isValidCoordinateValue(value);
-            } catch (NumberFormatException e) {
-                return false;
-            }
+        NumericExpressionValidator validator = new NumericExpressionValidator(value, variableNames, allowDecimal);
+        if (!validator.parse()) {
+            return false;
         }
+        if (requireCoordinateValid && !validator.isCoordinateSafeIntegerExpression()) {
+            return false;
+        }
+        return true;
     }
 
     private Set<String> collectRuntimeVariableNames(Node node) {
@@ -5155,6 +5223,193 @@ public class NodeGraph {
         private InlineTextSegment(String text, int color) {
             this.text = text == null ? "" : text;
             this.color = color;
+        }
+    }
+
+    private static final class VariableReferenceMatch {
+        private final String name;
+        private final int endIndex;
+
+        private VariableReferenceMatch(String name, int endIndex) {
+            this.name = name;
+            this.endIndex = endIndex;
+        }
+    }
+
+    private static final class NumericExpressionValidator {
+        private final String input;
+        private final Set<String> variableNames;
+        private final boolean allowDecimal;
+        private int index;
+        private boolean usesDecimal;
+
+        private NumericExpressionValidator(String input, Set<String> variableNames, boolean allowDecimal) {
+            this.input = input == null ? "" : input;
+            this.variableNames = variableNames == null ? Collections.emptySet() : variableNames;
+            this.allowDecimal = allowDecimal;
+        }
+
+        private boolean parse() {
+            skipWhitespace();
+            if (!parseExpression()) {
+                return false;
+            }
+            skipWhitespace();
+            return index == input.length();
+        }
+
+        private boolean isCoordinateSafeIntegerExpression() {
+            return !usesDecimal;
+        }
+
+        private boolean parseExpression() {
+            if (!parseTerm()) {
+                return false;
+            }
+            while (true) {
+                skipWhitespace();
+                if (!consume('+') && !consume('-')) {
+                    return true;
+                }
+                skipWhitespace();
+                if (!parseTerm()) {
+                    return false;
+                }
+            }
+        }
+
+        private boolean parseTerm() {
+            if (!parseFactor()) {
+                return false;
+            }
+            while (true) {
+                skipWhitespace();
+                if (!consume('*') && !consume('/')) {
+                    return true;
+                }
+                skipWhitespace();
+                if (!parseFactor()) {
+                    return false;
+                }
+            }
+        }
+
+        private boolean parseFactor() {
+            skipWhitespace();
+            if (consume('+')) {
+                skipWhitespace();
+                return parseFactor();
+            }
+            if (peekIsNegativeNumberStart()) {
+                index++;
+                skipWhitespace();
+                return parseNumber(true);
+            }
+            if (peek() == '~') {
+                VariableReferenceMatch match = matchVariableAt(index);
+                if (match == null) {
+                    return false;
+                }
+                index = match.endIndex;
+                return true;
+            }
+            return parseNumber(false);
+        }
+
+        private boolean parseNumber(boolean negative) {
+            int start = index;
+            boolean sawDigit = false;
+            boolean sawDecimal = false;
+            while (index < input.length()) {
+                char current = input.charAt(index);
+                if (Character.isDigit(current)) {
+                    sawDigit = true;
+                    index++;
+                    continue;
+                }
+                if (current == '.') {
+                    if (!allowDecimal || sawDecimal) {
+                        break;
+                    }
+                    sawDecimal = true;
+                    usesDecimal = true;
+                    index++;
+                    continue;
+                }
+                break;
+            }
+            if (!sawDigit) {
+                index = start;
+                return false;
+            }
+            if (negative) {
+                usesDecimal |= sawDecimal;
+            }
+            return true;
+        }
+
+        private VariableReferenceMatch matchVariableAt(int tildeIndex) {
+            if (tildeIndex < 0 || tildeIndex >= input.length() || input.charAt(tildeIndex) != '~') {
+                return null;
+            }
+            int nameStart = tildeIndex + 1;
+            VariableReferenceMatch bestMatch = null;
+            for (String variableName : variableNames) {
+                if (variableName == null || variableName.isEmpty()) {
+                    continue;
+                }
+                if (!input.regionMatches(nameStart, variableName, 0, variableName.length())) {
+                    continue;
+                }
+                int endIndex = nameStart + variableName.length();
+                if (endIndex < input.length()) {
+                    char boundary = input.charAt(endIndex);
+                    if (!Character.isWhitespace(boundary) && !isOperator(boundary)) {
+                        continue;
+                    }
+                }
+                if (bestMatch == null || variableName.length() > bestMatch.name.length()) {
+                    bestMatch = new VariableReferenceMatch(variableName, endIndex);
+                }
+            }
+            return bestMatch;
+        }
+
+        private boolean peekIsNegativeNumberStart() {
+            if (peek() != '-') {
+                return false;
+            }
+            int lookahead = index + 1;
+            while (lookahead < input.length() && Character.isWhitespace(input.charAt(lookahead))) {
+                lookahead++;
+            }
+            if (lookahead >= input.length()) {
+                return false;
+            }
+            char next = input.charAt(lookahead);
+            return Character.isDigit(next) || (allowDecimal && next == '.');
+        }
+
+        private void skipWhitespace() {
+            while (index < input.length() && Character.isWhitespace(input.charAt(index))) {
+                index++;
+            }
+        }
+
+        private boolean consume(char expected) {
+            if (peek() != expected) {
+                return false;
+            }
+            index++;
+            return true;
+        }
+
+        private char peek() {
+            return index < input.length() ? input.charAt(index) : '\0';
+        }
+
+        private boolean isOperator(char character) {
+            return character == '+' || character == '-' || character == '*' || character == '/';
         }
     }
 
@@ -6589,7 +6844,7 @@ public class NodeGraph {
         }
         String value = coordinateEditBuffer == null ? "" : coordinateEditBuffer.trim();
         if (!value.isEmpty() && !"-".equals(value) && !isNumericOrVariableReference(value, coordinateEditingNode, false, true)) {
-            coordinateEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
+            coordinateEditingNode.sendNodeErrorMessageToPlayer("Please enter a number, arithmetic expression, or variable (~variable_name).");
             return false;
         }
         if (value.isEmpty() || "-".equals(value)) {
@@ -6829,7 +7084,7 @@ public class NodeGraph {
             && amountEditingNode.getType() != NodeType.USE
             && !value.isEmpty()
             && !isNumericOrVariableReference(value, amountEditingNode, true, false)) {
-            amountEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
+            amountEditingNode.sendNodeErrorMessageToPlayer("Please enter a number, arithmetic expression, or variable (~variable_name).");
             return false;
         }
         if (value.isEmpty()) {
@@ -7258,7 +7513,7 @@ public class NodeGraph {
         if (!isPresetSelectorNode(stopTargetEditingNode)
             && !value.isEmpty()
             && !isNumericOrVariableReference(value, stopTargetEditingNode, false, false)) {
-            stopTargetEditingNode.sendNodeErrorMessageToPlayer("Please enter a number or a variable (~variable_name).");
+            stopTargetEditingNode.sendNodeErrorMessageToPlayer("Please enter a number, arithmetic expression, or variable (~variable_name).");
             return false;
         }
         String keyName = getStopTargetParameterKey(stopTargetEditingNode);
@@ -10124,6 +10379,10 @@ public class NodeGraph {
         if (!isPointInsideModeField(node, screenX, screenY)) {
             return false;
         }
+        if (modeDropdownOpen && modeDropdownNode == node) {
+            closeModeDropdown();
+            return true;
+        }
         stopParameterEditing(true);
         openModeDropdown(node);
         return true;
@@ -10148,6 +10407,11 @@ public class NodeGraph {
             modeDropdownFieldY = node.getAmountFieldLabelTop() - cameraY;
             modeDropdownFieldWidth = node.getAmountFieldWidth();
             modeDropdownFieldHeight = node.getAmountFieldLabelHeight();
+        } else if (node.showsModeFieldAboveParameterSlot()) {
+            modeDropdownFieldX = node.getModeFieldLeft() - cameraX;
+            modeDropdownFieldY = node.getModeFieldTop() - cameraY;
+            modeDropdownFieldWidth = node.getModeFieldWidth();
+            modeDropdownFieldHeight = node.getModeFieldHeight();
         } else {
             modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
             modeDropdownFieldY = node.getY() - cameraY + 18;
@@ -10382,6 +10646,11 @@ public class NodeGraph {
             modeDropdownFieldY = node.getAmountFieldLabelTop() - cameraY;
             modeDropdownFieldWidth = node.getAmountFieldWidth();
             modeDropdownFieldHeight = node.getAmountFieldLabelHeight();
+        } else if (node.showsModeFieldAboveParameterSlot()) {
+            modeDropdownFieldX = node.getModeFieldLeft() - cameraX;
+            modeDropdownFieldY = node.getModeFieldTop() - cameraY;
+            modeDropdownFieldWidth = node.getModeFieldWidth();
+            modeDropdownFieldHeight = node.getModeFieldHeight();
         } else {
             modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
             modeDropdownFieldY = node.getY() - cameraY + 18;
@@ -10437,6 +10706,14 @@ public class NodeGraph {
             int fieldWidth = node.getAmountFieldWidth();
             int fieldHeight = node.getAmountFieldLabelHeight();
             int fieldTop = node.getAmountFieldLabelTop();
+            return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        }
+        if (node != null && node.showsModeFieldAboveParameterSlot()) {
+            int fieldLeft = node.getModeFieldLeft();
+            int fieldWidth = node.getModeFieldWidth();
+            int fieldHeight = node.getModeFieldHeight();
+            int fieldTop = node.getModeFieldTop();
             return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
                 && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
         }
@@ -10911,9 +11188,7 @@ public class NodeGraph {
                 return true;
             }
             if (isPointInsideRunPresetField(runPresetDropdownNode, screenX, screenY)) {
-                selectNode(runPresetDropdownNode);
-                startStopTargetEditing(runPresetDropdownNode);
-                openRunPresetDropdown(runPresetDropdownNode);
+                closeRunPresetDropdown();
                 return true;
             }
             closeRunPresetDropdown();

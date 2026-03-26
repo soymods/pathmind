@@ -80,7 +80,13 @@ public enum NodeMode {
     WAIT_SECONDS("Seconds", "Wait duration in seconds"),
     WAIT_TICKS("Ticks", "Wait duration in ticks (20 per second)"),
     WAIT_MINUTES("Minutes", "Wait duration in minutes"),
-    WAIT_HOURS("Hours", "Wait duration in hours");
+    WAIT_HOURS("Hours", "Wait duration in hours"),
+
+    // SENSOR_POSITION_OF modes
+    SENSOR_POSITION_X("x", "Get only the X position component"),
+    SENSOR_POSITION_Y("y", "Get only the Y position component"),
+    SENSOR_POSITION_Z("z", "Get only the Z position component"),
+    SENSOR_POSITION_XYZ("xyz", "Get the full X, Y, Z position");
 
     private final String displayName;
     private final String description;
@@ -166,6 +172,10 @@ public enum NodeMode {
                 return new NodeMode[]{
                     WAIT_SECONDS, WAIT_TICKS, WAIT_MINUTES, WAIT_HOURS
                 };
+            case SENSOR_POSITION_OF:
+                return new NodeMode[]{
+                    SENSOR_POSITION_X, SENSOR_POSITION_Y, SENSOR_POSITION_Z, SENSOR_POSITION_XYZ
+                };
             default:
                 return new NodeMode[0];
         }
@@ -204,6 +214,8 @@ public enum NodeMode {
                 return STOP_NORMAL;
             case PARAM_DURATION:
                 return WAIT_SECONDS;
+            case SENSOR_POSITION_OF:
+                return SENSOR_POSITION_XYZ;
             default:
                 return null;
         }

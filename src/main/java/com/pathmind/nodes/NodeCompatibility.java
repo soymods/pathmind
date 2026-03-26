@@ -72,7 +72,7 @@ public final class NodeCompatibility {
             return false;
         }
 
-        EnumSet<NodeValueTrait> provided = NodeTraitRegistry.getProvidedTraits(candidateType);
+        EnumSet<NodeValueTrait> provided = candidate.getProvidedTraits();
         boolean isBooleanSensor = NodeTraitRegistry.isBooleanSensor(candidateType);
         boolean isParameterLike = NodeTraitRegistry.isParameterNode(candidateType)
             || !provided.isEmpty()

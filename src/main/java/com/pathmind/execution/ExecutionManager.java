@@ -333,6 +333,26 @@ public class ExecutionManager {
         return entries;
     }
 
+    public Set<String> getKnownRuntimeVariableNames() {
+        Set<String> names = new LinkedHashSet<>();
+        for (ChainController controller : activeChains.values()) {
+            if (controller == null || controller.runtimeVariables.isEmpty()) {
+                continue;
+            }
+            for (String name : controller.runtimeVariables.keySet()) {
+                if (name != null && !name.trim().isEmpty()) {
+                    names.add(name.trim());
+                }
+            }
+        }
+        for (String name : globalRuntimeVariables.keySet()) {
+            if (name != null && !name.trim().isEmpty()) {
+                names.add(name.trim());
+            }
+        }
+        return names;
+    }
+
     public void executeGraph(List<Node> nodes, List<NodeConnection> connections) {
         executeGraphInternal(nodes, connections, true);
     }

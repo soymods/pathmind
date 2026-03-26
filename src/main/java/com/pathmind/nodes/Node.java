@@ -12491,6 +12491,7 @@ public class Node {
         if (manager == null) {
             return names;
         }
+        names.addAll(manager.getKnownRuntimeVariableNames());
         if (startNode != null) {
             for (ExecutionManager.RuntimeVariableEntry entry : manager.getRuntimeVariableEntries()) {
                 if (entry == null || entry.getStartNodeId() == null || !startNode.getId().equals(entry.getStartNodeId())) {
@@ -12500,15 +12501,6 @@ public class Node {
                 if (name != null && !name.trim().isEmpty()) {
                     names.add(name.trim());
                 }
-            }
-        }
-        for (ExecutionManager.RuntimeVariableEntry entry : manager.getRuntimeVariableEntries()) {
-            if (entry == null) {
-                continue;
-            }
-            String name = entry.getName();
-            if (name != null && !name.trim().isEmpty()) {
-                names.add(name.trim());
             }
         }
         return names;

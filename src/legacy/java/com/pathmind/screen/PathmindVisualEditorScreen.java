@@ -352,6 +352,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.hasSavedGraph()) {
             System.out.println("Found saved node graph, loading...");
             if (nodeGraph.load()) {
+                nodeGraph.restoreSessionViewportState();
                 System.out.println("Successfully loaded saved node graph");
                 refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
@@ -363,6 +364,7 @@ public class PathmindVisualEditorScreen extends Screen {
         
         // Initialize node graph with proper centering based on screen dimensions
         nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+        nodeGraph.restoreSessionViewportState();
         refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
     }
@@ -2068,12 +2070,14 @@ public class PathmindVisualEditorScreen extends Screen {
 
     @Override
     public void close() {
+        nodeGraph.persistSessionViewportState();
         autoSaveWorkspace();
         super.close();
     }
 
     @Override
     public void removed() {
+        nodeGraph.persistSessionViewportState();
         autoSaveWorkspace();
         if (uiUtilsOverlayPrevEnabled != null) {
             UiUtilsProxy.setOverlayEnabled(uiUtilsOverlayPrevEnabled);
@@ -4546,7 +4550,7 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
-            nodeGraph.resetCamera();
+            nodeGraph.restoreSessionViewportState();
             updateImportExportPathFromPreset();
         }
     }
@@ -4664,7 +4668,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
-        nodeGraph.resetCamera();
+        nodeGraph.restoreSessionViewportState();
         updateImportExportPathFromPreset();
     }
 

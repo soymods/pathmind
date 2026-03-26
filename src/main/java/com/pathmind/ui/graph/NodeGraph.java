@@ -52,6 +52,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.EntityStateOptions;
@@ -289,6 +290,7 @@ public class NodeGraph {
     private final Deque<NodeGraphData> redoStack = new ArrayDeque<>();
     private boolean suppressUndoCapture = false;
     private static final int MAX_HISTORY = 50;
+    private static final Map<String, SessionViewportState> SESSION_VIEWPORT_STATES = new ConcurrentHashMap<>();
     private boolean selectionBoxActive = false;
     private int selectionBoxStartX = 0;
     private int selectionBoxStartY = 0;
@@ -363,6 +365,20 @@ public class NodeGraph {
         }
     }
 
+    private static final class SessionViewportState {
+        private final int cameraX;
+        private final int cameraY;
+        private final ZoomLevel zoomLevel;
+        private final float zoomScale;
+
+        private SessionViewportState(int cameraX, int cameraY, ZoomLevel zoomLevel, float zoomScale) {
+            this.cameraX = cameraX;
+            this.cameraY = cameraY;
+            this.zoomLevel = zoomLevel;
+            this.zoomScale = zoomScale;
+        }
+    }
+
     public ZoomLevel getZoomLevel() {
         return zoomLevel;
     }
@@ -380,6 +396,7 @@ public class NodeGraph {
         this.zoomLevel = newLevel;
         this.zoomScale = newLevel.getScale();
         alignCameraToAnchor(anchorWorldX, anchorWorldY, anchorScreenX, anchorScreenY);
+        cacheSessionViewportState();
     }
 
     private void alignCameraToAnchor(int anchorWorldX, int anchorWorldY, int anchorScreenX, int anchorScreenY) {
@@ -469,6 +486,7 @@ public class NodeGraph {
         zoomScale = clampedScale;
         updateZoomLevelFromScale();
         alignCameraToAnchor(anchorWorldX, anchorWorldY, anchorScreenX, anchorScreenY);
+        cacheSessionViewportState();
     }
 
     private void updateZoomLevelFromScale() {
@@ -519,6 +537,7 @@ public class NodeGraph {
         Node startNode = new Node(NodeType.START, centerX, centerY - 50);
         assignNewStartNodeNumber(startNode);
         nodes.add(startNode);
+        restoreSessionViewportState();
         invalidateValidation();
     }
 
@@ -2289,6 +2308,7 @@ public class NodeGraph {
             }
             cameraX = panStartCameraX - Math.round(deltaX / scale); // Flip horizontal panning
             cameraY = panStartCameraY - Math.round(deltaY / scale); // Flip vertical panning
+            cacheSessionViewportState();
         }
     }
     
@@ -2305,6 +2325,30 @@ public class NodeGraph {
         cameraY = 0;
         zoomLevel = ZoomLevel.FOCUSED;
         zoomScale = ZoomLevel.FOCUSED.getScale();
+        cacheSessionViewportState();
+    }
+
+    public void restoreSessionViewportState() {
+        SessionViewportState state = SESSION_VIEWPORT_STATES.get(activePreset);
+        if (state == null) {
+            return;
+        }
+        cameraX = state.cameraX;
+        cameraY = state.cameraY;
+        zoomLevel = state.zoomLevel != null ? state.zoomLevel : ZoomLevel.FOCUSED;
+        zoomScale = state.zoomScale > 0.0f ? state.zoomScale : zoomLevel.getScale();
+        updateZoomLevelFromScale();
+    }
+
+    public void persistSessionViewportState() {
+        cacheSessionViewportState();
+    }
+
+    private void cacheSessionViewportState() {
+        if (activePreset == null || activePreset.isEmpty()) {
+            return;
+        }
+        SESSION_VIEWPORT_STATES.put(activePreset, new SessionViewportState(cameraX, cameraY, zoomLevel, zoomScale));
     }
 
     public boolean focusNodeById(String nodeId, int screenWidth, int screenHeight, int sidebarWidth, int titleBarHeight) {
@@ -2347,6 +2391,7 @@ public class NodeGraph {
         int desiredScreenY = workspaceTop + workspaceHeight / 2 - Math.round(node.getHeight() * scale / 2f);
         cameraX = node.getX() - Math.round((desiredScreenX - workspaceLeft) / scale);
         cameraY = node.getY() - Math.round((desiredScreenY - workspaceTop) / scale);
+        cacheSessionViewportState();
     }
 
     public boolean focusBestMatchingNode(String query, int screenWidth, int screenHeight, int sidebarWidth, int titleBarHeight) {
@@ -12407,6 +12452,7 @@ public class NodeGraph {
         lastClickTime = 0;
         cascadeDeletionPreviewNodes.clear();
         invalidateValidation();
+        restoreSessionViewportState();
 
         System.out.println("Loaded " + nodes.size() + " nodes and " + connections.size() + " connections");
         return true;
@@ -12441,10 +12487,16 @@ public class NodeGraph {
 
     public void setActivePreset(String presetName) {
         String previousPreset = this.activePreset;
+        if (Objects.equals(previousPreset, presetName)) {
+            restoreSessionViewportState();
+            return;
+        }
+        cacheSessionViewportState();
         this.activePreset = presetName;
         invalidateTemplatePreviewCachesForPreset(previousPreset);
         invalidateTemplatePreviewCachesForPreset(presetName);
         invalidateValidation();
+        restoreSessionViewportState();
     }
 
     public String getActivePreset() {

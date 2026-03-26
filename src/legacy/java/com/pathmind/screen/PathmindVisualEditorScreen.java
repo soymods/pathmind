@@ -4812,6 +4812,7 @@ public class PathmindVisualEditorScreen extends Screen {
             outlineColor,
             UITheme.PANEL_INNER_BORDER
         );
+        context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
         context.drawTextWithShadow(this.textRenderer, Text.literal("Validation"), panelX + VALIDATION_PANEL_PADDING, panelY + 8,
             validationResult.hasErrors() ? UITheme.STATE_ERROR : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER : UITheme.TEXT_PRIMARY);
         String summary = validationResult.getErrorCount() + " error" + (validationResult.getErrorCount() == 1 ? "" : "s")
@@ -4848,6 +4849,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 UITheme.TEXT_SECONDARY
             );
         }
+        context.disableScissor();
     }
 
     private boolean handleValidationPanelClick(int mouseX, int mouseY) {

@@ -4684,6 +4684,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(panelX + 1, panelY + 1, panelX + panelWidth - 1, panelY + panelHeight - 1, UITheme.BACKGROUND_SECTION);
         DrawContextBridge.drawBorder(context, panelX, panelY, panelWidth, panelHeight, outlineColor);
         DrawContextBridge.drawBorder(context, panelX + 1, panelY + 1, panelWidth - 2, panelHeight - 2, UITheme.PANEL_INNER_BORDER);
+        context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
 
         int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
             : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
@@ -4724,6 +4725,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 UITheme.TEXT_SECONDARY
             );
         }
+        context.disableScissor();
     }
 
     private boolean handleValidationPanelClick(int mouseX, int mouseY) {

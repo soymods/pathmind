@@ -4968,6 +4968,7 @@ public class PathmindVisualEditorScreen extends Screen {
             outlineColor,
             UITheme.PANEL_INNER_BORDER
         );
+        context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
 
         int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
             : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
@@ -5013,6 +5014,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 UITheme.TEXT_SECONDARY
             );
         }
+        context.disableScissor();
     }
 
     private boolean handleValidationPanelClick(int mouseX, int mouseY) {

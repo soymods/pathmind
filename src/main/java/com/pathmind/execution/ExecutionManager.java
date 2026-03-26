@@ -342,10 +342,7 @@ public class ExecutionManager {
             LOGGER.warn("Cannot execute graph - missing nodes or connections");
             return;
         }
-        if (hasBlockingValidationErrors(nodes, connections, PresetManager.getActivePreset(),
-            "Cannot run: workspace has validation errors. Open the editor to review them.")) {
-            return;
-        }
+        logValidationErrors(nodes, connections, PresetManager.getActivePreset(), "workspace");
 
         this.workspaceNodes = new ArrayList<>(nodes);
         this.workspaceConnections = new ArrayList<>(connections);
@@ -370,19 +367,37 @@ public class ExecutionManager {
             this.lastGlobalGraph = snapshot;
         }
         this.lastSnapshotWasGlobal = markGlobalSnapshot;
-        this.activeNodes = new ArrayList<>(nodes);
-        this.activeConnections = new ArrayList<>(filteredConnections);
+        this.activeNodes = new ArrayList<>();
+        this.activeConnections = new ArrayList<>();
         rebuildConnectionState(this.activeNodes, this.activeConnections);
         this.cancelRequested = false;
 
-        startExecution(startNodes, markGlobalSnapshot);
         activeChains.clear();
 
+        List<Node> isolatedStartNodes = new ArrayList<>();
         for (Node startNode : startNodes) {
+            BranchData branchData = buildBranchData(startNode, nodes, filteredConnections);
+            BranchLaunchData launchData = createBranchLaunchData(branchData, startNode.getStartNodeNumber());
+            if (launchData == null) {
+                LOGGER.debug("Skipping START node {} because its branch could not be prepared", startNode.getStartNodeNumber());
+                continue;
+            }
+            mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
+            isolatedStartNodes.add(launchData.startNode);
+        }
+
+        if (isolatedStartNodes.isEmpty()) {
+            LOGGER.warn("No START branches could be prepared for execution");
+            return;
+        }
+
+        startExecution(isolatedStartNodes, markGlobalSnapshot);
+
+        for (Node isolatedStartNode : isolatedStartNodes) {
             int executionId = allocateExecutionId();
-            ChainController controller = new ChainController(startNode, executionId);
-            activeChains.put(startNode, controller);
-            CompletableFuture<Void> chainFuture = runChain(startNode, controller, controller.rootExecutionId);
+            ChainController controller = new ChainController(isolatedStartNode, executionId);
+            activeChains.put(isolatedStartNode, controller);
+            CompletableFuture<Void> chainFuture = runChain(isolatedStartNode, controller, controller.rootExecutionId);
             chainFuture.whenComplete((ignored, throwable) ->
                 handleChainCompletion(controller, throwable, controller.rootExecutionId));
         }
@@ -404,23 +419,20 @@ public class ExecutionManager {
     }
 
     public void playAllGraphs() {
-        if (lastStartNodeNumber == null || lastStartNodeNumber <= 0) {
-            LOGGER.debug("No last START chain available to play");
-            PreciseCompletionTracker.notifyPlayerMessage("No last START chain available to play.");
+        if (workspaceNodes == null || workspaceNodes.isEmpty() || workspaceConnections == null) {
+            LOGGER.debug("No workspace graph available to start a START node");
             return;
         }
 
-        int startNodeNumber = lastStartNodeNumber;
-        if (workspaceNodes == null || workspaceNodes.isEmpty() || workspaceConnections == null) {
-            LOGGER.debug("No workspace graph available to start last START node {}", startNodeNumber);
-            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": no current script is loaded.");
+        int startNodeNumber = resolvePlayableStartNumber();
+        if (startNodeNumber <= 0) {
+            LOGGER.debug("No playable START node available for keybind launch");
             return;
         }
 
         Node startNode = findWorkspaceStartNode(startNodeNumber);
         if (startNode == null) {
-            LOGGER.debug("Last START node {} no longer exists in the current workspace", startNodeNumber);
-            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": that START node was removed.");
+            LOGGER.debug("START node {} no longer exists in the current workspace", startNodeNumber);
             return;
         }
 
@@ -442,10 +454,7 @@ public class ExecutionManager {
             LOGGER.warn("Cannot execute branch - missing nodes or connections");
             return false;
         }
-        if (hasBlockingValidationErrors(nodes, connections, presetName,
-            "Cannot run START: graph has validation errors. Open the editor to review them.")) {
-            return false;
-        }
+        logValidationErrors(nodes, connections, presetName, "START branch");
         if (isChainActive(startNode)) {
             LOGGER.debug("START node already executing, ignoring branch start request");
             return false;
@@ -479,21 +488,26 @@ public class ExecutionManager {
 
         this.lastExecutedGraph = createGraphSnapshot(branchNodes, branchConnections);
         this.lastSnapshotWasGlobal = false;
-        this.activeNodes = branchNodes;
-        this.activeConnections = branchConnections;
+        BranchLaunchData launchData = createBranchLaunchData(new BranchData(branchNodes, branchConnections), startNode.getStartNodeNumber());
+        if (launchData == null) {
+            LOGGER.debug("START branch could not be cloned for execution");
+            return false;
+        }
+        this.activeNodes = launchData.branchData.nodes;
+        this.activeConnections = launchData.branchData.connections;
         rebuildConnectionState(this.activeNodes, this.activeConnections);
         this.cancelRequested = false;
 
         if (activeChains.isEmpty()) {
-            startExecution(Collections.singletonList(startNode), false);
+            startExecution(Collections.singletonList(launchData.startNode), false);
         } else {
             this.isExecuting = true;
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(startNode, executionId);
-        activeChains.put(startNode, controller);
-        CompletableFuture<Void> chainFuture = runChain(startNode, controller, controller.rootExecutionId);
+        ChainController controller = new ChainController(launchData.startNode, executionId);
+        activeChains.put(launchData.startNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(launchData.startNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         updateLastStartContext(startNode, presetName);
@@ -513,10 +527,7 @@ public class ExecutionManager {
             LOGGER.warn("Cannot execute external branch - missing nodes or connections");
             return false;
         }
-        if (hasBlockingValidationErrors(nodes, connections, presetName,
-            "Cannot run preset \"" + presetName + "\": it has validation errors.")) {
-            return false;
-        }
+        logValidationErrors(nodes, connections, presetName, "preset \"" + presetName + "\"");
         if (isChainActive(startNode)) {
             LOGGER.debug("External START node already executing, ignoring branch start request");
             return false;
@@ -535,19 +546,24 @@ public class ExecutionManager {
 
         this.lastExecutedGraph = createGraphSnapshot(branchData.nodes, branchData.connections);
         this.lastSnapshotWasGlobal = false;
+        BranchLaunchData launchData = createBranchLaunchData(branchData, startNode.getStartNodeNumber());
+        if (launchData == null) {
+            LOGGER.debug("External START node branch could not be cloned for execution");
+            return false;
+        }
         this.cancelRequested = false;
-        mergeActiveGraph(branchData.nodes, branchData.connections);
+        mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
 
         if (!isExecuting && activeChains.isEmpty()) {
-            startExecution(Collections.singletonList(startNode), false);
+            startExecution(Collections.singletonList(launchData.startNode), false);
         } else {
             this.isExecuting = true;
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(startNode, executionId);
-        activeChains.put(startNode, controller);
-        CompletableFuture<Void> chainFuture = runChain(startNode, controller, controller.rootExecutionId);
+        ChainController controller = new ChainController(launchData.startNode, executionId);
+        activeChains.put(launchData.startNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(launchData.startNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         updateLastStartContext(startNode, presetName);
@@ -793,7 +809,7 @@ public class ExecutionManager {
             return false;
         }
 
-        ChainController controller = activeChains.get(startNode);
+        ChainController controller = findChainControllerForStart(startNode);
         if (controller == null) {
             LOGGER.debug("No active chain found for requested START node stop");
             return false;
@@ -831,10 +847,8 @@ public class ExecutionManager {
             LOGGER.debug("No workspace graph available to start START node {}", startNodeNumber);
             return false;
         }
-        if (hasBlockingValidationErrors(workspaceNodes, workspaceConnections, PresetManager.getActivePreset(),
-            "Cannot start START #" + startNodeNumber + ": workspace has validation errors. Open the editor to review them.")) {
-            return false;
-        }
+        logValidationErrors(workspaceNodes, workspaceConnections, PresetManager.getActivePreset(),
+            "workspace START #" + startNodeNumber);
 
         Node match = findWorkspaceStartNode(startNodeNumber);
 
@@ -842,9 +856,8 @@ public class ExecutionManager {
             LOGGER.debug("No START node found for number {}", startNodeNumber);
             return false;
         }
-        if (isChainActive(match)) {
+        if (isStartNumberActive(startNodeNumber)) {
             LOGGER.debug("START node already executing, ignoring start request");
-            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": it is already running.");
             return false;
         }
 
@@ -852,22 +865,27 @@ public class ExecutionManager {
         BranchData branchData = buildBranchData(match, workspaceNodes, filteredConnections);
         if (branchData == null || branchData.nodes.isEmpty()) {
             LOGGER.debug("START node {} has no executable branch", startNodeNumber);
-            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": it has no executable branch.");
             return false;
         }
 
-        mergeActiveGraph(branchData.nodes, branchData.connections);
+        BranchLaunchData launchData = createBranchLaunchData(branchData, startNodeNumber);
+        if (launchData == null) {
+            LOGGER.debug("Cloned branch for START node {} is missing its START node", startNodeNumber);
+            return false;
+        }
+
+        mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
 
         if (!isExecuting && activeChains.isEmpty()) {
-            startExecution(Collections.singletonList(match), globalExecutionActive);
+            startExecution(Collections.singletonList(launchData.startNode), globalExecutionActive);
         } else {
             this.isExecuting = true;
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(match, executionId);
-        activeChains.put(match, controller);
-        CompletableFuture<Void> chainFuture = runChain(match, controller, controller.rootExecutionId);
+        ChainController controller = new ChainController(launchData.startNode, executionId);
+        activeChains.put(launchData.startNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(launchData.startNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         return true;
@@ -885,8 +903,79 @@ public class ExecutionManager {
         if (startNode == null) {
             return false;
         }
-        ChainController controller = activeChains.get(startNode);
+        ChainController controller = findChainControllerForStart(startNode);
         return controller != null && !controller.cancelRequested;
+    }
+
+    private ChainController findChainControllerForStart(Node startNode) {
+        if (startNode == null) {
+            return null;
+        }
+
+        ChainController direct = activeChains.get(startNode);
+        if (direct != null) {
+            return direct;
+        }
+
+        int startNumber = startNode.getStartNodeNumber();
+        if (startNumber > 0) {
+            for (Map.Entry<Node, ChainController> entry : activeChains.entrySet()) {
+                Node activeStart = entry.getKey();
+                ChainController controller = entry.getValue();
+                if (activeStart != null
+                    && controller != null
+                    && activeStart.getStartNodeNumber() == startNumber) {
+                    return controller;
+                }
+            }
+        }
+
+        String startId = startNode.getId();
+        if (startId != null && !startId.isEmpty()) {
+            for (Map.Entry<Node, ChainController> entry : activeChains.entrySet()) {
+                Node activeStart = entry.getKey();
+                ChainController controller = entry.getValue();
+                if (activeStart != null
+                    && controller != null
+                    && startId.equals(activeStart.getId())) {
+                    return controller;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private boolean isStartNumberActive(int startNodeNumber) {
+        if (startNodeNumber <= 0) {
+            return false;
+        }
+        for (Map.Entry<Node, ChainController> entry : activeChains.entrySet()) {
+            Node startNode = entry.getKey();
+            ChainController controller = entry.getValue();
+            if (startNode != null
+                && controller != null
+                && !controller.cancelRequested
+                && startNode.getStartNodeNumber() == startNodeNumber) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int resolvePlayableStartNumber() {
+        if (lastStartNodeNumber != null && lastStartNodeNumber > 0) {
+            return lastStartNodeNumber;
+        }
+        if (workspaceNodes == null) {
+            return -1;
+        }
+        for (Node node : workspaceNodes) {
+            if (node != null && node.getType() == NodeType.START && node.getStartNodeNumber() > 0) {
+                return node.getStartNodeNumber();
+            }
+        }
+        return -1;
     }
     
     /**
@@ -1376,7 +1465,7 @@ public class ExecutionManager {
         return true;
     }
 
-    private boolean hasBlockingValidationErrors(List<Node> nodes, List<NodeConnection> connections, String presetName, String playerMessage) {
+    private void logValidationErrors(List<Node> nodes, List<NodeConnection> connections, String presetName, String context) {
         GraphValidationResult validation = GraphValidator.validate(
             nodes,
             connections,
@@ -1385,14 +1474,12 @@ public class ExecutionManager {
             UiUtilsDependencyChecker.isUiUtilsPresent()
         );
         if (!validation.hasErrors()) {
-            return false;
+            return;
         }
 
-        String message = playerMessage + " (" + validation.getErrorCount() + " error"
+        String message = "Validation errors detected for " + context + " (" + validation.getErrorCount() + " error"
             + (validation.getErrorCount() == 1 ? "" : "s") + ")";
-        PreciseCompletionTracker.notifyPlayerMessage(message);
-        LOGGER.debug("Blocked execution due to validation errors: {}", message);
-        return true;
+        LOGGER.debug("{}; continuing execution attempt so runtime errors can surface in the overlay", message);
     }
 
     private LoadedGraph buildGraphFromData(NodeGraphData graphData) {
@@ -1792,6 +1879,52 @@ public class ExecutionManager {
         rebuildConnectionState(this.activeNodes, this.activeConnections);
     }
 
+    private BranchLaunchData createBranchLaunchData(BranchData branchData, int startNodeNumber) {
+        BranchData isolatedBranchData = cloneBranchData(branchData);
+        if (isolatedBranchData == null || isolatedBranchData.nodes.isEmpty()) {
+            return null;
+        }
+
+        Node isolatedStartNode = findStartNodeByNumber(isolatedBranchData.nodes, startNodeNumber);
+        if (isolatedStartNode == null) {
+            return null;
+        }
+
+        return new BranchLaunchData(isolatedBranchData, isolatedStartNode);
+    }
+
+    private BranchData cloneBranchData(BranchData branchData) {
+        if (branchData == null || branchData.nodes == null || branchData.connections == null) {
+            return null;
+        }
+
+        NodeGraphData snapshot = createGraphSnapshot(branchData.nodes, branchData.connections);
+        List<Node> clonedNodes = NodeGraphPersistence.convertToNodes(snapshot);
+        if (clonedNodes == null || clonedNodes.isEmpty()) {
+            return null;
+        }
+
+        Map<String, Node> nodeMap = new HashMap<>();
+        for (Node node : clonedNodes) {
+            if (node != null && node.getId() != null) {
+                nodeMap.put(node.getId(), node);
+            }
+        }
+
+        List<NodeConnection> clonedConnections = NodeGraphPersistence.convertToConnections(snapshot, nodeMap);
+        return new BranchData(clonedNodes, clonedConnections);
+    }
+
+    private static final class BranchLaunchData {
+        final BranchData branchData;
+        final Node startNode;
+
+        BranchLaunchData(BranchData branchData, Node startNode) {
+            this.branchData = branchData;
+            this.startNode = startNode;
+        }
+    }
+
     private NodeGraphData createGraphSnapshot(List<Node> nodes, List<NodeConnection> connections) {
         NodeGraphData snapshot = new NodeGraphData();
 
@@ -1836,6 +1969,29 @@ public class ExecutionManager {
                 nodeData.setAttachedParameterId(node.getAttachedParameterId());
             }
             nodeData.setParentParameterHostId(node.getParentParameterHostId());
+            if (node.hasBooleanToggle()) {
+                nodeData.setBooleanToggleValue(node.getBooleanToggleValue());
+            }
+            if (node.getType() == NodeType.START) {
+                nodeData.setStartNodeNumber(node.getStartNodeNumber());
+            }
+            if (node.getType() == NodeType.MESSAGE) {
+                nodeData.setMessageLines(node.getMessageLines());
+                nodeData.setMessageClientSide(node.isMessageClientSide());
+            }
+            if (node.hasBookTextInput()) {
+                nodeData.setBookText(node.getBookText());
+            }
+            if (node.getType() == NodeType.GOTO) {
+                nodeData.setGotoAllowBreakWhileExecuting(node.isGotoAllowBreakWhileExecuting());
+                nodeData.setGotoAllowPlaceWhileExecuting(node.isGotoAllowPlaceWhileExecuting());
+            }
+            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+                nodeData.setTemplateName(node.getTemplateName());
+                nodeData.setTemplateVersion(node.getTemplateVersion());
+                nodeData.setCustomNodeInstance(node.isCustomNodeInstance());
+                nodeData.setTemplateGraph(node.getTemplateGraphData());
+            }
 
             snapshot.getNodes().add(nodeData);
         }

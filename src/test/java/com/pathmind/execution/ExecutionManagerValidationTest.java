@@ -10,7 +10,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExecutionManagerValidationTest {
 
@@ -28,7 +29,7 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
-    void requestStartForStartNumberRejectsInvalidWorkspaceGraph() {
+    void requestStartForStartNumberAllowsInvalidWorkspaceGraph() {
         Node start = new Node(NodeType.START, 0, 0);
         start.setStartNodeNumber(1);
         Node runPreset = new Node(NodeType.RUN_PRESET, 100, 0);
@@ -37,46 +38,39 @@ class ExecutionManagerValidationTest {
 
         manager.setWorkspaceGraph(List.of(start, runPreset), List.of(connection));
 
-        assertFalse(manager.requestStartForStartNumber(1));
-        assertFalse(manager.isExecuting());
-        assertFalse(manager.isGlobalExecutionActive());
+        assertTrue(manager.requestStartForStartNumber(1));
     }
 
     @Test
-    void executeBranchRejectsInvalidGraphBeforeRunning() {
+    void executeBranchAllowsInvalidGraphBeforeRunning() {
         Node start = new Node(NodeType.START, 0, 0);
         start.setStartNodeNumber(1);
         Node runPreset = new Node(NodeType.RUN_PRESET, 100, 0);
         runPreset.getParameter("Preset").setStringValue("DefinitelyMissingPreset");
         NodeConnection connection = new NodeConnection(start, runPreset, 0, 0);
 
-        assertFalse(manager.executeBranch(start, List.of(start, runPreset), List.of(connection), PresetManager.getDefaultPresetName()));
-        assertFalse(manager.isExecuting());
+        assertTrue(manager.executeBranch(start, List.of(start, runPreset), List.of(connection), PresetManager.getDefaultPresetName()));
     }
 
     @Test
-    void executeExternalBranchRejectsInvalidPresetGraphBeforeRunning() {
+    void executeExternalBranchAllowsInvalidPresetGraphBeforeRunning() {
         Node start = new Node(NodeType.START, 0, 0);
         start.setStartNodeNumber(1);
         Node runPreset = new Node(NodeType.RUN_PRESET, 100, 0);
         runPreset.getParameter("Preset").setStringValue("DefinitelyMissingPreset");
         NodeConnection connection = new NodeConnection(start, runPreset, 0, 0);
 
-        assertFalse(manager.executeExternalBranch(start, List.of(start, runPreset), List.of(connection), "BrokenPreset"));
-        assertFalse(manager.isExecuting());
+        assertTrue(manager.executeExternalBranch(start, List.of(start, runPreset), List.of(connection), "BrokenPreset"));
     }
 
     @Test
-    void executeGraphRejectsInvalidWorkspaceBeforeStartingExecution() {
+    void executeGraphAllowsInvalidWorkspaceBeforeStartingExecution() {
         Node start = new Node(NodeType.START, 0, 0);
         start.setStartNodeNumber(1);
         Node runPreset = new Node(NodeType.RUN_PRESET, 100, 0);
         runPreset.getParameter("Preset").setStringValue("DefinitelyMissingPreset");
         NodeConnection connection = new NodeConnection(start, runPreset, 0, 0);
 
-        manager.executeGraph(List.of(start, runPreset), List.of(connection));
-
-        assertFalse(manager.isExecuting());
-        assertFalse(manager.isGlobalExecutionActive());
+        assertDoesNotThrow(() -> manager.executeGraph(List.of(start, runPreset), List.of(connection)));
     }
 }

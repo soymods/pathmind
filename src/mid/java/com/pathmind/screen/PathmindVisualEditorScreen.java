@@ -168,6 +168,7 @@ public class PathmindVisualEditorScreen extends Screen {
     // Drag and drop state
     private boolean isDraggingFromSidebar = false;
     private NodeType draggingNodeType = null;
+    private Node draggingSidebarNode = null;
 
     // Right-click context menu state
     private static final int CLICK_THRESHOLD = 5;  // pixels
@@ -512,20 +513,17 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         renderPopupScrimOverlay(context);
-        // Controls are already rendered before overlays so they appear dimmed underneath
-        DrawContextBridge.startNewRootLayer(context);
-        renderNodeGraph(context, mouseX, mouseY, delta, true);
-        nodeGraph.renderSelectionBox(context);
-        if (isDraggingFromSidebar && draggingNodeType != null) {
-            renderDraggingNode(context, mouseX, mouseY);
-        }
-
         // Render context menu on top of everything
         nodeGraph.updateNodeContextMenuHover(mouseX, mouseY);
         nodeGraph.renderNodeContextMenu(context, this.textRenderer);
         nodeGraph.updateContextMenuHover(mouseX, mouseY);
         nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
         renderNodeSearchField(context, mouseX, mouseY, delta);
+        DrawContextBridge.startNewRootLayer(context);
+        renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
+        if (isDraggingFromSidebar && (draggingNodeType != null || draggingSidebarNode != null)) {
+            renderDraggingNode(context, mouseX, mouseY);
+        }
         } finally {
             OverlayProtection.setPathmindRendering(false);
         }
@@ -685,7 +683,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
     
     private void renderDraggingNode(DrawContext context, int mouseX, int mouseY) {
-        if (draggingNodeType == null) return;
+        if (draggingNodeType == null && draggingSidebarNode == null) return;
 
         float scale = nodeGraph.getZoomScale();
         if (scale <= 0.0f) {
@@ -693,7 +691,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         // Create a temporary node for rendering
-        Node tempNode = new Node(draggingNodeType, 0, 0);
+        Node tempNode = draggingSidebarNode != null ? draggingSidebarNode : new Node(draggingNodeType, 0, 0);
         tempNode.setDragging(true);
 
         int width = tempNode.getWidth();
@@ -714,7 +712,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Render the node with a slight transparency
         int alpha = 0x80;
-        int nodeColor = (draggingNodeType.getColor() & 0x00FFFFFF) | alpha;
+        NodeType renderType = tempNode.getType();
+        int nodeColor = (renderType.getColor() & 0x00FFFFFF) | alpha;
 
         // Node background with transparency
         context.fill(x, y, x + width, y + height, 0x802A2A2A);
@@ -722,11 +721,11 @@ public class PathmindVisualEditorScreen extends Screen {
         DrawContextBridge.drawBorderInLayer(context, x, y, width, height, 0xFFAAAAAA);
 
         // Node header
-        if (draggingNodeType != NodeType.START && draggingNodeType != NodeType.EVENT_FUNCTION) {
+        if (renderType != NodeType.START && renderType != NodeType.EVENT_FUNCTION) {
             context.fill(x + 1, y + 1, x + width - 1, y + 14, nodeColor);
             context.drawTextWithShadow(
                 this.textRenderer,
-                Text.literal(draggingNodeType.getDisplayName()),
+                Text.literal(renderType == NodeType.TEMPLATE ? tempNode.getTemplateName() : renderType.getDisplayName()),
                 x + 4,
                 y + 4,
                 0xFFFFFFFF
@@ -777,6 +776,11 @@ public class PathmindVisualEditorScreen extends Screen {
         
         // Render nodes
         nodeGraph.render(context, this.textRenderer, mouseX, mouseY, delta, onlyDragged);
+    }
+
+    private void renderDraggedWorkspaceLayer(DrawContext context, int mouseX, int mouseY, float delta) {
+        renderNodeGraph(context, mouseX, mouseY, delta, true);
+        nodeGraph.renderSelectionBox(context);
     }
     
     private void renderGrid(DrawContext context) {
@@ -969,7 +973,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (nodeSearchOpen) {
             if (button == 0 && nodeSearchField != null) {
-                nodeSearchField.mouseClicked(mouseX, mouseY, button);
+                nodeSearchField.mouseClicked(click, inBounds);
             }
             if (!isPointInRect((int) mouseX, (int) mouseY, nodeSearchFieldX - 6, nodeSearchFieldY - 18,
                 NODE_SEARCH_FIELD_WIDTH + 12, NODE_SEARCH_FIELD_HEIGHT + 24)) {
@@ -1030,14 +1034,15 @@ public class PathmindVisualEditorScreen extends Screen {
                 // Check if we should start dragging a node from sidebar
                 if (sidebar.isHoveringNode()) {
                     NodeType hoveredType = sidebar.getHoveredNodeType();
-                    if (shouldBlockBaritoneNode(hoveredType)) {
+                    if (!sidebar.isHoveringCustomNode() && shouldBlockBaritoneNode(hoveredType)) {
                         return true;
                     }
-                    if (shouldBlockUiUtilsNode(hoveredType)) {
+                    if (!sidebar.isHoveringCustomNode() && shouldBlockUiUtilsNode(hoveredType)) {
                         return true;
                     }
                     isDraggingFromSidebar = true;
                     draggingNodeType = hoveredType;
+                    draggingSidebarNode = sidebar.createNodeFromSidebar(0, 0);
                     nodeGraph.resetDropTargets();
                     nodeGraph.closeContextMenu();
                 }
@@ -1082,6 +1087,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     dismissParameterOverlay();
                     isDraggingFromSidebar = false;
                     draggingNodeType = null;
+                    draggingSidebarNode = null;
                     if (this.client != null) {
                         this.client.setScreen(null);
                     }
@@ -1385,10 +1391,14 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Handle dragging from sidebar
         if (isDraggingFromSidebar && button == 0) {
-            if (draggingNodeType != null && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
+            if ((draggingNodeType != null || draggingSidebarNode != null) && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
                 int worldMouseX = nodeGraph.screenToWorldX((int) mouseX);
                 int worldMouseY = nodeGraph.screenToWorldY((int) mouseY);
-                nodeGraph.previewSidebarDrag(draggingNodeType, worldMouseX, worldMouseY);
+                if (draggingSidebarNode != null) {
+                    nodeGraph.previewSidebarDrag(draggingSidebarNode, worldMouseX, worldMouseY);
+                } else {
+                    nodeGraph.previewSidebarDrag(draggingNodeType, worldMouseX, worldMouseY);
+                }
             } else {
                 nodeGraph.resetDropTargets();
             }
@@ -1480,7 +1490,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
                     int worldMouseX = nodeGraph.screenToWorldX((int) mouseX);
                     int worldMouseY = nodeGraph.screenToWorldY((int) mouseY);
-                    Node newNode = nodeGraph.handleSidebarDrop(draggingNodeType, worldMouseX, worldMouseY);
+                    Node newNode = draggingSidebarNode != null
+                        ? nodeGraph.handleSidebarDrop(draggingSidebarNode, worldMouseX, worldMouseY)
+                        : nodeGraph.handleSidebarDrop(draggingNodeType, worldMouseX, worldMouseY);
                     if (newNode != null) {
                         nodeGraph.selectNode(newNode);
                     }
@@ -1488,6 +1500,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 // Reset drag state
                 isDraggingFromSidebar = false;
                 draggingNodeType = null;
+                draggingSidebarNode = null;
                 nodeGraph.resetDropTargets();
             } else {
                 // Check if dragging node into sidebar for deletion (only if actually dragging)
@@ -4363,6 +4376,7 @@ public class PathmindVisualEditorScreen extends Screen {
             dismissParameterOverlay();
             isDraggingFromSidebar = false;
             draggingNodeType = null;
+            draggingSidebarNode = null;
             clearPopupAnimation.hide();
             clearImportExportStatus();
 
@@ -4453,6 +4467,7 @@ public class PathmindVisualEditorScreen extends Screen {
         dismissParameterOverlay();
         isDraggingFromSidebar = false;
         draggingNodeType = null;
+        draggingSidebarNode = null;
         if (importExportPopupAnimation.isVisible()) {
             closeImportExportPopup();
         }
@@ -5255,6 +5270,7 @@ public class PathmindVisualEditorScreen extends Screen {
         dismissParameterOverlay();
         isDraggingFromSidebar = false;
         draggingNodeType = null;
+        draggingSidebarNode = null;
         ExecutionManager.getInstance().executeGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
         if (this.client != null) {
             this.client.setScreen(null);

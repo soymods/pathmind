@@ -1,5 +1,8 @@
 package com.pathmind.ui.sidebar;
 
+import com.pathmind.data.NodeGraphData;
+import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.data.PresetManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeType;
@@ -52,8 +55,10 @@ public class Sidebar {
     private final boolean baritoneAvailable;
     private final boolean uiUtilsAvailable;
     private NodeType hoveredNodeType = null;
+    private CustomNodeEntry hoveredCustomNode = null;
     private NodeCategory hoveredCategory = null;
     private NodeCategory selectedCategory = null;
+    private final List<CustomNodeEntry> customNodes = new ArrayList<>();
     private int scrollOffset = 0;
     private int maxScroll = 0;
     private int currentSidebarHeight = 400; // Store current sidebar height
@@ -87,7 +92,9 @@ public class Sidebar {
         for (NodeCategory category : NodeCategory.values()) {
             List<NodeType> nodes = new ArrayList<>();
 
-            if (category == NodeCategory.PARAMETERS) {
+            if (category == NodeCategory.CUSTOM) {
+                groupedCategoryNodes.put(category, java.util.Collections.emptyList());
+            } else if (category == NodeCategory.PARAMETERS) {
                 List<NodeGroup> parameterGroups = createParameterGroups();
                 groupedCategoryNodes.put(category, parameterGroups);
                 for (NodeGroup group : parameterGroups) {
@@ -111,6 +118,17 @@ public class Sidebar {
             }
 
             categoryNodes.put(category, nodes);
+        }
+        refreshCustomNodes();
+    }
+
+    private void refreshCustomNodes() {
+        customNodes.clear();
+        for (String presetName : PresetManager.getAvailablePresets()) {
+            if (presetName == null || presetName.isBlank()) {
+                continue;
+            }
+            customNodes.add(new CustomNodeEntry(presetName.trim()));
         }
     }
 
@@ -263,7 +281,9 @@ public class Sidebar {
         if (selectedCategory != null) {
             totalHeight += Math.max(CATEGORY_HEADER_HEIGHT, headerHeight);
             
-            if (groupHeaders != null && !groupHeaders.isEmpty()) {
+            if (selectedCategory == NodeCategory.CUSTOM) {
+                totalHeight += customNodes.size() * NODE_HEIGHT;
+            } else if (groupHeaders != null && !groupHeaders.isEmpty()) {
                 for (GroupHeaderInfo info : groupHeaders) {
                     totalHeight += info.getHeight();
                     totalHeight += info.getGroup().getNodes().size() * NODE_HEIGHT;
@@ -294,6 +314,7 @@ public class Sidebar {
     
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
                        int sidebarStartY, int sidebarHeight, boolean interactionsEnabled, boolean showTooltips) {
+        refreshCustomNodes();
         int effectiveMouseX = interactionsEnabled ? mouseX : Integer.MIN_VALUE;
         int effectiveMouseY = interactionsEnabled ? mouseY : Integer.MIN_VALUE;
         // Store current sidebar height so scroll can be recalculated
@@ -305,7 +326,7 @@ public class Sidebar {
         NodeCategory[] categories = NodeCategory.values();
         int totalVisibleTabs = 0;
         for (NodeCategory category : categories) {
-            if (!categoryNodes.get(category).isEmpty()) {
+            if (hasNodesInCategory(category)) {
                 totalVisibleTabs++;
             }
         }
@@ -380,13 +401,14 @@ public class Sidebar {
 
         // Render colored tabs
         hoveredCategory = null;
+        hoveredCustomNode = null;
         int tabX = Math.max(0, (currentInnerSidebarWidth - tabSize) / 2);
         int visibleTabIndex = 0;
         for (int i = 0; i < categories.length; i++) {
             NodeCategory category = categories[i];
 
             // Skip if category has no nodes
-            if (categoryNodes.get(category).isEmpty()) {
+            if (!hasNodesInCategory(category)) {
                 continue;
             }
 
@@ -465,7 +487,34 @@ public class Sidebar {
             
             hoveredNodeType = null;
 
-            if (hasGroupedContent(selectedCategory)) {
+            if (selectedCategory == NodeCategory.CUSTOM) {
+                for (CustomNodeEntry customNode : customNodes) {
+                    if (contentY >= sidebarBottom) {
+                        break;
+                    }
+                    boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth
+                        && effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
+                    if (nodeHovered) {
+                        hoveredCustomNode = customNode;
+                        context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
+                    }
+
+                    int indicatorSize = 12;
+                    int indicatorX = currentInnerSidebarWidth + 8;
+                    int indicatorY = contentY + 3;
+                    UIStyleHelper.drawBeveledPanel(context, indicatorX, indicatorY, indicatorSize, indicatorSize,
+                        NodeType.TEMPLATE.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
+
+                    context.drawTextWithShadow(
+                        textRenderer,
+                        Text.literal(customNode.getLabel()),
+                        indicatorX + indicatorSize + 4,
+                        contentY + 4,
+                        UITheme.TEXT_PRIMARY
+                    );
+                    contentY += NODE_HEIGHT;
+                }
+            } else if (hasGroupedContent(selectedCategory)) {
                 outer:
                 if (groupHeaders != null) {
                     for (GroupHeaderInfo groupInfo : groupHeaders) {
@@ -556,7 +605,17 @@ public class Sidebar {
             context.disableScissor();
         }
 
-        if (interactionsEnabled && showTooltips && hoveredNodeType != null) {
+        if (interactionsEnabled && showTooltips && hoveredCustomNode != null) {
+            TooltipRenderer.render(
+                context,
+                textRenderer,
+                hoveredCustomNode.getDescription(),
+                mouseX,
+                mouseY,
+                MinecraftClient.getInstance().getWindow().getScaledWidth(),
+                MinecraftClient.getInstance().getWindow().getScaledHeight()
+            );
+        } else if (interactionsEnabled && showTooltips && hoveredNodeType != null) {
             TooltipRenderer.render(
                 context,
                 textRenderer,
@@ -571,6 +630,7 @@ public class Sidebar {
         // Reset hover states if mouse is not in sidebar
         if (effectiveMouseX < 0 || effectiveMouseX > currentRenderedWidth) {
             hoveredNodeType = null;
+            hoveredCustomNode = null;
             hoveredCategory = null;
         }
     }
@@ -597,7 +657,7 @@ public class Sidebar {
             }
             
             // Check node clicks for dragging
-            if (hoveredNodeType != null) {
+            if (hoveredNodeType != null || hoveredCustomNode != null) {
                 return true; // Signal that dragging should start
             }
         }
@@ -614,15 +674,14 @@ public class Sidebar {
         return false;
     }
     
-    public NodeType getHoveredNodeType() {
-        return hoveredNodeType;
-    }
-    
     public boolean isHoveringNode() {
-        return hoveredNodeType != null;
+        return hoveredNodeType != null || hoveredCustomNode != null;
     }
     
     public Node createNodeFromSidebar(int x, int y) {
+        if (hoveredCustomNode != null) {
+            return hoveredCustomNode.createNode(x, y);
+        }
         if (hoveredNodeType != null) {
             return new Node(hoveredNodeType, x, y);
         }
@@ -653,6 +712,9 @@ public class Sidebar {
      * Returns true if the specified category has any nodes.
      */
     public boolean hasNodesInCategory(NodeCategory category) {
+        if (category == NodeCategory.CUSTOM) {
+            return !customNodes.isEmpty();
+        }
         List<NodeType> nodes = categoryNodes.get(category);
         return nodes != null && !nodes.isEmpty();
     }
@@ -661,6 +723,9 @@ public class Sidebar {
      * Returns the list of nodes for the specified category (non-grouped).
      */
     public List<NodeType> getNodesForCategory(NodeCategory category) {
+        if (category == NodeCategory.CUSTOM) {
+            return java.util.Collections.emptyList();
+        }
         List<NodeType> nodes = categoryNodes.get(category);
         return nodes != null ? nodes : java.util.Collections.emptyList();
     }
@@ -671,6 +736,44 @@ public class Sidebar {
      */
     public List<NodeGroup> getGroupedNodesForCategory(NodeCategory category) {
         return groupedCategoryNodes.get(category);
+    }
+
+    public boolean isHoveringCustomNode() {
+        return hoveredCustomNode != null;
+    }
+
+    public NodeType getHoveredNodeType() {
+        return hoveredCustomNode != null ? NodeType.CUSTOM_NODE : hoveredNodeType;
+    }
+
+    private static final class CustomNodeEntry {
+        private final String presetName;
+
+        private CustomNodeEntry(String presetName) {
+            this.presetName = presetName;
+        }
+
+        private String getLabel() {
+            return presetName;
+        }
+
+        private String getDescription() {
+            return "Reusable custom node from preset \"" + presetName + "\".";
+        }
+
+        private Node createNode(int x, int y) {
+            Node node = new Node(NodeType.CUSTOM_NODE, x, y);
+            if (node.getParameter("Preset") != null) {
+                node.getParameter("Preset").setStringValue(presetName);
+            }
+            NodeGraphData data = NodeGraphPersistence.loadNodeGraphForPreset(presetName);
+            NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(presetName, data);
+            node.setTemplateName(definition != null ? definition.getName() : presetName);
+            node.setTemplateVersion(definition != null && definition.getVersion() != null ? definition.getVersion() : 0);
+            node.setTemplateGraphData(data);
+            node.recalculateDimensions();
+            return node;
+        }
     }
     
     /**

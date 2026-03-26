@@ -12,6 +12,7 @@ import java.util.List;
 public class NodeGraphData {
     private List<NodeData> nodes;
     private List<ConnectionData> connections;
+    private CustomNodeDefinition customNodeDefinition;
     
     public NodeGraphData() {
         this.nodes = new ArrayList<>();
@@ -38,6 +39,70 @@ public class NodeGraphData {
     public void setConnections(List<ConnectionData> connections) {
         this.connections = connections;
     }
+
+    public CustomNodeDefinition getCustomNodeDefinition() {
+        return customNodeDefinition;
+    }
+
+    public void setCustomNodeDefinition(CustomNodeDefinition customNodeDefinition) {
+        this.customNodeDefinition = customNodeDefinition;
+    }
+
+    public static class CustomNodeDefinition {
+        private String presetName;
+        private String name;
+        private Integer version;
+        private String signature;
+        private List<CustomNodePort> inputs;
+        private List<CustomNodePort> outputs;
+
+        public CustomNodeDefinition() {
+            this.inputs = new ArrayList<>();
+            this.outputs = new ArrayList<>();
+        }
+
+        public String getPresetName() { return presetName; }
+        public void setPresetName(String presetName) { this.presetName = presetName; }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+
+        public Integer getVersion() { return version; }
+        public void setVersion(Integer version) { this.version = version; }
+
+        public String getSignature() { return signature; }
+        public void setSignature(String signature) { this.signature = signature; }
+
+        public List<CustomNodePort> getInputs() { return inputs; }
+        public void setInputs(List<CustomNodePort> inputs) { this.inputs = inputs; }
+
+        public List<CustomNodePort> getOutputs() { return outputs; }
+        public void setOutputs(List<CustomNodePort> outputs) { this.outputs = outputs; }
+    }
+
+    public static class CustomNodePort {
+        private String name;
+        private String type;
+        private String defaultValue;
+
+        public CustomNodePort() {
+        }
+
+        public CustomNodePort(String name, String type, String defaultValue) {
+            this.name = name;
+            this.type = type;
+            this.defaultValue = defaultValue;
+        }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+
+        public String getDefaultValue() { return defaultValue; }
+        public void setDefaultValue(String defaultValue) { this.defaultValue = defaultValue; }
+    }
     
     /**
      * Data structure for a single node
@@ -63,6 +128,8 @@ public class NodeGraphData {
         private Boolean gotoAllowBreakWhileExecuting;
         private Boolean gotoAllowPlaceWhileExecuting;
         private String templateName;
+        private Integer templateVersion;
+        private Boolean customNodeInstance;
         private NodeGraphData templateGraph;
 
         public NodeData() {
@@ -188,6 +255,22 @@ public class NodeGraphData {
 
         public void setTemplateName(String templateName) {
             this.templateName = templateName;
+        }
+
+        public Integer getTemplateVersion() {
+            return templateVersion;
+        }
+
+        public void setTemplateVersion(Integer templateVersion) {
+            this.templateVersion = templateVersion;
+        }
+
+        public Boolean getCustomNodeInstance() {
+            return customNodeInstance;
+        }
+
+        public void setCustomNodeInstance(Boolean customNodeInstance) {
+            this.customNodeInstance = customNodeInstance;
         }
 
         public NodeGraphData getTemplateGraph() {

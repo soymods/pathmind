@@ -12,11 +12,16 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -40,13 +45,14 @@ public class NodeGraphPersistence {
 
     public static boolean saveNodeGraphForPreset(String presetName, List<Node> nodes, List<NodeConnection> connections) {
         Path savePath = PresetManager.getPresetPath(presetName);
-        NodeGraphData data = buildNodeGraphData(nodes, connections);
+        NodeGraphData existingData = loadNodeGraphFromPath(savePath);
+        NodeGraphData data = buildNodeGraphData(presetName, nodes, connections, existingData);
         cachePresetGraph(presetName, data);
         return writeNodeGraphDataToPath(data, savePath);
     }
 
     public static boolean saveNodeGraphToPath(List<Node> nodes, List<NodeConnection> connections, Path savePath) {
-        NodeGraphData data = buildNodeGraphData(nodes, connections);
+        NodeGraphData data = buildNodeGraphData(null, nodes, connections, null);
         return writeNodeGraphDataToPath(data, savePath);
     }
 
@@ -165,8 +171,10 @@ public class NodeGraphPersistence {
             if (node.hasBookTextInput() && nodeData.getBookText() != null) {
                 node.setBookText(nodeData.getBookText());
             }
-            if (node.getType() == NodeType.TEMPLATE) {
+            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
                 node.setTemplateName(nodeData.getTemplateName());
+                node.setTemplateVersion(nodeData.getTemplateVersion() != null ? nodeData.getTemplateVersion() : 0);
+                node.setCustomNodeInstance(Boolean.TRUE.equals(nodeData.getCustomNodeInstance()));
                 node.setTemplateGraphData(nodeData.getTemplateGraph());
             }
             if (node.getType() == NodeType.GOTO) {
@@ -373,8 +381,10 @@ public class NodeGraphPersistence {
         return name.toLowerCase(Locale.ROOT);
     }
 
-    private static NodeGraphData buildNodeGraphData(List<Node> nodes, List<NodeConnection> connections) {
+    private static NodeGraphData buildNodeGraphData(String presetName, List<Node> nodes, List<NodeConnection> connections,
+                                                    NodeGraphData existingData) {
         NodeGraphData data = new NodeGraphData();
+        data.setCustomNodeDefinition(buildCustomNodeDefinition(presetName, nodes, connections, existingData));
 
         for (Node node : nodes) {
             NodeGraphData.NodeData nodeData = new NodeGraphData.NodeData();
@@ -436,11 +446,15 @@ public class NodeGraphPersistence {
             } else {
                 nodeData.setBookText(null);
             }
-            if (node.getType() == NodeType.TEMPLATE) {
+            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
                 nodeData.setTemplateName(node.getTemplateName());
+                nodeData.setTemplateVersion(node.getTemplateVersion());
+                nodeData.setCustomNodeInstance(node.isCustomNodeInstance());
                 nodeData.setTemplateGraph(node.getTemplateGraphData());
             } else {
                 nodeData.setTemplateName(null);
+                nodeData.setTemplateVersion(null);
+                nodeData.setCustomNodeInstance(null);
                 nodeData.setTemplateGraph(null);
             }
             if (node.getType() == NodeType.GOTO) {
@@ -468,6 +482,205 @@ public class NodeGraphPersistence {
         }
 
         return data;
+    }
+
+    public static NodeGraphData.CustomNodeDefinition resolveCustomNodeDefinition(String presetName, NodeGraphData data) {
+        if (data != null && data.getCustomNodeDefinition() != null) {
+            NodeGraphData.CustomNodeDefinition stored = data.getCustomNodeDefinition();
+            if (stored.getInputs() == null) {
+                stored.setInputs(new ArrayList<>());
+            }
+            if (stored.getOutputs() == null) {
+                stored.setOutputs(new ArrayList<>());
+            }
+            if (stored.getPresetName() == null || stored.getPresetName().isBlank()) {
+                stored.setPresetName(presetName);
+            }
+            if (stored.getName() == null || stored.getName().isBlank()) {
+                stored.setName(stored.getPresetName());
+            }
+            if (stored.getVersion() == null || stored.getVersion() <= 0) {
+                stored.setVersion(1);
+            }
+            if (stored.getSignature() == null || stored.getSignature().isBlank()) {
+                stored.setSignature(buildCustomNodeSignature(data));
+            }
+            return stored;
+        }
+        return buildCustomNodeDefinition(presetName, convertToNodesOrEmpty(data), convertToConnectionsOrEmpty(data), null);
+    }
+
+    private static List<Node> convertToNodesOrEmpty(NodeGraphData data) {
+        if (data == null || data.getNodes() == null || data.getNodes().isEmpty()) {
+            return List.of();
+        }
+        return convertToNodes(data);
+    }
+
+    private static List<NodeConnection> convertToConnectionsOrEmpty(NodeGraphData data) {
+        if (data == null || data.getNodes() == null || data.getNodes().isEmpty()) {
+            return List.of();
+        }
+        List<Node> rebuiltNodes = convertToNodes(data);
+        Map<String, Node> nodeMap = new HashMap<>();
+        for (Node node : rebuiltNodes) {
+            nodeMap.put(node.getId(), node);
+        }
+        return convertToConnections(data, nodeMap);
+    }
+
+    private static NodeGraphData.CustomNodeDefinition buildCustomNodeDefinition(String presetName, List<Node> nodes,
+                                                                                List<NodeConnection> connections,
+                                                                                NodeGraphData existingData) {
+        NodeGraphData.CustomNodeDefinition definition = new NodeGraphData.CustomNodeDefinition();
+        String resolvedPresetName = (presetName == null || presetName.isBlank())
+            ? (existingData != null && existingData.getCustomNodeDefinition() != null
+                ? existingData.getCustomNodeDefinition().getPresetName()
+                : PresetManager.getActivePreset())
+            : presetName.trim();
+        definition.setPresetName(resolvedPresetName);
+        definition.setName(resolveCustomNodeName(resolvedPresetName, existingData));
+        definition.setInputs(discoverCustomNodeInputs(nodes));
+        definition.setOutputs(discoverCustomNodeOutputs(nodes));
+
+        String signature = buildCustomNodeSignature(nodes, connections);
+        definition.setSignature(signature);
+
+        int previousVersion = 0;
+        String previousSignature = null;
+        if (existingData != null && existingData.getCustomNodeDefinition() != null) {
+            NodeGraphData.CustomNodeDefinition existingDefinition = existingData.getCustomNodeDefinition();
+            previousVersion = existingDefinition.getVersion() != null ? existingDefinition.getVersion() : 0;
+            previousSignature = existingDefinition.getSignature();
+            if ((previousSignature == null || previousSignature.isBlank()) && existingData.getNodes() != null) {
+                previousSignature = buildCustomNodeSignature(existingData);
+            }
+        }
+        definition.setVersion(Objects.equals(signature, previousSignature) ? Math.max(1, previousVersion) : Math.max(1, previousVersion + 1));
+        return definition;
+    }
+
+    private static String resolveCustomNodeName(String presetName, NodeGraphData existingData) {
+        if (existingData != null && existingData.getCustomNodeDefinition() != null) {
+            String existingName = existingData.getCustomNodeDefinition().getName();
+            if (existingName != null && !existingName.isBlank()) {
+                return existingName.trim();
+            }
+        }
+        return (presetName == null || presetName.isBlank()) ? "Custom Node" : presetName.trim();
+    }
+
+    private static List<NodeGraphData.CustomNodePort> discoverCustomNodeInputs(List<Node> nodes) {
+        Map<String, NodeGraphData.CustomNodePort> inputs = new LinkedHashMap<>();
+        for (Node node : nodes) {
+            if (node == null || node.getType() != NodeType.VARIABLE) {
+                continue;
+            }
+            NodeParameter variableParam = node.getParameter("Variable");
+            if (variableParam == null) {
+                continue;
+            }
+            String name = variableParam.getStringValue();
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            String normalized = name.trim().toLowerCase(Locale.ROOT);
+            inputs.putIfAbsent(normalized, new NodeGraphData.CustomNodePort(name.trim(), "variable", ""));
+        }
+        return new ArrayList<>(inputs.values());
+    }
+
+    private static List<NodeGraphData.CustomNodePort> discoverCustomNodeOutputs(List<Node> nodes) {
+        List<NodeGraphData.CustomNodePort> outputs = new ArrayList<>();
+        List<Node> starts = new ArrayList<>();
+        for (Node node : nodes) {
+            if (node != null && node.getType() == NodeType.START) {
+                starts.add(node);
+            }
+        }
+        starts.sort(Comparator.comparingInt(Node::getStartNodeNumber));
+        for (Node start : starts) {
+            int startNumber = start.getStartNodeNumber();
+            String label = startNumber > 0 ? "Start " + startNumber : "Start";
+            outputs.add(new NodeGraphData.CustomNodePort(label, "flow", ""));
+        }
+        if (outputs.isEmpty()) {
+            outputs.add(new NodeGraphData.CustomNodePort("Flow", "flow", ""));
+        }
+        return outputs;
+    }
+
+    private static String buildCustomNodeSignature(NodeGraphData data) {
+        if (data == null) {
+            return "";
+        }
+        StringBuilder raw = new StringBuilder();
+        List<NodeGraphData.NodeData> nodeList = data.getNodes() == null ? List.of() : new ArrayList<>(data.getNodes());
+        nodeList.sort(Comparator
+            .comparing((NodeGraphData.NodeData node) -> node.getType() == null ? "" : node.getType().name())
+            .thenComparing(node -> node.getId() == null ? "" : node.getId()));
+        for (NodeGraphData.NodeData node : nodeList) {
+            raw.append(node.getType() == null ? "" : node.getType().name()).append('|');
+            List<NodeGraphData.ParameterData> params = node.getParameters() == null ? List.of() : new ArrayList<>(node.getParameters());
+            params.sort(Comparator.comparing(NodeGraphData.ParameterData::getName, Comparator.nullsFirst(String::compareToIgnoreCase)));
+            for (NodeGraphData.ParameterData param : params) {
+                raw.append(param.getName()).append('=').append(param.getValue()).append(';');
+            }
+            raw.append('\n');
+        }
+        List<NodeGraphData.ConnectionData> connectionList = data.getConnections() == null ? List.of() : new ArrayList<>(data.getConnections());
+        connectionList.sort(Comparator
+            .comparing(NodeGraphData.ConnectionData::getOutputNodeId, Comparator.nullsFirst(String::compareTo))
+            .thenComparing(NodeGraphData.ConnectionData::getInputNodeId, Comparator.nullsFirst(String::compareTo))
+            .thenComparingInt(NodeGraphData.ConnectionData::getOutputSocket)
+            .thenComparingInt(NodeGraphData.ConnectionData::getInputSocket));
+        for (NodeGraphData.ConnectionData connection : connectionList) {
+            raw.append(connection.getOutputNodeId()).append("->").append(connection.getInputNodeId())
+                .append(':').append(connection.getOutputSocket()).append(':').append(connection.getInputSocket()).append('\n');
+        }
+        return sha256(raw.toString());
+    }
+
+    private static String buildCustomNodeSignature(List<Node> nodes, List<NodeConnection> connections) {
+        StringBuilder raw = new StringBuilder();
+        List<Node> nodeList = new ArrayList<>(nodes);
+        nodeList.sort(Comparator
+            .comparing((Node node) -> node.getType() == null ? "" : node.getType().name())
+            .thenComparing(Node::getId));
+        for (Node node : nodeList) {
+            raw.append(node.getType() == null ? "" : node.getType().name()).append('|');
+            List<NodeParameter> params = new ArrayList<>(node.getParameters());
+            params.sort(Comparator.comparing(NodeParameter::getName, Comparator.nullsFirst(String::compareToIgnoreCase)));
+            for (NodeParameter param : params) {
+                raw.append(param.getName()).append('=').append(param.getStringValue()).append(';');
+            }
+            raw.append('\n');
+        }
+        List<NodeConnection> connectionList = new ArrayList<>(connections);
+        connectionList.sort(Comparator
+            .comparing((NodeConnection connection) -> connection.getOutputNode().getId())
+            .thenComparing(connection -> connection.getInputNode().getId())
+            .thenComparingInt(NodeConnection::getOutputSocket)
+            .thenComparingInt(NodeConnection::getInputSocket));
+        for (NodeConnection connection : connectionList) {
+            raw.append(connection.getOutputNode().getId()).append("->").append(connection.getInputNode().getId())
+                .append(':').append(connection.getOutputSocket()).append(':').append(connection.getInputSocket()).append('\n');
+        }
+        return sha256(raw.toString());
+    }
+
+    private static String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest((value == null ? "" : value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            return Integer.toHexString((value == null ? "" : value).hashCode());
+        }
     }
 
     private static boolean writeNodeGraphDataToPath(NodeGraphData data, Path savePath) {

@@ -1,6 +1,8 @@
 package com.pathmind.validation;
 
 import com.pathmind.data.PresetManager;
+import com.pathmind.data.NodeGraphData;
+import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
@@ -189,16 +191,26 @@ public final class GraphValidator {
             return;
         }
 
-        if (type == NodeType.TEMPLATE) {
+        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             String preset = normalize(getParameterValue(node, "Preset"));
             String targetPreset = preset.isEmpty() ? normalize(activePreset) : preset;
             if (!targetPreset.isEmpty() && !containsIgnoreCase(availablePresets, targetPreset)) {
                 issues.add(issue(GraphValidationSeverity.ERROR, "missing_template_preset",
-                    "Template references preset \"" + displayValue(targetPreset) + "\", but that preset was not found.", node));
+                    (type == NodeType.CUSTOM_NODE ? "Custom Node" : "Template")
+                        + " references preset \"" + displayValue(targetPreset) + "\", but that preset was not found.", node));
             }
             if (node.getTemplateGraphData() == null) {
                 issues.add(issue(GraphValidationSeverity.WARNING, "missing_template_graph",
-                    "Template has no saved internal graph yet.", node));
+                    (type == NodeType.CUSTOM_NODE ? "Custom Node" : "Template") + " has no saved internal graph yet.", node));
+            } else {
+                NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(targetPreset, node.getTemplateGraphData());
+                int instanceVersion = node.getTemplateVersion();
+                int definitionVersion = definition != null && definition.getVersion() != null ? definition.getVersion() : 0;
+                if (instanceVersion > 0 && definitionVersion > instanceVersion) {
+                    issues.add(issue(GraphValidationSeverity.WARNING, "outdated_custom_node_version",
+                        (type == NodeType.CUSTOM_NODE ? "Custom node" : "Template") + " is pinned to custom node v" + instanceVersion + ", but preset \"" + displayValue(targetPreset)
+                            + "\" is now v" + definitionVersion + ".", node));
+                }
             }
             return;
         }

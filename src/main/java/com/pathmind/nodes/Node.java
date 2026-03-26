@@ -316,9 +316,15 @@ public class Node {
     private boolean gotoAllowBreakWhileExecuting;
     private boolean gotoAllowPlaceWhileExecuting;
     private String templateName;
+    private int templateVersion;
+    private boolean customNodeInstance;
     private NodeGraphData templateGraphData;
     private transient Random randomGenerator;
     private transient String randomSeedCache;
+
+    private boolean usesTemplateBacking() {
+        return type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE;
+    }
 
     public Node(NodeType type, int x, int y) {
         this.id = java.util.UUID.randomUUID().toString();
@@ -353,7 +359,9 @@ public class Node {
         this.variableFieldWidthOverride = 0;
         this.gotoAllowBreakWhileExecuting = false;
         this.gotoAllowPlaceWhileExecuting = false;
-        this.templateName = type == NodeType.TEMPLATE ? "Template" : "";
+        this.templateName = usesTemplateBacking() ? "Template" : "";
+        this.templateVersion = 0;
+        this.customNodeInstance = type == NodeType.CUSTOM_NODE;
         this.templateGraphData = null;
         initializeParameters();
         recalculateDimensions();
@@ -1282,7 +1290,8 @@ public class Node {
     }
 
     public boolean hasStopTargetInputField() {
-        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN || type == NodeType.RUN_PRESET || type == NodeType.TEMPLATE;
+        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN || type == NodeType.RUN_PRESET
+            || type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE;
     }
 
     public boolean hasVariableInputField() {
@@ -1290,7 +1299,7 @@ public class Node {
     }
 
     public String getStopTargetFieldParameterKey() {
-        if (type == NodeType.RUN_PRESET || type == NodeType.TEMPLATE) {
+        if (type == NodeType.RUN_PRESET || type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             return "Preset";
         }
         return "StartNumber";
@@ -1820,14 +1829,14 @@ public class Node {
         if (!hasStopTargetInputField()) {
             return 0;
         }
-        if (type == NodeType.TEMPLATE) {
+        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             return 24;
         }
         return STOP_TARGET_FIELD_TOP_MARGIN + STOP_TARGET_FIELD_HEIGHT + STOP_TARGET_FIELD_BOTTOM_MARGIN;
     }
 
     public int getStopTargetFieldLabelTop() {
-        if (type == NodeType.TEMPLATE) {
+        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             return y + HEADER_HEIGHT + 4;
         }
         return getParameterSlotsBottom() + STOP_TARGET_FIELD_TOP_MARGIN;
@@ -1842,21 +1851,21 @@ public class Node {
     }
 
     public int getStopTargetFieldHeight() {
-        if (type == NodeType.TEMPLATE) {
+        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             return 16;
         }
         return STOP_TARGET_FIELD_HEIGHT;
     }
 
     public int getStopTargetFieldWidth() {
-        if (type == NodeType.TEMPLATE) {
+        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             return Math.max(72, width - 12);
         }
         return Math.max(STOP_TARGET_FIELD_MIN_WIDTH, stopTargetFieldWidthOverride);
     }
 
     public int getStopTargetFieldLeft() {
-        if (type == NodeType.TEMPLATE) {
+        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             return x + 6;
         }
         return x + Math.max(STOP_TARGET_FIELD_MARGIN_HORIZONTAL, (width - getStopTargetFieldWidth()) / 2);
@@ -2640,6 +2649,7 @@ public class Node {
             case RUN_PRESET:
                 parameters.add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 break;
+            case CUSTOM_NODE:
             case TEMPLATE:
                 parameters.add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 break;
@@ -3853,25 +3863,47 @@ public class Node {
     }
 
     public String getTemplateName() {
-        if (type != NodeType.TEMPLATE) {
+        if (!usesTemplateBacking()) {
             return "";
         }
         return (templateName == null || templateName.isEmpty()) ? "Template" : templateName;
     }
 
     public void setTemplateName(String templateName) {
-        if (type != NodeType.TEMPLATE) {
+        if (!usesTemplateBacking()) {
             return;
         }
         this.templateName = (templateName == null || templateName.isBlank()) ? "Template" : templateName.trim();
     }
 
+    public int getTemplateVersion() {
+        return usesTemplateBacking() ? templateVersion : 0;
+    }
+
+    public void setTemplateVersion(int templateVersion) {
+        if (!usesTemplateBacking()) {
+            return;
+        }
+        this.templateVersion = Math.max(0, templateVersion);
+    }
+
+    public boolean isCustomNodeInstance() {
+        return type == NodeType.CUSTOM_NODE || (type == NodeType.TEMPLATE && customNodeInstance);
+    }
+
+    public void setCustomNodeInstance(boolean customNodeInstance) {
+        if (!usesTemplateBacking()) {
+            return;
+        }
+        this.customNodeInstance = customNodeInstance;
+    }
+
     public NodeGraphData getTemplateGraphData() {
-        return type == NodeType.TEMPLATE ? templateGraphData : null;
+        return usesTemplateBacking() ? templateGraphData : null;
     }
 
     public void setTemplateGraphData(NodeGraphData templateGraphData) {
-        if (type != NodeType.TEMPLATE) {
+        if (!usesTemplateBacking()) {
             return;
         }
         this.templateGraphData = templateGraphData;
@@ -4336,7 +4368,7 @@ public class Node {
             this.height = START_END_SIZE;
             return;
         }
-        if (type == NodeType.TEMPLATE) {
+        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
             this.width = TEMPLATE_NODE_WIDTH;
             this.height = TEMPLATE_NODE_HEIGHT;
             return;
@@ -6712,6 +6744,7 @@ public class Node {
             case RUN_PRESET:
                 executeRunPresetNode(future);
                 break;
+            case CUSTOM_NODE:
             case TEMPLATE:
                 executeRunPresetNode(future);
                 break;

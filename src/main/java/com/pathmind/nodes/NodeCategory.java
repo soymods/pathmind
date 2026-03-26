@@ -6,6 +6,7 @@ import net.minecraft.text.Text;
  * Enum representing different categories of nodes for sidebar organization.
  */
 public enum NodeCategory {
+    CUSTOM("pathmind.node.category.custom", 0xFF26A69A, "pathmind.node.category.custom.desc", "◈"),
     EVENTS("pathmind.node.category.events", 0xFFE91E63, "pathmind.node.category.events.desc", "★"),
     LOGIC("pathmind.node.category.logic", 0xFFFFC107, "pathmind.node.category.logic.desc", "🧠"),
     MOVEMENT("pathmind.node.category.movement", 0xFF00BCD4, "pathmind.node.category.movement.desc", "⇄"),

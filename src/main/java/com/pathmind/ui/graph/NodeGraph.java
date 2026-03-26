@@ -1153,7 +1153,7 @@ public class NodeGraph {
                     && newNode.getParameter("StartNumber") == null) {
                     newNode.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 }
-                if ((newNode.getType() == NodeType.RUN_PRESET || newNode.getType() == NodeType.TEMPLATE)
+                if ((newNode.getType() == NodeType.RUN_PRESET || newNode.getType() == NodeType.TEMPLATE || newNode.getType() == NodeType.CUSTOM_NODE)
                     && newNode.getParameter("Preset") == null) {
                     newNode.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 }
@@ -1271,11 +1271,15 @@ public class NodeGraph {
             } else {
                 nodeData.setBookText(null);
             }
-            if (node.getType() == NodeType.TEMPLATE) {
+            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
                 nodeData.setTemplateName(node.getTemplateName());
+                nodeData.setTemplateVersion(node.getTemplateVersion());
+                nodeData.setCustomNodeInstance(node.isCustomNodeInstance());
                 nodeData.setTemplateGraph(node.getTemplateGraphData());
             } else {
                 nodeData.setTemplateName(null);
+                nodeData.setTemplateVersion(null);
+                nodeData.setCustomNodeInstance(null);
                 nodeData.setTemplateGraph(null);
             }
 
@@ -1645,12 +1649,15 @@ public class NodeGraph {
     }
 
     public void previewSidebarDrag(NodeType nodeType, int worldMouseX, int worldMouseY) {
+        previewSidebarDrag(nodeType != null ? new Node(nodeType, worldMouseX, worldMouseY) : null, worldMouseX, worldMouseY);
+    }
+
+    public void previewSidebarDrag(Node candidate, int worldMouseX, int worldMouseY) {
         resetDropTargets();
-        if (nodeType == null) {
+        if (candidate == null) {
             return;
         }
-
-        Node candidate = new Node(nodeType, worldMouseX, worldMouseY);
+        NodeType nodeType = candidate.getType();
         boolean parameterCandidate = nodeType == NodeType.SENSOR_POSITION_OF
             || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
@@ -1724,12 +1731,15 @@ public class NodeGraph {
     }
 
     public Node handleSidebarDrop(NodeType nodeType, int worldMouseX, int worldMouseY) {
+        return handleSidebarDrop(nodeType != null ? new Node(nodeType, 0, 0) : null, worldMouseX, worldMouseY);
+    }
+
+    public Node handleSidebarDrop(Node newNode, int worldMouseX, int worldMouseY) {
         resetDropTargets();
-        if (nodeType == null) {
+        if (newNode == null) {
             return null;
         }
-
-        Node newNode = new Node(nodeType, 0, 0);
+        NodeType nodeType = newNode.getType();
         if (nodeType == NodeType.START) {
             assignNewStartNodeNumber(newNode);
         }
@@ -2590,7 +2600,7 @@ public class NodeGraph {
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.scale(matrices, getZoomScale(), getZoomScale());
         if (onlyDragged) {
-            // Lift dragged nodes above other GUI layers on matrix-stack renderers.
+            // Keep active drags above border/line layers while they are in motion.
             MatrixStackBridge.translateZ(matrices, 250.0f);
         }
 
@@ -2856,6 +2866,7 @@ public class NodeGraph {
             && node.getType() != NodeType.EVENT_FUNCTION
             && node.getType() != NodeType.VARIABLE
             && node.getType() != NodeType.TEMPLATE
+            && node.getType() != NodeType.CUSTOM_NODE
             && node.getType() != NodeType.OPERATOR_EQUALS
             && node.getType() != NodeType.OPERATOR_NOT
             && node.getType() != NodeType.OPERATOR_BOOLEAN_OR
@@ -3255,6 +3266,8 @@ public class NodeGraph {
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else if (node.getType() == NodeType.TEMPLATE) {
             renderTemplateNodeContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        } else if (node.getType() == NodeType.CUSTOM_NODE) {
+            renderCustomNodeContent(context, textRenderer, node, isOverSidebar);
         } else {
             if (rendersInlineParameters(node)) {
                 if (shouldShowParameters(node)) {
@@ -5384,10 +5397,32 @@ public class NodeGraph {
         int bodyColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY;
         context.fill(x + 1, y + 15, x + width - 1, y + node.getHeight() - 1, bodyColor);
 
-        String name = trimTextToWidth("Preset", textRenderer, Math.max(0, width - 18));
+        NodeGraphData.CustomNodeDefinition definition = getTemplateDefinition(node);
+        String headerName = definition != null && definition.getName() != null && !definition.getName().isBlank()
+            ? definition.getName().trim()
+            : "Custom Node";
+        String versionLabel = definition != null && definition.getVersion() != null && definition.getVersion() > 0
+            ? " v" + definition.getVersion()
+            : "";
+        boolean lockedCustomNode = node.isCustomNodeInstance();
+        String badge = lockedCustomNode ? "LOCKED" : "LINK";
+        int badgeWidth = textRenderer.getWidth(badge) + 8;
+        int badgeLeft = x + width - badgeWidth - 6;
+        int badgeTop = y + 2;
+        int badgeFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(node.getType().getColor(), 0.78f);
+        int badgeBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(node.getType().getColor(), 1.18f);
+        context.fill(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + 11, badgeFill);
+        DrawContextBridge.drawBorderInLayer(context, badgeLeft, badgeTop, badgeWidth, 11, badgeBorder);
+        drawNodeText(context, textRenderer, badge, badgeLeft + 4, badgeTop + 2, isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
+
+        String name = trimTextToWidth(headerName + versionLabel, textRenderer, Math.max(0, width - badgeWidth - 20));
         drawNodeText(context, textRenderer, name, x + 6, y + 4, isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
 
-        renderStopTargetInputField(context, textRenderer, node, isOverSidebar);
+        if (lockedCustomNode) {
+            renderLockedCustomNodeBinding(context, textRenderer, node, isOverSidebar);
+        } else {
+            renderStopTargetInputField(context, textRenderer, node, isOverSidebar);
+        }
 
         int previewLeft = getTemplatePreviewLeft(node) - cameraX;
         int previewTop = getTemplatePreviewTop(node) - cameraY;
@@ -5398,12 +5433,103 @@ public class NodeGraph {
         DrawContextBridge.drawBorderInLayer(context, previewLeft, previewTop, previewWidth, previewHeight,
             isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT);
 
-        renderTemplatePreviewGraph(context, node, previewLeft, previewTop, previewWidth, previewHeight, isOverSidebar);
-        renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        renderTemplatePreviewGraph(context, textRenderer, node, previewLeft, previewTop, previewWidth, previewHeight, isOverSidebar);
+        if (!lockedCustomNode) {
+            renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
     }
 
-    private void renderTemplatePreviewGraph(DrawContext context, Node node, int previewLeft, int previewTop, int previewWidth, int previewHeight, boolean isOverSidebar) {
+    private void renderCustomNodeContent(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int x = node.getX() - cameraX;
+        int y = node.getY() - cameraY;
+        int width = node.getWidth();
+        int height = node.getHeight();
+        int accent = node.getType().getColor();
+
+        int headerColor = isOverSidebar ? UITheme.NODE_HEADER_DIMMED : (accent & UITheme.NODE_HEADER_ALPHA_MASK);
+        int bodyColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(accent, 0.2f);
+        int panelColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY;
+        int chipFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(accent, 0.55f);
+        int chipBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(accent, 1.15f);
+        int primaryText = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int secondaryText = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
+
+        context.fill(x + 1, y + 1, x + width - 1, y + 18, headerColor);
+        context.fill(x + 1, y + 19, x + width - 1, y + height - 1, panelColor);
+
+        NodeGraphData.CustomNodeDefinition definition = getTemplateDefinition(node);
+        String title = definition != null && definition.getName() != null && !definition.getName().isBlank()
+            ? definition.getName().trim()
+            : node.getTemplateName();
+        String version = definition != null && definition.getVersion() != null && definition.getVersion() > 0
+            ? "v" + definition.getVersion()
+            : "";
+        drawNodeText(context, textRenderer, trimTextToWidth(title, textRenderer, width - 48), x + 6, y + 4, primaryText);
+        if (!version.isEmpty()) {
+            int versionWidth = textRenderer.getWidth(version) + 8;
+            int versionLeft = x + width - versionWidth - 6;
+            context.fill(versionLeft, y + 3, versionLeft + versionWidth, y + 14, chipFill);
+            DrawContextBridge.drawBorderInLayer(context, versionLeft, y + 3, versionWidth, 11, chipBorder);
+            drawNodeText(context, textRenderer, version, versionLeft + 4, y + 5, primaryText);
+        }
+
+        int bindingLeft = x + 6;
+        int bindingTop = y + 24;
+        int bindingWidth = width - 12;
+        context.fill(bindingLeft, bindingTop, bindingLeft + bindingWidth, bindingTop + 18, bodyColor);
+        DrawContextBridge.drawBorderInLayer(context, bindingLeft, bindingTop, bindingWidth, 18, chipBorder);
+        drawNodeText(context, textRenderer, "Preset", bindingLeft + 4, bindingTop + 5, secondaryText);
+        String presetName = trimTextToWidth(getSelectedPresetName(node), textRenderer, Math.max(24, bindingWidth - 48));
+        drawNodeText(context, textRenderer, presetName, bindingLeft + 42, bindingTop + 5, primaryText);
+
+        int previewLeft = getTemplatePreviewLeft(node) - cameraX;
+        int previewTop = y + 48;
+        int previewWidth = getTemplatePreviewWidth(node);
+        int previewHeight = Math.max(18, y + height - TEMPLATE_PREVIEW_BOTTOM_MARGIN - previewTop);
+        context.fill(previewLeft, previewTop, previewLeft + previewWidth, previewTop + previewHeight,
+            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorderInLayer(context, previewLeft, previewTop, previewWidth, previewHeight,
+            isOverSidebar ? UITheme.BORDER_SUBTLE : chipBorder);
+        renderTemplatePreviewGraph(context, textRenderer, node, previewLeft, previewTop, previewWidth, previewHeight, isOverSidebar);
+    }
+
+    private void renderLockedCustomNodeBinding(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+        int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
+        int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
+        int fieldWidth = node.getStopTargetFieldWidth();
+        int fieldHeight = node.getStopTargetFieldHeight();
+        int fieldBottom = fieldTop + fieldHeight;
+
+        int labelY = fieldTop - textRenderer.fontHeight - 2;
+        if (labelY >= node.getY() - cameraY + 14) {
+            drawNodeText(context, textRenderer, Text.literal("Custom Node"), fieldLeft, labelY,
+                isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR);
+        }
+
+        int fill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(node.getType().getColor(), 0.55f);
+        int border = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(node.getType().getColor(), 1.12f);
+        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, fill);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, border);
+
+        String presetLine = trimTextToWidth(getSelectedPresetName(node), textRenderer, Math.max(0, fieldWidth - 34));
+        drawNodeText(context, textRenderer, Text.literal(presetLine), fieldLeft + 4, fieldTop + 4,
+            isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
+
+        String lockGlyph = "[]";
+        int lockX = fieldLeft + fieldWidth - textRenderer.getWidth(lockGlyph) - 5;
+        drawNodeText(context, textRenderer, Text.literal(lockGlyph), lockX, fieldTop + 4,
+            isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
+    }
+
+    private void renderTemplatePreviewGraph(DrawContext context, TextRenderer textRenderer, Node node,
+                                            int previewLeft, int previewTop, int previewWidth, int previewHeight,
+                                            boolean isOverSidebar) {
         NodeGraphData templateData = getPresetPreviewGraphData(node);
+        NodeGraphData.CustomNodeDefinition definition = templateData != null ? NodeGraphPersistence.resolveCustomNodeDefinition(getSelectedPresetName(node), templateData) : null;
+        if (definition != null) {
+            renderTemplateDefinitionSummary(context, textRenderer, node, definition, previewLeft, previewTop, previewWidth, previewHeight, isOverSidebar);
+            return;
+        }
         if (templateData == null || templateData.getNodes() == null || templateData.getNodes().isEmpty()) {
             return;
         }
@@ -5494,25 +5620,104 @@ public class NodeGraph {
         }
     }
 
-    private NodeGraphData getPresetPreviewGraphData(Node node) {
-        if (node == null || node.getType() != NodeType.TEMPLATE) {
-            return null;
+    private void renderTemplateDefinitionSummary(DrawContext context, TextRenderer textRenderer, Node node,
+                                                 NodeGraphData.CustomNodeDefinition definition, int previewLeft,
+                                                 int previewTop, int previewWidth, int previewHeight, boolean isOverSidebar) {
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int mutedColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
+        int warningColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.ACCENT_AMBER;
+        int textX = previewLeft + 5;
+        int lineY = previewTop + 4;
+        int lineStep = textRenderer.fontHeight + 2;
+
+        String presetLine = "Preset: " + trimTextToWidth(getSelectedPresetName(node), textRenderer, Math.max(0, previewWidth - 10 - textRenderer.getWidth("Preset: ")));
+        drawNodeText(context, textRenderer, presetLine, textX, lineY, mutedColor);
+        lineY += lineStep;
+
+        int instanceVersion = node.getTemplateVersion();
+        int definitionVersion = definition.getVersion() != null ? definition.getVersion() : 0;
+        String versionLine = "Version: " + (definitionVersion > 0 ? ("v" + definitionVersion) : "unversioned");
+        if (instanceVersion > 0 && definitionVersion > instanceVersion) {
+            versionLine += " (instance v" + instanceVersion + ")";
+            drawNodeText(context, textRenderer, trimTextToWidth(versionLine, textRenderer, previewWidth - 10), textX, lineY, warningColor);
+        } else {
+            drawNodeText(context, textRenderer, trimTextToWidth(versionLine, textRenderer, previewWidth - 10), textX, lineY, textColor);
+        }
+        lineY += lineStep;
+
+        drawNodeText(context, textRenderer, "Inputs", textX, lineY, mutedColor);
+        lineY += lineStep;
+        lineY = renderPortList(context, textRenderer, definition.getInputs(), textX, lineY, previewWidth, previewTop + previewHeight, textColor, mutedColor);
+        if (lineY + lineStep < previewTop + previewHeight - 2) {
+            drawNodeText(context, textRenderer, "Outputs", textX, lineY, mutedColor);
+            lineY += lineStep;
+            renderPortList(context, textRenderer, definition.getOutputs(), textX, lineY, previewWidth, previewTop + previewHeight, textColor, mutedColor);
+        }
+    }
+
+    private int renderPortList(DrawContext context, TextRenderer textRenderer, List<NodeGraphData.CustomNodePort> ports,
+                               int textX, int lineY, int previewWidth, int previewBottom, int textColor, int mutedColor) {
+        if (ports == null || ports.isEmpty()) {
+            drawNodeText(context, textRenderer, "none", textX, lineY, mutedColor);
+            return lineY + textRenderer.fontHeight + 2;
+        }
+        for (NodeGraphData.CustomNodePort port : ports) {
+            if (lineY + textRenderer.fontHeight > previewBottom - 2) {
+                break;
+            }
+            String label = buildPortSummary(port);
+            drawNodeText(context, textRenderer, trimTextToWidth(label, textRenderer, previewWidth - 10), textX, lineY, textColor);
+            lineY += textRenderer.fontHeight + 2;
+        }
+        return lineY;
+    }
+
+    private String buildPortSummary(NodeGraphData.CustomNodePort port) {
+        if (port == null) {
+            return "";
+        }
+        String name = port.getName() == null || port.getName().isBlank() ? "unnamed" : port.getName().trim();
+        String type = port.getType() == null || port.getType().isBlank() ? "" : " [" + port.getType().trim() + "]";
+        String defaultValue = port.getDefaultValue() == null || port.getDefaultValue().isBlank() ? "" : " = " + port.getDefaultValue().trim();
+        return name + type + defaultValue;
+    }
+
+    private NodeGraphData.CustomNodeDefinition getTemplateDefinition(Node node) {
+        NodeGraphData templateData = getPresetPreviewGraphData(node);
+        return templateData == null ? null : NodeGraphPersistence.resolveCustomNodeDefinition(getSelectedPresetName(node), templateData);
+    }
+
+    private String getSelectedPresetName(Node node) {
+        if (node == null) {
+            return "";
         }
         NodeParameter presetParam = node.getParameter("Preset");
-        String presetName = presetParam != null ? presetParam.getStringValue() : null;
-        String normalized = (presetName == null || presetName.isBlank())
-            ? (activePreset == null ? "" : activePreset.trim())
-            : presetName.trim();
+        String presetName = presetParam != null ? presetParam.getStringValue() : "";
+        if (presetName == null || presetName.isBlank()) {
+            return activePreset == null ? "" : activePreset.trim();
+        }
+        return presetName.trim();
+    }
+
+    private NodeGraphData getPresetPreviewGraphData(Node node) {
+        if (node == null || (node.getType() != NodeType.TEMPLATE && node.getType() != NodeType.CUSTOM_NODE)) {
+            return null;
+        }
+        String normalized = getSelectedPresetName(node);
         if (normalized.isEmpty()) {
             return node.getTemplateGraphData();
         }
         NodeGraphData cached = node.getTemplateGraphData();
-        if (cached != null && normalized.equalsIgnoreCase(node.getTemplateName())) {
+        if (cached != null) {
             return cached;
         }
         NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphForPreset(normalized);
         if (loaded != null) {
-            node.setTemplateName(normalized);
+            NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(normalized, loaded);
+            if (definition != null) {
+                node.setTemplateName(definition.getName());
+                node.setTemplateVersion(definition.getVersion() != null ? definition.getVersion() : 0);
+            }
             node.setTemplateGraphData(loaded);
             return loaded;
         }
@@ -11200,16 +11405,20 @@ public class NodeGraph {
             resetStopTargetCaretBlink();
             updateStopTargetFieldContentWidth(getClientTextRenderer());
         }
-        if (node.getType() == NodeType.TEMPLATE) {
-            node.setTemplateName(value);
-            node.setTemplateGraphData(NodeGraphPersistence.loadNodeGraphForPreset(value));
+        if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+            NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphForPreset(value);
+            NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(value, loaded);
+            node.setTemplateName(definition != null ? definition.getName() : value);
+            node.setTemplateVersion(definition != null && definition.getVersion() != null ? definition.getVersion() : 0);
+            node.setTemplateGraphData(loaded);
         }
         node.recalculateDimensions();
         notifyNodeParametersChanged(node);
     }
 
     private boolean isPresetSelectorNode(Node node) {
-        return node != null && (node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE);
+        return node != null && (node.getType() == NodeType.RUN_PRESET
+            || node.getType() == NodeType.TEMPLATE);
     }
 
     private List<String> loadSchematicOptions() {
@@ -11848,7 +12057,7 @@ public class NodeGraph {
         if (node == null) {
             return;
         }
-        if (node.getType() == NodeType.TEMPLATE) {
+        if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
             node.setTemplateGraphData(null);
         }
         markWorkspaceDirty();
@@ -11895,7 +12104,7 @@ public class NodeGraph {
         }
         String normalizedPreset = presetName == null ? "" : presetName.trim();
         for (Node candidate : nodes) {
-            if (candidate == null || candidate.getType() != NodeType.TEMPLATE) {
+            if (candidate == null || (candidate.getType() != NodeType.TEMPLATE && candidate.getType() != NodeType.CUSTOM_NODE)) {
                 continue;
             }
             NodeParameter presetParam = candidate.getParameter("Preset");
@@ -11914,7 +12123,7 @@ public class NodeGraph {
             return;
         }
         for (Node candidate : nodes) {
-            if (candidate != null && candidate.getType() == NodeType.TEMPLATE) {
+            if (candidate != null && (candidate.getType() == NodeType.TEMPLATE || candidate.getType() == NodeType.CUSTOM_NODE)) {
                 candidate.setTemplateGraphData(null);
             }
         }
@@ -12022,7 +12231,7 @@ public class NodeGraph {
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
             }
-            if ((node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE) && node.getParameter("Preset") == null) {
+            if ((node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) && node.getParameter("Preset") == null) {
                 node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
             }
             node.ensureVillagerTradeNumberParameter();
@@ -12078,8 +12287,10 @@ public class NodeGraph {
             if (textNode != null && textNode.hasBookTextInput() && nodeData.getBookText() != null) {
                 textNode.setBookText(nodeData.getBookText());
             }
-            if (textNode != null && textNode.getType() == NodeType.TEMPLATE) {
+            if (textNode != null && (textNode.getType() == NodeType.TEMPLATE || textNode.getType() == NodeType.CUSTOM_NODE)) {
                 textNode.setTemplateName(nodeData.getTemplateName());
+                textNode.setTemplateVersion(nodeData.getTemplateVersion() != null ? nodeData.getTemplateVersion() : 0);
+                textNode.setCustomNodeInstance(Boolean.TRUE.equals(nodeData.getCustomNodeInstance()));
                 textNode.setTemplateGraphData(nodeData.getTemplateGraph());
             }
         }

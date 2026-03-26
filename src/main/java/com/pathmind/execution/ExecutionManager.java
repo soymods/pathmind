@@ -10,6 +10,10 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.util.BaritoneApiProxy;
+import com.pathmind.util.BaritoneDependencyChecker;
+import com.pathmind.util.UiUtilsDependencyChecker;
+import com.pathmind.validation.GraphValidationResult;
+import com.pathmind.validation.GraphValidator;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +60,9 @@ public class ExecutionManager {
     private final Map<ConnectionKey, Node> eventConnectionOwners;
     private final Set<Node> activeEventFunctionNodes;
     private final Map<Integer, Node> activeExecutionNodes;
+    private final Map<Integer, Long> executionNodeStartTimes;
+    private final Map<Integer, Long> executionNodePausedDurations;
+    private final Map<Integer, Long> executionNodePauseStartTimes;
     private final AtomicInteger nextExecutionId;
     private Integer primaryExecutionId;
     private boolean globalExecutionActive;
@@ -67,6 +74,7 @@ public class ExecutionManager {
     private boolean singleplayerPaused;
     private Integer lastStartNodeNumber;
     private String lastStartPreset;
+    private static final ThreadLocal<Integer> CURRENT_EXECUTION_ID = new ThreadLocal<>();
 
 
     private static class ChainController {
@@ -203,6 +211,9 @@ public class ExecutionManager {
         this.eventConnectionOwners = new ConcurrentHashMap<>();
         this.activeEventFunctionNodes = ConcurrentHashMap.newKeySet();
         this.activeExecutionNodes = new ConcurrentHashMap<>();
+        this.executionNodeStartTimes = new ConcurrentHashMap<>();
+        this.executionNodePausedDurations = new ConcurrentHashMap<>();
+        this.executionNodePauseStartTimes = new ConcurrentHashMap<>();
         this.nextExecutionId = new AtomicInteger(1);
         this.primaryExecutionId = null;
         this.activeNodeStartTime = 0;
@@ -331,6 +342,10 @@ public class ExecutionManager {
             LOGGER.warn("Cannot execute graph - missing nodes or connections");
             return;
         }
+        if (hasBlockingValidationErrors(nodes, connections, PresetManager.getActivePreset(),
+            "Cannot run: workspace has validation errors. Open the editor to review them.")) {
+            return;
+        }
 
         this.workspaceNodes = new ArrayList<>(nodes);
         this.workspaceConnections = new ArrayList<>(connections);
@@ -411,7 +426,6 @@ public class ExecutionManager {
 
         if (!requestStartForStartNumber(startNodeNumber)) {
             LOGGER.debug("Failed to start last START node {} from current workspace", startNodeNumber);
-            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": it is already running or has no executable branch.");
         }
     }
 
@@ -426,6 +440,10 @@ public class ExecutionManager {
         }
         if (nodes == null || connections == null) {
             LOGGER.warn("Cannot execute branch - missing nodes or connections");
+            return false;
+        }
+        if (hasBlockingValidationErrors(nodes, connections, presetName,
+            "Cannot run START: graph has validation errors. Open the editor to review them.")) {
             return false;
         }
         if (isChainActive(startNode)) {
@@ -495,6 +513,10 @@ public class ExecutionManager {
             LOGGER.warn("Cannot execute external branch - missing nodes or connections");
             return false;
         }
+        if (hasBlockingValidationErrors(nodes, connections, presetName,
+            "Cannot run preset \"" + presetName + "\": it has validation errors.")) {
+            return false;
+        }
         if (isChainActive(startNode)) {
             LOGGER.debug("External START node already executing, ignoring branch start request");
             return false;
@@ -538,6 +560,9 @@ public class ExecutionManager {
     private void startExecution(List<Node> startNodes, boolean markGlobal) {
         globalRuntimeVariables.clear();
         this.activeExecutionNodes.clear();
+        this.executionNodeStartTimes.clear();
+        this.executionNodePausedDurations.clear();
+        this.executionNodePauseStartTimes.clear();
         this.primaryExecutionId = null;
         this.activeNode = startNodes.isEmpty() ? null : startNodes.get(0);
         if (this.activeNode != null) {
@@ -568,8 +593,10 @@ public class ExecutionManager {
         if (executionId >= 0) {
             if (node != null) {
                 activeExecutionNodes.put(executionId, node);
+                resetExecutionTiming(executionId);
             } else {
                 activeExecutionNodes.remove(executionId);
+                clearExecutionTiming(executionId);
             }
         }
 
@@ -637,6 +664,9 @@ public class ExecutionManager {
         this.eventConnectionOwners.clear();
         this.activeEventFunctionNodes.clear();
         this.activeExecutionNodes.clear();
+        this.executionNodeStartTimes.clear();
+        this.executionNodePausedDurations.clear();
+        this.executionNodePauseStartTimes.clear();
         this.primaryExecutionId = null;
         this.activeChains.clear();
         this.globalRuntimeVariables.clear();
@@ -686,6 +716,56 @@ public class ExecutionManager {
      */
     public Node getActiveNode() {
         return activeNode;
+    }
+
+    public boolean isExecutionActiveOnNode(Integer executionId, String nodeId) {
+        if (executionId == null || executionId < 0 || nodeId == null || nodeId.isEmpty()) {
+            return false;
+        }
+        Node active = activeExecutionNodes.get(executionId);
+        return active != null && nodeId.equals(active.getId());
+    }
+
+    public long getExecutionNodeDuration(Integer executionId) {
+        if (executionId == null || executionId < 0) {
+            return 0L;
+        }
+
+        Long startTime = executionNodeStartTimes.get(executionId);
+        if (startTime == null || startTime <= 0L) {
+            return 0L;
+        }
+
+        long referenceTime = System.currentTimeMillis();
+        long pausedTime = executionNodePausedDurations.getOrDefault(executionId, 0L);
+        long pauseStart = executionNodePauseStartTimes.getOrDefault(executionId, 0L);
+        if (singleplayerPaused && pauseStart > 0L) {
+            pausedTime += referenceTime - pauseStart;
+        }
+
+        return Math.max(0L, referenceTime - startTime - pausedTime);
+    }
+
+    public Integer getCurrentExecutionId() {
+        return CURRENT_EXECUTION_ID.get();
+    }
+
+    public void runWithExecutionContext(int executionId, Runnable runnable) {
+        Integer previous = CURRENT_EXECUTION_ID.get();
+        if (executionId >= 0) {
+            CURRENT_EXECUTION_ID.set(executionId);
+        } else {
+            CURRENT_EXECUTION_ID.remove();
+        }
+        try {
+            runnable.run();
+        } finally {
+            if (previous != null) {
+                CURRENT_EXECUTION_ID.set(previous);
+            } else {
+                CURRENT_EXECUTION_ID.remove();
+            }
+        }
     }
 
     public List<Node> getActiveNodeChainSnapshot() {
@@ -751,6 +831,10 @@ public class ExecutionManager {
             LOGGER.debug("No workspace graph available to start START node {}", startNodeNumber);
             return false;
         }
+        if (hasBlockingValidationErrors(workspaceNodes, workspaceConnections, PresetManager.getActivePreset(),
+            "Cannot start START #" + startNodeNumber + ": workspace has validation errors. Open the editor to review them.")) {
+            return false;
+        }
 
         Node match = findWorkspaceStartNode(startNodeNumber);
 
@@ -760,6 +844,7 @@ public class ExecutionManager {
         }
         if (isChainActive(match)) {
             LOGGER.debug("START node already executing, ignoring start request");
+            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": it is already running.");
             return false;
         }
 
@@ -767,6 +852,7 @@ public class ExecutionManager {
         BranchData branchData = buildBranchData(match, workspaceNodes, filteredConnections);
         if (branchData == null || branchData.nodes.isEmpty()) {
             LOGGER.debug("START node {} has no executable branch", startNodeNumber);
+            PreciseCompletionTracker.notifyPlayerMessage("Cannot start START #" + startNodeNumber + ": it has no executable branch.");
             return false;
         }
 
@@ -902,13 +988,32 @@ public class ExecutionManager {
         }
 
         this.singleplayerPaused = paused;
+        long now = System.currentTimeMillis();
         if (paused) {
             if (activeNode != null) {
-                this.activeNodePauseStartTime = System.currentTimeMillis();
+                this.activeNodePauseStartTime = now;
+            }
+            for (Map.Entry<Integer, Node> entry : activeExecutionNodes.entrySet()) {
+                Integer executionId = entry.getKey();
+                if (executionId == null || entry.getValue() == null) {
+                    continue;
+                }
+                executionNodePauseStartTimes.put(executionId, now);
             }
         } else if (activeNodePauseStartTime > 0) {
-            this.activeNodePausedDuration += System.currentTimeMillis() - this.activeNodePauseStartTime;
+            this.activeNodePausedDuration += now - this.activeNodePauseStartTime;
             this.activeNodePauseStartTime = 0;
+            for (Map.Entry<Integer, Node> entry : activeExecutionNodes.entrySet()) {
+                Integer executionId = entry.getKey();
+                if (executionId == null || entry.getValue() == null) {
+                    continue;
+                }
+                long pauseStart = executionNodePauseStartTimes.getOrDefault(executionId, 0L);
+                if (pauseStart > 0L) {
+                    executionNodePausedDurations.merge(executionId, now - pauseStart, Long::sum);
+                    executionNodePauseStartTimes.put(executionId, 0L);
+                }
+            }
         }
     }
 
@@ -924,6 +1029,25 @@ public class ExecutionManager {
         this.activeNodePausedDuration = 0;
         this.activeNodePauseStartTime = 0;
         this.activeNodeEndTime = 0;
+    }
+
+    private void resetExecutionTiming(int executionId) {
+        if (executionId < 0) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        executionNodeStartTimes.put(executionId, now);
+        executionNodePausedDurations.put(executionId, 0L);
+        executionNodePauseStartTimes.put(executionId, singleplayerPaused ? now : 0L);
+    }
+
+    private void clearExecutionTiming(int executionId) {
+        if (executionId < 0) {
+            return;
+        }
+        executionNodeStartTimes.remove(executionId);
+        executionNodePausedDurations.remove(executionId);
+        executionNodePauseStartTimes.remove(executionId);
     }
 
     private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId) {
@@ -964,7 +1088,7 @@ public class ExecutionManager {
                         }
                         return CompletableFuture.completedFuture(null);
                     })
-                    .thenCompose(pausedIgnored -> currentNode.execute())
+                    .thenCompose(pausedIgnored -> currentNode.execute(executionId))
                     .thenCompose(ignoredFuture -> {
                         if (cancelRequested || controller.cancelRequested) {
                             return CompletableFuture.completedFuture(null);
@@ -1161,6 +1285,7 @@ public class ExecutionManager {
 
         if (executionId >= 0) {
             activeExecutionNodes.remove(executionId);
+            clearExecutionTiming(executionId);
             if (primaryExecutionId != null && primaryExecutionId == executionId) {
                 refreshPrimaryExecution();
             }
@@ -1182,6 +1307,9 @@ public class ExecutionManager {
             eventConnectionOwners.clear();
             activeEventFunctionNodes.clear();
             activeExecutionNodes.clear();
+            executionNodeStartTimes.clear();
+            executionNodePausedDurations.clear();
+            executionNodePauseStartTimes.clear();
             primaryExecutionId = null;
             globalRuntimeVariables.clear();
         }
@@ -1245,6 +1373,25 @@ public class ExecutionManager {
         }
 
         executeGraphInternal(loadedGraph.nodes, loadedGraph.connections, markGlobalSnapshot);
+        return true;
+    }
+
+    private boolean hasBlockingValidationErrors(List<Node> nodes, List<NodeConnection> connections, String presetName, String playerMessage) {
+        GraphValidationResult validation = GraphValidator.validate(
+            nodes,
+            connections,
+            presetName,
+            BaritoneDependencyChecker.isBaritoneApiPresent(),
+            UiUtilsDependencyChecker.isUiUtilsPresent()
+        );
+        if (!validation.hasErrors()) {
+            return false;
+        }
+
+        String message = playerMessage + " (" + validation.getErrorCount() + " error"
+            + (validation.getErrorCount() == 1 ? "" : "s") + ")";
+        PreciseCompletionTracker.notifyPlayerMessage(message);
+        LOGGER.debug("Blocked execution due to validation errors: {}", message);
         return true;
     }
 

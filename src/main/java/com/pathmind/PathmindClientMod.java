@@ -381,9 +381,7 @@ public class PathmindClientMod implements ClientModInitializer {
         }
         worldShutdownHandled = true;
         LOGGER.info("Pathmind: handling client shutdown due to {}", reason);
-        if (baritoneAvailable) {
-            ExecutionManager.getInstance().requestStopAll();
-        }
+        ExecutionManager.getInstance().requestStopAll();
     }
 
     private void handleMerchantTradeCache(MinecraftClient client) {

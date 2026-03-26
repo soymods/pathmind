@@ -4766,6 +4766,10 @@ public class Node {
      * Returns a CompletableFuture that completes when the node's command is finished.
      */
     public CompletableFuture<Void> execute() {
+        return execute(-1);
+    }
+
+    public CompletableFuture<Void> execute(int executionId) {
         CompletableFuture<Void> future = new CompletableFuture<>();
 
         // Execute on the main Minecraft thread
@@ -4790,7 +4794,7 @@ public class Node {
         if (client != null) {
             client.execute(() -> {
                 try {
-                    executeNodeCommand(future);
+                    ExecutionManager.getInstance().runWithExecutionContext(executionId, () -> executeNodeCommand(future));
                 } catch (Exception e) {
                     System.err.println("Error executing node " + type + ": " + e.getMessage());
                     e.printStackTrace();
@@ -12123,10 +12127,11 @@ public class Node {
             waitSeconds = baseDuration * unitSeconds;
         }
         System.out.println("Waiting for " + waitSeconds + " seconds (configured duration=" + baseDuration + " " + waitMode.getDisplayName() + ")");
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Integer executionId = manager.getCurrentExecutionId();
 
         new Thread(() -> {
             try {
-                ExecutionManager manager = ExecutionManager.getInstance();
                 String nodeId = getId();
                 long waitMs = (long) (waitSeconds * 1000);
 
@@ -12135,12 +12140,11 @@ public class Node {
                         future.complete(null);
                         return;
                     }
-                    Node active = manager.getActiveNode();
-                    if (active == null || nodeId == null || !nodeId.equals(active.getId())) {
+                    if (!manager.isExecutionActiveOnNode(executionId, nodeId)) {
                         future.complete(null);
                         return;
                     }
-                    if (manager.getActiveNodeDuration() >= waitMs) {
+                    if (manager.getExecutionNodeDuration(executionId) >= waitMs) {
                         future.complete(null);
                         return;
                     }
@@ -12198,18 +12202,18 @@ public class Node {
             future.complete(null);
             return;
         }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Integer executionId = manager.getCurrentExecutionId();
 
         new Thread(() -> {
             try {
-                ExecutionManager manager = ExecutionManager.getInstance();
                 String nodeId = getId();
                 while (true) {
                     if (shouldAbortForRepeatUntilGuard()) {
                         future.complete(null);
                         return;
                     }
-                    Node active = manager.getActiveNode();
-                    if (active == null || nodeId == null || !nodeId.equals(active.getId())) {
+                    if (!manager.isExecutionActiveOnNode(executionId, nodeId)) {
                         future.complete(null);
                         return;
                     }

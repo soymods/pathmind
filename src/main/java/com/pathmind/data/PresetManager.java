@@ -291,9 +291,13 @@ public final class PresetManager {
         if (client != null && client.runDirectory != null) {
             return client.runDirectory.toPath();
         }
-        FabricLoader loader = FabricLoader.getInstance();
-        if (loader != null) {
-            return loader.getGameDir();
+        try {
+            FabricLoader loader = FabricLoader.getInstance();
+            if (loader != null) {
+                return loader.getGameDir();
+            }
+        } catch (IllegalStateException ignored) {
+            // Unit tests can exercise preset logic before Fabric has finalized its game directory.
         }
         return Paths.get(System.getProperty("user.home"), ".minecraft");
     }

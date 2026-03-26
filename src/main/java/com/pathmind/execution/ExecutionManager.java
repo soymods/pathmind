@@ -383,7 +383,7 @@ public class ExecutionManager {
                 continue;
             }
             mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
-            isolatedStartNodes.add(launchData.startNode);
+            isolatedStartNodes.add(launchData.rootNode);
         }
 
         if (isolatedStartNodes.isEmpty()) {
@@ -445,6 +445,10 @@ public class ExecutionManager {
         return executeBranch(startNode, nodes, connections, PresetManager.getActivePreset());
     }
 
+    public boolean executeFromNode(Node node, List<Node> nodes, List<NodeConnection> connections) {
+        return executeFromNode(node, nodes, connections, PresetManager.getActivePreset());
+    }
+
     public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections, String presetName) {
         if (startNode == null || startNode.getType() != NodeType.START) {
             LOGGER.warn("Cannot execute branch - invalid START node");
@@ -499,18 +503,72 @@ public class ExecutionManager {
         this.cancelRequested = false;
 
         if (activeChains.isEmpty()) {
-            startExecution(Collections.singletonList(launchData.startNode), false);
+            startExecution(Collections.singletonList(launchData.rootNode), false);
         } else {
             this.isExecuting = true;
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(launchData.startNode, executionId);
-        activeChains.put(launchData.startNode, controller);
-        CompletableFuture<Void> chainFuture = runChain(launchData.startNode, controller, controller.rootExecutionId);
+        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        activeChains.put(launchData.rootNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         updateLastStartContext(startNode, presetName);
+        return true;
+    }
+
+    public boolean executeFromNode(Node node, List<Node> nodes, List<NodeConnection> connections, String presetName) {
+        if (node == null) {
+            LOGGER.warn("Cannot execute node - missing root node");
+            return false;
+        }
+        if (nodes == null || connections == null) {
+            LOGGER.warn("Cannot execute node - missing nodes or connections");
+            return false;
+        }
+
+        logValidationErrors(nodes, connections, presetName, "node run");
+        if (isChainActive(node)) {
+            LOGGER.debug("Node is already executing, ignoring node run request");
+            return false;
+        }
+
+        this.workspaceNodes = new ArrayList<>(nodes);
+        this.workspaceConnections = new ArrayList<>(connections);
+
+        List<NodeConnection> filteredConnections = filterConnections(connections);
+        BranchData branchData = buildBranchData(node, nodes, filteredConnections);
+        if (branchData == null || branchData.nodes.isEmpty()) {
+            LOGGER.debug("Node {} has no executable branch", node.getId());
+            return false;
+        }
+
+        this.lastExecutedGraph = createGraphSnapshot(branchData.nodes, branchData.connections);
+        this.lastSnapshotWasGlobal = false;
+        BranchLaunchData launchData = createBranchLaunchData(branchData, node);
+        if (launchData == null) {
+            LOGGER.debug("Node branch could not be cloned for execution");
+            return false;
+        }
+
+        this.cancelRequested = false;
+        if (activeChains.isEmpty()) {
+            this.activeNodes = launchData.branchData.nodes;
+            this.activeConnections = launchData.branchData.connections;
+            rebuildConnectionState(this.activeNodes, this.activeConnections);
+            startExecution(Collections.singletonList(launchData.rootNode), false);
+        } else {
+            mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
+            this.isExecuting = true;
+        }
+
+        int executionId = allocateExecutionId();
+        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        activeChains.put(launchData.rootNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
+        chainFuture.whenComplete((ignored, throwable) ->
+            handleChainCompletion(controller, throwable, controller.rootExecutionId));
         return true;
     }
 
@@ -555,15 +613,15 @@ public class ExecutionManager {
         mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
 
         if (!isExecuting && activeChains.isEmpty()) {
-            startExecution(Collections.singletonList(launchData.startNode), false);
+            startExecution(Collections.singletonList(launchData.rootNode), false);
         } else {
             this.isExecuting = true;
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(launchData.startNode, executionId);
-        activeChains.put(launchData.startNode, controller);
-        CompletableFuture<Void> chainFuture = runChain(launchData.startNode, controller, controller.rootExecutionId);
+        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        activeChains.put(launchData.rootNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         updateLastStartContext(startNode, presetName);
@@ -877,15 +935,15 @@ public class ExecutionManager {
         mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
 
         if (!isExecuting && activeChains.isEmpty()) {
-            startExecution(Collections.singletonList(launchData.startNode), globalExecutionActive);
+            startExecution(Collections.singletonList(launchData.rootNode), globalExecutionActive);
         } else {
             this.isExecuting = true;
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(launchData.startNode, executionId);
-        activeChains.put(launchData.startNode, controller);
-        CompletableFuture<Void> chainFuture = runChain(launchData.startNode, controller, controller.rootExecutionId);
+        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        activeChains.put(launchData.rootNode, controller);
+        CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         return true;
@@ -1893,6 +1951,24 @@ public class ExecutionManager {
         return new BranchLaunchData(isolatedBranchData, isolatedStartNode);
     }
 
+    private BranchLaunchData createBranchLaunchData(BranchData branchData, Node rootNode) {
+        if (rootNode == null) {
+            return null;
+        }
+
+        BranchData isolatedBranchData = cloneBranchData(branchData);
+        if (isolatedBranchData == null || isolatedBranchData.nodes.isEmpty()) {
+            return null;
+        }
+
+        Node isolatedRootNode = findNodeById(isolatedBranchData.nodes, rootNode.getId());
+        if (isolatedRootNode == null) {
+            return null;
+        }
+
+        return new BranchLaunchData(isolatedBranchData, isolatedRootNode);
+    }
+
     private BranchData cloneBranchData(BranchData branchData) {
         if (branchData == null || branchData.nodes == null || branchData.connections == null) {
             return null;
@@ -1915,13 +1991,25 @@ public class ExecutionManager {
         return new BranchData(clonedNodes, clonedConnections);
     }
 
+    private Node findNodeById(List<Node> nodes, String nodeId) {
+        if (nodes == null || nodeId == null || nodeId.isEmpty()) {
+            return null;
+        }
+        for (Node node : nodes) {
+            if (node != null && nodeId.equals(node.getId())) {
+                return node;
+            }
+        }
+        return null;
+    }
+
     private static final class BranchLaunchData {
         final BranchData branchData;
-        final Node startNode;
+        final Node rootNode;
 
-        BranchLaunchData(BranchData branchData, Node startNode) {
+        BranchLaunchData(BranchData branchData, Node rootNode) {
             this.branchData = branchData;
-            this.startNode = startNode;
+            this.rootNode = rootNode;
         }
     }
 

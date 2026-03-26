@@ -611,6 +611,30 @@ public class PathmindVisualEditorScreen extends Screen {
         return client != null && client.player != null;
     }
 
+    private boolean handleNodeDoubleClickExecution(Node clickedNode) {
+        if (clickedNode == null || this.client == null || this.client.player == null || this.client.world == null) {
+            return false;
+        }
+
+        boolean started = ExecutionManager.getInstance().executeFromNode(
+            clickedNode,
+            nodeGraph.getNodes(),
+            nodeGraph.getConnections(),
+            activePresetName
+        );
+        if (!started) {
+            return false;
+        }
+
+        presetDropdownOpen = false;
+        dismissParameterOverlay();
+        isDraggingFromSidebar = false;
+        draggingNodeType = null;
+        draggingSidebarNode = null;
+        this.client.setScreen(null);
+        return true;
+    }
+
     private void recoverStaleLeftMouseDrag(int mouseX, int mouseY) {
         MinecraftClient client = this.client != null ? this.client : MinecraftClient.getInstance();
         if (InputCompatibilityBridge.isMouseButtonPressed(client, GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
@@ -1382,12 +1406,16 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                boolean doubleClick = nodeGraph.handleNodeClick(clickedNode, (int)mouseX, (int)mouseY);
+                if (doubleClick && handleNodeDoubleClickExecution(clickedNode)) {
+                    return true;
+                }
+
                 // Check for double-click to open parameter editor
                 boolean shouldOpenOverlay = clickedNode.getType() == NodeType.PARAM_INVENTORY_SLOT
                     || clickedNode.getType() == NodeType.PARAM_KEY
                     || clickedNode.getType() == NodeType.PARAM_VILLAGER_TRADE;
-                if (shouldOpenOverlay &&
-                    nodeGraph.handleNodeClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                if (shouldOpenOverlay && doubleClick) {
                     openParameterOverlay(clickedNode);
                     return true;
                 }

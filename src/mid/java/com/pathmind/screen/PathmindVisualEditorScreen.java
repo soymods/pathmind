@@ -389,6 +389,7 @@ public class PathmindVisualEditorScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         OverlayProtection.setPathmindRendering(true);
         try {
+        recoverStaleLeftMouseDrag(mouseX, mouseY);
         resetOverlayCutout();
         // Fill background with dark grey theme
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
@@ -548,6 +549,55 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean shouldShowExecutionControls() {
         MinecraftClient client = MinecraftClient.getInstance();
         return client != null && client.player != null;
+    }
+
+    private void recoverStaleLeftMouseDrag(int mouseX, int mouseY) {
+        MinecraftClient client = this.client != null ? this.client : MinecraftClient.getInstance();
+        if (InputCompatibilityBridge.isMouseButtonPressed(client, GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+            return;
+        }
+
+        boolean recoveringWorkspaceDrag = false;
+        Set<Node> selectedNodes = nodeGraph.getSelectedNodes();
+        if (selectedNodes != null) {
+            for (Node selected : selectedNodes) {
+                if (selected != null && selected.isDragging()) {
+                    recoveringWorkspaceDrag = true;
+                    break;
+                }
+            }
+        }
+
+        boolean staleState = isDraggingFromSidebar
+            || nodeGraph.isSelectionBoxActive()
+            || nodeGraph.isAnyNodeBeingDragged()
+            || recoveringWorkspaceDrag;
+        if (!staleState) {
+            return;
+        }
+
+        if (nodeGraph.isSelectionBoxActive()) {
+            nodeGraph.completeSelectionBox();
+        }
+
+        if (isDraggingFromSidebar) {
+            if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
+                int worldMouseX = nodeGraph.screenToWorldX(mouseX);
+                int worldMouseY = nodeGraph.screenToWorldY(mouseY);
+                Node newNode = draggingSidebarNode != null
+                    ? nodeGraph.handleSidebarDrop(draggingSidebarNode, worldMouseX, worldMouseY)
+                    : nodeGraph.handleSidebarDrop(draggingNodeType, worldMouseX, worldMouseY);
+                if (newNode != null) {
+                    nodeGraph.selectNode(newNode);
+                }
+            }
+            isDraggingFromSidebar = false;
+            draggingNodeType = null;
+            draggingSidebarNode = null;
+            nodeGraph.resetDropTargets();
+            return;
+        }
+        nodeGraph.forceClearTransientDragState();
     }
 
     private void resetOverlayCutout() {

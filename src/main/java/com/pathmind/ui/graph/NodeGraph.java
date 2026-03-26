@@ -1915,6 +1915,34 @@ public class NodeGraph {
         selectionDeletionPreviewActive = false;
     }
 
+    public void forceClearTransientDragState() {
+        for (Node node : nodes) {
+            if (node == null) {
+                continue;
+            }
+            node.setDragging(false);
+            node.setSocketsHidden(shouldHideSocketsWhenAttached(node));
+        }
+        draggingNode = null;
+        draggingNodeDetached = false;
+        pendingDragUndoSnapshot = null;
+        dragOperationChanged = false;
+        if (multiDragActive) {
+            multiDragActive = false;
+            multiDragStartPositions.clear();
+        }
+        selectionDeletionPreviewActive = false;
+        selectionBoxActive = false;
+        isDraggingConnection = false;
+        connectionSourceNode = null;
+        connectionSourceSocket = -1;
+        hoveredNode = null;
+        hoveredSocket = -1;
+        disconnectedConnection = null;
+        connectionDragMoved = false;
+        resetDropTargets();
+    }
+
     private boolean shouldHideSocketsWhenAttached(Node node) {
         if (node == null) {
             return false;

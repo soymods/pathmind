@@ -8233,9 +8233,11 @@ public class NodeGraph {
             return false;
         }
         String value = parameter.getStringValue();
-        return editing
-            ? value == null || value.isEmpty()
-            : value == null || value.isEmpty() || (!parameter.isUserEdited() && "1".equals(value));
+        if (editing && isEditingParameterField() && parameterEditingNode == node && parameterEditingIndex >= 0
+            && parameterEditingIndex < node.getParameters().size() && node.getParameters().get(parameterEditingIndex) == parameter) {
+            value = parameterEditBuffer;
+        }
+        return value == null || value.isEmpty() || (!parameter.isUserEdited() && "1".equals(value));
     }
 
     private boolean isGuiParameter(Node node, NodeParameter parameter) {

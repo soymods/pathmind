@@ -7659,7 +7659,6 @@ public class Node {
 
         Object baritone = getBaritone();
         if (baritone == null) {
-            System.err.println("Baritone not available for goto command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
@@ -12121,7 +12120,6 @@ public class Node {
 
         Object baritone = getBaritone();
         if (baritone == null) {
-            System.err.println("Baritone not available for build command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
@@ -12178,7 +12176,6 @@ public class Node {
         
         Object baritone = getBaritone();
         if (baritone == null) {
-            System.err.println("Baritone not available for explore command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
@@ -13553,7 +13550,6 @@ public class Node {
 
         Object baritone = getBaritone();
         if (baritone == null) {
-            System.err.println("Baritone not available for goal command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
@@ -13665,7 +13661,6 @@ public class Node {
 
             // The future will be completed by the PreciseCompletionTracker when the path actually reaches the goal
         } else {
-            System.err.println("Baritone not available for path command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
         }
     }
@@ -13701,7 +13696,6 @@ public class Node {
 
         Object baritone = getBaritone();
         if (baritone == null) {
-            System.err.println("Baritone not available for stop command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }
@@ -13946,7 +13940,6 @@ public class Node {
 
         Object baritone = getBaritone();
         if (baritone == null) {
-            System.err.println("Baritone not available for farm command");
             future.completeExceptionally(new RuntimeException("Baritone not available"));
             return;
         }

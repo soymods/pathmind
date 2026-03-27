@@ -1,6 +1,5 @@
 package com.pathmind.util;
 
-import com.pathmind.PathmindMod;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
@@ -33,14 +32,7 @@ public final class BaritoneDependencyChecker {
         try {
             Class.forName(BARITONE_API_CLASS, false, BaritoneDependencyChecker.class.getClassLoader());
             cachedApiResult = Boolean.TRUE;
-        } catch (ClassNotFoundException e) {
-            PathmindMod.LOGGER.warn("Baritone API reported as loaded but classes are missing: {}", e.getMessage());
-            cachedApiResult = Boolean.FALSE;
-        } catch (LinkageError e) {
-            PathmindMod.LOGGER.warn("Baritone API failed to initialize, marking unavailable", e);
-            cachedApiResult = Boolean.FALSE;
-        } catch (Throwable t) {
-            PathmindMod.LOGGER.warn("Unexpected error while checking for Baritone API", t);
+        } catch (Throwable ignored) {
             cachedApiResult = Boolean.FALSE;
         }
 

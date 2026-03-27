@@ -111,7 +111,7 @@ dependencies {
         if (enableBaritoneRuntime && requestedMinecraftVersion in baritoneRuntimeTargets) {
             modLocalRuntime(baritoneApi)
         }
-    } ?: logger.warn("Baritone API jar not found; skipping optional Baritone compile/runtime classpath")
+    }
 
     // Gson for JSON serialization
     implementation("com.google.code.gson:gson:2.10.1")
@@ -140,6 +140,7 @@ tasks.withType<JavaCompile>().configureEach {
     if (targetJavaVersionInt >= JavaVersion.VERSION_1_9) {
         options.release.set(targetJavaVersion)
     }
+    options.compilerArgs.addAll(listOf("-Xlint:-deprecation", "-Xlint:-removal"))
 }
 
 tasks.test {
@@ -177,8 +178,10 @@ tasks.jar {
 
 val cleanTask = tasks.named("clean")
 val multiVersionBuildTasks = mutableListOf<TaskProvider<out Task>>()
+var previousMultiVersionBuildTask: TaskProvider<out Task>? = null
 supportedMinecraftVersions.keys.forEach { version ->
     val taskName = "buildMc${version.toTaskSuffix()}"
+    val previousTask = previousMultiVersionBuildTask
     val provider = tasks.register<org.gradle.api.tasks.Exec>(taskName) {
         group = "build"
         description = "Build Pathmind for Minecraft $version"
@@ -205,8 +208,10 @@ supportedMinecraftVersions.keys.forEach { version ->
     }
     provider.configure {
         mustRunAfter(cleanTask)
+        previousTask?.let { mustRunAfter(it) }
     }
     multiVersionBuildTasks.add(provider)
+    previousMultiVersionBuildTask = provider
 }
 
 tasks.register("buildAllTargets") {

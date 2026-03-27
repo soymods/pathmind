@@ -26,6 +26,7 @@ import java.util.Optional;
 /**
  * Bridges recipe APIs that differ between 1.21.x patch releases.
  */
+@SuppressWarnings({"deprecation", "removal"})
 public final class RecipeCompatibilityBridge {
     private static final Method INGREDIENT_IS_EMPTY_METHOD = resolveIngredientEmptyMethod();
     private static final Method INGREDIENT_MATCHING_ITEMS_METHOD = resolveMatchingItemsMethod();

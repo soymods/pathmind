@@ -50,6 +50,7 @@ import java.lang.reflect.Proxy;
  * The client-side mod class for Pathmind.
  * This class initializes client-specific features and event handlers.
  */
+@SuppressWarnings({"deprecation", "removal"})
 public class PathmindClientMod implements ClientModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/Client");
     private static ActiveNodeOverlay activeNodeOverlay;

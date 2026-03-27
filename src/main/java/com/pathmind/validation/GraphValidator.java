@@ -82,10 +82,6 @@ public final class GraphValidator {
             }
             NodeType type = node.getType();
 
-            if (type.requiresBaritone() && !baritoneAvailable) {
-                issues.add(issue(GraphValidationSeverity.ERROR, "missing_baritone",
-                    type.getDisplayName() + " requires Baritone, but Baritone is not available.", node));
-            }
             if (type.requiresUiUtils() && !uiUtilsAvailable) {
                 issues.add(issue(GraphValidationSeverity.ERROR, "missing_ui_utils",
                     type.getDisplayName() + " requires UI Utils, but UI Utils is not available.", node));

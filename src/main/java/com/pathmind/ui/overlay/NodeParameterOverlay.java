@@ -1070,12 +1070,8 @@ public class NodeParameterOverlay {
         if (parameterNames == null || parameterNames.isEmpty()) {
             return;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null) {
-            return;
-        }
         String joined = String.join(", ", parameterNames);
-        client.player.sendMessage(Text.literal("Pathmind: " + joined + " cannot be empty."), false);
+        NodeErrorNotificationOverlay.getInstance().show(joined + " cannot be empty.", UITheme.STATE_ERROR);
     }
 
     public void close() {

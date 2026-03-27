@@ -7,8 +7,9 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Optional;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
 import com.pathmind.util.BaritoneApiProxy;
+import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
+import com.pathmind.ui.theme.UITheme;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -463,18 +464,10 @@ public class PreciseCompletionTracker {
             return;
         }
         client.execute(() -> {
-            if (client.player != null) {
-                client.player.sendMessage(Text.literal(formatChatMessage(message)), false);
+            if (message != null && !message.isEmpty()) {
+                NodeErrorNotificationOverlay.getInstance().show(message, UITheme.STATE_ERROR);
             }
         });
-    }
-
-    private String formatChatMessage(String message) {
-        final String prefix = "\u00A74[\u00A7cPathmind\u00A74] \u00A77";
-        if (message == null || message.isEmpty()) {
-            return prefix.trim();
-        }
-        return prefix + message;
     }
 
     public static void notifyPlayerMessage(String message) {

@@ -278,8 +278,19 @@ public class Node {
     private static final Object GOTO_BREAK_LOCK = new Object();
     private static final AtomicInteger ACTIVE_GOTO_BREAK_BLOCKING_REQUESTS = new AtomicInteger(0);
     private static final AtomicInteger ACTIVE_GOTO_PLACE_BLOCKING_REQUESTS = new AtomicInteger(0);
+    private static final AtomicInteger ACTIVE_BARITONE_CACHE_OVERRIDE_REQUESTS = new AtomicInteger(0);
+    private static final AtomicInteger ACTIVE_BARITONE_EXPLORE_OVERRIDE_REQUESTS = new AtomicInteger(0);
+    private static final AtomicInteger ACTIVE_BARITONE_PATH_HISTORY_OVERRIDE_REQUESTS = new AtomicInteger(0);
+    private static final AtomicInteger ACTIVE_BARITONE_CACHED_SCAN_OVERRIDE_REQUESTS = new AtomicInteger(0);
     private static Boolean gotoBreakOriginalValue = null;
     private static Boolean gotoPlaceOriginalValue = null;
+    private static Boolean baritoneChunkCachingOriginalValue = null;
+    private static Boolean baritonePathThroughCachedOnlyOriginalValue = null;
+    private static Boolean baritoneExploreForBlocksOriginalValue = null;
+    private static Boolean baritoneSplicePathOriginalValue = null;
+    private static Integer baritoneMaxPathHistoryLengthOriginalValue = null;
+    private static Integer baritonePathHistoryCutoffAmountOriginalValue = null;
+    private static Integer baritoneMaxCachedWorldScanCountOriginalValue = null;
     private static final ScheduledExecutorService MESSAGE_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "Pathmind-Message-Scheduler");
         t.setDaemon(true);
@@ -449,9 +460,6 @@ public class Node {
 
     private void sendNodeErrorMessage(net.minecraft.client.MinecraftClient client, String message) {
         if (client == null || message == null || message.isEmpty()) {
-            return;
-        }
-        if (!com.pathmind.data.SettingsManager.shouldShowChatErrors()) {
             return;
         }
 
@@ -6765,6 +6773,34 @@ public class Node {
         return targets;
     }
 
+    private Optional<BlockPos> findNearestCollectTarget(List<String> targets) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null || targets == null || targets.isEmpty()) {
+            return Optional.empty();
+        }
+
+        List<BlockSelection> selections = new ArrayList<>();
+        for (String target : targets) {
+            if (target == null || target.isEmpty()) {
+                continue;
+            }
+            BlockSelection.parse(target).ifPresent(selections::add);
+        }
+        if (selections.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return findNearestBlock(client, selections, PARAMETER_SEARCH_RADIUS);
+    }
+
+    private boolean isPlayerNearBlock(net.minecraft.client.MinecraftClient client, BlockPos pos, double rangeSq) {
+        if (client == null || client.player == null || pos == null) {
+            return false;
+        }
+        double distanceSq = client.player.squaredDistanceTo(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+        return distanceSq <= rangeSq;
+    }
+
     private void addBlockIds(List<String> blockIds, String rawValue) {
         if (rawValue == null) {
             return;
@@ -7707,7 +7743,7 @@ public class Node {
 
                 System.out.println("Executing goto to: " + x2 + ", " + z2);
                 startGotoTaskWithBreakGuard(future);
-                Object goal2 = BaritoneApiProxy.createGoalBlock(x2, 0, z2); // Y will be determined by pathfinding
+                Object goal2 = BaritoneApiProxy.createGoalXZ(x2, z2);
                 BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal2);
                 break;
                 
@@ -7718,16 +7754,13 @@ public class Node {
                 
                 System.out.println("Executing goto to Y level: " + y3);
                 startGotoTaskWithBreakGuard(future);
-                // For Y-only movement, we need to get current X,Z and set goal there
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client != null && client.player != null) {
                     if (isPlayerAtCoordinates(null, y3, null)) {
                         future.complete(null);
                         return;
                     }
-                    int currentX = (int) client.player.getX();
-                    int currentZ = (int) client.player.getZ();
-                    Object goal3 = BaritoneApiProxy.createGoalBlock(currentX, y3, currentZ);
+                    Object goal3 = BaritoneApiProxy.createGoalYLevel(y3);
                     BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal3);
                 }
                 break;
@@ -7740,6 +7773,16 @@ public class Node {
                 }
 
                 System.out.println("Executing goto to block: " + block);
+                BlockPos nearbyBlockTarget = resolveGotoFallbackTargetFromBlockId(block, future);
+                if (future.isDone()) {
+                    break;
+                }
+                if (nearbyBlockTarget != null) {
+                    startGotoTaskWithBreakGuard(future);
+                    Object nearbyGoal = BaritoneApiProxy.createGoalNear(nearbyBlockTarget, 1);
+                    BaritoneApiProxy.setGoalAndPath(customGoalProcess, nearbyGoal);
+                    break;
+                }
                 Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
                 if (getToBlockProcess == null) {
                     future.completeExceptionally(new RuntimeException("GetToBlock process not available"));
@@ -7757,6 +7800,7 @@ public class Node {
     }
 
     private void startGotoTaskWithBreakGuard(CompletableFuture<Void> future) {
+        applyBaritoneCacheGuardsDuringMovement(future, false);
         applyBaritoneMovementGuardsDuringGoto(future);
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, future);
     }
@@ -7825,6 +7869,155 @@ public class Node {
                     gotoPlaceOriginalValue = null;
                     if (settings != null) {
                         BaritoneApiProxy.setAllowPlace(settings, originalPlace != null ? originalPlace : Boolean.TRUE);
+                    }
+                }
+            }
+        }
+    }
+
+    private void applyBaritoneCacheGuardsDuringMovement(CompletableFuture<Void> future, boolean disableExploreForBlocks) {
+        applyBaritoneCacheGuardsDuringMovement(future, disableExploreForBlocks, false);
+    }
+
+    private void applyBaritoneCacheGuardsDuringMovement(CompletableFuture<Void> future,
+                                                        boolean disableExploreForBlocks,
+                                                        boolean disableCachedWorldBlockScan) {
+        if (future == null) {
+            return;
+        }
+        Object settings = BaritoneApiProxy.getSettings();
+        if (settings == null) {
+            return;
+        }
+
+        boolean restoreCacheSettings = false;
+        boolean restoreExploreSetting = false;
+        boolean restorePathHistorySettings = false;
+        boolean restoreCachedScanSetting = false;
+        synchronized (GOTO_BREAK_LOCK) {
+            if (ACTIVE_BARITONE_CACHE_OVERRIDE_REQUESTS.getAndIncrement() == 0) {
+                baritoneChunkCachingOriginalValue = BaritoneApiProxy.getChunkCaching(settings);
+                baritonePathThroughCachedOnlyOriginalValue = BaritoneApiProxy.getPathThroughCachedOnly(settings);
+                BaritoneApiProxy.setChunkCaching(settings, false);
+                BaritoneApiProxy.setPathThroughCachedOnly(settings, false);
+                restoreCacheSettings = true;
+            } else {
+                restoreCacheSettings = true;
+            }
+
+            if (disableExploreForBlocks) {
+                if (ACTIVE_BARITONE_EXPLORE_OVERRIDE_REQUESTS.getAndIncrement() == 0) {
+                    baritoneExploreForBlocksOriginalValue = BaritoneApiProxy.getExploreForBlocks(settings);
+                    BaritoneApiProxy.setExploreForBlocks(settings, false);
+                    restoreExploreSetting = true;
+                } else {
+                    restoreExploreSetting = true;
+                }
+            }
+
+            if (ACTIVE_BARITONE_PATH_HISTORY_OVERRIDE_REQUESTS.getAndIncrement() == 0) {
+                baritoneSplicePathOriginalValue = BaritoneApiProxy.getSplicePath(settings);
+                baritoneMaxPathHistoryLengthOriginalValue = BaritoneApiProxy.getMaxPathHistoryLength(settings);
+                baritonePathHistoryCutoffAmountOriginalValue = BaritoneApiProxy.getPathHistoryCutoffAmount(settings);
+                BaritoneApiProxy.setSplicePath(settings, false);
+                BaritoneApiProxy.setMaxPathHistoryLength(settings, 0);
+                BaritoneApiProxy.setPathHistoryCutoffAmount(settings, 0);
+                restorePathHistorySettings = true;
+            } else {
+                restorePathHistorySettings = true;
+            }
+
+            if (disableCachedWorldBlockScan) {
+                if (ACTIVE_BARITONE_CACHED_SCAN_OVERRIDE_REQUESTS.getAndIncrement() == 0) {
+                    baritoneMaxCachedWorldScanCountOriginalValue = BaritoneApiProxy.getMaxCachedWorldScanCount(settings);
+                    BaritoneApiProxy.setMaxCachedWorldScanCount(settings, 0);
+                    restoreCachedScanSetting = true;
+                } else {
+                    restoreCachedScanSetting = true;
+                }
+            }
+        }
+
+        final boolean restoreCache = restoreCacheSettings;
+        final boolean restoreExplore = restoreExploreSetting;
+        final boolean restorePathHistory = restorePathHistorySettings;
+        final boolean restoreCachedScan = restoreCachedScanSetting;
+        future.whenComplete((result, throwable) -> restoreBaritoneCacheGuardsAfterMovement(restoreCache, restoreExplore, restorePathHistory, restoreCachedScan));
+    }
+
+    private static void restoreBaritoneCacheGuardsAfterMovement(boolean restoreCache,
+                                                                boolean restoreExplore,
+                                                                boolean restorePathHistory,
+                                                                boolean restoreCachedScan) {
+        if (!restoreCache && !restoreExplore && !restorePathHistory && !restoreCachedScan) {
+            return;
+        }
+
+        synchronized (GOTO_BREAK_LOCK) {
+            Object settings = BaritoneApiProxy.getSettings();
+            if (restoreCache) {
+                int remaining = ACTIVE_BARITONE_CACHE_OVERRIDE_REQUESTS.decrementAndGet();
+                if (remaining <= 0) {
+                    ACTIVE_BARITONE_CACHE_OVERRIDE_REQUESTS.set(0);
+                    Boolean originalChunkCaching = baritoneChunkCachingOriginalValue;
+                    Boolean originalPathThroughCachedOnly = baritonePathThroughCachedOnlyOriginalValue;
+                    baritoneChunkCachingOriginalValue = null;
+                    baritonePathThroughCachedOnlyOriginalValue = null;
+                    if (settings != null) {
+                        if (originalChunkCaching != null) {
+                            BaritoneApiProxy.setChunkCaching(settings, originalChunkCaching);
+                        }
+                        if (originalPathThroughCachedOnly != null) {
+                            BaritoneApiProxy.setPathThroughCachedOnly(settings, originalPathThroughCachedOnly);
+                        }
+                    }
+                }
+            }
+
+            if (restoreExplore) {
+                int remaining = ACTIVE_BARITONE_EXPLORE_OVERRIDE_REQUESTS.decrementAndGet();
+                if (remaining <= 0) {
+                    ACTIVE_BARITONE_EXPLORE_OVERRIDE_REQUESTS.set(0);
+                    Boolean originalExploreForBlocks = baritoneExploreForBlocksOriginalValue;
+                    baritoneExploreForBlocksOriginalValue = null;
+                    if (settings != null && originalExploreForBlocks != null) {
+                        BaritoneApiProxy.setExploreForBlocks(settings, originalExploreForBlocks);
+                    }
+                }
+            }
+
+            if (restorePathHistory) {
+                int remaining = ACTIVE_BARITONE_PATH_HISTORY_OVERRIDE_REQUESTS.decrementAndGet();
+                if (remaining <= 0) {
+                    ACTIVE_BARITONE_PATH_HISTORY_OVERRIDE_REQUESTS.set(0);
+                    Boolean originalSplicePath = baritoneSplicePathOriginalValue;
+                    Integer originalMaxPathHistoryLength = baritoneMaxPathHistoryLengthOriginalValue;
+                    Integer originalPathHistoryCutoffAmount = baritonePathHistoryCutoffAmountOriginalValue;
+                    baritoneSplicePathOriginalValue = null;
+                    baritoneMaxPathHistoryLengthOriginalValue = null;
+                    baritonePathHistoryCutoffAmountOriginalValue = null;
+                    if (settings != null) {
+                        if (originalSplicePath != null) {
+                            BaritoneApiProxy.setSplicePath(settings, originalSplicePath);
+                        }
+                        if (originalMaxPathHistoryLength != null) {
+                            BaritoneApiProxy.setMaxPathHistoryLength(settings, originalMaxPathHistoryLength);
+                        }
+                        if (originalPathHistoryCutoffAmount != null) {
+                            BaritoneApiProxy.setPathHistoryCutoffAmount(settings, originalPathHistoryCutoffAmount);
+                        }
+                    }
+                }
+            }
+
+            if (restoreCachedScan) {
+                int remaining = ACTIVE_BARITONE_CACHED_SCAN_OVERRIDE_REQUESTS.decrementAndGet();
+                if (remaining <= 0) {
+                    ACTIVE_BARITONE_CACHED_SCAN_OVERRIDE_REQUESTS.set(0);
+                    Integer originalMaxCachedWorldScanCount = baritoneMaxCachedWorldScanCountOriginalValue;
+                    baritoneMaxCachedWorldScanCountOriginalValue = null;
+                    if (settings != null && originalMaxCachedWorldScanCount != null) {
+                        BaritoneApiProxy.setMaxCachedWorldScanCount(settings, originalMaxCachedWorldScanCount);
                     }
                 }
             }
@@ -8260,7 +8453,9 @@ public class Node {
 
         if (matchedPosition.isEmpty()) {
             String reference = String.join(", ", itemIds);
-            sendNodeErrorMessage(client, "No dropped " + reference + " found nearby for " + type.getDisplayName() + ".");
+            sendNodeErrorMessage(client,
+                "No dropped " + reference + " found nearby for " + type.getDisplayName()
+                    + ". It may not have appeared yet.");
             future.complete(null);
             return true;
         }
@@ -8530,6 +8725,8 @@ public class Node {
             return;
         }
 
+        Optional<BlockPos> preferredCollectTarget = findNearestCollectTarget(targets);
+
         switch (mode) {
             case COLLECT_SINGLE: {
                 int amount = Math.max(1, getIntParameter("Amount", 1));
@@ -8537,34 +8734,44 @@ public class Node {
                     future.complete(null);
                     return;
                 }
-                System.out.println("Executing mine by name for " + amount + "x " + targets);
-                resetBaritonePathing(baritone, mineProcess);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
-                // Dispatch Baritone calls off the render thread so the client never blocks
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        BaritoneApiProxy.mineByName(mineProcess, amount, targets.toArray(new String[0]));
-                        System.out.println("Collect (single) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
-                    } catch (Exception e) {
-                        System.err.println("Failed to start mine command: " + e.getMessage());
-                        e.printStackTrace();
-                    }
+                if (amount == 1 && preferredCollectTarget.isPresent()) {
+                    BlockPos targetPos = preferredCollectTarget.get();
+                    startCollectWithPreferredTarget(baritone, mineProcess, targetPos, future,
+                        () -> breakSpecificBlockForCollect(targetPos, future));
+                    break;
+                }
+                startCollectWithPreferredTarget(baritone, mineProcess, preferredCollectTarget.orElse(null), future, () -> {
+                    System.out.println("Executing mine by name for " + amount + "x " + targets);
+                    resetBaritonePathing(baritone, mineProcess);
+                    applyBaritoneCacheGuardsDuringMovement(future, false, true);
+                    PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            BaritoneApiProxy.mineByName(mineProcess, amount, targets.toArray(new String[0]));
+                            System.out.println("Collect (single) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
+                        } catch (Exception e) {
+                            System.err.println("Failed to start mine command: " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                    });
                 });
                 break;
             }
             case COLLECT_MULTIPLE: {
-                System.out.println("Executing mine by name for blocks: " + targets);
-                resetBaritonePathing(baritone, mineProcess);
-                PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
-                // Dispatch Baritone calls off the render thread so the client never blocks
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        BaritoneApiProxy.mineByName(mineProcess, targets.toArray(new String[0]));
-                        System.out.println("Collect (multi) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
-                    } catch (Exception e) {
-                        System.err.println("Failed to start mine command: " + e.getMessage());
-                        e.printStackTrace();
-                    }
+                startCollectWithPreferredTarget(baritone, mineProcess, preferredCollectTarget.orElse(null), future, () -> {
+                    System.out.println("Executing mine by name for blocks: " + targets);
+                    resetBaritonePathing(baritone, mineProcess);
+                    applyBaritoneCacheGuardsDuringMovement(future, false, true);
+                    PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            BaritoneApiProxy.mineByName(mineProcess, targets.toArray(new String[0]));
+                            System.out.println("Collect (multi) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
+                        } catch (Exception e) {
+                            System.err.println("Failed to start mine command: " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                    });
                 });
                 break;
             }
@@ -8581,36 +8788,45 @@ public class Node {
 
         try {
             if (mineProcess != null) {
+                BaritoneApiProxy.cancelMine(mineProcess);
                 if (BaritoneApiProxy.isProcessActive(mineProcess)) {
-                    BaritoneApiProxy.cancelMine(mineProcess);
+                    System.out.println("Resetting active Baritone mine process");
+                    BaritoneApiProxy.onLostControl(mineProcess);
                 }
-                // Ensure any queued mine targets from previous runs are cleared
-                BaritoneApiProxy.onLostControl(mineProcess);
             }
 
             Object pathingBehavior = BaritoneApiProxy.getPathingBehavior(baritone);
-            if (pathingBehavior != null && (BaritoneApiProxy.isPathing(pathingBehavior) || BaritoneApiProxy.hasPath(pathingBehavior))) {
-                BaritoneApiProxy.cancelEverything(pathingBehavior);
+            if (pathingBehavior != null) {
+                if (BaritoneApiProxy.isPathing(pathingBehavior) || BaritoneApiProxy.hasPath(pathingBehavior)) {
+                    System.out.println("Resetting active Baritone pathing behavior");
+                }
+                BaritoneApiProxy.forceCancel(pathingBehavior);
             }
 
             Object goalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
             if (goalProcess != null) {
                 BaritoneApiProxy.setGoal(goalProcess, null);
-                BaritoneApiProxy.onLostControl(goalProcess);
+                if (BaritoneApiProxy.isProcessActive(goalProcess)) {
+                    System.out.println("Resetting active Baritone custom goal process");
+                    BaritoneApiProxy.onLostControl(goalProcess);
+                }
             }
 
             Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
             if (getToBlockProcess != null && BaritoneApiProxy.isProcessActive(getToBlockProcess)) {
+                System.out.println("Resetting active Baritone get-to-block process");
                 BaritoneApiProxy.onLostControl(getToBlockProcess);
             }
 
             Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
             if (exploreProcess != null && BaritoneApiProxy.isProcessActive(exploreProcess)) {
+                System.out.println("Resetting active Baritone explore process");
                 BaritoneApiProxy.onLostControl(exploreProcess);
             }
 
             Object farmProcess = BaritoneApiProxy.getFarmProcess(baritone);
             if (farmProcess != null && BaritoneApiProxy.isProcessActive(farmProcess)) {
+                System.out.println("Resetting active Baritone farm process");
                 BaritoneApiProxy.onLostControl(farmProcess);
             }
         } catch (Exception e) {
@@ -8623,6 +8839,124 @@ public class Node {
             return;
         }
         resetBaritonePathing(baritone, BaritoneApiProxy.getMineProcess(baritone));
+    }
+
+    private void startCollectWithPreferredTarget(Object baritone,
+                                                 Object mineProcess,
+                                                 BlockPos preferredTarget,
+                                                 CompletableFuture<Void> future,
+                                                 Runnable startMiningAction) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        Object customGoalProcess = baritone != null ? BaritoneApiProxy.getCustomGoalProcess(baritone) : null;
+        if (client == null || client.player == null || preferredTarget == null || customGoalProcess == null
+            || isPlayerNearBlock(client, preferredTarget, 6.25D)) {
+            startMiningAction.run();
+            return;
+        }
+
+        System.out.println("Approaching nearest loaded collect target at " + preferredTarget);
+        resetBaritonePathing(baritone, mineProcess);
+
+        CompletableFuture<Void> approachFuture = new CompletableFuture<>();
+        applyBaritoneCacheGuardsDuringMovement(approachFuture, false, false);
+        applyBaritoneMovementGuardsDuringGoto(approachFuture);
+        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_GOTO, approachFuture);
+        Object goal = BaritoneApiProxy.createGoalNear(preferredTarget, 1);
+        BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
+
+        approachFuture.whenComplete((ignored, throwable) -> {
+            if (future.isDone()) {
+                return;
+            }
+            if (throwable != null) {
+                future.completeExceptionally(throwable instanceof RuntimeException
+                    ? (RuntimeException) throwable
+                    : new RuntimeException(throwable));
+                return;
+            }
+            startMiningAction.run();
+        });
+    }
+
+    private void breakSpecificBlockForCollect(BlockPos targetPos, CompletableFuture<Void> future) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null || targetPos == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        if (runtimeParameterData == null) {
+            runtimeParameterData = new RuntimeParameterData();
+        }
+        runtimeParameterData.targetBlockPos = targetPos;
+
+        Vec3d eyePos = client.player.getEyePos();
+        Vec3d center = Vec3d.ofCenter(targetPos);
+        if (eyePos.squaredDistanceTo(center) > DEFAULT_REACH_DISTANCE_SQUARED) {
+            sendNodeErrorMessage(client, "Target block is out of reach.");
+            future.complete(null);
+            return;
+        }
+
+        Direction breakFace = Direction.getFacing(center.x - eyePos.x, center.y - eyePos.y, center.z - eyePos.z);
+        if (breakFace == null) {
+            breakFace = Direction.UP;
+        }
+
+        BlockState state = client.world.getBlockState(targetPos);
+        if (state.isAir()) {
+            future.complete(null);
+            return;
+        }
+
+        float delta = state.calcBlockBreakingDelta(client.player, client.world, targetPos);
+        if (delta <= 0.0F) {
+            sendNodeErrorMessage(client, "Block cannot be broken.");
+            future.complete(null);
+            return;
+        }
+        int ticksToBreak = Math.max(1, (int) Math.ceil(1.0F / delta));
+
+        Direction finalBreakFace = breakFace;
+        new Thread(() -> {
+            try {
+                runOnClientThread(client, () -> {
+                    orientPlayerTowardsRuntimeTarget(client, runtimeParameterData);
+                    if (client.interactionManager != null) {
+                        client.interactionManager.attackBlock(targetPos, finalBreakFace);
+                    }
+                    client.player.swingHand(Hand.MAIN_HAND);
+                });
+
+                for (int i = 0; i < ticksToBreak; i++) {
+                    Thread.sleep(50L);
+                    Boolean isAir = supplyFromClient(client,
+                        () -> client.world == null || client.world.getBlockState(targetPos).isAir());
+                    if (Boolean.TRUE.equals(isAir)) {
+                        break;
+                    }
+                    runOnClientThread(client, () -> {
+                        if (client.interactionManager != null) {
+                            client.interactionManager.updateBlockBreakingProgress(targetPos, finalBreakFace);
+                        }
+                    });
+                }
+
+                runOnClientThread(client, () -> {
+                    if (client.player != null && client.player.networkHandler != null) {
+                        client.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
+                            PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
+                            targetPos,
+                            finalBreakFace
+                        ));
+                    }
+                });
+                future.complete(null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            }
+        }, "Pathmind-Collect-Break").start();
     }
 
     private boolean hasRequiredBlockAlready(String blockId, int required) {
@@ -13579,9 +13913,9 @@ public class Node {
                 
                 if (xParam2 != null) x2 = xParam2.getIntValue();
                 if (zParam2 != null) z2 = zParam2.getIntValue();
-                
+
                 System.out.println("Setting goal to: " + x2 + ", " + z2);
-                Object goal2 = BaritoneApiProxy.createGoalBlock(x2, 0, z2); // Y will be determined by pathfinding
+                Object goal2 = BaritoneApiProxy.createGoalXZ(x2, z2);
                 BaritoneApiProxy.setGoal(customGoalProcess, goal2);
                 break;
                 
@@ -13589,14 +13923,11 @@ public class Node {
                 int y3 = 64;
                 NodeParameter yParam3 = getParameter("Y");
                 if (yParam3 != null) y3 = yParam3.getIntValue();
-                
+
                 System.out.println("Setting goal to Y level: " + y3);
-                // For Y-only goal, we need to get current X,Z and set goal there
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client != null && client.player != null) {
-                    int currentX = (int) client.player.getX();
-                    int currentZ = (int) client.player.getZ();
-                    Object goal3 = BaritoneApiProxy.createGoalBlock(currentX, y3, currentZ);
+                    Object goal3 = BaritoneApiProxy.createGoalYLevel(y3);
                     BaritoneApiProxy.setGoal(customGoalProcess, goal3);
                 }
                 break;

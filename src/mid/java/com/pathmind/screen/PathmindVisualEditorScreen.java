@@ -1,6 +1,7 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindMod;
+import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
@@ -72,6 +73,7 @@ import java.util.Set;
 public class PathmindVisualEditorScreen extends Screen {
     private static final int TITLE_BAR_HEIGHT = 20;
     private static final int TAB_BAR_LEFT_PADDING = 188;
+    private static final int TAB_BAR_RIGHT_PADDING = 230;
     private static final int TAB_BAR_TOP = 4;
     private static final int TAB_HEIGHT = 16;
     private static final int TAB_GAP = 4;
@@ -157,6 +159,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final String INFO_POPUP_AUTHOR = "soymods";
     private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
     private static final Text TITLE_TEXT = Text.literal("Pathmind");
+    private static final Text INFO_POPUP_TITLE_TEXT = Text.literal("Pathmind");
 
     private NodeGraph nodeGraph;
     private Sidebar sidebar;
@@ -199,13 +202,13 @@ public class PathmindVisualEditorScreen extends Screen {
     private final AnimatedValue presetTabAddButtonFadeAnimation = new AnimatedValue(1f, AnimationHelper::easeOutCubic);
     private boolean presetTabsInitialized = false;
     private static final long PRESET_TAB_RENAME_DOUBLE_CLICK_MS = 300L;
-    private String draggingPresetTabName = null;
-    private int draggingPresetTabPointerOffsetX = 0;
-    private int draggingPresetTabCurrentX = 0;
     private String pendingPresetTabInteractionName = null;
     private int pendingPresetTabPressMouseX = 0;
     private int pendingPresetTabPressMouseY = 0;
     private int pendingPresetTabPressTabLeft = 0;
+    private String draggingPresetTabName = null;
+    private int draggingPresetTabPointerOffsetX = 0;
+    private int draggingPresetTabCurrentX = 0;
     private String animatingPresetDeletionName = null;
     private long animatingPresetDeletionExecuteAtMs = 0L;
     private String activePresetName = "";
@@ -234,6 +237,9 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
     private boolean languageDropdownOpen = false;
     private final AnimatedValue languageDropdownAnimation = AnimatedValue.forHover();
+    private int languageDropdownX = 0;
+    private int languageDropdownY = 0;
+    private int languageDropdownWidth = 0;
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
     private boolean showChatErrors = true;
@@ -241,6 +247,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean skipPresetDeleteConfirm = false;
     private int nodeDelayMs = 150;
     private boolean nodeDelayDragging = false;
+    private TextFieldWidget nodeDelayField;
     private AccentOption accentOption = AccentOption.SKY;
     private boolean overlayCutoutActive = false;
     private int overlayCutoutX = 0;
@@ -248,6 +255,22 @@ public class PathmindVisualEditorScreen extends Screen {
     private int overlayCutoutWidth = 0;
     private int overlayCutoutHeight = 0;
     private Boolean uiUtilsOverlayPrevEnabled = null;
+    private final List<WorkspaceTab> workspaceTabs = new ArrayList<>();
+    private int activeWorkspaceTabIndex = 0;
+
+    private static final class WorkspaceTab {
+        private String label;
+        private NodeGraphData graphData;
+        private final Integer parentTabIndex;
+        private final String hostTemplateNodeId;
+
+        private WorkspaceTab(String label, NodeGraphData graphData, Integer parentTabIndex, String hostTemplateNodeId) {
+            this.label = label;
+            this.graphData = graphData;
+            this.parentTabIndex = parentTabIndex;
+            this.hostTemplateNodeId = hostTemplateNodeId;
+        }
+    }
 
     private enum AccentOption {
         SKY("Sky", UITheme.ACCENT_SKY),
@@ -345,6 +368,25 @@ public class PathmindVisualEditorScreen extends Screen {
             inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
             this.addSelectableChild(inlinePresetRenameField);
         }
+        if (nodeDelayField == null) {
+            nodeDelayField = new TextFieldWidget(this.textRenderer, 0, 0, 120, 20, Text.literal("Delay"));
+            nodeDelayField.setMaxLength(6);
+            nodeDelayField.setDrawsBackground(false);
+            nodeDelayField.setVisible(false);
+            nodeDelayField.setEditable(false);
+            nodeDelayField.setEditableColor(UITheme.TEXT_HEADER);
+            nodeDelayField.setUneditableColor(UITheme.TEXT_HEADER);
+            nodeDelayField.setTextPredicate(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            nodeDelayField.setChangedListener(value -> {
+                Integer parsed = parseDelayFieldValue(value);
+                if (parsed != null && parsed != nodeDelayMs) {
+                    nodeDelayMs = parsed;
+                    currentSettings.nodeDelayMs = nodeDelayMs;
+                    SettingsManager.save(currentSettings);
+                }
+            });
+            this.addSelectableChild(nodeDelayField);
+        }
         if (nodeSearchField == null) {
             nodeSearchField = new TextFieldWidget(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.literal("Search nodes"));
             nodeSearchField.setMaxLength(64);
@@ -366,6 +408,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (nodeGraph.load()) {
                 nodeGraph.restoreSessionViewportState();
                 System.out.println("Successfully loaded saved node graph");
+                resetWorkspaceTabsFromCurrentGraph();
                 refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
                 return; // Don't initialize default nodes if we loaded a saved graph
@@ -377,6 +420,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Initialize node graph with proper centering based on screen dimensions
         nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
         nodeGraph.restoreSessionViewportState();
+        resetWorkspaceTabsFromCurrentGraph();
         refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
     }
@@ -393,13 +437,13 @@ public class PathmindVisualEditorScreen extends Screen {
         try {
         recoverStaleLeftMouseDrag(mouseX, mouseY);
         resetOverlayCutout();
-        // Fill background with dark grey theme
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
-        
+
         boolean titleHovered = isTitleHovered(mouseX, mouseY);
         boolean titleActive = titleHovered || infoPopupAnimation.isVisible();
         titleUnderlineAnimation.animateTo(titleActive ? 1f : 0f, UITheme.HOVER_ANIM_MS);
         titleUnderlineAnimation.tick();
+        GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
 
         // Update mouse hover for socket highlighting
         nodeGraph.updateMouseHover(mouseX, mouseY);
@@ -430,10 +474,19 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         // Render title bar above the workspace so nodes never overlap it.
-        context.fill(0, 0, this.width, TITLE_BAR_HEIGHT, UITheme.BACKGROUND_SECONDARY);
-        context.drawHorizontalLine(0, this.width, TITLE_BAR_HEIGHT - 1, UITheme.BORDER_SUBTLE);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            0,
+            0,
+            this.width,
+            TITLE_BAR_HEIGHT,
+            UITheme.BACKGROUND_SECTION,
+            UITheme.BORDER_DEFAULT,
+            UITheme.PANEL_INNER_BORDER
+        );
         drawTitle(context, mouseX, mouseY, titleUnderlineAnimation.getValue());
-        GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
+        renderWorkspaceTabs(context, mouseX, mouseY);
+        renderPresetDropdown(context, mouseX, mouseY, isPopupObscuringWorkspace());
 
         // Tick all popup animations early so the scrim uses current values
         clearPopupAnimation.tick();
@@ -458,8 +511,6 @@ public class PathmindVisualEditorScreen extends Screen {
             renderStopButton(context, mouseX, mouseY, controlsDisabled);
             renderPlayButton(context, mouseX, mouseY, controlsDisabled);
         }
-        renderWorkspaceTabs(context, mouseX, mouseY, controlsDisabled);
-        renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
         renderValidationPanel(context, mouseX, mouseY, validationResult);
         renderValidationButton(context, mouseX, mouseY, controlsDisabled, validationResult);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
@@ -516,6 +567,13 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         renderPopupScrimOverlay(context);
+
+        // Render language dropdown options on top of scrim overlay
+        if (settingsPopupAnimation.isVisible()) {
+            RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
+            drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
+        }
+
         // Render context menu on top of everything
         nodeGraph.updateNodeContextMenuHover(mouseX, mouseY);
         nodeGraph.renderNodeContextMenu(context, this.textRenderer);
@@ -792,9 +850,9 @@ public class PathmindVisualEditorScreen extends Screen {
         int nodeColor = (renderType.getColor() & 0x00FFFFFF) | alpha;
 
         // Node background with transparency
-        context.fill(x, y, x + width, y + height, 0x802A2A2A);
+        context.fill(x, y, x + width, y + height, UITheme.DRAG_PREVIEW_BG);
         // Draw grey outline for dragging state
-        DrawContextBridge.drawBorderInLayer(context, x, y, width, height, 0xFFAAAAAA);
+        DrawContextBridge.drawBorderInLayer(context, x, y, width, height, UITheme.DRAG_PREVIEW_BORDER);
 
         // Node header
         if (renderType != NodeType.START && renderType != NodeType.EVENT_FUNCTION) {
@@ -804,7 +862,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 Text.literal(renderType == NodeType.TEMPLATE ? tempNode.getTemplateName() : renderType.getDisplayName()),
                 x + 4,
                 y + 4,
-                0xFFFFFFFF
+                UITheme.TEXT_HEADER
             );
         }
 
@@ -888,7 +946,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (screenX < startX || screenX > endX) {
                 continue;
             }
-            context.drawVerticalLine(screenX, startY, endY, 0x40333333);
+            context.drawVerticalLine(screenX, startY, endY, UITheme.GRID_LINE);
         }
 
         int firstHorizontal = topWorld - Math.floorMod(topWorld, gridSize);
@@ -897,7 +955,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (screenY < startY || screenY > endY) {
                 continue;
             }
-            context.drawHorizontalLine(startX, endX, screenY, 0x40333333);
+            context.drawHorizontalLine(startX, endX, screenY, UITheme.GRID_LINE);
         }
     }
 
@@ -973,6 +1031,11 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            bookTextEditorOverlay.handleMouseClick(mouseX, mouseY, button);
+            return true;
+        }
+
         if (button == 0 && presetDropdownOpen) {
             if (isPresetBrowserButtonClicked((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = false;
@@ -1032,19 +1095,14 @@ public class PathmindVisualEditorScreen extends Screen {
                 presetDropdownOpen = !presetDropdownOpen;
                 return true;
             }
-            if (handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
-                return true;
-            }
-
             if (isTitleClicked((int) mouseX, (int) mouseY)) {
                 openInfoPopup();
                 return true;
             }
-
         }
 
-        if (nodeGraph.isNodeContextMenuOpen()) {
-            return nodeGraph.handleNodeContextMenuClick((int) mouseX, (int) mouseY);
+        if (button == 0 && handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
+            return true;
         }
 
         if (nodeSearchOpen) {
@@ -1058,16 +1116,13 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.isNodeContextMenuOpen()) {
+            return nodeGraph.handleNodeContextMenuClick((int) mouseX, (int) mouseY);
+        }
+
         // Handle parameter overlay clicks first
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
             if (parameterOverlay.mouseClicked(mouseX, mouseY, button)) {
-                return true;
-            }
-        }
-
-        // Handle book text editor overlay clicks
-        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
-            if (bookTextEditorOverlay.handleMouseClick(mouseX, mouseY, button)) {
                 return true;
             }
         }
@@ -1230,15 +1285,18 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (button == 0 && nodeGraph.handleDirectionModeTabClick(null, (int)mouseX, (int)mouseY)) {
-            return true;
-        }
-
         Node clickedNode = nodeGraph.getNodeAt((int)mouseX, (int)mouseY);
         
         if (clickedNode != null) {
             // Node body clicked (not socket)
             if (button == 0) { // Left click - select node or start dragging
+                if (clickedNode.getType() == NodeType.TEMPLATE
+                    && nodeGraph.isPointInsideTemplateEditButton(clickedNode, (int) mouseX, (int) mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    openTemplateWorkspaceTab(clickedNode);
+                    return true;
+                }
+
                 if (nodeGraph.handleBooleanToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     return true;
                 }
@@ -1393,7 +1451,7 @@ public class PathmindVisualEditorScreen extends Screen {
             // Clicked on empty space - deselect and stop dragging
             nodeGraph.selectNode(null);
             nodeGraph.stopDraggingConnection();
-            if (button == 0) {
+                if (button == 0) {
                     nodeGraph.stopCoordinateEditing(true);
                     nodeGraph.stopAmountEditing(true);
                     nodeGraph.stopStopTargetEditing(true);
@@ -1403,7 +1461,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     nodeGraph.stopEventNameEditing(true);
                     nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
                 }
-            return true;
+                return true;
         }
 
         return false;
@@ -1422,7 +1480,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (settingsPopupAnimation.isVisible()) {
             if (nodeDelayDragging) {
-                updateNodeDelayFromMouse((int) mouseX, SETTINGS_POPUP_WIDTH);
+                updateNodeDelayFromMouse((int) mouseX, getSettingsPopupX(), SETTINGS_POPUP_WIDTH);
             }
             return true;
         }
@@ -1453,7 +1511,6 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
         }
-
         if (draggingPresetTabName != null) {
             updatePresetTabDrag((int) mouseX);
             return true;
@@ -1514,6 +1571,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (settingsPopupAnimation.isVisible()) {
             nodeDelayDragging = false;
+            if (nodeDelayField != null) {
+                nodeDelayField.mouseReleased(click);
+            }
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -1560,7 +1620,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 0 && pendingPresetTabInteractionName != null) {
-            completePendingPresetTabInteraction();
+            String presetName = pendingPresetTabInteractionName;
+            clearPendingPresetTabInteraction();
+            if (!presetName.equals(activePresetName)) {
+                switchPreset(presetName);
+            }
             return true;
         }
 
@@ -1692,6 +1756,11 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             return true;
         }
+        if (settingsPopupAnimation.isVisible() && nodeDelayField != null && nodeDelayField.isFocused()) {
+            if (nodeDelayField.keyPressed(input)) {
+                return true;
+            }
+        }
         if (settingsPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 closeSettingsPopup();
@@ -1747,13 +1816,16 @@ public class PathmindVisualEditorScreen extends Screen {
                 stopInlinePresetRename(false);
                 return true;
             }
+
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 stopInlinePresetRename(true);
                 return true;
             }
+
             if (inlinePresetRenameField != null && inlinePresetRenameField.keyPressed(input)) {
                 return true;
             }
+
             return true;
         }
 
@@ -1875,6 +1947,9 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
+            if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(input)) {
+                return true;
+            }
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -2046,6 +2121,693 @@ public class PathmindVisualEditorScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
     
+    private void resetWorkspaceTabsFromCurrentGraph() {
+        workspaceTabs.clear();
+        workspaceTabs.add(new WorkspaceTab("Main", nodeGraph.exportGraphDataSnapshot(), null, null));
+        activeWorkspaceTabIndex = 0;
+    }
+
+    private void renderWorkspaceTabs(DrawContext context, int mouseX, int mouseY) {
+        tickQueuedPresetDeletionAnimation();
+        if (!isPopupObscuringWorkspace() && pendingPresetTabInteractionName != null && draggingPresetTabName == null) {
+            updatePendingPresetTabInteraction(mouseX, mouseY);
+        }
+        if (!isPopupObscuringWorkspace() && draggingPresetTabName != null) {
+            updatePresetTabDrag(mouseX);
+        }
+        List<String> tabs = getRenderedPresetTabs();
+        if (tabs.isEmpty()) {
+            return;
+        }
+
+        int x = getPresetTabStartX();
+        int y = TAB_BAR_TOP;
+        int rightLimit = getPresetTabRightLimit();
+        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
+        int[] tabXs = computePresetTabXs(tabWidths, x);
+        int dragIndex = draggingPresetTabName == null ? -1 : tabs.indexOf(draggingPresetTabName);
+
+        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
+            if (i == dragIndex) {
+                continue;
+            }
+            String label = tabs.get(i);
+            int tabWidth = tabWidths[i];
+            if (tabWidth <= 0) {
+                continue;
+            }
+            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
+            drawPresetTab(context, mouseX, mouseY, label, drawX, y, tabWidth, false);
+        }
+
+        if (dragIndex >= 0 && dragIndex < tabs.size() && dragIndex < tabWidths.length) {
+            String label = tabs.get(dragIndex);
+            int tabWidth = tabWidths[dragIndex];
+            if (tabWidth > 0) {
+                int drawX = draggingPresetTabCurrentX == 0 ? tabXs[dragIndex] : draggingPresetTabCurrentX;
+                drawPresetTab(context, mouseX, mouseY, label, drawX, y, tabWidth, true);
+            }
+        }
+
+        x = getPresetTabStartX();
+        for (int width : tabWidths) {
+            if (width > 0) {
+                x += width + TAB_GAP;
+            }
+        }
+        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
+        presetTabAddButtonFadeAnimation.animateTo(draggingPresetTabName != null ? 0f : 1f, 120, AnimationHelper::easeOutCubic);
+        presetTabAddButtonFadeAnimation.tick();
+        float plusAlpha = MathHelper.clamp(presetTabAddButtonFadeAnimation.getValue(), 0f, 1f);
+        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit) {
+            boolean hovered = isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT);
+            context.drawCenteredTextWithShadow(
+                this.textRenderer,
+                Text.literal("+"),
+                addTabX + PRESET_TAB_ADD_WIDTH / 2,
+                y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1,
+                applyAlpha(hovered ? getAccentColor() : 0xFFB8B8B8, plusAlpha)
+            );
+        }
+        renderInlinePresetRenameField(context, mouseX, mouseY, tabs, tabWidths, tabXs, y, dragIndex);
+    }
+
+    private boolean handleWorkspaceTabClick(int mouseX, int mouseY) {
+        List<String> tabs = getRenderedPresetTabs();
+        if (tabs.isEmpty()) {
+            return false;
+        }
+        int x = getPresetTabStartX();
+        int y = TAB_BAR_TOP;
+        int rightLimit = getPresetTabRightLimit();
+        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
+        int[] tabXs = computePresetTabXs(tabWidths, x);
+        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
+            String label = tabs.get(i);
+            int tabWidth = tabWidths[i];
+            if (tabWidth <= 0) {
+                continue;
+            }
+            if (label.equals(animatingPresetDeletionName)) {
+                continue;
+            }
+            x = tabXs[i];
+            if (isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT)) {
+                if (!isPresetDeleteDisabled(label)) {
+                    int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
+                    int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
+                    int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
+                    if (isPointInRect(
+                        mouseX,
+                        mouseY,
+                        closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                        closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                        closeHitboxSize,
+                        closeHitboxSize
+                    )) {
+                        openPresetDeletePopup(label);
+                        return true;
+                    }
+                }
+                if (!isPresetDeleteDisabled(label) && shouldStartInlinePresetRename(label)) {
+                    clearPendingPresetTabInteraction();
+                    startInlinePresetRename(label);
+                    return true;
+                }
+                if (!label.equals(activePresetName)) {
+                    pendingPresetTabInteractionName = label;
+                    pendingPresetTabPressMouseX = mouseX;
+                    pendingPresetTabPressMouseY = mouseY;
+                    pendingPresetTabPressTabLeft = x;
+                } else if (!isPresetDeleteDisabled(label)) {
+                    pendingPresetTabInteractionName = label;
+                    pendingPresetTabPressMouseX = mouseX;
+                    pendingPresetTabPressMouseY = mouseY;
+                    pendingPresetTabPressTabLeft = x;
+                }
+                return true;
+            }
+        }
+        x = getPresetTabStartX();
+        for (int width : tabWidths) {
+            if (width > 0) {
+                x += width + TAB_GAP;
+            }
+        }
+        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
+        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit && isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT)) {
+            openCreatePresetPopup();
+            return true;
+        }
+        return false;
+    }
+
+    private int getPresetTabRightLimit() {
+        return Math.max(getPresetTabStartX(), getPresetBrowserButtonX() - 1);
+    }
+
+    private void clearPendingPresetTabInteraction() {
+        pendingPresetTabInteractionName = null;
+        pendingPresetTabPressMouseX = 0;
+        pendingPresetTabPressMouseY = 0;
+        pendingPresetTabPressTabLeft = 0;
+    }
+
+    private void updatePendingPresetTabInteraction(int mouseX, int mouseY) {
+        if (pendingPresetTabInteractionName == null || draggingPresetTabName != null) {
+            return;
+        }
+        int dx = Math.abs(mouseX - pendingPresetTabPressMouseX);
+        int dy = Math.abs(mouseY - pendingPresetTabPressMouseY);
+        if (dx < PRESET_TAB_DRAG_THRESHOLD && dy < PRESET_TAB_DRAG_THRESHOLD) {
+            return;
+        }
+        String presetName = pendingPresetTabInteractionName;
+        int tabLeft = pendingPresetTabPressTabLeft;
+        clearPendingPresetTabInteraction();
+        if (isPresetDeleteDisabled(presetName)) {
+            return;
+        }
+        beginPresetTabDrag(presetName, mouseX, tabLeft);
+    }
+
+    private void beginPresetTabDrag(String presetName, int mouseX, int tabLeft) {
+        draggingPresetTabName = presetName;
+        draggingPresetTabPointerOffsetX = mouseX - tabLeft;
+        draggingPresetTabCurrentX = tabLeft;
+    }
+
+    private void normalizePresetTabOrder() {
+        String defaultPresetName = PresetManager.getDefaultPresetName();
+        if (defaultPresetName == null || defaultPresetName.isEmpty()) {
+            return;
+        }
+        if (presetTabOrder.remove(defaultPresetName)) {
+            presetTabOrder.add(0, defaultPresetName);
+        }
+    }
+
+    private void updatePresetTabDrag(int mouseX) {
+        if (draggingPresetTabName == null) {
+            return;
+        }
+        List<String> tabs = getRenderedPresetTabs();
+        int currentIndex = tabs.indexOf(draggingPresetTabName);
+        if (currentIndex < 0) {
+            endPresetTabDrag();
+            return;
+        }
+        int startX = getPresetTabStartX();
+        int rightLimit = getPresetTabRightLimit();
+        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
+        int[] xs = computePresetTabXs(widths, startX);
+        if (currentIndex >= widths.length) {
+            return;
+        }
+        int draggedWidth = widths[currentIndex];
+        draggingPresetTabCurrentX = mouseX - draggingPresetTabPointerOffsetX;
+        int dragCenter = draggingPresetTabCurrentX + draggedWidth / 2;
+        int targetIndex = 0;
+        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
+            if (i == currentIndex) {
+                continue;
+            }
+            int center = xs[i] + widths[i] / 2;
+            if (dragCenter > center) {
+                targetIndex++;
+            }
+        }
+        int orderIndex = presetTabOrder.indexOf(draggingPresetTabName);
+        if (orderIndex < 0) {
+            return;
+        }
+        int clampedTarget = MathHelper.clamp(targetIndex, 1, presetTabOrder.size() - 1);
+        if (clampedTarget != orderIndex) {
+            presetTabOrder.remove(orderIndex);
+            presetTabOrder.add(clampedTarget, draggingPresetTabName);
+            normalizePresetTabOrder();
+        }
+    }
+
+    private void endPresetTabDrag() {
+        if (draggingPresetTabName != null && draggingPresetTabCurrentX > 0) {
+            presetTabXAnimations
+                .computeIfAbsent(draggingPresetTabName, key -> new AnimatedValue(draggingPresetTabCurrentX))
+                .setValue(draggingPresetTabCurrentX);
+        }
+        draggingPresetTabName = null;
+        draggingPresetTabPointerOffsetX = 0;
+        draggingPresetTabCurrentX = 0;
+        clearPendingPresetTabInteraction();
+    }
+
+    private int[] computePresetTabXs(int[] widths, int startX) {
+        int[] xs = new int[widths.length];
+        int x = startX;
+        for (int i = 0; i < widths.length; i++) {
+            xs[i] = x;
+            if (widths[i] > 0) {
+                x += widths[i] + TAB_GAP;
+            }
+        }
+        return xs;
+    }
+
+    private void drawPresetTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
+        boolean active = label.equals(activePresetName);
+        boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
+        int fill = active ? 0xFF3A3A3A : 0xFF2A2A2A;
+        int border = active ? getAccentColor() : UITheme.BORDER_DEFAULT;
+        if (!active && hovered) {
+            fill = 0xFF343434;
+            border = UITheme.BORDER_HIGHLIGHT;
+        }
+        if (dragging) {
+            fill = 0xFF3C3C3C;
+        }
+
+        float appear = dragging ? 1f : getPresetTabAppearProgress(label);
+        int fillColor = applyAlpha(fill, appear);
+        int borderColor = applyAlpha(border, appear);
+        int textColor = applyAlpha(active ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY, appear);
+        if (hovered && !active) {
+            textColor = applyAlpha(UITheme.TEXT_PRIMARY, appear);
+        }
+
+        context.fill(x, y, x + tabWidth, y + TAB_HEIGHT, fillColor);
+        DrawContextBridge.drawBorderInLayer(context, x, y, tabWidth, TAB_HEIGHT, borderColor);
+        boolean deletable = !isPresetDeleteDisabled(label);
+        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
+        int textMaxWidth = Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
+        if (!label.equals(inlinePresetRenameName)) {
+            String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
+            context.drawText(this.textRenderer, Text.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1, textColor, false);
+        }
+
+        if (deletable) {
+            int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
+            int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
+            int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
+            boolean closeHovered = isPointInRect(
+                mouseX, mouseY,
+                closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
+                closeHitboxSize, closeHitboxSize
+            );
+            int closeColor = closeHovered ? UITheme.STATE_ERROR : 0xFF9A9A9A;
+            drawCloseXIcon(context, closeLeft, closeTop, PRESET_TAB_CLOSE_ICON_SIZE, applyAlpha(closeColor, appear));
+        }
+    }
+
+    private List<String> getRenderedPresetTabs() {
+        List<String> tabs = new ArrayList<>();
+        for (String name : presetTabOrder) {
+            if (availablePresets.contains(name)) {
+                tabs.add(name);
+            }
+        }
+        for (String name : availablePresets) {
+            if (!tabs.contains(name)) {
+                tabs.add(name);
+            }
+        }
+        String defaultPresetName = PresetManager.getDefaultPresetName();
+        if (defaultPresetName != null && tabs.remove(defaultPresetName)) {
+            tabs.add(0, defaultPresetName);
+        }
+        return tabs;
+    }
+
+    private boolean isInlinePresetRenameActive() {
+        return inlinePresetRenameField != null
+            && inlinePresetRenameField.isVisible()
+            && inlinePresetRenameName != null
+            && !inlinePresetRenameName.isEmpty();
+    }
+
+    private boolean shouldStartInlinePresetRename(String presetName) {
+        long now = System.currentTimeMillis();
+        boolean doubleClick = presetName != null && presetName.equals(lastPresetTitleClickName)
+            && now - lastPresetTitleClickTime <= PRESET_TAB_RENAME_DOUBLE_CLICK_MS;
+        lastPresetTitleClickName = presetName;
+        lastPresetTitleClickTime = now;
+        return doubleClick;
+    }
+
+    private int getPresetTabTextMaxWidth(String label, int tabWidth) {
+        boolean deletable = !isPresetDeleteDisabled(label);
+        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
+        return Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
+    }
+
+    private int[] getPresetTabTitleBounds(String label, int x, int y, int tabWidth) {
+        int textMaxWidth = getPresetTabTextMaxWidth(label, tabWidth);
+        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
+        int textX = x + PRESET_TAB_TEXT_PADDING;
+        int textY = y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
+        int textWidth = Math.max(4, this.textRenderer.getWidth(drawLabel));
+        return new int[]{textX, textY - 1, Math.min(textWidth, textMaxWidth), this.textRenderer.fontHeight + 2};
+    }
+
+    private boolean isPointInPresetTabTitle(int mouseX, int mouseY, String label, int x, int y, int tabWidth) {
+        int[] bounds = getPresetTabTitleBounds(label, x, y, tabWidth);
+        return isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
+    }
+
+    private void startInlinePresetRename(String presetName) {
+        if (presetName == null || presetName.isEmpty() || isPresetDeleteDisabled(presetName) || inlinePresetRenameField == null) {
+            return;
+        }
+        closeCreatePresetPopup();
+        closeRenamePresetPopup();
+        clearPendingPresetTabInteraction();
+        endPresetTabDrag();
+        inlinePresetRenameName = presetName;
+        inlinePresetRenameField.setText(presetName);
+        inlinePresetRenameField.setVisible(true);
+        inlinePresetRenameField.setEditable(true);
+        inlinePresetRenameField.setFocused(true);
+    }
+
+    private boolean renamePresetInternal(String currentName, String desiredName) {
+        if (currentName == null || currentName.trim().isEmpty()) {
+            return false;
+        }
+        if (desiredName == null || desiredName.trim().isEmpty()) {
+            return false;
+        }
+
+        boolean renamingActive = currentName.equalsIgnoreCase(activePresetName);
+        if (renamingActive) {
+            nodeGraph.save();
+        }
+
+        Optional<String> renamedPreset = PresetManager.renamePreset(currentName, desiredName);
+        if (renamedPreset.isEmpty()) {
+            return false;
+        }
+
+        refreshAvailablePresets();
+        nodeGraph.setActivePreset(activePresetName);
+        presetDropdownOpen = false;
+        if (renamingActive) {
+            updateImportExportPathFromPreset();
+        }
+        return true;
+    }
+
+    private void stopInlinePresetRename(boolean commit) {
+        if (!isInlinePresetRenameActive()) {
+            return;
+        }
+        boolean renamed = false;
+        if (commit && inlinePresetRenameField != null) {
+            renamed = renamePresetInternal(inlinePresetRenameName, inlinePresetRenameField.getText());
+        }
+        if (commit && !renamed) {
+            inlinePresetRenameField.setFocused(true);
+            return;
+        }
+        inlinePresetRenameName = "";
+        if (inlinePresetRenameField != null) {
+            inlinePresetRenameField.setFocused(false);
+            inlinePresetRenameField.setVisible(false);
+            inlinePresetRenameField.setEditable(false);
+        }
+    }
+
+    private void renderInlinePresetRenameField(DrawContext context, int mouseX, int mouseY, List<String> tabs, int[] tabWidths, int[] tabXs, int y, int dragIndex) {
+        if (!isInlinePresetRenameActive() || inlinePresetRenameField == null) {
+            return;
+        }
+        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
+            if (i == dragIndex) {
+                continue;
+            }
+            String label = tabs.get(i);
+            if (!label.equals(inlinePresetRenameName)) {
+                continue;
+            }
+            int tabWidth = tabWidths[i];
+            if (tabWidth <= 0) {
+                break;
+            }
+            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
+            int[] titleBounds = getPresetTabTitleBounds(label, drawX, y, tabWidth);
+            int fieldX = titleBounds[0];
+            int fieldWidth = getPresetTabTextMaxWidth(label, tabWidth);
+            int fieldHeight = Math.max(this.textRenderer.fontHeight + 2, titleBounds[3]);
+            int fieldY = titleBounds[1] + 1;
+            inlinePresetRenameField.setVisible(true);
+            inlinePresetRenameField.setEditable(true);
+            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
+            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            inlinePresetRenameField.setPosition(fieldX, fieldY);
+            inlinePresetRenameField.setWidth(fieldWidth);
+            inlinePresetRenameField.setHeight(fieldHeight);
+            inlinePresetRenameField.render(context, mouseX, mouseY, 0f);
+            return;
+        }
+        stopInlinePresetRename(false);
+    }
+
+    private void tickQueuedPresetDeletionAnimation() {
+        if (animatingPresetDeletionName == null) {
+            return;
+        }
+        if (System.currentTimeMillis() < animatingPresetDeletionExecuteAtMs) {
+            return;
+        }
+        String presetName = animatingPresetDeletionName;
+        animatingPresetDeletionName = null;
+        animatingPresetDeletionExecuteAtMs = 0L;
+        attemptDeletePresetImmediate(presetName);
+    }
+
+    private int getAnimatedPresetTabX(String presetName, int targetX) {
+        AnimatedValue animation = presetTabXAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(targetX));
+        if (!animation.isAnimating() && Math.abs(animation.getValue() - targetX) < 0.5f) {
+            animation.setValue(targetX);
+            return targetX;
+        }
+        animation.animateTo(targetX, 120, AnimationHelper::easeOutCubic);
+        animation.tick();
+        return Math.round(animation.getValue());
+    }
+
+    private float getPresetTabAppearProgress(String presetName) {
+        AnimatedValue animation = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
+        animation.tick();
+        return MathHelper.clamp(animation.getValue(), 0f, 1f);
+    }
+
+    private int applyAlpha(int color, float alpha) {
+        int targetAlpha = (color >>> 24) & 0xFF;
+        int appliedAlpha = MathHelper.clamp(Math.round(targetAlpha * MathHelper.clamp(alpha, 0f, 1f)), 0, 255);
+        return (color & 0x00FFFFFF) | (appliedAlpha << 24);
+    }
+
+    private int getPresetTabStartX() {
+        return 6;
+    }
+
+    private int[] computePresetTabWidths(int availableWidth, int createTabWidth) {
+        return computePresetTabWidths(availablePresets, availableWidth, createTabWidth);
+    }
+
+    private int[] computePresetTabWidths(List<String> tabNames, int availableWidth, int createTabWidth) {
+        int presetCount = tabNames != null ? tabNames.size() : 0;
+        if (presetCount <= 0) {
+            return new int[0];
+        }
+
+        int available = Math.max(0, availableWidth);
+        int gapCount = presetCount; // presets + create tab => presetCount gaps
+        int gapSpace = TAB_GAP * gapCount;
+        int createWidth = createTabWidth;
+        int widthForPresets = Math.max(0, available - gapSpace - createWidth);
+        if (widthForPresets <= 0) {
+            return new int[presetCount];
+        }
+
+        int[] preferred = new int[presetCount];
+        int preferredTotal = 0;
+        for (int i = 0; i < presetCount; i++) {
+            String label = tabNames.get(i);
+            boolean deletable = !isPresetDeleteDisabled(label);
+            int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
+            int width = this.textRenderer.getWidth(label) + PRESET_TAB_TEXT_PADDING * 2 + closeSpace;
+            width = MathHelper.clamp(width, TAB_MIN_WIDTH, TAB_MAX_WIDTH);
+            preferred[i] = width;
+            preferredTotal += width;
+        }
+
+        if (preferredTotal <= widthForPresets) {
+            return preferred;
+        }
+
+        int minWidth = Math.min(TAB_MIN_WIDTH, Math.max(PRESET_TAB_HARD_MIN_WIDTH, widthForPresets / presetCount));
+        int minTotal = minWidth * presetCount;
+        int[] result = new int[presetCount];
+        if (widthForPresets <= minTotal) {
+            int base = Math.max(PRESET_TAB_HARD_MIN_WIDTH, widthForPresets / presetCount);
+            int remainder = Math.max(0, widthForPresets - base * presetCount);
+            for (int i = 0; i < presetCount; i++) {
+                result[i] = base + (i < remainder ? 1 : 0);
+            }
+            return result;
+        }
+
+        int reducibleTotal = 0;
+        for (int width : preferred) {
+            reducibleTotal += Math.max(0, width - minWidth);
+        }
+        int reductionNeeded = preferredTotal - widthForPresets;
+        int assigned = 0;
+        for (int i = 0; i < presetCount; i++) {
+            int reducible = Math.max(0, preferred[i] - minWidth);
+            int reduction = reducibleTotal > 0 ? (reductionNeeded * reducible) / reducibleTotal : 0;
+            result[i] = preferred[i] - reduction;
+            if (result[i] < minWidth) {
+                result[i] = minWidth;
+            }
+            assigned += result[i];
+        }
+
+        int diff = widthForPresets - assigned;
+        for (int i = 0; diff != 0 && i < presetCount; i++) {
+            if (diff > 0) {
+                result[i]++;
+                diff--;
+            } else if (result[i] > minWidth) {
+                result[i]--;
+                diff++;
+            }
+        }
+        return result;
+    }
+
+    private void openTemplateWorkspaceTab(Node templateNode) {
+        if (templateNode == null || templateNode.getType() != NodeType.TEMPLATE) {
+            return;
+        }
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+
+        int currentTab = activeWorkspaceTabIndex;
+        String nodeId = templateNode.getId();
+        for (int i = 0; i < workspaceTabs.size(); i++) {
+            WorkspaceTab existing = workspaceTabs.get(i);
+            if (existing.parentTabIndex != null && existing.parentTabIndex == currentTab
+                && nodeId.equals(existing.hostTemplateNodeId)) {
+                switchToWorkspaceTab(i);
+                return;
+            }
+        }
+
+        NodeGraphData source = templateNode.getTemplateGraphData();
+        if (source == null || source.getNodes() == null || source.getNodes().isEmpty()) {
+            source = createDefaultTemplateGraphData();
+            templateNode.setTemplateGraphData(source);
+            nodeGraph.markWorkspaceDirty();
+        }
+        String label = templateNode.getTemplateName();
+        WorkspaceTab newTab = new WorkspaceTab(label, source, currentTab, nodeId);
+        workspaceTabs.add(newTab);
+        switchToWorkspaceTab(workspaceTabs.size() - 1);
+    }
+
+    private void switchToWorkspaceTab(int targetIndex) {
+        if (targetIndex < 0 || targetIndex >= workspaceTabs.size() || targetIndex == activeWorkspaceTabIndex) {
+            return;
+        }
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+
+        WorkspaceTab target = workspaceTabs.get(targetIndex);
+        if (target == null) {
+            return;
+        }
+        NodeGraphData data = target.graphData != null ? target.graphData : createDefaultTemplateGraphData();
+        nodeGraph.applyGraphDataSnapshot(data, false);
+        activeWorkspaceTabIndex = targetIndex;
+    }
+
+    private void persistActiveWorkspaceToTabs() {
+        if (workspaceTabs.isEmpty() || activeWorkspaceTabIndex < 0 || activeWorkspaceTabIndex >= workspaceTabs.size()) {
+            return;
+        }
+        WorkspaceTab tab = workspaceTabs.get(activeWorkspaceTabIndex);
+        tab.graphData = nodeGraph.exportGraphDataSnapshot();
+        if (tab.parentTabIndex != null && tab.parentTabIndex >= 0 && tab.parentTabIndex < workspaceTabs.size()) {
+            WorkspaceTab parent = workspaceTabs.get(tab.parentTabIndex);
+            if (parent != null && parent.graphData != null && parent.graphData.getNodes() != null) {
+                for (NodeGraphData.NodeData nodeData : parent.graphData.getNodes()) {
+                    if (nodeData != null && tab.hostTemplateNodeId != null && tab.hostTemplateNodeId.equals(nodeData.getId())) {
+                        nodeData.setTemplateGraph(tab.graphData);
+                        nodeData.setTemplateName(tab.label);
+                        break;
+                    }
+                }
+            }
+        } else {
+            tab.label = "Main";
+        }
+    }
+
+    private void syncAllTemplateTabsIntoParents() {
+        if (workspaceTabs.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < workspaceTabs.size(); i++) {
+            if (i == activeWorkspaceTabIndex) {
+                continue;
+            }
+            WorkspaceTab tab = workspaceTabs.get(i);
+            if (tab == null || tab.parentTabIndex == null || tab.graphData == null) {
+                continue;
+            }
+            if (tab.parentTabIndex < 0 || tab.parentTabIndex >= workspaceTabs.size()) {
+                continue;
+            }
+            WorkspaceTab parent = workspaceTabs.get(tab.parentTabIndex);
+            if (parent == null || parent.graphData == null || parent.graphData.getNodes() == null) {
+                continue;
+            }
+            for (NodeGraphData.NodeData nodeData : parent.graphData.getNodes()) {
+                if (nodeData != null && tab.hostTemplateNodeId != null && tab.hostTemplateNodeId.equals(nodeData.getId())) {
+                    nodeData.setTemplateGraph(tab.graphData);
+                    nodeData.setTemplateName(tab.label);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void restoreRootWorkspaceIfNeeded() {
+        if (workspaceTabs.isEmpty()) {
+            return;
+        }
+        WorkspaceTab root = workspaceTabs.get(0);
+        if (root == null || root.graphData == null) {
+            return;
+        }
+        nodeGraph.applyGraphDataSnapshot(root.graphData, false);
+        activeWorkspaceTabIndex = 0;
+    }
+
+    private NodeGraphData createDefaultTemplateGraphData() {
+        NodeGraphData data = new NodeGraphData();
+        NodeGraphData.NodeData start = new NodeGraphData.NodeData();
+        start.setId(java.util.UUID.randomUUID().toString());
+        start.setType(NodeType.START);
+        start.setX(220);
+        start.setY(160);
+        start.setStartNodeNumber(1);
+        data.getNodes().add(start);
+        return data;
+    }
+
     private boolean hasSavedOnClose = false;
 
     private void autoSaveWorkspace() {
@@ -2060,8 +2822,11 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopStopTargetEditing(true);
         nodeGraph.stopVariableEditing(true);
         nodeGraph.stopMessageEditing(true);
-
         nodeGraph.stopParameterEditing(true);
+        nodeGraph.stopParameterEditing(true);
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+        restoreRootWorkspaceIfNeeded();
 
         if (nodeGraph.save()) {
             System.out.println("Node graph auto-saved successfully");
@@ -2102,10 +2867,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight,
-            getPopupAnimatedColor(clearPopupAnimation, UITheme.BACKGROUND_SECONDARY));
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight,
-            getPopupAnimatedColor(clearPopupAnimation, UITheme.BORDER_SUBTLE));
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, clearPopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -2137,6 +2900,7 @@ public class PathmindVisualEditorScreen extends Screen {
             Text.translatable("pathmind.button.cancel"), PopupButtonStyle.DEFAULT, clearPopupAnimation);
         drawPopupButton(context, confirmX, buttonY, buttonWidth, buttonHeight, confirmHovered,
             Text.translatable("pathmind.button.clear"), PopupButtonStyle.PRIMARY, clearPopupAnimation);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2152,10 +2916,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight,
-            getPopupAnimatedColor(importExportPopupAnimation, UITheme.BACKGROUND_SECONDARY));
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight,
-            getPopupAnimatedColor(importExportPopupAnimation, UITheme.BORDER_SUBTLE));
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, importExportPopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -2204,6 +2966,7 @@ public class PathmindVisualEditorScreen extends Screen {
             Text.translatable("pathmind.button.export"), PopupButtonStyle.PRIMARY, importExportPopupAnimation);
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
             Text.translatable("pathmind.button.close"), PopupButtonStyle.DEFAULT, importExportPopupAnimation);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2219,15 +2982,15 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, infoPopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
-            TITLE_TEXT,
+            INFO_POPUP_TITLE_TEXT,
             popupX + scaledWidth / 2,
             popupY + 14,
-            UITheme.TEXT_PRIMARY
+            getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_PRIMARY)
         );
 
         int textStartY = popupY + 42;
@@ -2241,11 +3004,11 @@ public class PathmindVisualEditorScreen extends Screen {
         String loaderLine = "Fabric Loader: " + getFabricLoaderVersion();
 
         int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, authorLine, centerX, textStartY, maxCenteredWidth, UITheme.TEXT_SECONDARY);
-        drawPopupCenteredTextWithEllipsis(context, targetLine, centerX, textStartY + lineSpacing, maxCenteredWidth, UITheme.TEXT_SECONDARY);
-        drawPopupCenteredTextWithEllipsis(context, currentLine, centerX, textStartY + lineSpacing * 2, maxCenteredWidth, UITheme.TEXT_SECONDARY);
-        drawPopupCenteredTextWithEllipsis(context, buildLine, centerX, textStartY + lineSpacing * 3, maxCenteredWidth, UITheme.TEXT_SECONDARY);
-        drawPopupCenteredTextWithEllipsis(context, loaderLine, centerX, textStartY + lineSpacing * 4, maxCenteredWidth, UITheme.TEXT_SECONDARY);
+        drawPopupCenteredTextWithEllipsis(context, authorLine, centerX, textStartY, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
+        drawPopupCenteredTextWithEllipsis(context, targetLine, centerX, textStartY + lineSpacing, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
+        drawPopupCenteredTextWithEllipsis(context, currentLine, centerX, textStartY + lineSpacing * 2, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
+        drawPopupCenteredTextWithEllipsis(context, buildLine, centerX, textStartY + lineSpacing * 3, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
+        drawPopupCenteredTextWithEllipsis(context, loaderLine, centerX, textStartY + lineSpacing * 4, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -2253,7 +3016,18 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
+        drawPopupButton(
+            context,
+            buttonX,
+            buttonY,
+            buttonWidth,
+            buttonHeight,
+            closeHovered,
+            Text.translatable("pathmind.button.close"),
+            PopupButtonStyle.DEFAULT,
+            infoPopupAnimation
+        );
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2269,15 +3043,15 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        UIStyleHelper.drawBeveledPanel(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BACKGROUND_SECONDARY, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
         drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.title").getString(), centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, 0xFFD7D7D7);
-        drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, 0xFF87CEEB);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, UITheme.LINK_COLOR);
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -2296,6 +3070,7 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2311,15 +3086,15 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        UIStyleHelper.drawBeveledPanel(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BACKGROUND_SECONDARY, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
         drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.title").getString(), centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, 0xFFD7D7D7);
-        drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, 0xFF87CEEB);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
+        drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, UITheme.LINK_COLOR);
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -2338,6 +3113,7 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY);
         drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -2388,6 +3164,19 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private String trimWithEllipsis(TextRenderer renderer, String text, int availableWidth) {
         return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
+    }
+
+    private boolean enablePopupScissor(DrawContext context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
+        int width = Math.max(1, scaledWidth);
+        int height = Math.max(1, scaledHeight);
+        context.enableScissor(popupX, popupY, popupX + width, popupY + height);
+        return true;
+    }
+
+    private void disablePopupScissor(DrawContext context, boolean enabled) {
+        if (enabled) {
+            context.disableScissor();
+        }
     }
 
     private boolean handleClearPopupClick(double mouseX, double mouseY, int button) {
@@ -2604,35 +3393,61 @@ public class PathmindVisualEditorScreen extends Screen {
         switch (style) {
             case PRIMARY:
                 bgColor = hovered
-                        ? mixColor(getAccentColor(), 0xFFFFFFFF, 0.18f)
-                        : mixColor(getAccentColor(), 0xFF000000, 0.25f);
+                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.18f)
+                        : mixColor(getAccentColor(), UITheme.BORDER_SOCKET, 0.25f);
                 borderColor = getAccentColor();
                 break;
             case ACCENT:
                 bgColor = hovered
-                        ? mixColor(getAccentColor(), 0xFFFFFFFF, 0.25f)
+                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.25f)
                         : getAccentColor();
                 borderColor = getAccentColor();
                 break;
             default:
-                bgColor = hovered ? 0xFF505050 : 0xFF3A3A3A;
+                bgColor = hovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BUTTON_ACTIVE_BG;
                 borderColor = hovered ? UITheme.TEXT_TERTIARY : UITheme.BORDER_HIGHLIGHT;
                 break;
         }
         int adjustedBg = getPopupAnimatedColor(animation, bgColor);
         int adjustedBorder = getPopupAnimatedColor(animation, borderColor);
+        int adjustedInnerBorder = getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER);
         int adjustedText = getPopupAnimatedColor(
             animation,
             (style == PopupButtonStyle.ACCENT && hovered) ? getAccentColor() : UITheme.TEXT_PRIMARY
         );
-        context.fill(x, y, x + width, y + height, adjustedBg);
-        DrawContextBridge.drawBorder(context, x, y, width, height, adjustedBorder);
+        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, adjustedBg, adjustedBorder, adjustedInnerBorder);
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             label,
             x + width / 2,
             y + (height - this.textRenderer.fontHeight) / 2 + 1,
             adjustedText
+        );
+    }
+
+    private void drawPopupContainer(DrawContext context, int x, int y, int width, int height, PopupAnimationHandler animation) {
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            width,
+            height,
+            getPopupAnimatedColor(animation, UITheme.BACKGROUND_SECONDARY),
+            getPopupAnimatedColor(animation, UITheme.BORDER_DEFAULT),
+            getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER)
+        );
+    }
+
+    private void drawPopupInputFrame(DrawContext context, int x, int y, int width, int height, int borderColor, PopupAnimationHandler animation) {
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            width,
+            height,
+            getPopupAnimatedColor(animation, UITheme.RENAME_INPUT_BG),
+            getPopupAnimatedColor(animation, borderColor),
+            getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER)
         );
     }
 
@@ -2858,8 +3673,6 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.stopStopTargetEditing(true);
         nodeGraph.stopVariableEditing(true);
         nodeGraph.stopMessageEditing(true);
-
-        nodeGraph.stopParameterEditing(true);
         final NodeParameterOverlay[] overlayRef = new NodeParameterOverlay[1];
         overlayRef[0] = new NodeParameterOverlay(
             node,
@@ -2909,22 +3722,22 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawToolbarButtonFrame(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, hovered, active, disabled, "play-button");
 
-        int bgColor = executing ? 0xFF243224 : 0xFF2A2A2A;
+        int bgColor = executing ? UITheme.TOOLBAR_EXECUTE_BG : UITheme.TOOLBAR_BG;
         if (hovered) {
-            bgColor = executing ? 0xFF2F4531 : 0xFF353535;
+            bgColor = executing ? UITheme.TOOLBAR_EXECUTE_HOVER : UITheme.TOOLBAR_BG_ACTIVE;
         } else if (disabled && !executing) {
-            bgColor = 0xFF242424;
+            bgColor = UITheme.TOOLBAR_BG_DISABLED;
         }
         context.fill(buttonX + 1, buttonY + 1, buttonX + PLAY_BUTTON_SIZE - 1, buttonY + PLAY_BUTTON_SIZE - 1, bgColor);
         if (executing) {
             DrawContextBridge.drawBorder(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, UITheme.STATE_SUCCESS);
         }
 
-        int iconColor = executing ? UITheme.STATE_SUCCESS : 0xFF4CAF50;
+        int iconColor = executing ? UITheme.STATE_SUCCESS : UITheme.TOOLBAR_EXECUTE_ICON;
         if (hovered) {
-            iconColor = 0xFF8BE97A;
+            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_HOVER;
         } else if (disabled && !executing) {
-            iconColor = 0xFF4A7C4A;
+            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_DISABLED;
         }
         drawPlayIcon(context, buttonX, buttonY, iconColor);
     }
@@ -2953,23 +3766,23 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawToolbarButtonFrame(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, hovered, active, disabled, "stop-button");
 
-        int bgColor = executing ? 0xFF8C1B1B : 0xFF2A2A2A;
+        int bgColor = executing ? UITheme.TOOLBAR_STOP_BG : UITheme.TOOLBAR_BG;
         if (hovered) {
-            bgColor = executing ? 0xFFA02525 : 0xFF353535;
+            bgColor = executing ? UITheme.TOOLBAR_STOP_HOVER : UITheme.TOOLBAR_BG_ACTIVE;
         } else if (disabled && !executing) {
-            bgColor = 0xFF242424;
+            bgColor = UITheme.TOOLBAR_BG_DISABLED;
         }
         context.fill(buttonX + 1, buttonY + 1, buttonX + STOP_BUTTON_SIZE - 1, buttonY + STOP_BUTTON_SIZE - 1, bgColor);
         if (executing) {
-            int borderColor = hovered ? 0xFFFF6666 : 0xFFFF4C4C;
+            int borderColor = hovered ? UITheme.TOOLBAR_STOP_BORDER_HOVER : UITheme.TOOLBAR_STOP_BORDER;
             DrawContextBridge.drawBorder(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, borderColor);
         }
 
-        int iconColor = executing ? 0xFFFF6F6F : 0xFFFFA6A6;
+        int iconColor = executing ? UITheme.TOOLBAR_STOP_ICON : UITheme.TOOLBAR_STOP_ICON_INACTIVE;
         if (hovered) {
-            iconColor = executing ? 0xFFFF8A8A : UITheme.STATE_ERROR;
+            iconColor = executing ? UITheme.TOOLBAR_STOP_ICON_HOVER : UITheme.STATE_ERROR;
         } else if (disabled && !executing) {
-            iconColor = 0xFFB35E5E;
+            iconColor = UITheme.TOOLBAR_STOP_ICON_DISABLED;
         }
         drawStopIcon(context, buttonX, buttonY, iconColor);
     }
@@ -2979,608 +3792,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int left = buttonX + (STOP_BUTTON_SIZE - squareSize) / 2;
         int top = buttonY + (STOP_BUTTON_SIZE - squareSize) / 2;
         context.fill(left, top, left + squareSize, top + squareSize, color);
-    }
-
-    private void renderWorkspaceTabs(DrawContext context, int mouseX, int mouseY, boolean disabled) {
-        tickQueuedPresetDeletionAnimation();
-        if (!disabled && pendingPresetTabInteractionName != null && draggingPresetTabName == null) {
-            updatePendingPresetTabInteraction(mouseX, mouseY);
-        }
-        if (!disabled && draggingPresetTabName != null) {
-            updatePresetTabDrag(mouseX);
-        }
-        List<String> tabs = getRenderedPresetTabs();
-        if (tabs.isEmpty()) {
-            return;
-        }
-
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] tabXs = computePresetTabXs(tabWidths, startX);
-        int dragIndex = draggingPresetTabName == null ? -1 : tabs.indexOf(draggingPresetTabName);
-
-        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
-            if (i == dragIndex) {
-                continue;
-            }
-            String label = tabs.get(i);
-            int tabWidth = tabWidths[i];
-            if (tabWidth <= 0) {
-                continue;
-            }
-            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
-            drawPresetTab(context, mouseX, mouseY, disabled, label, drawX, y, tabWidth, false);
-        }
-
-        if (dragIndex >= 0 && dragIndex < tabs.size()) {
-            String label = tabs.get(dragIndex);
-            int tabWidth = tabWidths[dragIndex];
-            int fallbackX = tabXs[dragIndex];
-            int drawX = draggingPresetTabCurrentX;
-            if (drawX == 0) {
-                drawX = fallbackX;
-            }
-            drawPresetTab(context, mouseX, mouseY, disabled, label, drawX, y, tabWidth, true);
-        }
-
-        int x = startX;
-        for (int width : tabWidths) {
-            if (width <= 0) {
-                continue;
-            }
-            x += width + TAB_GAP;
-        }
-        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
-        presetTabAddButtonFadeAnimation.animateTo(draggingPresetTabName != null ? 0f : 1f, 120, AnimationHelper::easeOutCubic);
-        presetTabAddButtonFadeAnimation.tick();
-        float plusAlpha = MathHelper.clamp(presetTabAddButtonFadeAnimation.getValue(), 0f, 1f);
-        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit) {
-            boolean hovered = !disabled && isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT);
-            context.drawCenteredTextWithShadow(
-                    this.textRenderer,
-                    Text.literal("+"),
-                    addTabX + PRESET_TAB_ADD_WIDTH / 2,
-                    y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1,
-                    applyAlpha(hovered ? getAccentColor() : 0xFFB8B8B8, plusAlpha)
-            );
-        }
-        renderInlinePresetRenameField(context, mouseX, mouseY, tabs, tabWidths, tabXs, y, dragIndex);
-    }
-
-    private void drawPresetTab(DrawContext context, int mouseX, int mouseY, boolean disabled, String label, int x, int y, int tabWidth, boolean dragging) {
-        boolean active = label.equals(activePresetName);
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
-        int fill = active ? 0xFF3A3A3A : 0xFF2A2A2A;
-        int border = active ? getAccentColor() : UITheme.BORDER_DEFAULT;
-        if (!active && hovered) {
-            fill = 0xFF343434;
-            border = UITheme.BORDER_HIGHLIGHT;
-        } else if (disabled && !active) {
-            fill = 0xFF252525;
-        }
-        if (dragging) {
-            fill = 0xFF3C3C3C;
-        }
-
-        float appear = dragging ? 1f : getPresetTabAppearProgress(label);
-        int drawY = y;
-        int fillColor = applyAlpha(fill, appear);
-        int borderColor = applyAlpha(border, appear);
-        int textColor = active ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY;
-        if (hovered && !active) {
-            textColor = UITheme.TEXT_PRIMARY;
-        }
-        textColor = applyAlpha(textColor, appear);
-
-        context.fill(x, drawY, x + tabWidth, drawY + TAB_HEIGHT, fillColor);
-        DrawContextBridge.drawBorder(context, x, drawY, tabWidth, TAB_HEIGHT, borderColor);
-
-        boolean deletable = !isPresetDeleteDisabled(label);
-        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
-        int textMaxWidth = Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
-        if (!label.equals(inlinePresetRenameName)) {
-            String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, drawY + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1, textColor);
-        }
-
-        if (deletable) {
-            int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
-            int closeTop = drawY + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
-            int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
-            boolean closeHovered = !disabled && isPointInRect(
-                    mouseX,
-                    mouseY,
-                    closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                    closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                    closeHitboxSize,
-                    closeHitboxSize
-            );
-            int closeColor = closeHovered ? UITheme.STATE_ERROR : 0xFF9A9A9A;
-            drawCloseXIcon(context, closeLeft, closeTop, PRESET_TAB_CLOSE_ICON_SIZE, applyAlpha(closeColor, appear));
-        }
-    }
-
-    private boolean handleWorkspaceTabClick(int mouseX, int mouseY) {
-        List<String> tabs = getRenderedPresetTabs();
-        if (tabs.isEmpty()) {
-            return false;
-        }
-
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] tabXs = computePresetTabXs(tabWidths, startX);
-        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
-            String label = tabs.get(i);
-            int tabWidth = tabWidths[i];
-            if (tabWidth <= 0) {
-                continue;
-            }
-            if (label.equals(animatingPresetDeletionName)) {
-                continue;
-            }
-            int x = tabXs[i];
-            if (isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT)) {
-                if (!isPresetDeleteDisabled(label)) {
-                    int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
-                    int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
-                    int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
-                    if (isPointInRect(
-                            mouseX,
-                            mouseY,
-                            closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                            closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                            closeHitboxSize,
-                            closeHitboxSize
-                    )) {
-                        openPresetDeletePopup(label);
-                        return true;
-                    }
-                }
-                if (!isPresetDeleteDisabled(label) && shouldStartInlinePresetRename(label)) {
-                    clearPendingPresetTabInteraction();
-                    startInlinePresetRename(label);
-                    return true;
-                }
-                beginPendingPresetTabInteraction(label, mouseX, mouseY, x);
-                return true;
-            }
-        }
-
-        int x = startX;
-        for (int width : tabWidths) {
-            if (width <= 0) {
-                continue;
-            }
-            x += width + TAB_GAP;
-        }
-        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
-        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit && isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT)) {
-            openCreatePresetPopup();
-            return true;
-        }
-        return false;
-    }
-
-    private int getPresetTabRightLimit() {
-        return Math.max(getPresetTabStartX(), getPresetBrowserButtonX() - 1);
-    }
-
-    private int getPresetTabStartX() {
-        return 6;
-    }
-
-    private int[] computePresetTabWidths(List<String> tabNames, int availableWidth, int createTabWidth) {
-        int presetCount = tabNames != null ? tabNames.size() : 0;
-        if (presetCount <= 0) {
-            return new int[0];
-        }
-
-        int available = Math.max(0, availableWidth);
-        int gapCount = presetCount;
-        int widthForPresets = Math.max(0, available - (TAB_GAP * gapCount) - createTabWidth);
-        if (widthForPresets <= 0) {
-            return new int[presetCount];
-        }
-
-        int[] preferred = new int[presetCount];
-        int preferredTotal = 0;
-        for (int i = 0; i < presetCount; i++) {
-            String label = tabNames.get(i);
-            boolean deletable = !isPresetDeleteDisabled(label);
-            int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
-            int width = this.textRenderer.getWidth(label) + PRESET_TAB_TEXT_PADDING * 2 + closeSpace;
-            width = MathHelper.clamp(width, TAB_MIN_WIDTH, TAB_MAX_WIDTH);
-            preferred[i] = width;
-            preferredTotal += width;
-        }
-
-        if (preferredTotal <= widthForPresets) {
-            return preferred;
-        }
-
-        int minWidth = Math.min(TAB_MIN_WIDTH, Math.max(PRESET_TAB_HARD_MIN_WIDTH, widthForPresets / presetCount));
-        int[] result = new int[presetCount];
-        int minTotal = minWidth * presetCount;
-        if (widthForPresets <= minTotal) {
-            int base = Math.max(PRESET_TAB_HARD_MIN_WIDTH, widthForPresets / presetCount);
-            int remainder = Math.max(0, widthForPresets - base * presetCount);
-            for (int i = 0; i < presetCount; i++) {
-                result[i] = base + (i < remainder ? 1 : 0);
-            }
-            return result;
-        }
-
-        int reducibleTotal = 0;
-        for (int width : preferred) {
-            reducibleTotal += Math.max(0, width - minWidth);
-        }
-
-        int reductionNeeded = preferredTotal - widthForPresets;
-        int assigned = 0;
-        for (int i = 0; i < presetCount; i++) {
-            int reducible = Math.max(0, preferred[i] - minWidth);
-            int reduction = reducibleTotal > 0 ? (reductionNeeded * reducible) / reducibleTotal : 0;
-            result[i] = Math.max(minWidth, preferred[i] - reduction);
-            assigned += result[i];
-        }
-
-        int diff = widthForPresets - assigned;
-        for (int i = 0; diff != 0 && i < presetCount; i++) {
-            if (diff > 0) {
-                result[i]++;
-                diff--;
-            } else if (result[i] > minWidth) {
-                result[i]--;
-                diff++;
-            }
-        }
-
-        return result;
-    }
-
-    private int[] computePresetTabXs(int[] widths, int startX) {
-        int[] xs = new int[widths.length];
-        int x = startX;
-        for (int i = 0; i < widths.length; i++) {
-            xs[i] = x;
-            if (widths[i] > 0) {
-                x += widths[i] + TAB_GAP;
-            }
-        }
-        return xs;
-    }
-
-    private List<String> getRenderedPresetTabs() {
-        List<String> tabs = new ArrayList<>();
-        for (String name : presetTabOrder) {
-            if (availablePresets.contains(name)) {
-                tabs.add(name);
-            }
-        }
-        for (String name : availablePresets) {
-            if (!tabs.contains(name)) {
-                tabs.add(name);
-            }
-        }
-        String defaultPresetName = PresetManager.getDefaultPresetName();
-        if (defaultPresetName != null && tabs.remove(defaultPresetName)) {
-            tabs.add(0, defaultPresetName);
-        }
-        return tabs;
-    }
-
-    private boolean isInlinePresetRenameActive() {
-        return inlinePresetRenameField != null
-            && inlinePresetRenameField.isVisible()
-            && inlinePresetRenameName != null
-            && !inlinePresetRenameName.isEmpty();
-    }
-
-    private boolean shouldStartInlinePresetRename(String presetName) {
-        long now = System.currentTimeMillis();
-        boolean doubleClick = presetName != null && presetName.equals(lastPresetTitleClickName)
-            && now - lastPresetTitleClickTime <= PRESET_TAB_RENAME_DOUBLE_CLICK_MS;
-        lastPresetTitleClickName = presetName;
-        lastPresetTitleClickTime = now;
-        return doubleClick;
-    }
-
-    private int getPresetTabTextMaxWidth(String label, int tabWidth) {
-        boolean deletable = !isPresetDeleteDisabled(label);
-        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
-        return Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
-    }
-
-    private int[] getPresetTabTitleBounds(String label, int x, int y, int tabWidth) {
-        int textMaxWidth = getPresetTabTextMaxWidth(label, tabWidth);
-        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
-        int textX = x + PRESET_TAB_TEXT_PADDING;
-        int textY = y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
-        int textWidth = Math.max(4, this.textRenderer.getWidth(drawLabel));
-        return new int[]{textX, textY - 1, Math.min(textWidth, textMaxWidth), this.textRenderer.fontHeight + 2};
-    }
-
-    private boolean isPointInPresetTabTitle(int mouseX, int mouseY, String label, int x, int y, int tabWidth) {
-        int[] bounds = getPresetTabTitleBounds(label, x, y, tabWidth);
-        return isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
-    }
-
-    private void startInlinePresetRename(String presetName) {
-        if (presetName == null || presetName.isEmpty() || isPresetDeleteDisabled(presetName) || inlinePresetRenameField == null) {
-            return;
-        }
-        closeCreatePresetPopup();
-        closeRenamePresetPopup();
-        clearPendingPresetTabInteraction();
-        endPresetTabDrag();
-        inlinePresetRenameName = presetName;
-        inlinePresetRenameField.setText(presetName);
-        inlinePresetRenameField.setVisible(true);
-        inlinePresetRenameField.setEditable(true);
-        inlinePresetRenameField.setFocused(true);
-    }
-
-    private boolean renamePresetInternal(String currentName, String desiredName) {
-        if (currentName == null || currentName.trim().isEmpty()) {
-            return false;
-        }
-        if (desiredName == null || desiredName.trim().isEmpty()) {
-            return false;
-        }
-        boolean renamingActive = currentName.equalsIgnoreCase(activePresetName);
-        if (renamingActive) {
-            nodeGraph.save();
-        }
-        Optional<String> renamedPreset = PresetManager.renamePreset(currentName, desiredName);
-        if (renamedPreset.isEmpty()) {
-            return false;
-        }
-        refreshAvailablePresets();
-        nodeGraph.setActivePreset(activePresetName);
-        presetDropdownOpen = false;
-        if (renamingActive) {
-            updateImportExportPathFromPreset();
-        }
-        return true;
-    }
-
-    private void stopInlinePresetRename(boolean commit) {
-        if (!isInlinePresetRenameActive()) {
-            return;
-        }
-        boolean renamed = false;
-        if (commit && inlinePresetRenameField != null) {
-            renamed = renamePresetInternal(inlinePresetRenameName, inlinePresetRenameField.getText());
-        }
-        if (commit && !renamed) {
-            inlinePresetRenameField.setFocused(true);
-            return;
-        }
-        inlinePresetRenameName = "";
-        if (inlinePresetRenameField != null) {
-            inlinePresetRenameField.setFocused(false);
-            inlinePresetRenameField.setVisible(false);
-            inlinePresetRenameField.setEditable(false);
-        }
-    }
-
-    private void renderInlinePresetRenameField(DrawContext context, int mouseX, int mouseY, List<String> tabs, int[] tabWidths, int[] tabXs, int y, int dragIndex) {
-        if (!isInlinePresetRenameActive() || inlinePresetRenameField == null) {
-            return;
-        }
-        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
-            if (i == dragIndex) {
-                continue;
-            }
-            String label = tabs.get(i);
-            if (!label.equals(inlinePresetRenameName)) {
-                continue;
-            }
-            int tabWidth = tabWidths[i];
-            if (tabWidth <= 0) {
-                break;
-            }
-            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
-            int[] titleBounds = getPresetTabTitleBounds(label, drawX, y, tabWidth);
-            int fieldX = titleBounds[0];
-            int fieldWidth = getPresetTabTextMaxWidth(label, tabWidth);
-            int fieldHeight = Math.max(this.textRenderer.fontHeight + 2, titleBounds[3]);
-            int fieldY = titleBounds[1] + 1;
-            inlinePresetRenameField.setVisible(true);
-            inlinePresetRenameField.setEditable(true);
-            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
-            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
-            inlinePresetRenameField.setPosition(fieldX, fieldY);
-            inlinePresetRenameField.setWidth(fieldWidth);
-            inlinePresetRenameField.setHeight(fieldHeight);
-            inlinePresetRenameField.render(context, mouseX, mouseY, 0f);
-            return;
-        }
-        stopInlinePresetRename(false);
-    }
-
-    private void tickQueuedPresetDeletionAnimation() {
-        if (animatingPresetDeletionName == null) {
-            return;
-        }
-        if (System.currentTimeMillis() < animatingPresetDeletionExecuteAtMs) {
-            return;
-        }
-        String presetName = animatingPresetDeletionName;
-        animatingPresetDeletionName = null;
-        animatingPresetDeletionExecuteAtMs = 0L;
-        attemptDeletePresetImmediate(presetName);
-    }
-
-    private int getAnimatedPresetTabX(String presetName, int targetX) {
-        AnimatedValue animation = presetTabXAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(targetX));
-        if (!animation.isAnimating() && Math.abs(animation.getValue() - targetX) < 0.5f) {
-            animation.setValue(targetX);
-            return targetX;
-        }
-        animation.animateTo(targetX, 120, AnimationHelper::easeOutCubic);
-        animation.tick();
-        return Math.round(animation.getValue());
-    }
-
-    private float getPresetTabAppearProgress(String presetName) {
-        AnimatedValue animation = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
-        animation.tick();
-        return MathHelper.clamp(animation.getValue(), 0f, 1f);
-    }
-
-    private int applyAlpha(int color, float alpha) {
-        int targetAlpha = (color >>> 24) & 0xFF;
-        int appliedAlpha = MathHelper.clamp(Math.round(targetAlpha * MathHelper.clamp(alpha, 0f, 1f)), 0, 255);
-        return (color & 0x00FFFFFF) | (appliedAlpha << 24);
-    }
-
-    private void beginPresetTabDrag(String presetName, int mouseX, int tabLeft) {
-        if (presetName == null || presetName.isEmpty()) {
-            return;
-        }
-        draggingPresetTabName = presetName;
-        draggingPresetTabPointerOffsetX = mouseX - tabLeft;
-        draggingPresetTabCurrentX = tabLeft;
-    }
-
-    private void normalizePresetTabOrder() {
-        String defaultPresetName = PresetManager.getDefaultPresetName();
-        if (defaultPresetName == null || defaultPresetName.isEmpty()) {
-            return;
-        }
-        if (presetTabOrder.remove(defaultPresetName)) {
-            presetTabOrder.add(0, defaultPresetName);
-        }
-    }
-
-    private void beginPendingPresetTabInteraction(String presetName, int mouseX, int mouseY, int tabLeft) {
-        pendingPresetTabInteractionName = presetName;
-        pendingPresetTabPressMouseX = mouseX;
-        pendingPresetTabPressMouseY = mouseY;
-        pendingPresetTabPressTabLeft = tabLeft;
-    }
-
-    private void clearPendingPresetTabInteraction() {
-        pendingPresetTabInteractionName = null;
-        pendingPresetTabPressMouseX = 0;
-        pendingPresetTabPressMouseY = 0;
-        pendingPresetTabPressTabLeft = 0;
-    }
-
-    private void updatePendingPresetTabInteraction(int mouseX, int mouseY) {
-        if (pendingPresetTabInteractionName == null || draggingPresetTabName != null) {
-            return;
-        }
-        int dx = Math.abs(mouseX - pendingPresetTabPressMouseX);
-        int dy = Math.abs(mouseY - pendingPresetTabPressMouseY);
-        if (dx < PRESET_TAB_DRAG_THRESHOLD && dy < PRESET_TAB_DRAG_THRESHOLD) {
-            return;
-        }
-        String presetName = pendingPresetTabInteractionName;
-        int tabLeft = pendingPresetTabPressTabLeft;
-        clearPendingPresetTabInteraction();
-        if (isPresetDeleteDisabled(presetName)) {
-            return;
-        }
-        beginPresetTabDrag(presetName, mouseX, tabLeft);
-    }
-
-    private void completePendingPresetTabInteraction() {
-        if (pendingPresetTabInteractionName == null) {
-            return;
-        }
-        String presetName = pendingPresetTabInteractionName;
-        clearPendingPresetTabInteraction();
-        if (!presetName.equals(activePresetName)) {
-            switchPreset(presetName);
-        }
-    }
-
-    private void updatePresetTabDrag(int mouseX) {
-        if (draggingPresetTabName == null) {
-            return;
-        }
-        List<String> tabs = getRenderedPresetTabs();
-        int currentIndex = tabs.indexOf(draggingPresetTabName);
-        if (currentIndex < 0) {
-            endPresetTabDrag();
-            return;
-        }
-
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetTabRightLimit();
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        if (currentIndex >= widths.length) {
-            return;
-        }
-        int draggedWidth = widths[currentIndex];
-        draggingPresetTabCurrentX = mouseX - draggingPresetTabPointerOffsetX;
-
-        int dragCenter = draggingPresetTabCurrentX + draggedWidth / 2;
-        int targetIndex = 0;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (tabs.get(i).equals(draggingPresetTabName)) {
-                continue;
-            }
-            int center = xs[i] + widths[i] / 2;
-            if (dragCenter > center) {
-                targetIndex++;
-            }
-        }
-
-        int orderIndex = presetTabOrder.indexOf(draggingPresetTabName);
-        if (orderIndex < 0) {
-            return;
-        }
-        int clampedTarget = MathHelper.clamp(targetIndex, 1, presetTabOrder.size() - 1);
-        if (clampedTarget != orderIndex) {
-            presetTabOrder.remove(orderIndex);
-            presetTabOrder.add(clampedTarget, draggingPresetTabName);
-            normalizePresetTabOrder();
-        }
-    }
-
-    private void endPresetTabDrag() {
-        if (draggingPresetTabName != null && draggingPresetTabCurrentX > 0) {
-            presetTabXAnimations
-                .computeIfAbsent(draggingPresetTabName, key -> new AnimatedValue(draggingPresetTabCurrentX))
-                .setValue(draggingPresetTabCurrentX);
-        }
-        draggingPresetTabName = null;
-        draggingPresetTabPointerOffsetX = 0;
-        draggingPresetTabCurrentX = 0;
-        clearPendingPresetTabInteraction();
-    }
-
-    private void syncPresetTabOrderWithAvailable() {
-        HashSet<String> availableSet = new HashSet<>(availablePresets);
-        HashSet<String> previousSet = new HashSet<>(presetTabOrder);
-
-        presetTabOrder.removeIf(name -> !availableSet.contains(name));
-        for (String preset : availablePresets) {
-            if (!presetTabOrder.contains(preset)) {
-                presetTabOrder.add(preset);
-                AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(preset, key -> new AnimatedValue(1f));
-                if (presetTabsInitialized && previousSet.contains(preset) == false) {
-                    appear.setValue(0f);
-                    appear.animateTo(1f, 180, AnimationHelper::easeOutCubic);
-                } else {
-                    appear.setValue(1f);
-                }
-            }
-        }
-
-        normalizePresetTabOrder();
-
-        presetTabXAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
-        presetTabAppearAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
-        presetTabsInitialized = true;
     }
 
     private void renderPresetDropdown(DrawContext context, int mouseX, int mouseY, boolean disabled) {
@@ -3611,7 +3822,16 @@ public class PathmindVisualEditorScreen extends Screen {
         // Use scissor to clip the dropdown content during animation
         context.enableScissor(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + animatedHeight);
 
-        context.fill(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + fullOptionsHeight, UITheme.BACKGROUND_SECONDARY);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            dropdownX,
+            optionStartY,
+            PRESET_DROPDOWN_WIDTH,
+            fullOptionsHeight,
+            UITheme.BACKGROUND_SECONDARY,
+            UITheme.BORDER_DEFAULT,
+            UITheme.PANEL_INNER_BORDER
+        );
 
         int startIndex = presetDropdownScrollOffset;
         int endIndex = Math.min(optionCount, startIndex + layout.visibleCount);
@@ -3620,7 +3840,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (index < availablePresets.size()) {
                 String preset = availablePresets.get(index);
                 boolean optionHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-                int optionColor = optionHovered ? 0xFF3F3F3F : 0xFF2B2B2B;
+                int optionColor = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
                 context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, optionColor);
                 int textColor = preset.equals(activePresetName) ? getAccentColor() : UITheme.TEXT_PRIMARY;
                 int textX = dropdownX + PRESET_TEXT_LEFT_PADDING;
@@ -3642,12 +3862,12 @@ public class PathmindVisualEditorScreen extends Screen {
                             renameTop - PRESET_RENAME_ICON_HITBOX_PADDING,
                             renameLeft + PRESET_RENAME_ICON_SIZE + PRESET_RENAME_ICON_HITBOX_PADDING,
                             renameTop + PRESET_RENAME_ICON_SIZE + PRESET_RENAME_ICON_HITBOX_PADDING,
-                            0x33555555);
+                            UITheme.ICON_HITBOX_HOVER_BG);
                 }
 
                 int renameColor;
                 if (renameDisabled) {
-                    renameColor = 0xFF555555;
+                    renameColor = UITheme.DROPDOWN_ACTION_DISABLED;
                 } else if (renameHovered) {
                     renameColor = getAccentColor();
                 } else {
@@ -3664,12 +3884,12 @@ public class PathmindVisualEditorScreen extends Screen {
                             deleteTop - PRESET_DELETE_ICON_HITBOX_PADDING,
                             deleteLeft + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
                             deleteTop + PRESET_DELETE_ICON_SIZE + PRESET_DELETE_ICON_HITBOX_PADDING,
-                            0x33555555);
+                            UITheme.ICON_HITBOX_HOVER_BG);
                 }
 
                 int deleteColor;
                 if (deleteDisabled) {
-                    deleteColor = 0xFF555555;
+                    deleteColor = UITheme.DROPDOWN_ACTION_DISABLED;
                 } else if (deleteHovered) {
                     deleteColor = getAccentColor();
                 } else {
@@ -3679,7 +3899,7 @@ public class PathmindVisualEditorScreen extends Screen {
             } else {
                 context.drawHorizontalLine(dropdownX + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 2, optionY, UITheme.BORDER_SUBTLE);
                 boolean createHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-                int createColor = createHovered ? 0xFF3F3F3F : 0xFF2B2B2B;
+                int createColor = createHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
                 context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, createColor);
                 int createTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
                 String createLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, "+ Create new preset", createTextWidth);
@@ -3708,7 +3928,6 @@ public class PathmindVisualEditorScreen extends Screen {
             fullOptionsHeight,
             UITheme.BORDER_DEFAULT
         );
-
 
         context.disableScissor();
     }
@@ -3873,8 +4092,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private void openCreatePresetPopup() {
         presetDropdownOpen = false;
         clearCreatePresetStatus();
-        stopInlinePresetRename(false);
         closeInfoPopup();
+        stopInlinePresetRename(false);
         closeRenamePresetPopup();
         createPresetPopupAnimation.show();
         if (createPresetField != null) {
@@ -3901,8 +4120,8 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         presetDropdownOpen = false;
         clearRenamePresetStatus();
-        stopInlinePresetRename(false);
         closeInfoPopup();
+        stopInlinePresetRename(false);
         closeCreatePresetPopup();
         pendingPresetRenameName = presetName;
         renamePresetPopupAnimation.show();
@@ -4109,15 +4328,15 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, createPresetPopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.translatable("pathmind.popup.createPreset.title"),
             popupX + scaledWidth / 2,
             popupY + 14,
-            UITheme.TEXT_PRIMARY
+            getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_PRIMARY)
         );
 
         drawPopupTextWithEllipsis(
@@ -4126,7 +4345,7 @@ public class PathmindVisualEditorScreen extends Screen {
             popupX + 20,
             popupY + 44,
             scaledWidth - 40,
-            UITheme.TEXT_SECONDARY
+            getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_SECONDARY)
         );
 
         int fieldX = popupX + 20;
@@ -4135,7 +4354,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, 0xFF1F1F1F);
         boolean focused = createPresetField != null && createPresetField.isFocused();
         int borderColor;
         if (focused) {
@@ -4143,15 +4361,25 @@ public class PathmindVisualEditorScreen extends Screen {
         } else if (fieldHovered) {
             borderColor = UITheme.BORDER_HIGHLIGHT;
         } else {
-            borderColor = 0xFF000000;
+            borderColor = UITheme.RENAME_INPUT_BORDER;
         }
-        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+        drawPopupInputFrame(
+            context,
+            fieldX,
+            fieldY,
+            fieldWidth,
+            fieldHeight,
+            borderColor,
+            createPresetPopupAnimation
+        );
 
         if (createPresetField != null) {
             createPresetField.setVisible(true);
             createPresetField.setEditable(true);
-            createPresetField.setEditableColor(getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_PRIMARY));
-            createPresetField.setUneditableColor(getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_TERTIARY));
+            int textColor = getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_PRIMARY);
+            int textDisabledColor = getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_TERTIARY);
+            createPresetField.setEditableColor(textColor);
+            createPresetField.setUneditableColor(textDisabledColor);
             int textFieldHeight = Math.max(10, fieldHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
             createPresetField.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
             createPresetField.setWidth(fieldWidth - 8);
@@ -4160,7 +4388,14 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (!createPresetStatus.isEmpty()) {
-            drawPopupTextWithEllipsis(context, createPresetStatus, fieldX, fieldY + fieldHeight + 8, fieldWidth, createPresetStatusColor);
+            drawPopupTextWithEllipsis(
+                context,
+                createPresetStatus,
+                fieldX,
+                fieldY + fieldHeight + 8,
+                fieldWidth,
+                getPopupAnimatedColor(createPresetPopupAnimation, createPresetStatusColor)
+            );
         }
 
         int buttonWidth = 90;
@@ -4172,8 +4407,29 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean createHovered = isPointInRect(mouseX, mouseY, createX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.cancel"), false);
-        drawPopupButton(context, createX, buttonY, buttonWidth, buttonHeight, createHovered, Text.translatable("pathmind.button.create"), true);
+        drawPopupButton(
+            context,
+            cancelX,
+            buttonY,
+            buttonWidth,
+            buttonHeight,
+            cancelHovered,
+            Text.translatable("pathmind.button.cancel"),
+            PopupButtonStyle.DEFAULT,
+            createPresetPopupAnimation
+        );
+        drawPopupButton(
+            context,
+            createX,
+            buttonY,
+            buttonWidth,
+            buttonHeight,
+            createHovered,
+            Text.translatable("pathmind.button.create"),
+            PopupButtonStyle.PRIMARY,
+            createPresetPopupAnimation
+        );
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -4189,8 +4445,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, renamePresetPopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
                 this.textRenderer,
@@ -4212,7 +4468,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int fieldHeight = 16;
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, 0xFF1F1F1F);
         boolean focused = renamePresetField != null && renamePresetField.isFocused();
         int borderColor;
         if (focused) {
@@ -4220,9 +4475,9 @@ public class PathmindVisualEditorScreen extends Screen {
         } else if (fieldHovered) {
             borderColor = UITheme.BORDER_HIGHLIGHT;
         } else {
-            borderColor = 0xFF000000;
+            borderColor = UITheme.RENAME_INPUT_BORDER;
         }
-        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor);
+        drawPopupInputFrame(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor, renamePresetPopupAnimation);
 
         if (renamePresetField != null) {
             renamePresetField.setVisible(true);
@@ -4249,6 +4504,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered, Text.translatable("pathmind.button.cancel"), false);
         drawPopupButton(context, renameX, buttonY, buttonWidth, buttonHeight, renameHovered, Text.translatable("pathmind.button.rename"), true);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -4264,10 +4520,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight,
-            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.BACKGROUND_SECONDARY));
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight,
-            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.BORDER_SUBTLE));
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, presetDeletePopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -4290,11 +4544,12 @@ public class PathmindVisualEditorScreen extends Screen {
         int checkboxX = popupX + 20;
         int checkboxY = popupY + 86;
         boolean checkboxHovered = isPointInRect(mouseX, mouseY, checkboxX - 2, checkboxY - 2, PRESET_DELETE_SKIP_CHECKBOX_SIZE + 4, PRESET_DELETE_SKIP_CHECKBOX_SIZE + 4);
-        context.fill(checkboxX, checkboxY, checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE, checkboxY + PRESET_DELETE_SKIP_CHECKBOX_SIZE, 0xFF1F1F1F);
+        context.fill(checkboxX, checkboxY, checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE, checkboxY + PRESET_DELETE_SKIP_CHECKBOX_SIZE,
+            getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.RENAME_INPUT_BG));
         DrawContextBridge.drawBorder(context, checkboxX, checkboxY, PRESET_DELETE_SKIP_CHECKBOX_SIZE, PRESET_DELETE_SKIP_CHECKBOX_SIZE,
-                checkboxHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT);
+            getPopupAnimatedColor(presetDeletePopupAnimation, checkboxHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT));
         if (skipPresetDeleteConfirm) {
-            int checkColor = getAccentColor();
+            int checkColor = getPopupAnimatedColor(presetDeletePopupAnimation, getAccentColor());
             context.fill(checkboxX + 2, checkboxY + 5, checkboxX + 3, checkboxY + 7, checkColor);
             context.fill(checkboxX + 3, checkboxY + 6, checkboxX + 4, checkboxY + 8, checkColor);
             context.fill(checkboxX + 4, checkboxY + 6, checkboxX + 5, checkboxY + 7, checkColor);
@@ -4318,6 +4573,7 @@ public class PathmindVisualEditorScreen extends Screen {
             Text.translatable("pathmind.button.cancel"), PopupButtonStyle.DEFAULT, presetDeletePopupAnimation);
         drawPopupButton(context, deleteX, buttonY, buttonWidth, buttonHeight, deleteHovered,
             Text.translatable("pathmind.button.delete"), PopupButtonStyle.PRIMARY, presetDeletePopupAnimation);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -4427,11 +4683,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (presetName == null || presetName.isEmpty()) {
             return;
         }
-
         if (isPresetDeleteDisabled(presetName)) {
             return;
         }
-
         boolean deletingActive = presetName.equals(activePresetName);
         String defaultPreset = PresetManager.getDefaultPresetName();
         String fallbackPreset = availablePresets.stream()
@@ -4536,6 +4790,31 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private void syncPresetTabOrderWithAvailable() {
+        HashSet<String> availableSet = new HashSet<>(availablePresets);
+        HashSet<String> previousSet = new HashSet<>(presetTabOrder);
+
+        presetTabOrder.removeIf(name -> !availableSet.contains(name));
+        for (String preset : availablePresets) {
+            if (!presetTabOrder.contains(preset)) {
+                presetTabOrder.add(preset);
+                AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(preset, key -> new AnimatedValue(1f));
+                if (presetTabsInitialized && !previousSet.contains(preset)) {
+                    appear.setValue(0f);
+                    appear.animateTo(1f, 180, AnimationHelper::easeOutCubic);
+                } else {
+                    appear.setValue(1f);
+                }
+            }
+        }
+
+        normalizePresetTabOrder();
+
+        presetTabXAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
+        presetTabAppearAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
+        presetTabsInitialized = true;
+    }
+
     private void updateImportExportPathFromPreset() {
         lastImportExportPath = NodeGraphPersistence.getDefaultSavePath();
     }
@@ -4567,6 +4846,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!nodeGraph.load()) {
             nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
         }
+        resetWorkspaceTabsFromCurrentGraph();
         refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
         nodeGraph.restoreSessionViewportState();
@@ -4661,12 +4941,7 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean active = validationPanelOpen;
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
         if (!active) {
-            int bgColor = disabled ? UITheme.TOOLBAR_BG_DISABLED
-                : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
-            context.fill(buttonX + 1, buttonY + 1, buttonX + VALIDATION_BUTTON_SIZE - 1, buttonY + VALIDATION_BUTTON_SIZE - 1, bgColor);
-            int borderColor = disabled ? UITheme.BORDER_SUBTLE
-                : getAnimatedBorderColor("validation-button", hovered, UITheme.BORDER_DEFAULT, getAccentColor());
-            DrawContextBridge.drawBorder(context, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE, borderColor);
+            hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, false, disabled, "validation-button");
         }
 
         int statusColor = UITheme.TEXT_PRIMARY;
@@ -4694,6 +4969,7 @@ public class PathmindVisualEditorScreen extends Screen {
         } else {
             drawValidationConsoleIcon(context, buttonX, buttonY, statusColor);
         }
+
     }
 
     private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
@@ -4701,6 +4977,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (progress <= 0.001f || validationResult == null) {
             return;
         }
+
         int[] bounds = getValidationPanelBounds(validationResult, progress);
         int panelX = bounds[0];
         int panelY = bounds[1];
@@ -4713,9 +4990,16 @@ public class PathmindVisualEditorScreen extends Screen {
         int outlineColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
             : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
             : UITheme.BORDER_DEFAULT;
-        context.fill(panelX + 1, panelY + 1, panelX + panelWidth - 1, panelY + panelHeight - 1, UITheme.BACKGROUND_SECTION);
-        DrawContextBridge.drawBorder(context, panelX, panelY, panelWidth, panelHeight, outlineColor);
-        DrawContextBridge.drawBorder(context, panelX + 1, panelY + 1, panelWidth - 2, panelHeight - 2, UITheme.PANEL_INNER_BORDER);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            panelX,
+            panelY,
+            panelWidth,
+            panelHeight,
+            UITheme.BACKGROUND_SECTION,
+            outlineColor,
+            UITheme.PANEL_INNER_BORDER
+        );
         context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
 
         int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
@@ -4723,6 +5007,7 @@ public class PathmindVisualEditorScreen extends Screen {
             : UITheme.TEXT_PRIMARY;
         context.drawTextWithShadow(this.textRenderer, Text.literal("Validation"), panelX + VALIDATION_PANEL_PADDING,
             panelY + 8, textColor);
+
         String summary = validationResult.getErrorCount() + " error" + (validationResult.getErrorCount() == 1 ? "" : "s")
             + "  " + validationResult.getWarningCount() + " warning" + (validationResult.getWarningCount() == 1 ? "" : "s");
         context.drawTextWithShadow(this.textRenderer, Text.literal(summary), panelX + VALIDATION_PANEL_PADDING,
@@ -4738,10 +5023,14 @@ public class PathmindVisualEditorScreen extends Screen {
             int rowBg = hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.BACKGROUND_SECONDARY;
             context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + VALIDATION_PANEL_ROW_HEIGHT, rowBg);
             context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
+
             int severityColor = issue.getSeverity() == GraphValidationSeverity.ERROR ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
-            context.fill(panelX + 8, rowY + 7, panelX + 12, rowY + 11, severityColor);
+            int dotTop = rowY + 7;
+            context.fill(panelX + 8, dotTop, panelX + 12, dotTop + 4, severityColor);
+
             String prefix = issue.getSeverity() == GraphValidationSeverity.ERROR ? "Error" : "Warning";
-            String message = TextRenderUtil.trimWithEllipsis(this.textRenderer, prefix + ": " + issue.getMessage(), panelWidth - 34);
+            String message = TextRenderUtil.trimWithEllipsis(this.textRenderer,
+                prefix + ": " + issue.getMessage(), panelWidth - 34);
             context.drawTextWithShadow(this.textRenderer, Text.literal(message), panelX + 18, rowY + 7,
                 hovered ? UITheme.TEXT_PRIMARY : UITheme.TEXT_HEADER);
         }
@@ -4773,17 +5062,19 @@ public class PathmindVisualEditorScreen extends Screen {
             validationPanelOpen = false;
             return false;
         }
+
         List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
         int contentTop = bounds[1] + VALIDATION_PANEL_HEADER_HEIGHT;
         for (int index = 0; index < visibleIssues.size(); index++) {
             GraphValidationIssue issue = visibleIssues.get(index);
             int rowY = contentTop + index * VALIDATION_PANEL_ROW_HEIGHT;
-            if (isPointInRect(mouseX, mouseY, bounds[0] + 1, rowY, bounds[2] - 2, VALIDATION_PANEL_ROW_HEIGHT)) {
-                if (issue != null && issue.hasNodeTarget()) {
-                    nodeGraph.focusNodeById(issue.getNodeId(), this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
-                }
-                return true;
+            if (!isPointInRect(mouseX, mouseY, bounds[0] + 1, rowY, bounds[2] - 2, VALIDATION_PANEL_ROW_HEIGHT)) {
+                continue;
             }
+            if (issue != null && issue.hasNodeTarget()) {
+                nodeGraph.focusNodeById(issue.getNodeId(), this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+            }
+            return true;
         }
         return true;
     }
@@ -4802,7 +5093,10 @@ public class PathmindVisualEditorScreen extends Screen {
         int footerHeight = validationResult != null && validationResult.getIssues().size() > rowCount
             ? VALIDATION_PANEL_FOOTER_HEIGHT : 0;
         int fullWidth = VALIDATION_PANEL_WIDTH;
-        int fullHeight = VALIDATION_PANEL_HEADER_HEIGHT + rowCount * VALIDATION_PANEL_ROW_HEIGHT + footerHeight + VALIDATION_PANEL_BOTTOM_PADDING;
+        int fullHeight = VALIDATION_PANEL_HEADER_HEIGHT
+            + rowCount * VALIDATION_PANEL_ROW_HEIGHT
+            + footerHeight
+            + VALIDATION_PANEL_BOTTOM_PADDING;
         int width = Math.max(1, Math.round(fullWidth * progress));
         int height = Math.max(1, Math.round(fullHeight * progress));
         int x = getValidationButtonX() + VALIDATION_BUTTON_SIZE - width;
@@ -4812,24 +5106,25 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawValidationConsoleIcon(DrawContext context, int buttonX, int buttonY, int color) {
         int left = buttonX + 4;
-        int top = buttonY + 5;
-        context.drawHorizontalLine(left, left + 9, top, color);
-        context.drawHorizontalLine(left, left + 9, top + 7, color);
-        context.drawVerticalLine(left, top, top + 7, color);
-        context.drawVerticalLine(left + 9, top, top + 7, color);
-        context.drawHorizontalLine(left + 2, left + 4, top + 2, color);
-        context.drawHorizontalLine(left + 2, left + 3, top + 3, color);
-        context.drawHorizontalLine(left + 5, left + 7, top + 4, color);
+        int top = buttonY + 4;
+        context.fill(left, top, left + 10, top + 1, color);
+        context.fill(left, top + 8, left + 10, top + 9, color);
+        context.fill(left, top, left + 1, top + 9, color);
+        context.fill(left + 9, top, left + 10, top + 9, color);
+        context.fill(left + 2, top + 2, left + 5, top + 3, color);
+        context.fill(left + 2, top + 4, left + 7, top + 5, color);
+        context.fill(left + 2, top + 6, left + 6, top + 7, color);
     }
 
     private void drawValidationAlertIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int centerX = buttonX + VALIDATION_BUTTON_SIZE / 2;
+        int stemX = buttonX + VALIDATION_BUTTON_SIZE / 2 - 1;
         int top = buttonY + 4;
-        context.drawVerticalLine(centerX, top, top + 6, color);
-        context.fill(centerX, top + 8, centerX + 1, top + 9, color);
+        context.fill(stemX, top, stemX + 2, top + 6, color);
+        context.fill(stemX, top + 8, stemX + 2, top + 10, color);
     }
 
-    private void drawValidationCountBadge(DrawContext context, GraphValidationResult validationResult, int buttonX, int buttonY, boolean disabled) {
+    private void drawValidationCountBadge(DrawContext context, GraphValidationResult validationResult, int buttonX, int buttonY,
+                                          boolean disabled) {
         int count = validationResult.getErrorCount() > 0 ? validationResult.getErrorCount() : validationResult.getWarningCount();
         int badgeColor = validationResult.getErrorCount() > 0 ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
         if (disabled) {
@@ -4842,7 +5137,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int badgeY = buttonY - 2;
         context.fill(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize, badgeColor);
         DrawContextBridge.drawBorder(context, badgeX, badgeY, badgeSize, badgeSize, UITheme.BORDER_HIGHLIGHT);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1, UITheme.TEXT_PRIMARY);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1,
+            UITheme.TEXT_PRIMARY);
     }
 
     private float getHoverProgress(Object key, boolean hovered) {
@@ -4879,12 +5175,12 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(centerX + 4, centerY - 1, centerX + 6, centerY + 1, color);
 
         context.fill(centerX - 4, centerY - 4, centerX + 4, centerY + 4, color);
-        context.fill(centerX - 3, centerY - 3, centerX + 3, centerY + 3, 0xFF2A2A2A);
+        context.fill(centerX - 3, centerY - 3, centerX + 3, centerY + 3, UITheme.GRID_ORIGIN);
         context.fill(centerX - 1, centerY - 1, centerX + 1, centerY + 1, color);
     }
 
     private void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
+        float popupAlpha = settingsPopupAnimation.getPopupAlpha();
 
         int popupWidth = SETTINGS_POPUP_WIDTH;
         int popupHeight = SETTINGS_POPUP_HEIGHT;
@@ -4893,22 +5189,44 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
-        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        context.fill(popupX, popupY, popupX + scaledWidth, popupY + scaledHeight, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BORDER_SUBTLE);
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, settingsPopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
             Text.translatable("pathmind.settings.title"),
             popupX + scaledWidth / 2,
             popupY + 14,
-            UITheme.TEXT_PRIMARY
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_PRIMARY)
         );
 
         int contentX = popupX + 20;
-        int accentLabelY = popupY + 44;
-        drawPopupTextWithEllipsis(context, "GUI accent", contentX, accentLabelY, scaledWidth - 40,
+
+        // Language section
+        int languageLabelY = popupY + 44;
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.language").getString(), contentX, languageLabelY, scaledWidth - 40,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
+
+        // Language dropdown button
+        int languageButtonY = languageLabelY + 12;
+        int languageButtonWidth = scaledWidth - 40;
+
+        // Store dropdown position for rendering later
+        this.languageDropdownX = contentX;
+        this.languageDropdownY = languageButtonY;
+        this.languageDropdownWidth = languageButtonWidth;
+
+        String currentLang = this.client.getLanguageManager().getLanguage();
+        String langDisplayName = getLanguageDisplayName(currentLang);
+        boolean languageHovered = mouseX >= contentX && mouseX <= contentX + languageButtonWidth && mouseY >= languageButtonY && mouseY <= languageButtonY + 20;
+        drawLanguageDropdown(context, contentX, languageButtonY, languageButtonWidth, langDisplayName, languageHovered);
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
+
+        // Adjust following sections downward by 50 pixels
+        int accentLabelY = languageButtonY + 50;
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.accent").getString(), contentX, accentLabelY, scaledWidth - 40,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
         int accentOptionsY = accentLabelY + 12;
@@ -4928,34 +5246,31 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int settingDividerY = sectionDividerY + 22;
         int gridRowCenterY = (sectionDividerY + settingDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, "Show grid", showGrid, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, Text.translatable("pathmind.settings.showGrid").getString(), showGrid, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, settingDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int footerDividerY = settingDividerY + 22;
         int tooltipRowCenterY = (settingDividerY + footerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, "Show tooltips", showWorkspaceTooltips, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.showTooltips").getString(), showWorkspaceTooltips, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int chatDividerY = footerDividerY + 22;
         int chatRowCenterY = (footerDividerY + chatDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY,
-            Text.translatable("pathmind.settings.showChatErrors").getString(), showChatErrors, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY, Text.translatable("pathmind.settings.showChatErrors").getString(), showChatErrors, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, chatDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int overlayDividerY = chatDividerY + 22;
         int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY,
-            Text.translatable("pathmind.settings.showHudOverlays").getString(), showHudOverlays, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.showHudOverlays").getString(), showHudOverlays, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int delayDividerY = overlayDividerY + 26;
         int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
-        String delayLabel = Text.translatable("pathmind.settings.nodeDelay").getString() + " (" + nodeDelayMs + "ms)";
-        renderSliderRow(context, mouseX, mouseY, contentX, delayRowCenterY, delayLabel, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, scaledWidth);
+        renderNodeDelayRow(context, mouseX, mouseY, contentX, delayRowCenterY, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
@@ -4978,14 +5293,14 @@ public class PathmindVisualEditorScreen extends Screen {
             int gotoBreakDividerY = nodeSettingsBodyY + 28;
             int gotoBreakRowCenterY = (nodeSettingsBodyY + 10 + gotoBreakDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, gotoBreakRowCenterY,
-                "Allow Baritone to break blocks while executing", selectedNode.isGotoAllowBreakWhileExecuting(), scaledWidth);
+                "Allow Baritone to break blocks while executing", selectedNode.isGotoAllowBreakWhileExecuting(), popupX, scaledWidth);
             context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoBreakDividerY,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
             int gotoPlaceDividerY = gotoBreakDividerY + 22;
             int gotoPlaceRowCenterY = (gotoBreakDividerY + gotoPlaceDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, gotoPlaceRowCenterY,
-                "Allow Baritone to place blocks while executing", selectedNode.isGotoAllowPlaceWhileExecuting(), scaledWidth);
+                "Allow Baritone to place blocks while executing", selectedNode.isGotoAllowPlaceWhileExecuting(), popupX, scaledWidth);
             context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoPlaceDividerY,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
         }
@@ -4997,22 +5312,29 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered,
             Text.translatable("pathmind.button.close"), PopupButtonStyle.ACCENT, settingsPopupAnimation);
+        disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
     private void drawAccentOption(DrawContext context, int x, int y, AccentOption option, boolean hovered, boolean selected) {
-        int bgColor = selected ? 0xFF3F3F3F : 0xFF2B2B2B;
+        int bgColor = selected ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
         if (hovered) {
-            bgColor = selected ? 0xFF4A4A4A : 0xFF343434;
+            bgColor = selected ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
         }
-        context.fill(x, y, x + SETTINGS_OPTION_WIDTH, y + SETTINGS_OPTION_HEIGHT,
-            getPopupAnimatedColor(settingsPopupAnimation, bgColor));
         int borderColor = selected ? getAccentColor() : UITheme.BORDER_SUBTLE;
         if (hovered) {
             borderColor = getAccentColor();
         }
-        DrawContextBridge.drawBorder(context, x, y, SETTINGS_OPTION_WIDTH, SETTINGS_OPTION_HEIGHT,
-            getPopupAnimatedColor(settingsPopupAnimation, borderColor));
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            SETTINGS_OPTION_WIDTH,
+            SETTINGS_OPTION_HEIGHT,
+            getPopupAnimatedColor(settingsPopupAnimation, bgColor),
+            getPopupAnimatedColor(settingsPopupAnimation, borderColor),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.PANEL_INNER_BORDER)
+        );
 
         int swatchSize = 8;
         int swatchX = x + 4;
@@ -5026,9 +5348,9 @@ public class PathmindVisualEditorScreen extends Screen {
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_PRIMARY));
     }
 
-    private void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int scaledWidth) {
+    private void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int popupX, int scaledWidth) {
         int labelY = centerY - this.textRenderer.fontHeight / 2;
-        int toggleX = getSettingsPopupX() + scaledWidth - SETTINGS_TOGGLE_WIDTH - 20;
+        int toggleX = popupX + scaledWidth - SETTINGS_TOGGLE_WIDTH - 20;
         int toggleY = centerY - SETTINGS_TOGGLE_HEIGHT / 2;
         int maxLabelWidth = Math.max(0, toggleX - labelX - 8);
         drawPopupTextWithEllipsis(context, label, labelX, labelY, maxLabelWidth,
@@ -5036,18 +5358,108 @@ public class PathmindVisualEditorScreen extends Screen {
 
         boolean hovered = isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT);
         PopupButtonStyle style = active ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
-        String toggleLabel = active ? "On" : "Off";
+        String toggleLabel = active ? Text.translatable("pathmind.settings.on").getString() : Text.translatable("pathmind.settings.off").getString();
         drawPopupButton(context, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT, hovered,
             Text.literal(toggleLabel), style, settingsPopupAnimation);
     }
 
     private void renderSliderRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label,
-                                 int value, int min, int max, int scaledWidth) {
+                                 int value, int min, int max, int popupX, int scaledWidth) {
         int labelY = centerY - this.textRenderer.fontHeight / 2;
-        int sliderX = getSettingsPopupX() + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
-        int maxLabelWidth = Math.max(0, sliderX - labelX - 8);
+        String valueText = value + "ms";
+        int valueTextWidth = this.textRenderer.getWidth(valueText);
+        int valueBoxWidth = Math.max(36, valueTextWidth + 10);
+        int valueBoxX = sliderX - valueBoxWidth - 8;
+        int valueBoxY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
+        int valueBoxHeight = SETTINGS_SLIDER_HEIGHT;
+        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
         drawPopupTextWithEllipsis(context, label, labelX, labelY, maxLabelWidth,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
+
+        int valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(UITheme.DROPDOWN_OPTION_BG);
+        int valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE);
+        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
+        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+        int valueTextX = valueBoxX + Math.max(4, (valueBoxWidth - valueTextWidth) / 2);
+        int valueTextY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(valueText), valueTextX, valueTextY,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
+
+        int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
+        boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
+        int trackColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        int trackBorder = UITheme.BORDER_SUBTLE;
+        trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
+        trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
+        context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
+        DrawContextBridge.drawBorder(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, trackBorder);
+
+        int clamped = MathHelper.clamp(value, min, max);
+        float t = max == min ? 0f : (clamped - min) / (float) (max - min);
+        int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
+        int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
+        int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
+        int handleBorder = (hovered || nodeDelayDragging) ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        handleBorder = getPopupAnimatedColor(settingsPopupAnimation, handleBorder);
+        context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
+        DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
+            handleBorder);
+    }
+
+    private void renderNodeDelayRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
+                                    int value, int min, int max, int popupX, int scaledWidth) {
+        int labelY = centerY - this.textRenderer.fontHeight / 2;
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
+
+        String valueText = Integer.toString(value);
+        int[] valueBox = getNodeDelayFieldBounds(popupX, scaledWidth, centerY, valueText);
+        int valueBoxX = valueBox[0];
+        int valueBoxY = valueBox[1];
+        int valueBoxWidth = valueBox[2];
+        int valueBoxHeight = valueBox[3];
+        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeDelay").getString(), labelX, labelY, maxLabelWidth,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
+
+        boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight);
+        boolean focused = nodeDelayField != null && nodeDelayField.isFocused();
+        boolean activeField = focused;
+        int valueBoxBg = activeField ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        if (fieldHovered) {
+            valueBoxBg = activeField ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
+        }
+        int valueBoxBorder = activeField ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        if (fieldHovered) {
+            valueBoxBorder = getAccentColor();
+        }
+        valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBg);
+        valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBorder);
+        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
+        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+
+        if (nodeDelayField != null) {
+            if (!focused) {
+                if (!valueText.equals(nodeDelayField.getText())) {
+                    nodeDelayField.setText(valueText);
+                }
+            }
+            nodeDelayField.setVisible(true);
+            nodeDelayField.setEditable(true);
+            nodeDelayField.setEditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
+            nodeDelayField.setUneditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
+            int textFieldHeight = Math.max(10, valueBoxHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
+            nodeDelayField.setPosition(valueBoxX + 4, valueBoxY + TEXT_FIELD_VERTICAL_PADDING);
+            nodeDelayField.setWidth(valueBoxWidth - 8);
+            nodeDelayField.setHeight(textFieldHeight);
+            nodeDelayField.render(context, mouseX, mouseY, 0f);
+        }
+
+        int unitX = valueBoxX + valueBoxWidth + 6;
+        int unitY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
+        context.drawTextWithShadow(this.textRenderer, Text.literal("ms"), unitX, unitY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
         int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
@@ -5071,8 +5483,21 @@ public class PathmindVisualEditorScreen extends Screen {
             handleBorder);
     }
 
-    private void updateNodeDelayFromMouse(int mouseX, int popupWidth) {
-        int sliderX = getSettingsPopupX() + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
+    private int[] getNodeDelayFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        String text = valueText == null ? "" : valueText;
+        int textWidth = this.textRenderer.getWidth(text);
+        int boxWidth = Math.max(32, textWidth + 8);
+        int boxHeight = 16;
+        int unitGap = 6;
+        int unitWidth = this.textRenderer.getWidth("ms");
+        int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
+        int boxY = centerY - boxHeight / 2;
+        return new int[]{boxX, boxY, boxWidth, boxHeight};
+    }
+
+    private void updateNodeDelayFromMouse(int mouseX, int popupX, int popupWidth) {
+        int sliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
         int localX = MathHelper.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
         float t = SETTINGS_SLIDER_WIDTH <= 0 ? 0f : localX / (float) SETTINGS_SLIDER_WIDTH;
         int value = NODE_DELAY_MIN_MS + Math.round(t * (NODE_DELAY_MAX_MS - NODE_DELAY_MIN_MS));
@@ -5080,6 +5505,26 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeDelayMs = value;
             currentSettings.nodeDelayMs = nodeDelayMs;
             SettingsManager.save(currentSettings);
+        }
+    }
+
+    private Integer parseDelayFieldValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        String digits = trimmed.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) {
+            return null;
+        }
+        try {
+            int parsed = Integer.parseInt(digits);
+            return MathHelper.clamp(parsed, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS);
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -5100,12 +5545,10 @@ public class PathmindVisualEditorScreen extends Screen {
         } else {
             bgColor = active ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
         }
-        context.fill(x + 1, y + 1, x + width - 1, y + height - 1, bgColor);
-
         int borderColor = disabled
             ? UITheme.BORDER_SUBTLE
             : getAnimatedBorderColor(hoverKey, hovered || active, UITheme.BORDER_DEFAULT, getAccentColor());
-        DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
+        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
     }
 
     private int getWorkspaceButtonY() {
@@ -5166,8 +5609,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean isValidationButtonClicked(int mouseX, int mouseY, int button) {
         if (button != 0) return false;
-        return isPointInRect(mouseX, mouseY, getValidationButtonX(), getValidationButtonY(),
-            VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
+        int buttonX = getValidationButtonX();
+        int buttonY = getValidationButtonY();
+        return isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
     }
 
     private boolean isPointInPlayButton(int mouseX, int mouseY) {
@@ -5212,10 +5656,13 @@ public class PathmindVisualEditorScreen extends Screen {
         clearPopupAnimation.hide();
         importExportPopupAnimation.hide();
         presetDropdownOpen = false;
+        languageDropdownOpen = false;
+        languageDropdownAnimation.setValue(0f);
         settingsPopupAnimation.show();
     }
 
     private void closeSettingsPopup() {
+        languageDropdownOpen = false;
         nodeDelayDragging = false;
         settingsPopupAnimation.hide();
     }
@@ -5236,7 +5683,31 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         int contentX = popupX + 20;
-        int accentLabelY = popupY + 44;
+
+        // Language dropdown click
+        int languageLabelY = popupY + 44;
+        int languageButtonY = languageLabelY + 12;
+        int languageButtonWidth = SETTINGS_POPUP_WIDTH - 40;
+
+        if (mouseXi >= contentX && mouseXi <= contentX + languageButtonWidth && mouseYi >= languageButtonY && mouseYi <= languageButtonY + 20) {
+            languageDropdownOpen = !languageDropdownOpen;
+            return true;
+        }
+
+        // Language dropdown options click
+        if (languageDropdownOpen) {
+            int dropdownY = languageButtonY + 22;
+            for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
+                if (mouseXi >= contentX && mouseXi <= contentX + languageButtonWidth &&
+                    mouseYi >= dropdownY + (i * 20) && mouseYi <= dropdownY + (i * 20) + 20) {
+                    onLanguageSelected(SUPPORTED_LANGUAGES[i]);
+                    return true;
+                }
+            }
+        }
+
+        // Adjust accentOptionsY to match renderSettingsPopup
+        int accentLabelY = languageButtonY + 50;
         int accentOptionsY = accentLabelY + 12;
         int optionIndex = 0;
         for (AccentOption option : AccentOption.values()) {
@@ -5299,9 +5770,24 @@ public class PathmindVisualEditorScreen extends Screen {
         int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
         int sliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
+        String delayText = nodeDelayField != null ? nodeDelayField.getText() : Integer.toString(nodeDelayMs);
+        int[] valueBox = getNodeDelayFieldBounds(popupX, SETTINGS_POPUP_WIDTH, delayRowCenterY, delayText);
+        int valueBoxX = valueBox[0];
+        int valueBoxY = valueBox[1];
+        int valueBoxWidth = valueBox[2];
+        int valueBoxHeight = valueBox[3];
+        if (nodeDelayField != null) {
+            if (isPointInRect(mouseXi, mouseYi, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight)) {
+                nodeDelayField.setEditable(true);
+                nodeDelayField.setFocused(true);
+                return true;
+            } else if (nodeDelayField.isFocused()) {
+                nodeDelayField.setFocused(false);
+            }
+        }
         if (isPointInRect(mouseXi, mouseYi, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
             nodeDelayDragging = true;
-            updateNodeDelayFromMouse(mouseXi, SETTINGS_POPUP_WIDTH);
+            updateNodeDelayFromMouse(mouseXi, popupX, SETTINGS_POPUP_WIDTH);
             return true;
         }
 
@@ -5355,6 +5841,7 @@ public class PathmindVisualEditorScreen extends Screen {
         isDraggingFromSidebar = false;
         draggingNodeType = null;
         draggingSidebarNode = null;
+        nodeGraph.save();
         ExecutionManager.getInstance().executeGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
         if (this.client != null) {
             this.client.setScreen(null);
@@ -5363,6 +5850,113 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void stopExecutingAllGraphs() {
         ExecutionManager.getInstance().requestStopAll();
+    }
+
+    private void drawLanguageDropdown(DrawContext context, int x, int y, int width, String currentLang, boolean hovered) {
+        // Update dropdown animation
+        languageDropdownAnimation.animateTo(languageDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
+        languageDropdownAnimation.tick();
+
+        int bgColor = hovered
+            ? (languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER)
+            : (languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG);
+        bgColor = settingsPopupAnimation.getAnimatedPopupColor(bgColor);
+
+        int borderColor = getAnimatedBorderColor("settings-language-dropdown", hovered || languageDropdownOpen, UITheme.BORDER_DEFAULT, getAccentColor());
+        borderColor = settingsPopupAnimation.getAnimatedPopupColor(borderColor);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            width,
+            20,
+            bgColor,
+            borderColor,
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+
+        // Draw dropdown text
+        int labelColor = (hovered || languageDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        labelColor = settingsPopupAnimation.getAnimatedPopupColor(labelColor);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(currentLang), x + 4, y + 6, labelColor);
+
+        int arrowCenterX = x + width - 10;
+        int arrowCenterY = y + 10;
+        UIStyleHelper.drawChevron(context, arrowCenterX, arrowCenterY, languageDropdownOpen, labelColor);
+    }
+
+    private void drawLanguageDropdownOptions(DrawContext context, int x, int y, int width, int mouseX, int mouseY) {
+        // Get animation progress
+        float animProgress = AnimationHelper.easeOutQuad(languageDropdownAnimation.getValue());
+
+        // Don't render options if animation is fully closed
+        if (animProgress <= 0.001f) {
+            return;
+        }
+
+        Object matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translateZ(matrices, 550.0f);
+
+        int dropdownY = y + 22;
+        int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
+        int animatedHeight = (int) (fullOptionsHeight * animProgress);
+
+        // Use scissor to clip the dropdown content during animation
+        context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
+
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            dropdownY,
+            width,
+            fullOptionsHeight,
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY),
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+
+        // Draw each language option
+        for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
+            String lang = SUPPORTED_LANGUAGES[i];
+            String langName = getLanguageDisplayName(lang);
+            int optionY = dropdownY + (i * 20);
+
+            // Only allow hover detection when animation is complete
+            boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
+            int optionBg = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+            optionBg = settingsPopupAnimation.getAnimatedPopupColor(optionBg);
+            context.fill(x + 1, optionY + 1, x + width - 1, optionY + 20, optionBg);
+
+            // Highlight current language with accent color
+            String currentLang = this.client.getLanguageManager().getLanguage();
+            int textColor = lang.equals(currentLang) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+            textColor = settingsPopupAnimation.getAnimatedPopupColor(textColor);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
+        }
+
+        context.disableScissor();
+        MatrixStackBridge.pop(matrices);
+    }
+
+    private String getLanguageDisplayName(String languageCode) {
+        return Text.translatable("pathmind.language." + languageCode).getString();
+    }
+
+    private void onLanguageSelected(String languageCode) {
+        // Save to settings first
+        currentSettings.language = languageCode;
+        SettingsManager.save(currentSettings);
+
+        // Update Minecraft's language and reload resources
+        this.client.options.language = languageCode;
+        this.client.getLanguageManager().setLanguage(languageCode);
+        this.client.options.write();
+        this.client.reloadResources();
+
+        // Reload the screen to update all text
+        this.client.setScreen(null);
+        this.client.setScreen(new PathmindVisualEditorScreen());
     }
 
     private void drawPencilIcon(DrawContext context, int x, int y, int color) {
@@ -5458,122 +6052,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean isPointInRect(int mouseX, int mouseY, int x, int y, int width, int height) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
-    }
-
-    private void drawLanguageDropdown(DrawContext context, int x, int y, int width, String currentLang, boolean hovered, int mouseX, int mouseY) {
-        // Update dropdown animation
-        languageDropdownAnimation.animateTo(languageDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
-        languageDropdownAnimation.tick();
-
-        int bgColor;
-        if (hovered) {
-            bgColor = languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER;
-        } else {
-            bgColor = languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
-        }
-        bgColor = getPopupAnimatedColor(settingsPopupAnimation, bgColor);
-        context.fill(x + 1, y + 1, x + width - 1, y + 19, bgColor);
-
-        int borderColor = getAnimatedBorderColor("settings-language-dropdown", hovered || languageDropdownOpen, UITheme.BORDER_DEFAULT, getAccentColor());
-        borderColor = getPopupAnimatedColor(settingsPopupAnimation, borderColor);
-        DrawContextBridge.drawBorder(context, x, y, width, 20, borderColor);
-
-        // Draw dropdown text
-        int labelColor = (hovered || languageDropdownOpen) ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        labelColor = getPopupAnimatedColor(settingsPopupAnimation, labelColor);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(currentLang), x + 4, y + 6, labelColor);
-
-        // Draw animated arrow
-        int arrowCenterX = x + width - 10;
-        int arrowCenterY = y + 10;
-        if (languageDropdownOpen) {
-            // Arrow pointing up
-            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY - 2, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY - 1, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY, labelColor);
-        } else {
-            // Arrow pointing down
-            context.drawHorizontalLine(arrowCenterX - 3, arrowCenterX + 3, arrowCenterY + 1, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 2, arrowCenterX + 2, arrowCenterY, labelColor);
-            context.drawHorizontalLine(arrowCenterX - 1, arrowCenterX + 1, arrowCenterY - 1, labelColor);
-        }
-    }
-
-    private void drawLanguageDropdownOptions(DrawContext context, int x, int y, int width, int mouseX, int mouseY) {
-        // Get animation progress
-        float animProgress = AnimationHelper.easeOutQuad(languageDropdownAnimation.getValue());
-
-        // Don't render options if animation is fully closed
-        if (animProgress <= 0.001f) {
-            return;
-        }
-
-        Object matrices = context.getMatrices();
-        MatrixStackBridge.push(matrices);
-        MatrixStackBridge.translateZ(matrices, 550.0f);
-
-        int dropdownY = y + 22;
-        int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
-        int animatedHeight = (int) (fullOptionsHeight * animProgress);
-
-        // Use scissor to clip the dropdown content during animation
-        context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
-
-        // Draw background for all options
-        context.fill(x, dropdownY, x + width, dropdownY + fullOptionsHeight,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BACKGROUND_SECONDARY));
-
-        // Draw each language option
-        for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
-            String lang = SUPPORTED_LANGUAGES[i];
-            String langName = getLanguageDisplayName(lang);
-            int optionY = dropdownY + (i * 20);
-
-            // Only allow hover detection when animation is complete
-            boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
-            int optionBg = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-            optionBg = getPopupAnimatedColor(settingsPopupAnimation, optionBg);
-            context.fill(x + 1, optionY + 1, x + width - 1, optionY + 20, optionBg);
-
-            // Highlight current language with accent color
-            String currentLanguage = this.client.getLanguageManager().getLanguage();
-            int textColor = lang.equals(currentLanguage) ? getAccentColor() : UITheme.TEXT_PRIMARY;
-            textColor = getPopupAnimatedColor(settingsPopupAnimation, textColor);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
-        }
-
-        DropdownLayoutHelper.drawOutline(
-            context,
-            x,
-            dropdownY,
-            width,
-            fullOptionsHeight,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT)
-        );
-
-        // Disable scissor
-        context.disableScissor();
-        MatrixStackBridge.pop(matrices);
-    }
-
-    private String getLanguageDisplayName(String languageCode) {
-        return Text.translatable("pathmind.language." + languageCode).getString();
-    }
-
-    private void onLanguageSelected(String languageCode) {
-        // Save to settings first
-        currentSettings.language = languageCode;
-        SettingsManager.save(currentSettings);
-
-        // Update Minecraft's language and reload resources
-        this.client.options.language = languageCode;
-        this.client.getLanguageManager().setLanguage(languageCode);
-        this.client.options.write();
-        this.client.reloadResources();
-
-        // Reload the screen to update all text
-        this.client.setScreen(null);
-        this.client.setScreen(new PathmindVisualEditorScreen());
     }
 
 }

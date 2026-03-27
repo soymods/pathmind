@@ -5106,21 +5106,21 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawValidationConsoleIcon(DrawContext context, int buttonX, int buttonY, int color) {
         int left = buttonX + 4;
-        int top = buttonY + 5;
-        context.drawHorizontalLine(left, left + 9, top, color);
-        context.drawHorizontalLine(left, left + 9, top + 7, color);
-        context.drawVerticalLine(left, top, top + 7, color);
-        context.drawVerticalLine(left + 9, top, top + 7, color);
-        context.drawHorizontalLine(left + 2, left + 4, top + 2, color);
-        context.drawHorizontalLine(left + 2, left + 3, top + 3, color);
-        context.drawHorizontalLine(left + 5, left + 7, top + 4, color);
+        int top = buttonY + 4;
+        context.fill(left, top, left + 10, top + 1, color);
+        context.fill(left, top + 8, left + 10, top + 9, color);
+        context.fill(left, top, left + 1, top + 9, color);
+        context.fill(left + 9, top, left + 10, top + 9, color);
+        context.fill(left + 2, top + 2, left + 5, top + 3, color);
+        context.fill(left + 2, top + 4, left + 7, top + 5, color);
+        context.fill(left + 2, top + 6, left + 6, top + 7, color);
     }
 
     private void drawValidationAlertIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int centerX = buttonX + VALIDATION_BUTTON_SIZE / 2;
+        int stemX = buttonX + VALIDATION_BUTTON_SIZE / 2 - 1;
         int top = buttonY + 4;
-        context.drawVerticalLine(centerX, top, top + 6, color);
-        context.fill(centerX, top + 8, centerX + 1, top + 9, color);
+        context.fill(stemX, top, stemX + 2, top + 6, color);
+        context.fill(stemX, top + 8, stemX + 2, top + 10, color);
     }
 
     private void drawValidationCountBadge(DrawContext context, GraphValidationResult validationResult, int buttonX, int buttonY,

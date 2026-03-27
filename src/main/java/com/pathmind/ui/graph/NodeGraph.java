@@ -4591,7 +4591,7 @@ public class NodeGraph {
             String amountKey = node.getAmountParameterKey();
             NodeParameter amountParam = node.getParameter(amountKey);
             value = amountParam != null ? amountParam.getStringValue() : "";
-            if (node.getType() == NodeType.MOVE_ITEM && "0".equals(value)) {
+            if (node.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(value)) {
                 value = "";
             }
         }
@@ -4602,7 +4602,7 @@ public class NodeGraph {
             : trimTextToWidth(value, textRenderer, fieldWidth - 6);
         if (showPlaceholder) {
             if (node.getType() == NodeType.MOVE_ITEM) {
-                display = "Any";
+                display = "All";
             } else if (node.getType() == NodeType.TRADE
                 || node.getType() == NodeType.SENSOR_VILLAGER_TRADE
                 || node.getType() == NodeType.SENSOR_IN_STOCK) {
@@ -7031,7 +7031,7 @@ public class NodeGraph {
         String amountKey = node.getAmountParameterKey();
         NodeParameter amountParam = node.getParameter(amountKey);
         amountEditBuffer = amountParam != null ? amountParam.getStringValue() : "";
-        if (node.getType() == NodeType.MOVE_ITEM && "0".equals(amountEditBuffer)) {
+        if (node.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(amountEditBuffer)) {
             amountEditBuffer = "";
         }
         amountEditOriginalValue = amountEditBuffer;
@@ -7079,6 +7079,9 @@ public class NodeGraph {
             || amountEditingNode.getType() == NodeType.USE) && !value.startsWith("~")) {
             // Accept locale decimal input like "1,5" for duration-style fields.
             value = value.replace(',', '.');
+        }
+        if (amountEditingNode.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(value)) {
+            value = "0";
         }
         if (amountEditingNode.getType() != NodeType.PARAM_DURATION
             && amountEditingNode.getType() != NodeType.USE
@@ -9292,6 +9295,17 @@ public class NodeGraph {
             }
         }
         return digitSeen || dotSeen;
+    }
+
+    private boolean isMoveItemAllAmountValue(String value) {
+        if (value == null) {
+            return false;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty()
+            || "0".equals(trimmed)
+            || "all".equalsIgnoreCase(trimmed)
+            || "any".equalsIgnoreCase(trimmed);
     }
 
     private boolean insertStopTargetText(String text, TextRenderer textRenderer) {

@@ -42,7 +42,7 @@ public final class NavigatorWorldOverlay {
         }
 
         PathmindNavigator.Snapshot snapshot = PathmindNavigator.getInstance().getSnapshot();
-        if (snapshot == null || !snapshot.active()) {
+        if (snapshot == null || (snapshot.state() != PathmindNavigator.State.PATHING && snapshot.state() != PathmindNavigator.State.PREVIEW)) {
             return;
         }
 

@@ -529,7 +529,7 @@ public class PathmindClientMod implements ClientModInitializer {
         }
         String command = rawCommand == null ? "" : rawCommand.trim();
         if (command.isEmpty() || command.equalsIgnoreCase("help")) {
-            showNavigatorMessage("Pathmind Nav: !goto <x> <y> <z>, !goto <x> <z>, !stop");
+            showNavigatorMessage("Pathmind Nav: !travel, !path, !nav debug, !stop");
             return true;
         }
 
@@ -544,12 +544,22 @@ public class PathmindClientMod implements ClientModInitializer {
             return true;
         }
 
-        if (parts[0].equalsIgnoreCase("goto")) {
+        if (parts[0].equalsIgnoreCase("travel")) {
             handleNavigatorGoto(client, parts);
             return true;
         }
 
-        showNavigatorMessage("Unknown Pathmind Nav command. Use !goto or !stop.");
+        if (parts[0].equalsIgnoreCase("path")) {
+            handleNavigatorPathPreview(client, parts);
+            return true;
+        }
+
+        if (parts[0].equalsIgnoreCase("nav") && parts.length >= 2 && parts[1].equalsIgnoreCase("debug")) {
+            handleNavigatorDebug();
+            return true;
+        }
+
+        showNavigatorMessage("Unknown Pathmind Nav command. Use !travel, !path, !nav debug, or !stop.");
         return true;
     }
 
@@ -559,36 +569,114 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
 
-        BlockPos targetPos;
-        try {
-            if (parts.length == 3) {
-                int x = normalizeNavigatorCoordinate(Integer.parseInt(parts[1]));
-                int z = normalizeNavigatorCoordinate(Integer.parseInt(parts[2]));
-                targetPos = new BlockPos(x, client.player.getBlockY(), z);
-            } else if (parts.length == 4) {
-                int x = normalizeNavigatorCoordinate(Integer.parseInt(parts[1]));
-                int y = Integer.parseInt(parts[2]);
-                int z = normalizeNavigatorCoordinate(Integer.parseInt(parts[3]));
-                targetPos = new BlockPos(x, y, z);
-            } else {
-                showNavigatorMessage("Usage: !goto <x> <y> <z> or !goto <x> <z>");
-                return;
-            }
-        } catch (NumberFormatException exception) {
-            showNavigatorMessage("Invalid coordinates for !goto.");
+        BlockPos targetPos = parseNavigatorTarget(client, parts, 1, "!travel");
+        if (targetPos == null) {
             return;
         }
 
         CompletableFuture<Void> future = new CompletableFuture<>();
-        if (!PathmindNavigator.getInstance().startGoto(targetPos, "Chat Goto", future)) {
+        if (!PathmindNavigator.getInstance().startGoto(targetPos, "Chat Travel", future)) {
             showNavigatorMessage("Could not start Pathmind Nav.");
             return;
         }
         showNavigatorMessage("Pathmind Nav: heading to " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ());
     }
 
+    private void handleNavigatorPathPreview(MinecraftClient client, String[] parts) {
+        if (client == null || client.player == null || client.world == null) {
+            showNavigatorMessage("Pathmind Nav is unavailable right now.");
+            return;
+        }
+
+        BlockPos targetPos = parseNavigatorTarget(client, parts, 1, "!path");
+        if (targetPos == null) {
+            return;
+        }
+
+        PathmindNavigator.PreviewResult result = PathmindNavigator.getInstance().previewPath(client, targetPos, "Path Preview");
+        showNavigatorMessage(result.message());
+    }
+
+    private void handleNavigatorDebug() {
+        PathmindNavigator.DebugInfo info = PathmindNavigator.getInstance().getDebugInfo();
+        if (info == null) {
+            showNavigatorMessage("Nav Debug: idle");
+            return;
+        }
+
+        showNavigatorMessage(
+            "Nav Debug: state=" + info.state()
+                + " goal=" + info.goalMode()
+                + " target=" + formatDebugPos(info.targetPos())
+                + " resolved=" + formatDebugPos(info.resolvedGoalPos())
+        );
+        showNavigatorMessage(
+            "Nav Debug: waypoint=" + formatDebugPos(info.activeWaypoint())
+                + " pathIndex=" + info.pathIndex()
+                + " nodes=" + info.nodeCount()
+                + " replan=" + sanitizeDebugText(info.lastReplanReason())
+                + " stuck=" + sanitizeDebugText(info.lastStuckReason())
+        );
+    }
+
+    private BlockPos parseNavigatorTarget(MinecraftClient client, String[] parts, int coordinateStartIndex, String usageCommand) {
+        if (client == null || client.player == null) {
+            showNavigatorMessage("Pathmind Nav is unavailable right now.");
+            return null;
+        }
+
+        int remaining = parts.length - coordinateStartIndex;
+        try {
+            if (remaining == 2) {
+                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), true);
+                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockZ(), true);
+                return new BlockPos(x, client.player.getBlockY(), z);
+            }
+            if (remaining == 3) {
+                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), true);
+                int y = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockY(), false);
+                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 2], client.player.getBlockZ(), true);
+                return new BlockPos(x, y, z);
+            }
+        } catch (NumberFormatException exception) {
+            showNavigatorMessage("Invalid coordinates for " + usageCommand + ".");
+            return null;
+        }
+
+        showNavigatorMessage("Usage: " + usageCommand + " <x> <y> <z> or " + usageCommand + " <x> <z>");
+        return null;
+    }
+
+    private int parseNavigatorCoordinate(String token, int base, boolean normalizeAbsoluteHorizontal) {
+        if (token == null) {
+            throw new NumberFormatException("null coordinate");
+        }
+        if (!token.startsWith("~")) {
+            int absolute = Integer.parseInt(token);
+            return normalizeAbsoluteHorizontal ? normalizeNavigatorCoordinate(absolute) : absolute;
+        }
+        if (token.length() == 1) {
+            return base;
+        }
+        return base + Integer.parseInt(token.substring(1));
+    }
+
     private int normalizeNavigatorCoordinate(int coordinate) {
         return coordinate - 1;
+    }
+
+    private String formatDebugPos(BlockPos pos) {
+        if (pos == null) {
+            return "--";
+        }
+        return pos.getX() + "," + pos.getY() + "," + pos.getZ();
+    }
+
+    private String sanitizeDebugText(String value) {
+        if (value == null || value.isBlank()) {
+            return "none";
+        }
+        return value.replace(' ', '_');
     }
 
     private void showNavigatorMessage(String message) {

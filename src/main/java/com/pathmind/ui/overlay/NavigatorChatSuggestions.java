@@ -100,6 +100,10 @@ public final class NavigatorChatSuggestions {
 
         switch (keyCode) {
             case GLFW.GLFW_KEY_UP:
+                if (selectedIndex <= 0) {
+                    selectedIndex = 0;
+                    return false;
+                }
                 selectedIndex = Math.max(0, selectedIndex - 1);
                 return true;
             case GLFW.GLFW_KEY_DOWN:
@@ -129,10 +133,22 @@ public final class NavigatorChatSuggestions {
             return currentText == null ? "" : currentText;
         }
         String current = currentText == null ? "" : currentText;
-        if ("!goto".equals(completion)) {
+        if ("!travel".equals(completion)) {
             String normalized = current.stripTrailing().stripLeading();
-            if (normalized.startsWith("!goto")) {
-                return "!goto";
+            if (normalized.startsWith("!travel")) {
+                return "!travel";
+            }
+        }
+        if ("!path".equals(completion)) {
+            String normalized = current.stripTrailing().stripLeading();
+            if (normalized.startsWith("!path")) {
+                return "!path";
+            }
+        }
+        if ("!nav debug".equals(completion)) {
+            String normalized = current.stripTrailing().stripLeading();
+            if (normalized.startsWith("!nav")) {
+                return "!nav debug";
             }
         }
         return completion;
@@ -151,8 +167,33 @@ public final class NavigatorChatSuggestions {
         }
 
         List<SuggestionEntry> suggestions = new ArrayList<>();
-        if ("!".equals(input) || "!g".startsWith(input) || "!go".startsWith(input) || "!got".startsWith(input) || "!goto".startsWith(input)) {
-            suggestions.add(new SuggestionEntry("!goto", "x y z", "!goto"));
+        if ("!".equals(input)
+            || "!t".startsWith(input)
+            || "!tr".startsWith(input)
+            || "!tra".startsWith(input)
+            || "!trav".startsWith(input)
+            || "!trave".startsWith(input)
+            || "!travel".startsWith(input)) {
+            suggestions.add(new SuggestionEntry("!travel", "x y z", "!travel"));
+        }
+        if ("!".equals(input)
+            || "!p".startsWith(input)
+            || "!pa".startsWith(input)
+            || "!pat".startsWith(input)
+            || "!path".startsWith(input)) {
+            suggestions.add(new SuggestionEntry("!path", "preview route", "!path"));
+        }
+        if ("!".equals(input)
+            || "!n".startsWith(input)
+            || "!na".startsWith(input)
+            || "!nav".startsWith(input)
+            || "!nav ".equals(input)
+            || "!nav d".startsWith(input)
+            || "!nav de".startsWith(input)
+            || "!nav deb".startsWith(input)
+            || "!nav debu".startsWith(input)
+            || "!nav debug".startsWith(input)) {
+            suggestions.add(new SuggestionEntry("!nav debug", "planner state", "!nav debug"));
         }
         if ("!".equals(input) || "!s".startsWith(input) || "!st".startsWith(input) || "!sto".startsWith(input) || "!stop".startsWith(input)) {
             suggestions.add(new SuggestionEntry("!stop", "cancel navigator", "!stop"));

@@ -207,6 +207,7 @@ public class ActiveNodeOverlay {
         );
 
         String statusText = switch (snapshot.state()) {
+            case PREVIEW -> "Preview";
             case PATHING -> "Moving";
             case ARRIVED -> "Arrived";
             case STOPPED -> "Stopped";

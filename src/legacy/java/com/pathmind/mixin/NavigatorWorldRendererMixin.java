@@ -3,7 +3,6 @@ package com.pathmind.mixin;
 import com.pathmind.ui.overlay.NavigatorWorldOverlay;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.debug.DebugRenderer;
-import net.minecraft.client.render.Frustum;
 import net.minecraft.client.util.math.MatrixStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,23 +18,6 @@ public class NavigatorWorldRendererMixin {
     )
     private void pathmind$renderLegacyLateNavigatorOverlay(
         MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        double cameraX,
-        double cameraY,
-        double cameraZ,
-        CallbackInfo ci
-    ) {
-        NavigatorWorldOverlay.render(matrices, consumers, cameraX, cameraY, cameraZ);
-    }
-
-    @Inject(
-        method = "render(Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/Frustum;Lnet/minecraft/client/render/VertexConsumerProvider$Immediate;DDD)V",
-        at = @At("TAIL"),
-        require = 0
-    )
-    private void pathmind$renderLegacyNavigatorOverlayWithFrustum(
-        MatrixStack matrices,
-        Frustum frustum,
         VertexConsumerProvider.Immediate consumers,
         double cameraX,
         double cameraY,

@@ -1,10 +1,11 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.PathmindNavigator;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.debug.DebugRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
@@ -17,11 +18,13 @@ public final class NavigatorWorldOverlay {
     private static final int PATH_COLOR = 0xFF66D8FF;
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFA52B;
+    private static final int STEP_COLOR = 0xFF7FD36B;
     private static final double DASH_LENGTH = 0.42D;
     private static final double DASH_GAP = 0.24D;
     private static final double DASH_CYCLE = DASH_LENGTH + DASH_GAP;
     private static final double ANIMATION_SPEED = 1.45D;
     private static final double GOAL_HEIGHT = 2.0D;
+    private static final double GOAL_INSET = 0.02D;
 
     private NavigatorWorldOverlay() {
     }
@@ -42,88 +45,50 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
-        BlockPos goalPos = snapshot.resolvedGoalPos() != null ? snapshot.resolvedGoalPos() : snapshot.targetPos();
+        BlockPos goalPos = snapshot.targetPos();
         if (goalPos == null) {
             return;
         }
 
-        matrices.push();
-        matrices.translate(-cameraX, -cameraY, -cameraZ);
         try {
-            renderCandidatePaths(matrices, consumers, snapshot.candidatePaths());
-            if (snapshot.path().isEmpty()) {
-                renderFallbackPath(matrices, consumers, cameraX, cameraY, cameraZ, goalPos);
-            } else {
-                renderPath(matrices, consumers, cameraX, cameraY, cameraZ, snapshot.path());
-            }
-            renderGoal(matrices, consumers, goalPos);
+            renderStepMarkers(matrices, consumers, snapshot.path(), cameraX, cameraY, cameraZ);
+            renderPath(matrices, consumers, snapshot.path(), goalPos, cameraX, cameraY, cameraZ);
+            renderGoal(matrices, consumers, goalPos, cameraX, cameraY, cameraZ);
         } catch (Throwable ignored) {
             // Never fail the debug renderer because of Pathmind indicators.
-        } finally {
-            matrices.pop();
-        }
-    }
-
-    private static void renderCandidatePaths(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        List<List<BlockPos>> candidatePaths
-    ) {
-        if (candidatePaths == null || candidatePaths.size() <= 1) {
-            return;
-        }
-
-        double phase = animationPhase();
-        for (int i = 1; i < candidatePaths.size(); i++) {
-            List<BlockPos> candidate = candidatePaths.get(i);
-            if (candidate == null || candidate.isEmpty()) {
-                continue;
-            }
-            renderDashedSegments(matrices, consumers, candidatePathPoints(candidate), phase, CANDIDATE_PATH_COLOR);
         }
     }
 
     private static void renderPath(
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
+        List<BlockPos> path,
+        BlockPos goalPos,
         double cameraX,
         double cameraY,
-        double cameraZ,
-        List<BlockPos> path
+        double cameraZ
     ) {
-        if (path == null || path.isEmpty()) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        ClientPlayerEntity player = client != null ? client.player : null;
+        if (player == null || goalPos == null) {
             return;
         }
 
-        List<Vec3d> points = new ArrayList<>(path.size() + 1);
-        points.add(new Vec3d(cameraX, cameraY + 0.18D, cameraZ));
-        for (BlockPos node : path) {
-            points.add(pathPoint(node));
+        List<Vec3d> points = new ArrayList<>((path == null ? 0 : path.size()) + 2);
+        points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraX, cameraY, cameraZ));
+        if (path != null) {
+            for (BlockPos node : path) {
+                points.add(cameraRelative(pathPoint(node), cameraX, cameraY, cameraZ));
+            }
+        }
+        Vec3d goalPoint = cameraRelative(pathPoint(goalPos), cameraX, cameraY, cameraZ);
+        if (points.isEmpty() || !sameRenderPoint(points.get(points.size() - 1), goalPoint)) {
+            points.add(goalPoint);
+        }
+        if (points.size() < 2) {
+            return;
         }
         renderDashedSegments(matrices, consumers, points, animationPhase(), PATH_COLOR);
-    }
-
-    private static void renderFallbackPath(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        double cameraX,
-        double cameraY,
-        double cameraZ,
-        BlockPos goalPos
-    ) {
-        List<Vec3d> points = List.of(
-            new Vec3d(cameraX, cameraY + 0.18D, cameraZ),
-            pathPoint(goalPos)
-        );
-        renderDashedSegments(matrices, consumers, points, animationPhase(), PATH_COLOR);
-    }
-
-    private static List<Vec3d> candidatePathPoints(List<BlockPos> candidate) {
-        List<Vec3d> points = new ArrayList<>(candidate.size());
-        for (BlockPos node : candidate) {
-            points.add(pathPoint(node));
-        }
-        return points;
     }
 
     private static void renderDashedSegments(
@@ -173,14 +138,17 @@ public final class NavigatorWorldOverlay {
     private static void renderGoal(
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
-        BlockPos goalPos
+        BlockPos goalPos,
+        double cameraX,
+        double cameraY,
+        double cameraZ
     ) {
-        double minX = goalPos.getX();
-        double minY = goalPos.getY();
-        double minZ = goalPos.getZ();
-        double maxX = minX + 1.0D;
+        double minX = goalPos.getX() + GOAL_INSET - cameraX;
+        double minY = goalPos.getY() - cameraY;
+        double minZ = goalPos.getZ() + GOAL_INSET - cameraZ;
+        double maxX = goalPos.getX() + 1.0D - GOAL_INSET - cameraX;
         double maxY = minY + GOAL_HEIGHT;
-        double maxZ = minZ + 1.0D;
+        double maxZ = goalPos.getZ() + 1.0D - GOAL_INSET - cameraZ;
         VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
 
         renderGoalEdge(matrices, lines, minX, minY, minZ, minX, maxY, minZ);
@@ -199,6 +167,51 @@ public final class NavigatorWorldOverlay {
         renderGoalEdge(matrices, lines, maxX, maxY, minZ, maxX, maxY, maxZ);
     }
 
+    private static void renderStepMarkers(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        List<BlockPos> path,
+        double cameraX,
+        double cameraY,
+        double cameraZ
+    ) {
+        if (path == null || path.size() < 2) {
+            return;
+        }
+        for (int i = 0; i < path.size() - 1; i++) {
+            BlockPos step = path.get(i);
+            if (step == null) {
+                continue;
+            }
+            Box marker = Box.of(cameraRelative(pathPoint(step), cameraX, cameraY, cameraZ), 0.34D, 0.34D, 0.34D);
+            renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
+        }
+    }
+
+    private static void renderBoxOutline(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        Box box,
+        int color
+    ) {
+        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
+
+        renderGoalEdge(matrices, lines, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ, color);
+        renderGoalEdge(matrices, lines, box.minX, box.minY, box.maxZ, box.maxX, box.minY, box.maxZ, color);
+        renderGoalEdge(matrices, lines, box.minX, box.maxY, box.minZ, box.maxX, box.maxY, box.minZ, color);
+        renderGoalEdge(matrices, lines, box.minX, box.maxY, box.maxZ, box.maxX, box.maxY, box.maxZ, color);
+
+        renderGoalEdge(matrices, lines, box.minX, box.minY, box.minZ, box.minX, box.minY, box.maxZ, color);
+        renderGoalEdge(matrices, lines, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ, color);
+        renderGoalEdge(matrices, lines, box.minX, box.maxY, box.minZ, box.minX, box.maxY, box.maxZ, color);
+        renderGoalEdge(matrices, lines, box.maxX, box.maxY, box.minZ, box.maxX, box.maxY, box.maxZ, color);
+
+        renderGoalEdge(matrices, lines, box.minX, box.minY, box.minZ, box.minX, box.maxY, box.minZ, color);
+        renderGoalEdge(matrices, lines, box.maxX, box.minY, box.minZ, box.maxX, box.maxY, box.minZ, color);
+        renderGoalEdge(matrices, lines, box.minX, box.minY, box.maxZ, box.minX, box.maxY, box.maxZ, color);
+        renderGoalEdge(matrices, lines, box.maxX, box.minY, box.maxZ, box.maxX, box.maxY, box.maxZ, color);
+    }
+
     private static void renderGoalEdge(
         MatrixStack matrices,
         VertexConsumer lines,
@@ -209,7 +222,21 @@ public final class NavigatorWorldOverlay {
         double endY,
         double endZ
     ) {
-        drawLine(matrices, lines, new Vec3d(startX, startY, startZ), new Vec3d(endX, endY, endZ), GOAL_COLOR);
+        renderGoalEdge(matrices, lines, startX, startY, startZ, endX, endY, endZ, GOAL_COLOR);
+    }
+
+    private static void renderGoalEdge(
+        MatrixStack matrices,
+        VertexConsumer lines,
+        double startX,
+        double startY,
+        double startZ,
+        double endX,
+        double endY,
+        double endZ,
+        int color
+    ) {
+        drawLine(matrices, lines, new Vec3d(startX, startY, startZ), new Vec3d(endX, endY, endZ), color);
     }
 
     private static double animationPhase() {
@@ -218,6 +245,14 @@ public final class NavigatorWorldOverlay {
 
     private static Vec3d pathPoint(BlockPos pos) {
         return new Vec3d(pos.getX() + 0.5D, pos.getY() + 0.18D, pos.getZ() + 0.5D);
+    }
+
+    private static Vec3d cameraRelative(Vec3d point, double cameraX, double cameraY, double cameraZ) {
+        return new Vec3d(point.x - cameraX, point.y - cameraY, point.z - cameraZ);
+    }
+
+    private static boolean sameRenderPoint(Vec3d a, Vec3d b) {
+        return a != null && b != null && a.squaredDistanceTo(b) <= 0.0001D;
     }
 
     private static void drawLine(MatrixStack matrices, VertexConsumer lines, Vec3d start, Vec3d end, int color) {

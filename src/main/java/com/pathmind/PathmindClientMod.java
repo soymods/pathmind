@@ -562,13 +562,13 @@ public class PathmindClientMod implements ClientModInitializer {
         BlockPos targetPos;
         try {
             if (parts.length == 3) {
-                int x = Integer.parseInt(parts[1]);
-                int z = Integer.parseInt(parts[2]);
+                int x = normalizeNavigatorCoordinate(Integer.parseInt(parts[1]));
+                int z = normalizeNavigatorCoordinate(Integer.parseInt(parts[2]));
                 targetPos = new BlockPos(x, client.player.getBlockY(), z);
             } else if (parts.length == 4) {
-                int x = Integer.parseInt(parts[1]);
+                int x = normalizeNavigatorCoordinate(Integer.parseInt(parts[1]));
                 int y = Integer.parseInt(parts[2]);
-                int z = Integer.parseInt(parts[3]);
+                int z = normalizeNavigatorCoordinate(Integer.parseInt(parts[3]));
                 targetPos = new BlockPos(x, y, z);
             } else {
                 showNavigatorMessage("Usage: !goto <x> <y> <z> or !goto <x> <z>");
@@ -585,6 +585,10 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
         showNavigatorMessage("Pathmind Nav: heading to " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ());
+    }
+
+    private int normalizeNavigatorCoordinate(int coordinate) {
+        return coordinate - 1;
     }
 
     private void showNavigatorMessage(String message) {

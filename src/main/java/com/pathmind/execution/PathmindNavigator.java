@@ -10,6 +10,7 @@ import net.minecraft.client.world.ClientWorld;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
@@ -31,23 +32,24 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class PathmindNavigator {
     private static final PathmindNavigator INSTANCE = new PathmindNavigator();
-    private static final double ARRIVAL_DISTANCE_SQ = 2.25D;
-    private static final double CLOSE_HORIZONTAL_DISTANCE = 0.55D;
     private static final double WAYPOINT_REACHED_DISTANCE_SQ = 0.64D;
     private static final float MAX_YAW_STEP = 14.0F;
     private static final float MAX_PITCH_STEP = 8.0F;
     private static final long STUCK_TIMEOUT_MS = 1500L;
     private static final long REPLAN_COOLDOWN_MS = 450L;
+    private static final long JUMP_RETRY_COOLDOWN_MS = 250L;
     private static final double PROGRESS_EPSILON_SQ = 0.01D;
     private static final int MAX_STEP_UP = 1;
     private static final int MAX_DROP_DOWN = 3;
-    private static final int SEARCH_RADIUS = 40;
-    private static final int SEARCH_HEIGHT = 6;
-    private static final int GOAL_SEARCH_RADIUS = 3;
-    private static final int MAX_EXPANSIONS = 5500;
+    private static final int SEARCH_RADIUS = 56;
+    private static final int MAX_SEARCH_RADIUS = 72;
+    private static final int SEARCH_HEIGHT = 18;
+    private static final int MAX_SEARCH_HEIGHT = 48;
+    private static final int GOAL_SEARCH_RADIUS = 5;
+    private static final int MAX_EXPANSIONS = 18000;
     private static final int MAX_GOAL_CANDIDATES = 18;
     private static final int MAX_VISIBLE_CANDIDATE_PATHS = 3;
-    private static final int MAX_SHORTCUT_LOOKAHEAD = 10;
+    private static final int MAX_GOAL_PATH_ATTEMPTS = 10;
     private static final double WATER_PENALTY = 3.5D;
     private static final double EDGE_PENALTY = 1.25D;
     private static final double DANGER_PENALTY = 12.0D;
@@ -70,6 +72,7 @@ public final class PathmindNavigator {
     private long startedAtMs;
     private long lastProgressAtMs;
     private long lastPlanAtMs;
+    private long lastJumpAtMs;
     private double bestDistanceSq = Double.MAX_VALUE;
     private List<BlockPos> currentPath = List.of();
     private List<List<BlockPos>> candidatePaths = List.of();
@@ -118,6 +121,7 @@ public final class PathmindNavigator {
         this.startedAtMs = System.currentTimeMillis();
         this.lastProgressAtMs = this.startedAtMs;
         this.lastPlanAtMs = 0L;
+        this.lastJumpAtMs = 0L;
         this.bestDistanceSq = Double.MAX_VALUE;
         this.currentPath = List.of();
         this.candidatePaths = List.of();
@@ -182,13 +186,8 @@ public final class PathmindNavigator {
         Vec3d currentPos = new Vec3d(player.getX(), player.getY(), player.getZ());
         Vec3d targetCenter = Vec3d.ofCenter(target);
         double distanceSq = currentPos.squaredDistanceTo(targetCenter);
-        double horizontalDx = targetCenter.x - currentPos.x;
-        double horizontalDz = targetCenter.z - currentPos.z;
-        double horizontalDistance = Math.sqrt(horizontalDx * horizontalDx + horizontalDz * horizontalDz);
-        double verticalDelta = targetCenter.y - currentPos.y;
 
-        if (distanceSq <= ARRIVAL_DISTANCE_SQ
-            || (horizontalDistance <= CLOSE_HORIZONTAL_DISTANCE && Math.abs(verticalDelta) <= 1.25D)) {
+        if (isWithinGoalArrivalRange(player, target)) {
             releaseMovementKeys(client);
             complete(State.ARRIVED);
             return;
@@ -206,7 +205,7 @@ public final class PathmindNavigator {
             synchronized (this) {
                 currentPath = newPath;
                 candidatePaths = computation.candidatePaths();
-                pathIndex = Math.min(1, Math.max(0, currentPath.size() - 1));
+                pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
                 activeWaypoint = currentPath.get(pathIndex);
                 lastPlanAtMs = now;
                 bestDistanceSq = distanceSq;
@@ -216,11 +215,29 @@ public final class PathmindNavigator {
 
         BlockPos waypoint = chooseActiveWaypoint(world, player, playerFootPos);
         if (waypoint == null) {
+            PathComputation recovery = findPath(world, playerFootPos, target);
+            if (!recovery.path().isEmpty()) {
+                synchronized (this) {
+                    currentPath = recovery.path();
+                    candidatePaths = recovery.candidatePaths();
+                    pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
+                    activeWaypoint = currentPath.get(pathIndex);
+                    lastPlanAtMs = now;
+                    lastProgressAtMs = now;
+                }
+                waypoint = chooseActiveWaypoint(world, player, playerFootPos);
+            }
+        }
+
+        if (waypoint == null) {
+            releaseMovementKeys(client);
             synchronized (this) {
                 currentPath = List.of();
                 candidatePaths = List.of();
                 activeWaypoint = null;
                 pathIndex = 0;
+                lastPlanAtMs = 0L;
+                lastProgressAtMs = now;
             }
             return;
         }
@@ -270,12 +287,35 @@ public final class PathmindNavigator {
             }
         }
 
-        if (player.isOnGround() && (waypoint.getY() > playerFootPos.getY()
-            || shouldStepJump(world, playerFootPos, waypoint)
-            || progressNow - lastProgressAtMs > STUCK_TIMEOUT_MS)) {
+        long millisSinceProgress;
+        synchronized (this) {
+            millisSinceProgress = progressNow - lastProgressAtMs;
+        }
+
+        if (millisSinceProgress > STUCK_TIMEOUT_MS) {
+            releaseMovementKeys(client);
+            synchronized (this) {
+                currentPath = List.of();
+                candidatePaths = List.of();
+                activeWaypoint = null;
+                pathIndex = 0;
+                lastPlanAtMs = 0L;
+            }
+            return;
+        }
+
+        long millisSinceJump;
+        synchronized (this) {
+            millisSinceJump = progressNow - lastJumpAtMs;
+        }
+
+        if (player.isOnGround()
+            && millisSinceJump >= JUMP_RETRY_COOLDOWN_MS
+            && (waypoint.getY() > playerFootPos.getY()
+            || shouldStepJump(world, playerFootPos, waypoint))) {
             player.jump();
             synchronized (this) {
-                lastProgressAtMs = progressNow;
+                lastJumpAtMs = progressNow;
             }
         }
     }
@@ -340,6 +380,7 @@ public final class PathmindNavigator {
         startedAtMs = now;
         lastProgressAtMs = now;
         lastPlanAtMs = 0L;
+        lastJumpAtMs = 0L;
         state = completeFuture ? State.STOPPED : State.IDLE;
         if (state == State.STOPPED) {
             state = State.IDLE;
@@ -399,15 +440,6 @@ public final class PathmindNavigator {
             return null;
         }
         synchronized (this) {
-            int bestIndex = pathIndex;
-            int maxIndex = Math.min(currentPath.size() - 1, pathIndex + MAX_SHORTCUT_LOOKAHEAD);
-            for (int i = pathIndex + 1; i <= maxIndex; i++) {
-                if (!canShortcut(world, playerFootPos, currentPath.get(i), playerFootPos)) {
-                    break;
-                }
-                bestIndex = i;
-            }
-            pathIndex = bestIndex;
             activeWaypoint = currentPath.get(pathIndex);
             return activeWaypoint;
         }
@@ -422,8 +454,7 @@ public final class PathmindNavigator {
             while (!currentPath.isEmpty() && pathIndex < currentPath.size()) {
                 BlockPos waypoint = currentPath.get(pathIndex);
                 Vec3d waypointCenter = new Vec3d(waypoint.getX() + 0.5D, playerPos.y, waypoint.getZ() + 0.5D);
-                if (playerPos.squaredDistanceTo(waypointCenter) > WAYPOINT_REACHED_DISTANCE_SQ
-                    || Math.abs(waypoint.getY() - playerFootPos.getY()) > 1) {
+                if (!shouldAdvancePastWaypoint(playerPos, playerFootPos, waypoint, waypointCenter)) {
                     activeWaypoint = waypoint;
                     return waypoint;
                 }
@@ -432,6 +463,36 @@ public final class PathmindNavigator {
             activeWaypoint = null;
             return null;
         }
+    }
+
+    private boolean shouldAdvancePastWaypoint(Vec3d playerPos, BlockPos playerFootPos, BlockPos waypoint, Vec3d waypointCenter) {
+        if (waypoint == null || waypointCenter == null || playerFootPos == null || playerPos == null) {
+            return true;
+        }
+        return playerPos.squaredDistanceTo(waypointCenter) <= WAYPOINT_REACHED_DISTANCE_SQ
+            && Math.abs(waypoint.getY() - playerFootPos.getY()) <= 1;
+    }
+
+    private int chooseInitialPathIndex(List<BlockPos> path, BlockPos playerFootPos, BlockPos target) {
+        if (path == null || path.isEmpty()) {
+            return 0;
+        }
+        int fallback = Math.min(1, Math.max(0, path.size() - 1));
+        if (playerFootPos == null || target == null) {
+            return fallback;
+        }
+        for (int i = 0; i < path.size(); i++) {
+            BlockPos step = path.get(i);
+            if (step == null) {
+                continue;
+            }
+            if (horizontalDistanceSq(playerFootPos, step) <= WAYPOINT_REACHED_DISTANCE_SQ
+                && Math.abs(step.getY() - playerFootPos.getY()) <= 1) {
+                continue;
+            }
+            return i;
+        }
+        return Math.max(0, path.size() - 1);
     }
 
     private PathComputation findPath(ClientWorld world, BlockPos start, BlockPos target) {
@@ -462,7 +523,7 @@ public final class PathmindNavigator {
 
         List<ScoredPath> scoredPaths = new ArrayList<>();
         FailureReason lastFailure = FailureReason.NO_ROUTE;
-        int candidateCount = Math.min(MAX_VISIBLE_CANDIDATE_PATHS, goalCandidates.size());
+        int candidateCount = Math.min(MAX_GOAL_PATH_ATTEMPTS, goalCandidates.size());
         for (int i = 0; i < candidateCount; i++) {
             PathSearchResult result = findPathToGoal(world, normalizedStart, goalCandidates.get(i));
             if (!result.path().isEmpty()) {
@@ -502,12 +563,12 @@ public final class PathmindNavigator {
             }
             if (isGoal(current.pos, goal, goalSet)) {
                 List<BlockPos> rawPath = reconstructPath(cameFrom, current.pos);
-                return new PathSearchResult(smoothPath(world, rawPath, start), current.gScore, null);
+                return new PathSearchResult(rawPath, current.gScore, null);
             }
             closed.add(current.pos);
             expansions++;
 
-            for (Neighbor neighbor : getNeighbors(world, current.pos, start)) {
+            for (Neighbor neighbor : getNeighbors(world, current.pos, start, goal)) {
                 if (closed.contains(neighbor.pos)) {
                     continue;
                 }
@@ -543,64 +604,10 @@ public final class PathmindNavigator {
         return path;
     }
 
-    private List<BlockPos> smoothPath(World world, List<BlockPos> rawPath, BlockPos start) {
-        if (rawPath.size() <= 2) {
-            return rawPath;
-        }
-        List<BlockPos> smoothed = new ArrayList<>();
-        int anchorIndex = 0;
-        smoothed.add(rawPath.get(0));
-        while (anchorIndex < rawPath.size() - 1) {
-            int best = anchorIndex + 1;
-            for (int candidate = rawPath.size() - 1; candidate > anchorIndex + 1; candidate--) {
-                if (canShortcut(world, rawPath.get(anchorIndex), rawPath.get(candidate), start)) {
-                    best = candidate;
-                    break;
-                }
-            }
-            smoothed.add(rawPath.get(best));
-            anchorIndex = best;
-        }
-        return smoothed;
-    }
-
-    private boolean canShortcut(World world, BlockPos from, BlockPos to, BlockPos searchOrigin) {
-        if (world == null || from == null || to == null) {
-            return false;
-        }
-        if (from.equals(to)) {
-            return true;
-        }
-        int dx = to.getX() - from.getX();
-        int dz = to.getZ() - from.getZ();
-        int steps = Math.max(Math.abs(dx), Math.abs(dz));
-        if (steps <= 1) {
-            return findNeighbor(world, from, Integer.signum(dx), Integer.signum(dz), searchOrigin, true) != null;
-        }
-
-        BlockPos cursor = from;
-        for (int i = 1; i <= steps; i++) {
-            int sampleX = from.getX() + (int) Math.round(dx * (i / (double) steps));
-            int sampleZ = from.getZ() + (int) Math.round(dz * (i / (double) steps));
-            int stepX = Integer.compare(sampleX, cursor.getX());
-            int stepZ = Integer.compare(sampleZ, cursor.getZ());
-            if (stepX == 0 && stepZ == 0) {
-                continue;
-            }
-            BlockPos next = findNeighbor(world, cursor, stepX, stepZ, searchOrigin, true);
-            if (next == null) {
-                return false;
-            }
-            cursor = next;
-        }
-
-        return horizontalDistanceSq(cursor, to) <= 1.0D && Math.abs(cursor.getY() - to.getY()) <= 1;
-    }
-
-    private List<Neighbor> getNeighbors(World world, BlockPos current, BlockPos start) {
+    private List<Neighbor> getNeighbors(World world, BlockPos current, BlockPos start, BlockPos goal) {
         List<Neighbor> neighbors = new ArrayList<>(MOVES.length);
         for (Move move : MOVES) {
-            BlockPos candidate = findNeighbor(world, current, move.dx, move.dz, start, false);
+            BlockPos candidate = findNeighbor(world, current, move.dx, move.dz, start, goal, false);
             if (candidate == null) {
                 continue;
             }
@@ -609,13 +616,14 @@ public final class PathmindNavigator {
         return neighbors;
     }
 
-    private BlockPos findNeighbor(World world, BlockPos current, int dx, int dz, BlockPos start, boolean allowRelaxedBounds) {
+    private BlockPos findNeighbor(World world, BlockPos current, int dx, int dz, BlockPos start, BlockPos goal, boolean allowRelaxedBounds) {
         if (dx == 0 && dz == 0) {
             return null;
         }
 
         if (Math.abs(dx) + Math.abs(dz) == 2) {
-            if (findNeighbor(world, current, dx, 0, start, true) == null || findNeighbor(world, current, 0, dz, start, true) == null) {
+            if (findNeighbor(world, current, dx, 0, start, goal, true) == null
+                || findNeighbor(world, current, 0, dz, start, goal, true) == null) {
                 return null;
             }
         }
@@ -624,7 +632,7 @@ public final class PathmindNavigator {
         int baseZ = current.getZ() + dz;
         for (int dy = MAX_STEP_UP; dy >= -MAX_DROP_DOWN; dy--) {
             BlockPos candidate = new BlockPos(baseX, current.getY() + dy, baseZ);
-            if (!allowRelaxedBounds && !isWithinSearchBounds(start, candidate)) {
+            if (!allowRelaxedBounds && !isWithinSearchBounds(start, candidate, goal)) {
                 continue;
             }
             if (!isChunkLoaded(world, candidate)) {
@@ -644,13 +652,23 @@ public final class PathmindNavigator {
         return null;
     }
 
-    private boolean isWithinSearchBounds(BlockPos start, BlockPos candidate) {
-        return Math.abs(candidate.getX() - start.getX()) <= SEARCH_RADIUS
-            && Math.abs(candidate.getZ() - start.getZ()) <= SEARCH_RADIUS
-            && Math.abs(candidate.getY() - start.getY()) <= SEARCH_HEIGHT;
+    private boolean isWithinSearchBounds(BlockPos start, BlockPos candidate, BlockPos target) {
+        int radius = getSearchRadius(start, target);
+        int height = getSearchHeight(start, target);
+        return Math.abs(candidate.getX() - start.getX()) <= radius
+            && Math.abs(candidate.getZ() - start.getZ()) <= radius
+            && Math.abs(candidate.getY() - start.getY()) <= height;
     }
 
     private List<BlockPos> collectGoalCandidates(World world, BlockPos start, BlockPos target) {
+        if (target != null
+            && isWithinSearchBounds(start, target, target)
+            && isChunkLoaded(world, target)
+            && isStandable(world, target)
+            && !isHardDanger(world, target)) {
+            return List.of(target.toImmutable());
+        }
+
         List<ScoredPos> scored = new ArrayList<>();
         Set<BlockPos> seen = new HashSet<>();
         for (int radius = 0; radius <= GOAL_SEARCH_RADIUS; radius++) {
@@ -661,7 +679,7 @@ public final class PathmindNavigator {
                     }
                     for (int dy = MAX_STEP_UP + 1; dy >= -MAX_DROP_DOWN; dy--) {
                         BlockPos candidate = new BlockPos(target.getX() + dx, target.getY() + dy, target.getZ() + dz);
-                        if (!isWithinSearchBounds(start, candidate)
+                        if (!isWithinSearchBounds(start, candidate, target)
                             || !isChunkLoaded(world, candidate)
                             || !isStandable(world, candidate)
                             || isHardDanger(world, candidate)
@@ -693,7 +711,7 @@ public final class PathmindNavigator {
     private int countOpenNeighbors(World world, BlockPos pos) {
         int count = 0;
         for (Move move : MOVES) {
-            if (findNeighbor(world, pos, move.dx, move.dz, pos, true) != null) {
+            if (findNeighbor(world, pos, move.dx, move.dz, pos, pos, true) != null) {
                 count++;
             }
         }
@@ -717,10 +735,7 @@ public final class PathmindNavigator {
     }
 
     private boolean isGoal(BlockPos pos, BlockPos target, Set<BlockPos> goalSet) {
-        if (goalSet.contains(pos)) {
-            return true;
-        }
-        return horizontalDistanceSq(pos, target) <= 1.0D && Math.abs(pos.getY() - target.getY()) <= 1;
+        return goalSet.contains(pos);
     }
 
     private double heuristic(BlockPos pos, List<BlockPos> goals) {
@@ -752,6 +767,21 @@ public final class PathmindNavigator {
         double dx = a.getX() - b.getX();
         double dz = a.getZ() - b.getZ();
         return dx * dx + dz * dz;
+    }
+
+    private boolean isWithinGoalArrivalRange(ClientPlayerEntity player, BlockPos target) {
+        if (player == null || target == null) {
+            return false;
+        }
+        Box targetBox = new Box(
+            target.getX(),
+            target.getY(),
+            target.getZ(),
+            target.getX() + 1.0D,
+            target.getY() + 1.0D,
+            target.getZ() + 1.0D
+        );
+        return player.getBoundingBox().intersects(targetBox);
     }
 
     private boolean isStandable(World world, BlockPos footPos) {
@@ -786,7 +816,7 @@ public final class PathmindNavigator {
     }
 
     private BlockPos resolvePlanningTarget(ClientWorld world, BlockPos start, BlockPos target) {
-        if (isWithinSearchBounds(start, target) && isChunkLoaded(world, target)) {
+        if (isWithinSearchBounds(start, target, target) && isChunkLoaded(world, target)) {
             return target.toImmutable();
         }
 
@@ -799,11 +829,17 @@ public final class PathmindNavigator {
         }
 
         Vec3d normalized = direction.normalize();
-        double maxDistance = Math.min(horizontalDistance, SEARCH_RADIUS - 2.0D);
+        int searchRadius = getSearchRadius(start, target);
+        int searchHeight = getSearchHeight(start, target);
+        double maxDistance = Math.min(horizontalDistance, searchRadius - 2.0D);
         BlockPos best = null;
         for (double distance = Math.max(4.0D, maxDistance); distance >= 4.0D; distance -= 2.0D) {
             Vec3d sample = startCenter.add(normalized.multiply(distance));
-            BlockPos projected = BlockPos.ofFloored(sample.x, MathHelper.clamp((int) Math.round(targetCenter.y), start.getY() - SEARCH_HEIGHT, start.getY() + SEARCH_HEIGHT), sample.z);
+            BlockPos projected = BlockPos.ofFloored(
+                sample.x,
+                MathHelper.clamp((int) Math.round(targetCenter.y), start.getY() - searchHeight, start.getY() + searchHeight),
+                sample.z
+            );
             BlockPos candidate = findNearbyStandable(world, projected, 4);
             if (candidate != null && isChunkLoaded(world, candidate)) {
                 best = candidate;
@@ -821,12 +857,14 @@ public final class PathmindNavigator {
     private BlockPos findLoadedFrontierNear(ClientWorld world, BlockPos start, BlockPos target) {
         BlockPos best = null;
         double bestScore = Double.POSITIVE_INFINITY;
-        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
-            for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
-                if (Math.max(Math.abs(dx), Math.abs(dz)) < SEARCH_RADIUS - 2) {
+        int searchRadius = getSearchRadius(start, target);
+        int searchHeight = getSearchHeight(start, target);
+        for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+            for (int dz = -searchRadius; dz <= searchRadius; dz++) {
+                if (Math.max(Math.abs(dx), Math.abs(dz)) < searchRadius - 2) {
                     continue;
                 }
-                for (int dy = -SEARCH_HEIGHT; dy <= SEARCH_HEIGHT; dy++) {
+                for (int dy = -searchHeight; dy <= searchHeight; dy++) {
                     BlockPos candidate = new BlockPos(start.getX() + dx, start.getY() + dy, start.getZ() + dz);
                     if (!isChunkLoaded(world, candidate) || !isStandable(world, candidate) || isHardDanger(world, candidate)) {
                         continue;
@@ -840,6 +878,22 @@ public final class PathmindNavigator {
             }
         }
         return best;
+    }
+
+    private int getSearchRadius(BlockPos start, BlockPos target) {
+        if (start == null || target == null) {
+            return SEARCH_RADIUS;
+        }
+        int horizontal = (int) Math.ceil(Math.sqrt(horizontalDistanceSq(start, target)));
+        return Math.max(SEARCH_RADIUS, Math.min(MAX_SEARCH_RADIUS, horizontal + 8));
+    }
+
+    private int getSearchHeight(BlockPos start, BlockPos target) {
+        if (start == null || target == null) {
+            return SEARCH_HEIGHT;
+        }
+        int vertical = Math.abs(target.getY() - start.getY());
+        return Math.max(SEARCH_HEIGHT, Math.min(MAX_SEARCH_HEIGHT, vertical + 8));
     }
 
     private boolean isChunkLoaded(World world, BlockPos pos) {

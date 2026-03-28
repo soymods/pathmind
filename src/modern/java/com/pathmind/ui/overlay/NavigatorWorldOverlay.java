@@ -17,9 +17,8 @@ import java.util.List;
  */
 public final class NavigatorWorldOverlay {
     private static final int PATH_COLOR = 0xFF66D8FF;
+    private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFC857;
-    private static final int WAYPOINT_COLOR = 0xFFA6FF7A;
-    private static final float ACTIVE_DOT_SIZE = 0.22F;
     private static final float PATH_LINE_WIDTH = 2.5F;
     private static final double DASH_LENGTH = 0.42D;
     private static final double DASH_GAP = 0.24D;
@@ -35,19 +34,53 @@ public final class NavigatorWorldOverlay {
         }
 
         PathmindNavigator.Snapshot snapshot = PathmindNavigator.getInstance().getSnapshot();
-        if (snapshot == null || !snapshot.active() || snapshot.path().isEmpty()) {
+        if (snapshot == null || !snapshot.active()) {
+            return;
+        }
+
+        BlockPos goalPos = snapshot.resolvedGoalPos() != null ? snapshot.resolvedGoalPos() : snapshot.targetPos();
+        if (goalPos == null) {
             return;
         }
 
         try (GizmoDrawing.CollectorScope ignored = worldRenderer.startDrawingGizmos()) {
-            renderPath(snapshot.path(), snapshot.activeWaypoint());
-            renderGoal(snapshot.resolvedGoalPos() != null ? snapshot.resolvedGoalPos() : snapshot.targetPos());
+            renderCandidatePaths(snapshot.candidatePaths());
+            if (snapshot.path().isEmpty()) {
+                renderFallbackPath(goalPos);
+            } else {
+                renderPath(snapshot.path());
+            }
+            renderGoal(goalPos);
         } catch (Throwable ignored) {
             // Never fail the world renderer because of a debug-style overlay.
         }
     }
 
-    private static void renderPath(List<BlockPos> path, BlockPos activeWaypoint) {
+    private static void renderCandidatePaths(List<List<BlockPos>> candidatePaths) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        ClientPlayerEntity player = client != null ? client.player : null;
+        if (candidatePaths == null || candidatePaths.isEmpty() || player == null) {
+            return;
+        }
+
+        double phase = (System.currentTimeMillis() / 1000.0D * ANIMATION_SPEED) % DASH_CYCLE;
+        for (int i = 1; i < candidatePaths.size(); i++) {
+            List<BlockPos> candidate = candidatePaths.get(i);
+            if (candidate == null || candidate.isEmpty()) {
+                continue;
+            }
+            List<Vec3d> renderPoints = new java.util.ArrayList<>(candidate.size() + 1);
+            renderPoints.add(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()));
+            for (BlockPos node : candidate) {
+                renderPoints.add(pathPoint(node));
+            }
+            for (int j = 1; j < renderPoints.size(); j++) {
+                renderAnimatedSegment(renderPoints.get(j - 1), renderPoints.get(j), phase, CANDIDATE_PATH_COLOR, 1.2F);
+            }
+        }
+    }
+
+    private static void renderPath(List<BlockPos> path) {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientPlayerEntity player = client != null ? client.player : null;
         if (path == null || path.isEmpty() || player == null) {
@@ -62,14 +95,21 @@ public final class NavigatorWorldOverlay {
 
         double phase = (System.currentTimeMillis() / 1000.0D * ANIMATION_SPEED) % DASH_CYCLE;
         for (int i = 1; i < renderPoints.size(); i++) {
-            renderAnimatedSegment(renderPoints.get(i - 1), renderPoints.get(i), phase, i == renderPoints.size() - 1);
+            renderAnimatedSegment(renderPoints.get(i - 1), renderPoints.get(i), phase, PATH_COLOR, PATH_LINE_WIDTH);
+        }
+    }
+
+    private static void renderFallbackPath(BlockPos goalPos) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        ClientPlayerEntity player = client != null ? client.player : null;
+        if (player == null || goalPos == null) {
+            return;
         }
 
-        if (activeWaypoint != null) {
-            GizmoDrawing.point(pathPoint(activeWaypoint), WAYPOINT_COLOR, ACTIVE_DOT_SIZE)
-                .ignoreOcclusion()
-                .withLifespan(1);
-        }
+        Vec3d start = new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ());
+        Vec3d end = pathPoint(goalPos);
+        double phase = (System.currentTimeMillis() / 1000.0D * ANIMATION_SPEED) % DASH_CYCLE;
+        renderAnimatedSegment(start, end, phase, PATH_COLOR, PATH_LINE_WIDTH);
     }
 
     private static void renderGoal(BlockPos goalPos) {
@@ -84,7 +124,7 @@ public final class NavigatorWorldOverlay {
             .withLifespan(1);
     }
 
-    private static void renderAnimatedSegment(Vec3d start, Vec3d end, double phase, boolean emphasizeEnd) {
+    private static void renderAnimatedSegment(Vec3d start, Vec3d end, double phase, int color, float width) {
         double segmentLength = start.distanceTo(end);
         if (segmentLength <= 0.0001D) {
             return;
@@ -98,7 +138,7 @@ public final class NavigatorWorldOverlay {
             if (dashEndDistance > 0.0D && dashEndDistance > dashStartDistance) {
                 Vec3d dashStart = start.add(direction.multiply(dashStartDistance));
                 Vec3d dashEnd = start.add(direction.multiply(dashEndDistance));
-                GizmoDrawing.line(dashStart, dashEnd, PATH_COLOR, PATH_LINE_WIDTH)
+                GizmoDrawing.line(dashStart, dashEnd, color, width)
                     .ignoreOcclusion()
                     .withLifespan(1);
             }

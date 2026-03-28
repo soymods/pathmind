@@ -1,6 +1,7 @@
 package com.pathmind.mixin;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.pathmind.ui.overlay.NavigatorWorldOverlay;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.render.WorldRenderer;
@@ -14,7 +15,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(WorldRenderer.class)
 public class NavigatorWorldRendererMixin {
-    @Inject(method = "render", at = @At("TAIL"))
+    @Inject(
+        method = "render",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/render/WorldRenderer;renderLateDebug(Lnet/minecraft/client/render/FrameGraphBuilder;Lnet/minecraft/util/math/Vec3d;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;Lnet/minecraft/client/render/Frustum;)V",
+            shift = At.Shift.BEFORE
+        )
+    )
     private void pathmind$renderNavigatorOverlay(
         ObjectAllocator allocator,
         RenderTickCounter tickCounter,
@@ -28,7 +36,6 @@ public class NavigatorWorldRendererMixin {
         boolean tick,
         CallbackInfo ci
     ) {
-        // The in-world navigator overlay uses 1.21.11 debug gizmo APIs.
-        // Older targets keep the chat-command navigator but skip this renderer.
+        NavigatorWorldOverlay.render(positionMatrix);
     }
 }

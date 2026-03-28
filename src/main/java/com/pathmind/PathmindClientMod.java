@@ -11,7 +11,6 @@ import com.pathmind.ui.overlay.ActiveNodeOverlay;
 import com.pathmind.ui.overlay.NavigatorChatSuggestions;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
-import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.FabricEventTracker;
 import net.fabricmc.api.ClientModInitializer;
@@ -63,7 +62,6 @@ public class PathmindClientMod implements ClientModInitializer {
     private static NodeErrorNotificationOverlay nodeErrorNotificationOverlay;
     private static VariablesOverlay variablesOverlay;
     private volatile boolean worldShutdownHandled;
-    private boolean baritoneAvailable;
     private boolean recipeCacheWarmed;
     private int recipeCacheWarmupCooldownTicks;
     private boolean playGraphsKeyDown;
@@ -79,7 +77,6 @@ public class PathmindClientMod implements ClientModInitializer {
     private static final String EVT_CLIENT_LIFECYCLE_STOPPING = "fabric.client.lifecycle.client_stopping";
     private static final String EVT_CLIENT_TICK_END = "fabric.client.lifecycle.end_client_tick";
     private static final String EVT_CLIENT_TICK_START = "fabric.client.lifecycle.start_client_tick";
-    private static final String EVT_CLIENT_WORLD_AFTER_CHANGE = "fabric.client.lifecycle.after_client_world_change";
     private static final String EVT_CLIENT_WORLD_TICK_END = "fabric.client.lifecycle.end_world_tick";
     private static final String EVT_CLIENT_WORLD_TICK_START = "fabric.client.lifecycle.start_world_tick";
 
@@ -126,7 +123,6 @@ public class PathmindClientMod implements ClientModInitializer {
         LOGGER.info("Initializing Pathmind client mod");
 
         PresetManager.initialize();
-        baritoneAvailable = BaritoneDependencyChecker.isBaritonePresent();
         activeNodeOverlay = new ActiveNodeOverlay();
         nodeErrorNotificationOverlay = NodeErrorNotificationOverlay.getInstance();
         variablesOverlay = new VariablesOverlay();
@@ -533,7 +529,7 @@ public class PathmindClientMod implements ClientModInitializer {
         }
         String command = rawCommand == null ? "" : rawCommand.trim();
         if (command.isEmpty() || command.equalsIgnoreCase("help")) {
-            showNavigatorMessage(client, "Pathmind Nav: !goto <x> <y> <z>, !goto <x> <z>, !stop");
+            showNavigatorMessage("Pathmind Nav: !goto <x> <y> <z>, !goto <x> <z>, !stop");
             return true;
         }
 
@@ -544,7 +540,7 @@ public class PathmindClientMod implements ClientModInitializer {
 
         if (parts[0].equalsIgnoreCase("stop")) {
             PathmindNavigator.getInstance().stop("chat stop");
-            showNavigatorMessage(client, "Pathmind Nav stopped.");
+            showNavigatorMessage("Pathmind Nav stopped.");
             return true;
         }
 
@@ -553,13 +549,13 @@ public class PathmindClientMod implements ClientModInitializer {
             return true;
         }
 
-        showNavigatorMessage(client, "Unknown Pathmind Nav command. Use !goto or !stop.");
+        showNavigatorMessage("Unknown Pathmind Nav command. Use !goto or !stop.");
         return true;
     }
 
     private void handleNavigatorGoto(MinecraftClient client, String[] parts) {
         if (client == null || client.player == null || client.world == null) {
-            showNavigatorMessage(client, "Pathmind Nav is unavailable right now.");
+            showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return;
         }
 
@@ -575,23 +571,23 @@ public class PathmindClientMod implements ClientModInitializer {
                 int z = Integer.parseInt(parts[3]);
                 targetPos = new BlockPos(x, y, z);
             } else {
-                showNavigatorMessage(client, "Usage: !goto <x> <y> <z> or !goto <x> <z>");
+                showNavigatorMessage("Usage: !goto <x> <y> <z> or !goto <x> <z>");
                 return;
             }
         } catch (NumberFormatException exception) {
-            showNavigatorMessage(client, "Invalid coordinates for !goto.");
+            showNavigatorMessage("Invalid coordinates for !goto.");
             return;
         }
 
         CompletableFuture<Void> future = new CompletableFuture<>();
         if (!PathmindNavigator.getInstance().startGoto(targetPos, "Chat Goto", future)) {
-            showNavigatorMessage(client, "Could not start Pathmind Nav.");
+            showNavigatorMessage("Could not start Pathmind Nav.");
             return;
         }
-        showNavigatorMessage(client, "Pathmind Nav: heading to " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ());
+        showNavigatorMessage("Pathmind Nav: heading to " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ());
     }
 
-    private void showNavigatorMessage(MinecraftClient client, String message) {
+    private void showNavigatorMessage(String message) {
         if (message == null || message.isBlank()) {
             return;
         }

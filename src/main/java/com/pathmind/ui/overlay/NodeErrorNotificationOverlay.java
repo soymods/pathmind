@@ -29,6 +29,8 @@ public final class NodeErrorNotificationOverlay {
     private static final int OPEN_DURATION_MS = 180;
     private static final int CLOSE_DURATION_MS = 180;
     private static final int DISPLAY_DURATION_MS = 3200;
+    private static final int PROGRESS_BAR_HEIGHT = 6;
+    private static final int PROGRESS_BAR_TOP_MARGIN = 6;
 
     private static final NodeErrorNotificationOverlay INSTANCE = new NodeErrorNotificationOverlay();
 
@@ -46,9 +48,37 @@ public final class NodeErrorNotificationOverlay {
             return;
         }
 
-        notifications.add(0, new NotificationEntry(message, nodeColor));
+        notifications.add(0, new NotificationEntry(null, message, nodeColor));
         while (notifications.size() > MAX_NOTIFICATIONS) {
             notifications.remove(notifications.size() - 1);
+        }
+    }
+
+    public synchronized void showProgress(String key, String message, int nodeColor, float progress) {
+        if (key == null || key.isEmpty() || message == null || message.isEmpty()) {
+            return;
+        }
+        for (NotificationEntry entry : notifications) {
+            if (entry.matchesKey(key)) {
+                entry.updateProgress(message, nodeColor, progress);
+                return;
+            }
+        }
+
+        notifications.add(0, NotificationEntry.progress(key, message, nodeColor, progress));
+        while (notifications.size() > MAX_NOTIFICATIONS) {
+            notifications.remove(notifications.size() - 1);
+        }
+    }
+
+    public synchronized void dismiss(String key) {
+        if (key == null || key.isEmpty()) {
+            return;
+        }
+        for (NotificationEntry entry : notifications) {
+            if (entry.matchesKey(key)) {
+                entry.dismiss();
+            }
         }
     }
 
@@ -81,7 +111,9 @@ public final class NodeErrorNotificationOverlay {
 
             int textHeight = wrappedLines.size() * textRenderer.fontHeight
                 + Math.max(0, wrappedLines.size() - 1) * LINE_SPACING;
-            int cardHeight = textHeight + PADDING_Y * 2;
+            boolean showProgress = entry.hasProgress();
+            int progressHeight = showProgress ? PROGRESS_BAR_TOP_MARGIN + PROGRESS_BAR_HEIGHT : 0;
+            int cardHeight = textHeight + PADDING_Y * 2 + progressHeight;
             y -= cardHeight;
 
             float progress = entry.visibility.getValue();
@@ -103,6 +135,20 @@ public final class NodeErrorNotificationOverlay {
                 textY += textRenderer.fontHeight + LINE_SPACING;
             }
 
+            if (showProgress) {
+                int barX = x + textStartX;
+                int barY = y + PADDING_Y + textHeight + PROGRESS_BAR_TOP_MARGIN;
+                int barWidth = CARD_WIDTH - textStartX - PADDING_X;
+                int barFillWidth = Math.max(0, Math.min(barWidth, Math.round(barWidth * entry.getProgress())));
+                int barBackground = applyAlpha(AnimationHelper.darken(UITheme.BACKGROUND_TERTIARY, 0.88f), progress);
+                int barFill = applyAlpha(accentColor, progress);
+                context.fill(barX, barY, barX + barWidth, barY + PROGRESS_BAR_HEIGHT, barBackground);
+                if (barFillWidth > 0) {
+                    context.fill(barX, barY, barX + barFillWidth, barY + PROGRESS_BAR_HEIGHT, barFill);
+                }
+                DrawContextBridge.drawBorder(context, barX, barY, barWidth, PROGRESS_BAR_HEIGHT, borderColor);
+            }
+
             y -= CARD_SPACING;
         }
     }
@@ -114,22 +160,70 @@ public final class NodeErrorNotificationOverlay {
     }
 
     private static final class NotificationEntry {
-        private final String message;
-        private final int nodeColor;
+        private final String key;
+        private String message;
+        private int nodeColor;
         private final AnimatedValue visibility;
         private final long expiresAt;
+        private final boolean persistent;
+        private float progress;
         private boolean closing;
 
-        private NotificationEntry(String message, int nodeColor) {
+        private NotificationEntry(String key, String message, int nodeColor) {
             this.message = message;
             this.nodeColor = nodeColor;
+            this.key = key;
             this.visibility = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
             this.visibility.animateTo(1f, OPEN_DURATION_MS, AnimationHelper::easeOutCubic);
             this.expiresAt = System.currentTimeMillis() + DISPLAY_DURATION_MS;
+            this.persistent = false;
+            this.progress = -1f;
+        }
+
+        private NotificationEntry(String key, String message, int nodeColor, float progress) {
+            this.message = message;
+            this.nodeColor = nodeColor;
+            this.key = key;
+            this.visibility = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
+            this.visibility.animateTo(1f, OPEN_DURATION_MS, AnimationHelper::easeOutCubic);
+            this.expiresAt = Long.MAX_VALUE;
+            this.persistent = true;
+            this.progress = AnimationHelper.clamp01(progress);
+        }
+
+        private static NotificationEntry progress(String key, String message, int nodeColor, float progress) {
+            return new NotificationEntry(key, message, nodeColor, progress);
+        }
+
+        private boolean matchesKey(String key) {
+            return this.key != null && this.key.equals(key);
+        }
+
+        private void updateProgress(String message, int nodeColor, float progress) {
+            this.nodeColor = nodeColor;
+            this.progress = AnimationHelper.clamp01(progress);
+            if (message != null && !message.isEmpty()) {
+                this.message = message;
+            }
+        }
+
+        private boolean hasProgress() {
+            return progress >= 0.0f;
+        }
+
+        private float getProgress() {
+            return AnimationHelper.clamp01(progress);
+        }
+
+        private void dismiss() {
+            if (!closing) {
+                closing = true;
+                visibility.animateTo(0f, CLOSE_DURATION_MS, AnimationHelper::easeInCubic);
+            }
         }
 
         private void tick(long now) {
-            if (!closing && now >= expiresAt) {
+            if (!persistent && !closing && now >= expiresAt) {
                 closing = true;
                 visibility.animateTo(0f, CLOSE_DURATION_MS, AnimationHelper::easeInCubic);
             }

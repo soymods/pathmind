@@ -3,13 +3,14 @@ package com.pathmind;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.execution.PathmindNavigator;
 import com.pathmind.nodes.Node;
 import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
+import com.pathmind.ui.overlay.NavigatorChatSuggestions;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
-import com.pathmind.ui.control.VillagerTradeSelector;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.FabricEventTracker;
@@ -38,6 +39,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.MerchantScreen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.math.BlockPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +47,8 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The client-side mod class for Pathmind.
@@ -53,6 +57,8 @@ import java.lang.reflect.Proxy;
 @SuppressWarnings({"deprecation", "removal"})
 public class PathmindClientMod implements ClientModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/Client");
+    private static final String RECIPE_CACHE_NOTIFICATION_KEY = "recipe_cache_warmup";
+    private static final int NAVIGATOR_NOTIFICATION_COLOR = 0xFF66D8FF;
     private static ActiveNodeOverlay activeNodeOverlay;
     private static NodeErrorNotificationOverlay nodeErrorNotificationOverlay;
     private static VariablesOverlay variablesOverlay;
@@ -62,9 +68,6 @@ public class PathmindClientMod implements ClientModInitializer {
     private int recipeCacheWarmupCooldownTicks;
     private boolean playGraphsKeyDown;
     private boolean stopGraphsKeyDown;
-    private boolean merchantScreenOpen;
-    private boolean villagerTradeCacheWarmed;
-    private int villagerTradeCacheCooldownTicks;
 
     private static final String EVT_CLIENT_BLOCK_ENTITY_LOAD = "fabric.client.lifecycle.block_entity_load";
     private static final String EVT_CLIENT_BLOCK_ENTITY_UNLOAD = "fabric.client.lifecycle.block_entity_unload";
@@ -143,8 +146,8 @@ public class PathmindClientMod implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             handleKeybinds(client);
             handleRecipeCacheWarmup(client);
-            handleMerchantTradeCache(client);
-            handleSingleplayerTradeCache(client);
+            NavigatorChatSuggestions.getInstance().tick(client);
+            PathmindNavigator.getInstance().tick(client);
             fireFabricEvent(EVT_CLIENT_TICK_END);
         });
 
@@ -155,30 +158,33 @@ public class PathmindClientMod implements ClientModInitializer {
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.clear();
             }
+            Node.resetRecipeCacheWarmup();
             recipeCacheWarmed = false;
             recipeCacheWarmupCooldownTicks = 0;
-            villagerTradeCacheWarmed = false;
-            villagerTradeCacheCooldownTicks = 60;
             fireFabricEvent(EVT_CLIENT_PLAY_JOIN);
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             handleClientShutdown("play disconnect", false);
+            PathmindNavigator.getInstance().reset();
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.clear();
             }
+            Node.resetRecipeCacheWarmup();
             fireFabricEvent(EVT_CLIENT_PLAY_DISCONNECT);
         });
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             handleClientShutdown("client stopping", true);
+            PathmindNavigator.getInstance().reset();
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.clear();
             }
+            Node.resetRecipeCacheWarmup();
             fireFabricEvent(EVT_CLIENT_LIFECYCLE_STOPPING);
         });
 
@@ -270,10 +276,16 @@ public class PathmindClientMod implements ClientModInitializer {
 
         ClientSendMessageEvents.ALLOW_CHAT.register(message -> {
             fireFabricEvent(EVT_MESSAGE_SEND_ALLOW_CHAT);
+            if (handlePathmindNavigatorChat(message)) {
+                return false;
+            }
             return true;
         });
         ClientSendMessageEvents.ALLOW_COMMAND.register(command -> {
             fireFabricEvent(EVT_MESSAGE_SEND_ALLOW_COMMAND);
+            if (handlePathmindNavigatorCommand(command)) {
+                return false;
+            }
             return true;
         });
         ClientSendMessageEvents.MODIFY_CHAT.register(message -> {
@@ -385,32 +397,6 @@ public class PathmindClientMod implements ClientModInitializer {
         ExecutionManager.getInstance().requestStopAll();
     }
 
-    private void handleMerchantTradeCache(MinecraftClient client) {
-        boolean isMerchantScreen = client != null && client.currentScreen instanceof MerchantScreen;
-        if (isMerchantScreen && !merchantScreenOpen) {
-            VillagerTradeSelector.cacheOpenMerchantTrades();
-        }
-        merchantScreenOpen = isMerchantScreen;
-    }
-
-    private void handleSingleplayerTradeCache(MinecraftClient client) {
-        if (villagerTradeCacheWarmed) {
-            return;
-        }
-        if (client == null || !client.isInSingleplayer()) {
-            return;
-        }
-        if (client.world == null || client.getServer() == null) {
-            return;
-        }
-        if (villagerTradeCacheCooldownTicks > 0) {
-            villagerTradeCacheCooldownTicks--;
-            return;
-        }
-        VillagerTradeSelector.cacheAllProfessionTrades(client);
-        villagerTradeCacheWarmed = true;
-    }
-
     private void handleKeybinds(MinecraftClient client) {
         if (client == null) {
             return;
@@ -472,7 +458,16 @@ public class PathmindClientMod implements ClientModInitializer {
     }
 
     private void handleRecipeCacheWarmup(MinecraftClient client) {
-        if (client == null || recipeCacheWarmed || !client.isInSingleplayer()) {
+        if (client == null || !client.isInSingleplayer()) {
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
+            }
+            return;
+        }
+        if (recipeCacheWarmed) {
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
+            }
             return;
         }
         if (recipeCacheWarmupCooldownTicks > 0) {
@@ -484,13 +479,126 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
         boolean cached = Node.warmRecipeCache(client);
+        Node.RecipeCacheWarmupProgress progress = Node.getRecipeCacheWarmupProgress(client);
+        if (progress != null && nodeErrorNotificationOverlay != null) {
+            nodeErrorNotificationOverlay.showProgress(
+                RECIPE_CACHE_NOTIFICATION_KEY,
+                "Caching recipes\n" + progress.completed() + " / " + progress.total(),
+                com.pathmind.ui.theme.UITheme.ACCENT_SKY,
+                progress.fraction()
+            );
+        }
         if (cached) {
             recipeCacheWarmed = true;
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
+                nodeErrorNotificationOverlay.show("Recipe cache ready.", com.pathmind.ui.theme.UITheme.ACCENT_SKY);
+            }
             LOGGER.info("Pathmind recipe cache populated from singleplayer recipes.");
-        } else {
+        } else if (!Node.isRecipeCacheWarmupInProgress(client)) {
             recipeCacheWarmupCooldownTicks = 100;
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
+            }
             LOGGER.debug("Pathmind recipe cache warmup attempted but no recipes found.");
         }
+    }
+
+    private boolean handlePathmindNavigatorChat(String message) {
+        if (message == null) {
+            return false;
+        }
+        String trimmed = message.trim();
+        if (!trimmed.startsWith("!")) {
+            return false;
+        }
+        return runNavigatorCommand(trimmed.substring(1).trim());
+    }
+
+    private boolean handlePathmindNavigatorCommand(String command) {
+        if (command == null) {
+            return false;
+        }
+        String trimmed = command.trim();
+        if (!trimmed.toLowerCase(Locale.ROOT).startsWith("pathmindnav")) {
+            return false;
+        }
+        return runNavigatorCommand(trimmed.substring("pathmindnav".length()).trim());
+    }
+
+    private boolean runNavigatorCommand(String rawCommand) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return true;
+        }
+        String command = rawCommand == null ? "" : rawCommand.trim();
+        if (command.isEmpty() || command.equalsIgnoreCase("help")) {
+            showNavigatorMessage(client, "Pathmind Nav: !goto <x> <y> <z>, !goto <x> <z>, !stop");
+            return true;
+        }
+
+        String[] parts = command.split("\\s+");
+        if (parts.length == 0) {
+            return true;
+        }
+
+        if (parts[0].equalsIgnoreCase("stop")) {
+            PathmindNavigator.getInstance().stop("chat stop");
+            showNavigatorMessage(client, "Pathmind Nav stopped.");
+            return true;
+        }
+
+        if (parts[0].equalsIgnoreCase("goto")) {
+            handleNavigatorGoto(client, parts);
+            return true;
+        }
+
+        showNavigatorMessage(client, "Unknown Pathmind Nav command. Use !goto or !stop.");
+        return true;
+    }
+
+    private void handleNavigatorGoto(MinecraftClient client, String[] parts) {
+        if (client == null || client.player == null || client.world == null) {
+            showNavigatorMessage(client, "Pathmind Nav is unavailable right now.");
+            return;
+        }
+
+        BlockPos targetPos;
+        try {
+            if (parts.length == 3) {
+                int x = Integer.parseInt(parts[1]);
+                int z = Integer.parseInt(parts[2]);
+                targetPos = new BlockPos(x, client.player.getBlockY(), z);
+            } else if (parts.length == 4) {
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                int z = Integer.parseInt(parts[3]);
+                targetPos = new BlockPos(x, y, z);
+            } else {
+                showNavigatorMessage(client, "Usage: !goto <x> <y> <z> or !goto <x> <z>");
+                return;
+            }
+        } catch (NumberFormatException exception) {
+            showNavigatorMessage(client, "Invalid coordinates for !goto.");
+            return;
+        }
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        if (!PathmindNavigator.getInstance().startGoto(targetPos, "Chat Goto", future)) {
+            showNavigatorMessage(client, "Could not start Pathmind Nav.");
+            return;
+        }
+        showNavigatorMessage(client, "Pathmind Nav: heading to " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ());
+    }
+
+    private void showNavigatorMessage(MinecraftClient client, String message) {
+        if (message == null || message.isBlank()) {
+            return;
+        }
+        NodeErrorNotificationOverlay overlay = nodeErrorNotificationOverlay != null
+            ? nodeErrorNotificationOverlay
+            : NodeErrorNotificationOverlay.getInstance();
+        overlay.show(message, NAVIGATOR_NOTIFICATION_COLOR);
     }
 
 }

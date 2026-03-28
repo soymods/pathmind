@@ -147,9 +147,13 @@ public class Node {
     private static final String DIRECTION_MODE_CARDINAL = "cardinal";
     private static final String RECIPE_CACHE_FILE_NAME = "recipe_cache.json";
     private static final int RECIPE_CACHE_VERSION = 1;
+    private static final int RECIPE_WARMUP_RECIPE_BATCH_SIZE = 8;
+    private static final int RECIPE_WARMUP_DISPLAY_BATCH_SIZE = 4;
+    private static final int RECIPE_WARMUP_SAVE_INTERVAL = 64;
     private static final Gson RECIPE_CACHE_GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Object RECIPE_CACHE_LOCK = new Object();
     private static volatile CachedRecipeBook cachedRecipeBook;
+    private static volatile RecipeCacheWarmupState recipeCacheWarmupState;
     private static final int BODY_PADDING_NO_PARAMS = 10;
     private static final int START_END_SIZE = 36;
     private static final String CHAT_MESSAGE_PREFIX = "\u00A74[\u00A7cPathmind\u00A74] \u00A77";
@@ -5129,22 +5133,6 @@ public class Node {
                 return ParameterHandlingResult.COMPLETE;
             }
         }
-        if (!handled && type == NodeType.TRADE
-            && providesTrait(parameterNode, NodeValueTrait.VILLAGER_TRADE)) {
-            String tradeKey = resolveTradeKeyFromParameter(parameterNode);
-            if (tradeKey != null && !tradeKey.isEmpty()) {
-                runtimeParameterData.targetTradeKey = tradeKey;
-                runtimeParameterData.targetItemId = getTradeKeySellItemId(tradeKey);
-                handled = true;
-            } else {
-                List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
-                if (!itemIds.isEmpty()) {
-                    runtimeParameterData.targetItemId = itemIds.get(0);
-                    handled = true;
-                }
-            }
-        }
-
         // Special case: block parameters in slot 0 of PLACE/PLACE_HAND nodes are valid
         // even when usages is empty (they provide block type, not position)
         if (!handled && usages.isEmpty() && (type == NodeType.PLACE || type == NodeType.PLACE_HAND)) {
@@ -10414,18 +10402,22 @@ public class Node {
                 return;
             }
             try {
+                boolean existed = Files.exists(path);
                 Path parent = path.getParent();
                 if (parent != null && !Files.exists(parent)) {
                     Files.createDirectories(parent);
                 }
                 String json = RECIPE_CACHE_GSON.toJson(book);
                 Files.writeString(path, json, StandardCharsets.UTF_8);
+                if (!existed) {
+                    LOGGER.info("Pathmind recipe cache created at {}", path.toAbsolutePath());
+                }
             } catch (Exception ignored) {
             }
         }
     }
 
-    private Path getRecipeCachePath(net.minecraft.client.MinecraftClient client) {
+    private static Path getRecipeCachePath(net.minecraft.client.MinecraftClient client) {
         Path base = getPathmindDirectory(client);
         if (base == null) {
             return null;
@@ -10433,7 +10425,7 @@ public class Node {
         return base.resolve(RECIPE_CACHE_FILE_NAME);
     }
 
-    private Path getPathmindDirectory(net.minecraft.client.MinecraftClient client) {
+    private static Path getPathmindDirectory(net.minecraft.client.MinecraftClient client) {
         Path minecraftDirectory = null;
         if (client != null && client.runDirectory != null) {
             minecraftDirectory = client.runDirectory.toPath();
@@ -11960,6 +11952,69 @@ public class Node {
         List<String> itemIds = new ArrayList<>();
     }
 
+    private static class RecipeCacheWarmupState {
+        private final Path cachePath;
+        private final CachedRecipeBook book;
+        private final Object registryManager;
+        private final Object serverRegistryManager;
+        private final List<RecipeEntry<?>> craftingEntries;
+        private final List<RecipeResultCollection> recipeCollections;
+        private final int totalDisplayEntries;
+        private int recipeIndex;
+        private int collectionIndex;
+        private int displayIndex;
+        private boolean dirty;
+        private int unsavedChanges;
+
+        RecipeCacheWarmupState(Path cachePath,
+                               CachedRecipeBook book,
+                               Object registryManager,
+                               Object serverRegistryManager,
+                               List<RecipeEntry<?>> craftingEntries,
+                               List<RecipeResultCollection> recipeCollections,
+                               int totalDisplayEntries) {
+            this.cachePath = cachePath;
+            this.book = book;
+            this.registryManager = registryManager;
+            this.serverRegistryManager = serverRegistryManager;
+            this.craftingEntries = craftingEntries != null ? craftingEntries : List.of();
+            this.recipeCollections = recipeCollections != null ? recipeCollections : List.of();
+            this.totalDisplayEntries = Math.max(0, totalDisplayEntries);
+        }
+
+        boolean matches(net.minecraft.client.MinecraftClient client) {
+            return Objects.equals(cachePath, getRecipeCachePath(client));
+        }
+
+        int getCompletedUnits() {
+            return Math.min(getTotalUnits(), recipeIndex + getCompletedDisplayEntries());
+        }
+
+        int getTotalUnits() {
+            return craftingEntries.size() + totalDisplayEntries;
+        }
+
+        private int getCompletedDisplayEntries() {
+            int completed = 0;
+            for (int i = 0; i < collectionIndex && i < recipeCollections.size(); i++) {
+                RecipeResultCollection collection = recipeCollections.get(i);
+                List<?> entries = collection != null ? RecipeCompatibilityBridge.getAllRecipesFromCollection(collection) : null;
+                completed += entries != null ? entries.size() : 0;
+            }
+            completed += displayIndex;
+            return Math.min(completed, totalDisplayEntries);
+        }
+    }
+
+    public record RecipeCacheWarmupProgress(int completed, int total) {
+        public float fraction() {
+            if (total <= 0) {
+                return 0.0f;
+            }
+            return Math.max(0.0f, Math.min(1.0f, completed / (float) total));
+        }
+    }
+
     public static boolean warmRecipeCache(net.minecraft.client.MinecraftClient client) {
         if (client == null || client.getServer() == null) {
             return false;
@@ -11968,26 +12023,171 @@ public class Node {
         return node.warmRecipeCacheInternal(client);
     }
 
+    public static void resetRecipeCacheWarmup() {
+        recipeCacheWarmupState = null;
+    }
+
+    public static boolean isRecipeCacheWarmupInProgress(net.minecraft.client.MinecraftClient client) {
+        RecipeCacheWarmupState state = recipeCacheWarmupState;
+        return state != null && state.matches(client);
+    }
+
+    public static RecipeCacheWarmupProgress getRecipeCacheWarmupProgress(net.minecraft.client.MinecraftClient client) {
+        RecipeCacheWarmupState state = recipeCacheWarmupState;
+        if (state == null || !state.matches(client)) {
+            return null;
+        }
+        int total = state.getTotalUnits();
+        if (total <= 0) {
+            return null;
+        }
+        return new RecipeCacheWarmupProgress(state.getCompletedUnits(), total);
+    }
+
     private boolean warmRecipeCacheInternal(net.minecraft.client.MinecraftClient client) {
         if (client == null || client.getServer() == null) {
             return false;
         }
-        RecipeManager manager = client.getServer().getRecipeManager();
-        if (manager == null || getCraftingRecipeEntries(manager).isEmpty()) {
+        RecipeCacheWarmupState state = recipeCacheWarmupState;
+        if (state == null || !state.matches(client)) {
+            state = createRecipeCacheWarmupState(client);
+            recipeCacheWarmupState = state;
+        }
+        if (state == null) {
             return false;
+        }
+
+        int recipesProcessed = 0;
+        while (recipesProcessed < RECIPE_WARMUP_RECIPE_BATCH_SIZE && state.recipeIndex < state.craftingEntries.size()) {
+            RecipeEntry<?> entry = state.craftingEntries.get(state.recipeIndex++);
+            processWarmupRecipeEntry(state, entry);
+            recipesProcessed++;
+        }
+
+        int displaysProcessed = 0;
+        while (displaysProcessed < RECIPE_WARMUP_DISPLAY_BATCH_SIZE && state.collectionIndex < state.recipeCollections.size()) {
+            RecipeResultCollection collection = state.recipeCollections.get(state.collectionIndex);
+            List<?> entries = collection != null ? RecipeCompatibilityBridge.getAllRecipesFromCollection(collection) : null;
+            if (entries == null || entries.isEmpty() || state.displayIndex >= entries.size()) {
+                state.collectionIndex++;
+                state.displayIndex = 0;
+                continue;
+            }
+            Object entry = entries.get(state.displayIndex++);
+            processWarmupDisplayEntry(state, entry);
+            displaysProcessed++;
+        }
+
+        if (state.dirty && state.unsavedChanges >= RECIPE_WARMUP_SAVE_INTERVAL) {
+            saveRecipeCache(client, state.book);
+            state.unsavedChanges = 0;
+            state.dirty = false;
+        }
+
+        if (state.recipeIndex < state.craftingEntries.size() || state.collectionIndex < state.recipeCollections.size()) {
+            return false;
+        }
+
+        if (state.dirty || state.unsavedChanges > 0) {
+            saveRecipeCache(client, state.book);
+            state.unsavedChanges = 0;
+            state.dirty = false;
+        }
+        recipeCacheWarmupState = null;
+        return state.book.recipesByOutput != null && !state.book.recipesByOutput.isEmpty();
+    }
+
+    private RecipeCacheWarmupState createRecipeCacheWarmupState(net.minecraft.client.MinecraftClient client) {
+        if (client == null || client.getServer() == null) {
+            return null;
+        }
+        RecipeManager manager = client.getServer().getRecipeManager();
+        if (manager == null) {
+            return null;
         }
         CachedRecipeBook book = loadRecipeCache(client);
         if (book == null) {
-            return false;
+            return null;
         }
+        List<RecipeEntry<?>> craftingEntries = getCraftingRecipeEntries(manager);
         Object registryManager = client.world;
-        if (registryManager == null && client.getServer() != null) {
+        if (registryManager == null) {
             registryManager = client.getServer().getRegistryManager();
         }
-        cacheAllCraftingRecipes(book, client, registryManager);
-        cacheAllCraftingDisplays(book, client, registryManager);
-        saveRecipeCache(client, book);
-        return book.recipesByOutput != null && !book.recipesByOutput.isEmpty();
+        List<RecipeResultCollection> collections = List.of();
+        if (client.player != null && client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook) {
+            List<RecipeResultCollection> orderedResults = clientRecipeBook.getOrderedResults();
+            if (orderedResults != null && !orderedResults.isEmpty()) {
+                collections = new ArrayList<>(orderedResults);
+            }
+        }
+        boolean hasExistingCache = book.recipesByOutput != null && !book.recipesByOutput.isEmpty();
+        if (craftingEntries.isEmpty() && collections.isEmpty() && !hasExistingCache) {
+            return null;
+        }
+        int totalDisplayEntries = countRecipeDisplayEntries(collections);
+        return new RecipeCacheWarmupState(
+            getRecipeCachePath(client),
+            book,
+            registryManager,
+            client.getServer().getRegistryManager(),
+            new ArrayList<>(craftingEntries),
+            collections,
+            totalDisplayEntries
+        );
+    }
+
+    private int countRecipeDisplayEntries(List<RecipeResultCollection> collections) {
+        if (collections == null || collections.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (RecipeResultCollection collection : collections) {
+            List<?> entries = collection != null ? RecipeCompatibilityBridge.getAllRecipesFromCollection(collection) : null;
+            if (entries != null) {
+                total += entries.size();
+            }
+        }
+        return total;
+    }
+
+    private void processWarmupRecipeEntry(RecipeCacheWarmupState state, RecipeEntry<?> entry) {
+        if (state == null || entry == null || !(entry.value() instanceof CraftingRecipe craftingRecipe)) {
+            return;
+        }
+        ItemStack output = getRecipeOutput(craftingRecipe, state.serverRegistryManager);
+        if ((output == null || output.isEmpty()) && state.registryManager != state.serverRegistryManager) {
+            output = getRecipeOutput(craftingRecipe, state.registryManager);
+        }
+        if (output == null || output.isEmpty()) {
+            return;
+        }
+        cacheRecipeForMode(state.book, output.getItem(), craftingRecipe, output.getCount(), NodeMode.CRAFT_CRAFTING_TABLE, state.registryManager);
+        if (recipeFitsPlayerGrid(craftingRecipe)) {
+            cacheRecipeForMode(state.book, output.getItem(), craftingRecipe, output.getCount(), NodeMode.CRAFT_PLAYER_GUI, state.registryManager);
+        }
+        state.dirty = true;
+        state.unsavedChanges++;
+    }
+
+    private void processWarmupDisplayEntry(RecipeCacheWarmupState state, Object entry) {
+        if (state == null || entry == null) {
+            return;
+        }
+        Object display = RecipeCompatibilityBridge.getDisplayFromEntry(entry);
+        if (!RecipeCompatibilityBridge.isCraftingDisplay(display)) {
+            return;
+        }
+        ItemStack output = getDisplayOutput(display, state.registryManager);
+        if (output == null || output.isEmpty()) {
+            return;
+        }
+        cacheDisplayForMode(state.book, output.getItem(), output.getCount(), display, NodeMode.CRAFT_CRAFTING_TABLE, state.registryManager);
+        if (displayFitsPlayerGrid(display, state.registryManager)) {
+            cacheDisplayForMode(state.book, output.getItem(), output.getCount(), display, NodeMode.CRAFT_PLAYER_GUI, state.registryManager);
+        }
+        state.dirty = true;
+        state.unsavedChanges++;
     }
 
     private static class GridIngredient {
@@ -16923,38 +17123,25 @@ public class Node {
             future.complete(null);
             return;
         }
-        Node attachedTradeParameter = resolveSensorParameterNode(getAttachedParameter(), 0);
-        boolean useMultiTradeSelection = hasMultipleVillagerTradeSelections(attachedTradeParameter);
-
-        List<Integer> preferredTradeIndexes;
-        if (useMultiTradeSelection || shouldUseLegacyVillagerTradeSelection()) {
-            preferredTradeIndexes = findTradeIndexesFromLegacySelection(tradeOffers, true, true);
-            if (preferredTradeIndexes.isEmpty()) {
-                sendNodeErrorMessage(client, "No available trade found for the legacy villager trade selection.");
-                future.complete(null);
-                return;
-            }
-        } else {
-            int selectedTradeNumber = getConfiguredVillagerTradeNumber();
-            int tradeIndex = selectedTradeNumber - 1;
-            if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
-                sendNodeErrorMessage(client, "Trade #" + selectedTradeNumber + " is not available.");
-                future.complete(null);
-                return;
-            }
-            net.minecraft.village.TradeOffer offer = tradeOffers.get(tradeIndex);
-            if (offer.isDisabled()) {
-                sendNodeErrorMessage(client, "Trade #" + selectedTradeNumber + " is out of stock.");
-                future.complete(null);
-                return;
-            }
-            if (!canAffordTrade(client.player, screenHandler, offer)) {
-                sendNodeErrorMessage(client, "Not enough items for trade #" + selectedTradeNumber + ".");
-                future.complete(null);
-                return;
-            }
-            preferredTradeIndexes = Collections.singletonList(tradeIndex);
+        int selectedTradeNumber = getConfiguredVillagerTradeNumber();
+        int tradeIndex = selectedTradeNumber - 1;
+        if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
+            sendNodeErrorMessage(client, "Trade #" + selectedTradeNumber + " is not available.");
+            future.complete(null);
+            return;
         }
+        net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
+        if (selectedOffer.isDisabled()) {
+            sendNodeErrorMessage(client, "Trade #" + selectedTradeNumber + " is out of stock.");
+            future.complete(null);
+            return;
+        }
+        if (!canAffordTrade(client.player, screenHandler, selectedOffer)) {
+            sendNodeErrorMessage(client, "Not enough items for trade #" + selectedTradeNumber + ".");
+            future.complete(null);
+            return;
+        }
+        List<Integer> preferredTradeIndexes = Collections.singletonList(tradeIndex);
 
         int tradesToExecute = getConfiguredVillagerTradeCount();
 
@@ -16964,11 +17151,11 @@ public class Node {
                 while (remainingTrades > 0) {
                     boolean tradedThisPass = false;
                     boolean anyMatchStillAvailable = false;
-                    for (Integer tradeIndex : preferredTradeIndexes) {
-                        if (tradeIndex == null || tradeIndex < 0 || tradeIndex >= tradeOffers.size()) {
+                    for (Integer preferredTradeIndex : preferredTradeIndexes) {
+                        if (preferredTradeIndex == null || preferredTradeIndex < 0 || preferredTradeIndex >= tradeOffers.size()) {
                             continue;
                         }
-                        net.minecraft.village.TradeOffer offer = tradeOffers.get(tradeIndex);
+                        net.minecraft.village.TradeOffer offer = tradeOffers.get(preferredTradeIndex);
                         if (offer == null) {
                             continue;
                         }
@@ -16981,7 +17168,7 @@ public class Node {
                         }
 
                         int batchSize = Math.min(remainingTrades, executableTrades);
-                        selectMerchantTrade(client, screenHandler, tradeIndex);
+                        selectMerchantTrade(client, screenHandler, preferredTradeIndex);
                         Thread.sleep(60);
 
                         int completedInBatch = 0;

@@ -3043,15 +3043,15 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        UIStyleHelper.drawBeveledPanel(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BACKGROUND_SECONDARY, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, missingBaritonePopupAnimation);
         boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.title").getString(), centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, UITheme.LINK_COLOR);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.LINK_COLOR));
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -3067,9 +3067,9 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
         boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
+        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY, missingBaritonePopupAnimation);
+        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY, missingBaritonePopupAnimation);
+        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), PopupButtonStyle.DEFAULT, missingBaritonePopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
@@ -3086,15 +3086,15 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = bounds[3];
         setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
-        UIStyleHelper.drawBeveledPanel(context, popupX, popupY, scaledWidth, scaledHeight, UITheme.BACKGROUND_SECONDARY, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, missingUiUtilsPopupAnimation);
         boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.title").getString(), centerX, messageY, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, UITheme.TEXT_PRIMARY);
-        drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, UITheme.LINK_COLOR);
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.LINK_COLOR));
 
         int buttonWidth = 100;
         int buttonHeight = 20;
@@ -3110,9 +3110,9 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
         boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY);
-        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), false);
+        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PopupButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
+        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PopupButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
+        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), PopupButtonStyle.DEFAULT, missingUiUtilsPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }

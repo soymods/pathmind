@@ -1,22 +1,22 @@
 package com.pathmind.util;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Tracks recently-fired Fabric events so sensor nodes can query them.
  */
 public final class FabricEventTracker {
-    private static final Object LOCK = new Object();
-    private static final Deque<EventEntry> EVENTS = new ArrayDeque<>();
     private static final long MAX_RETENTION_MS = 60_000L;
-    private static final int MAX_ENTRIES = 1024;
+    private static final Map<String, Long> LAST_EVENT_TIMESTAMPS = new ConcurrentHashMap<>();
+    private static final AtomicLong LAST_ANY_EVENT_TIMESTAMP = new AtomicLong(0L);
     private static final List<String> SUPPORTED_EVENTS = buildSupportedEvents();
 
     private FabricEventTracker() {
@@ -31,13 +31,8 @@ public final class FabricEventTracker {
             return;
         }
         long now = System.currentTimeMillis();
-        synchronized (LOCK) {
-            prune(now);
-            EVENTS.addLast(new EventEntry(normalized, now));
-            while (EVENTS.size() > MAX_ENTRIES) {
-                EVENTS.removeFirst();
-            }
-        }
+        LAST_EVENT_TIMESTAMPS.put(normalized, now);
+        LAST_ANY_EVENT_TIMESTAMP.set(now);
     }
 
     public static boolean hasRecentEvent(String eventName, double seconds) {
@@ -48,33 +43,22 @@ public final class FabricEventTracker {
         long now = System.currentTimeMillis();
         long windowMs = (long) Math.ceil(Math.max(0.0, seconds) * 1000.0);
         long cutoff = now - windowMs;
-        synchronized (LOCK) {
-            prune(now);
-            for (EventEntry entry : EVENTS) {
-                if (entry.timestampMs < cutoff) {
-                    continue;
-                }
-                if (entry.normalizedName.equals(normalized)) {
-                    return true;
-                }
+        Long timestamp = LAST_EVENT_TIMESTAMPS.get(normalized);
+        if (timestamp == null || timestamp < cutoff) {
+            if (timestamp != null && now - timestamp > MAX_RETENTION_MS) {
+                LAST_EVENT_TIMESTAMPS.remove(normalized, timestamp);
             }
+            return false;
         }
-        return false;
+        return true;
     }
 
     public static boolean hasAnyRecentEvent(double seconds) {
         long now = System.currentTimeMillis();
         long windowMs = (long) Math.ceil(Math.max(0.0, seconds) * 1000.0);
         long cutoff = now - windowMs;
-        synchronized (LOCK) {
-            prune(now);
-            for (EventEntry entry : EVENTS) {
-                if (entry.timestampMs >= cutoff) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        long timestamp = LAST_ANY_EVENT_TIMESTAMP.get();
+        return timestamp >= cutoff;
     }
 
     public static double getMaxRetentionSeconds() {
@@ -82,9 +66,8 @@ public final class FabricEventTracker {
     }
 
     public static void clear() {
-        synchronized (LOCK) {
-            EVENTS.clear();
-        }
+        LAST_EVENT_TIMESTAMPS.clear();
+        LAST_ANY_EVENT_TIMESTAMP.set(0L);
     }
 
     public static List<String> getSupportedEvents() {
@@ -96,17 +79,6 @@ public final class FabricEventTracker {
             return "";
         }
         return eventName.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private static void prune(long now) {
-        long cutoff = now - MAX_RETENTION_MS;
-        while (!EVENTS.isEmpty()) {
-            EventEntry entry = EVENTS.peekFirst();
-            if (entry == null || entry.timestampMs >= cutoff) {
-                break;
-            }
-            EVENTS.removeFirst();
-        }
     }
 
     private static List<String> buildSupportedEvents() {
@@ -171,15 +143,5 @@ public final class FabricEventTracker {
         ordered.add("fabric.player.use_item");
 
         return Collections.unmodifiableList(new ArrayList<>(ordered));
-    }
-
-    private static final class EventEntry {
-        private final String normalizedName;
-        private final long timestampMs;
-
-        private EventEntry(String normalizedName, long timestampMs) {
-            this.normalizedName = normalizedName;
-            this.timestampMs = timestampMs;
-        }
     }
 }

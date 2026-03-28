@@ -1,6 +1,7 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.execution.PathmindNavigator;
 import com.pathmind.nodes.Node;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
@@ -40,7 +41,9 @@ public class ActiveNodeOverlay {
         boolean showingCompletion = executionManager.isDisplayingCompletion();
         Node primaryNode = executionManager.getActiveNode();
         List<Node> activeNodes = executionManager.getActiveNodeChainSnapshot();
-        boolean shouldShow = (isExecuting || showingCompletion) && (showingCompletion || !activeNodes.isEmpty());
+        PathmindNavigator.Snapshot navigatorSnapshot = PathmindNavigator.getInstance().getSnapshot();
+        boolean shouldShow = ((isExecuting || showingCompletion) && (showingCompletion || !activeNodes.isEmpty()))
+            || navigatorSnapshot != null;
 
         visibility.animateTo(shouldShow ? 1f : 0f, shouldShow ? OPEN_DURATION_MS : CLOSE_DURATION_MS);
         visibility.tick();
@@ -135,6 +138,10 @@ public class ActiveNodeOverlay {
             context.fill(dotX, dotY, dotX + 8, dotY + 8, applyAlpha(nodeColor, progress));
             DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
         }
+
+        if (navigatorSnapshot != null && cardCount < maxCards) {
+            renderNavigatorCard(context, textRenderer, screenWidth, progress, cardCount, cardSpacing, navigatorSnapshot);
+        }
     }
     
     /**
@@ -156,5 +163,77 @@ public class ActiveNodeOverlay {
         int baseAlpha = (color >>> 24) & 0xFF;
         int adjustedAlpha = (int) (baseAlpha * AnimationHelper.clamp01(alpha));
         return (adjustedAlpha << 24) | (color & 0x00FFFFFF);
+    }
+
+    private void renderNavigatorCard(DrawContext context, TextRenderer textRenderer, int screenWidth, float progress,
+                                     int cardIndex, int cardSpacing, PathmindNavigator.Snapshot snapshot) {
+        int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
+        int overlayX = screenWidth - OVERLAY_WIDTH - MARGIN + slideOffset;
+        int overlayY = MARGIN + (cardIndex * (OVERLAY_HEIGHT + cardSpacing));
+
+        context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT,
+            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
+        DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT,
+            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+
+        int textRightX = overlayX + OVERLAY_WIDTH - 8;
+        String titleText = "Pathmind Nav";
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(titleText),
+            textRightX - textRenderer.getWidth(titleText),
+            overlayY + 6,
+            applyAlpha(UITheme.ACCENT_SKY, progress)
+        );
+
+        String targetText = formatTarget(snapshot.targetPos());
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(targetText),
+            textRightX - textRenderer.getWidth(targetText),
+            overlayY + 18,
+            applyAlpha(UITheme.TEXT_HEADER, progress)
+        );
+
+        String distanceText = snapshot.distance() >= 0.0D
+            ? String.format("Dist %.1f", snapshot.distance())
+            : "Dist --";
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(distanceText),
+            textRightX - textRenderer.getWidth(distanceText),
+            overlayY + 30,
+            applyAlpha(UITheme.TEXT_PRIMARY, progress)
+        );
+
+        String statusText = switch (snapshot.state()) {
+            case PATHING -> "Moving";
+            case ARRIVED -> "Arrived";
+            case STOPPED -> "Stopped";
+            case FAILED -> "Failed";
+            case IDLE -> "Idle";
+        };
+        int statusColor = snapshot.state() == PathmindNavigator.State.FAILED
+            ? UITheme.STATE_ERROR
+            : UITheme.ACCENT_SKY;
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(statusText),
+            textRightX - textRenderer.getWidth(statusText),
+            overlayY + 42,
+            applyAlpha(statusColor, progress)
+        );
+
+        int dotX = overlayX + 8;
+        int dotY = overlayY + 8;
+        context.fill(dotX, dotY, dotX + 8, dotY + 8, applyAlpha(UITheme.ACCENT_SKY, progress));
+        DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+    }
+
+    private String formatTarget(net.minecraft.util.math.BlockPos targetPos) {
+        if (targetPos == null) {
+            return "Target --";
+        }
+        return "Target " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ();
     }
 }

@@ -12,8 +12,6 @@ import com.pathmind.util.VillagerDataCompatibilityBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 import net.minecraft.registry.Registries;
@@ -29,17 +27,17 @@ import net.minecraft.village.TradeOfferList;
 import net.minecraft.village.TradeOffers;
 import net.minecraft.village.VillagerData;
 import net.minecraft.village.VillagerProfession;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.passive.VillagerEntity;
 import org.lwjgl.glfw.GLFW;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
@@ -47,7 +45,7 @@ import java.lang.reflect.Method;
  */
 public class VillagerTradeSelector {
     private static final Method VILLAGERDATA_WITH_PROFESSION = resolveWithProfessionMethod();
-    private static final String OPEN_GUI_CACHE_KEY = "open_gui";
+    private static final String OPEN_GUI_PROFESSION_ID = "open_gui";
     private static final int DROPDOWN_HEIGHT = 20;
     private static final int SEARCH_HEIGHT = 20;
     private static final int LIST_ROW_HEIGHT = 18;
@@ -57,8 +55,6 @@ public class VillagerTradeSelector {
     private static final int LIST_PADDING = 4;
     private static final int DROPDOWN_OPTION_HEIGHT = 18;
     private static final int DROPDOWN_MAX_VISIBLE = 8;
-    private static final Map<String, List<TradeEntry>> TRADE_CACHE = new HashMap<>();
-
     public interface Listener {
         void onProfessionChanged(String professionId);
         void onTradeChanged(String tradeItemId);
@@ -520,7 +516,7 @@ public class VillagerTradeSelector {
     private void loadProfessionOptions() {
         professions.clear();
         List<ProfessionOption> options = new ArrayList<>();
-        options.add(new ProfessionOption("open_gui", "Open Villager GUI", null, null));
+        options.add(new ProfessionOption(OPEN_GUI_PROFESSION_ID, "Open Villager GUI", null, null));
         for (Identifier id : Registries.VILLAGER_PROFESSION.getIds()) {
             if (id == null) {
                 continue;
@@ -540,10 +536,10 @@ public class VillagerTradeSelector {
         }
         options.sort(Comparator.comparing(option -> option.id, String.CASE_INSENSITIVE_ORDER));
         options.sort((a, b) -> {
-            if ("open_gui".equals(a.id)) {
+            if (OPEN_GUI_PROFESSION_ID.equals(a.id)) {
                 return -1;
             }
-            if ("open_gui".equals(b.id)) {
+            if (OPEN_GUI_PROFESSION_ID.equals(b.id)) {
                 return 1;
             }
             if ("librarian".equals(a.id)) {
@@ -566,8 +562,8 @@ public class VillagerTradeSelector {
         listScrollIndex = 0;
 
         if (selectedProfession == null || selectedProfession.entry == null) {
-            if (selectedProfession != null && OPEN_GUI_CACHE_KEY.equals(selectedProfession.id)) {
-                if (loadCachedTrades() || loadTradesFromOpenMerchantScreen()) {
+            if (selectedProfession != null && OPEN_GUI_PROFESSION_ID.equals(selectedProfession.id)) {
+                if (loadTradesFromOpenMerchantScreen()) {
                     updateFilteredTrades();
                     if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
                         String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
@@ -604,16 +600,6 @@ public class VillagerTradeSelector {
         World fallbackWorld = client.world;
         World activeWorld = serverWorld != null ? serverWorld : fallbackWorld;
         if (activeWorld == null) {
-            if (loadCachedTrades() || loadTradesFromOpenMerchantScreen()) {
-                updateFilteredTrades();
-                if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
-                    String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
-                    selectedTradeKey = fallbackKey != null ? fallbackKey : "";
-                }
-                if (selectedTradeKey.isEmpty()) {
-                    selectFirstTrade();
-                }
-            }
             return;
         }
         VillagerEntity villager = new VillagerEntity(EntityType.VILLAGER, activeWorld);
@@ -682,21 +668,6 @@ public class VillagerTradeSelector {
             .comparingInt((TradeEntry entry) -> entry.level)
             .thenComparing(entry -> entry.displayText, String.CASE_INSENSITIVE_ORDER));
 
-        if (trades.isEmpty()) {
-            if (loadCachedTrades() || loadTradesFromOpenMerchantScreen()) {
-                updateFilteredTrades();
-                if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
-                    String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
-                    selectedTradeKey = fallbackKey != null ? fallbackKey : "";
-                }
-                if (selectedTradeKey.isEmpty()) {
-                    selectFirstTrade();
-                }
-                return;
-            }
-        }
-
-        cacheTrades();
         updateFilteredTrades();
         if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
             String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
@@ -759,29 +730,6 @@ public class VillagerTradeSelector {
                     return entry.getValue();
                 }
             }
-        }
-        return levelMap;
-    }
-
-    private static it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> resolveTradeLevels(
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> map,
-        VillagerProfession profession
-    ) {
-        if (map == null || map.isEmpty() || profession == null) {
-            return null;
-        }
-        Identifier id = Registries.VILLAGER_PROFESSION.getId(profession);
-        RegistryKey<VillagerProfession> key = id != null ? RegistryKey.of(RegistryKeys.VILLAGER_PROFESSION, id) : null;
-
-        it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> levelMap = null;
-        if (key != null) {
-            levelMap = map.get(key);
-        }
-        if ((levelMap == null || levelMap.isEmpty())) {
-            levelMap = map.get(profession);
-        }
-        if ((levelMap == null || levelMap.isEmpty()) && id != null) {
-            levelMap = map.get(id);
         }
         return levelMap;
     }
@@ -997,140 +945,6 @@ public class VillagerTradeSelector {
         }
     }
 
-    private void cacheTrades() {
-        if (selectedProfession == null || trades.isEmpty()) {
-            return;
-        }
-        TRADE_CACHE.put(selectedProfession.id, new ArrayList<>(trades));
-    }
-
-    public static void cacheOpenMerchantTrades() {
-        List<TradeEntry> extracted = extractTradesFromOpenMerchantScreen();
-        if (extracted.isEmpty()) {
-            return;
-        }
-        TRADE_CACHE.put(OPEN_GUI_CACHE_KEY, new ArrayList<>(extracted));
-    }
-
-    public static void cacheAllProfessionTrades(MinecraftClient client) {
-        if (client == null) {
-            return;
-        }
-        net.minecraft.server.world.ServerWorld serverWorld = client.getServer() != null
-            ? client.getServer().getOverworld()
-            : null;
-        World fallbackWorld = client.world;
-        World activeWorld = serverWorld != null ? serverWorld : fallbackWorld;
-        if (activeWorld == null) {
-            return;
-        }
-
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> primary =
-            TradeOffers.PROFESSION_TO_LEVELED_TRADE;
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> secondary =
-            TradeOffers.REBALANCED_PROFESSION_TO_LEVELED_TRADE;
-
-        for (VillagerProfession profession : Registries.VILLAGER_PROFESSION) {
-            if (profession == null) {
-                continue;
-            }
-            Identifier id = Registries.VILLAGER_PROFESSION.getId(profession);
-            if (id == null) {
-                continue;
-            }
-            String professionId = id.getPath();
-            if (professionId == null || professionId.isEmpty()) {
-                continue;
-            }
-            it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> levelMap =
-                resolveTradeLevels(primary, profession);
-            if ((levelMap == null || levelMap.isEmpty()) && secondary != null && !secondary.isEmpty()) {
-                levelMap = resolveTradeLevels(secondary, profession);
-            }
-            if (levelMap == null || levelMap.isEmpty()) {
-                continue;
-            }
-
-            VillagerEntity villager = new VillagerEntity(EntityType.VILLAGER, activeWorld);
-            Random random = Random.create();
-            List<TradeEntry> entries = new ArrayList<>();
-
-            RegistryEntry<VillagerProfession> professionEntry = Registries.VILLAGER_PROFESSION.getEntry(profession);
-            for (it.unimi.dsi.fastutil.ints.Int2ObjectMap.Entry<TradeOffers.Factory[]> entry : levelMap.int2ObjectEntrySet()) {
-                int level = entry.getIntKey();
-                TradeOffers.Factory[] factories = entry.getValue();
-                if (factories == null) {
-                    continue;
-                }
-                VillagerData data = VillagerDataCompatibilityBridge.withProfession(
-                    villager.getVillagerData(), professionEntry).withLevel(level);
-                villager.setVillagerData(data);
-
-                boolean levelHasOffers = false;
-                for (TradeOffers.Factory factory : factories) {
-                    if (factory == null) {
-                        continue;
-                    }
-                    TradeOffer offer = createOffer(factory, serverWorld, fallbackWorld, villager, random);
-                    if (offer == null) {
-                        continue;
-                    }
-                    ItemStack sell = offer.getSellItem();
-                    if (sell == null || sell.isEmpty()) {
-                        continue;
-                    }
-                    ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
-                    ItemStack buySecond = offer.getDisplayedSecondBuyItem();
-                    entries.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
-                    levelHasOffers = true;
-                }
-
-                if (!levelHasOffers && serverWorld != null) {
-                    TradeOfferList offers = villager.getOffers();
-                    if (offers != null) {
-                        offers.clear();
-                    }
-                    invokeFillRecipes(villager, serverWorld);
-                    offers = villager.getOffers();
-                    if (offers != null) {
-                        for (TradeOffer offer : offers) {
-                            if (offer == null) {
-                                continue;
-                            }
-                            ItemStack sell = offer.getSellItem();
-                            if (sell == null || sell.isEmpty()) {
-                                continue;
-                            }
-                            ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
-                            ItemStack buySecond = offer.getDisplayedSecondBuyItem();
-                            entries.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
-                        }
-                    }
-                }
-            }
-
-            if (!entries.isEmpty()) {
-                entries.sort(Comparator
-                    .comparingInt((TradeEntry entry) -> entry.level)
-                    .thenComparing(entry -> entry.displayText, String.CASE_INSENSITIVE_ORDER));
-                TRADE_CACHE.put(professionId, new ArrayList<>(entries));
-            }
-        }
-    }
-
-    private boolean loadCachedTrades() {
-        if (selectedProfession == null) {
-            return false;
-        }
-        List<TradeEntry> cached = TRADE_CACHE.get(selectedProfession.id);
-        if (cached == null || cached.isEmpty()) {
-            return false;
-        }
-        trades.clear();
-        trades.addAll(cached);
-        return true;
-    }
-
     private boolean loadTradesFromOpenMerchantScreen() {
         List<TradeEntry> extracted = extractTradesFromOpenMerchantScreen();
         if (extracted.isEmpty()) {
@@ -1138,7 +952,6 @@ public class VillagerTradeSelector {
         }
         trades.clear();
         trades.addAll(extracted);
-        cacheTrades();
         return true;
     }
 

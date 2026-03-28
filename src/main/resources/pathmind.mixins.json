@@ -6,9 +6,11 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [
+    "ChatScreenMixin",
     "GameRendererMixin",
     "InGameHudMixin",
     "ItemRendererMixin",
+    "NavigatorWorldRendererMixin",
     "ScreenAccessor",
     "ScreenRenderSealMixin",
     "UiUtilsOverlayBlockerMixin"

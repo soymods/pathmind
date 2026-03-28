@@ -286,7 +286,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SET_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
         accepted.put(NodeType.CHANGE_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE));
         accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.GUI));
-        accepted.put(NodeType.TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE, NodeValueTrait.NUMBER));
+        accepted.put(NodeType.TRADE, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.WAIT, EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.NUMBER));
         accepted.put(NodeType.PARAM_BLOCK_FACE, EnumSet.of(NodeValueTrait.COORDINATE, NodeValueTrait.BLOCK));
 

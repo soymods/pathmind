@@ -39,6 +39,11 @@ public final class PathmindNavigator {
     private static final long REPLAN_COOLDOWN_MS = 450L;
     private static final long JUMP_RETRY_COOLDOWN_MS = 250L;
     private static final double PROGRESS_EPSILON_SQ = 0.01D;
+    private static final double COUNTERMOVEMENT_DISTANCE = 0.9D;
+    private static final double COUNTERMOVEMENT_SPEED = 0.16D;
+    private static final double COUNTERMOVEMENT_LATERAL_SPEED = 0.08D;
+    private static final double COUNTERMOVEMENT_PREDICTION_TICKS = 4.0D;
+    private static final double AIR_COUNTERMOVEMENT_DISTANCE = 1.2D;
     private static final int MAX_STEP_UP = 1;
     private static final int MAX_DROP_DOWN = 3;
     private static final int SEARCH_RADIUS = 56;
@@ -257,21 +262,38 @@ public final class PathmindNavigator {
         player.setBodyYaw(nextYaw);
         player.setPitch(nextPitch);
 
+        Vec3d desiredDirection = waypointHorizontalDistance <= 0.0001D
+            ? Vec3d.ZERO
+            : new Vec3d(waypointDx / waypointHorizontalDistance, 0.0D, waypointDz / waypointHorizontalDistance);
+        Vec3d horizontalVelocity = new Vec3d(player.getVelocity().x, 0.0D, player.getVelocity().z);
+        double forwardVelocity = desiredDirection.equals(Vec3d.ZERO) ? 0.0D : horizontalVelocity.dotProduct(desiredDirection);
+        Vec3d rightDirection = new Vec3d(desiredDirection.z, 0.0D, -desiredDirection.x);
+        double lateralVelocity = desiredDirection.equals(Vec3d.ZERO) ? 0.0D : horizontalVelocity.dotProduct(rightDirection);
+        double projectedForwardTravel = Math.max(0.0D, forwardVelocity) * COUNTERMOVEMENT_PREDICTION_TICKS;
+        boolean overshootRisk = waypointHorizontalDistance <= COUNTERMOVEMENT_DISTANCE
+            && projectedForwardTravel > waypointHorizontalDistance + 0.1D
+            && forwardVelocity > COUNTERMOVEMENT_SPEED;
+        boolean airborneDriftRisk = !player.isOnGround()
+            && waypointHorizontalDistance <= AIR_COUNTERMOVEMENT_DISTANCE
+            && (projectedForwardTravel > waypointHorizontalDistance + 0.05D
+            || Math.abs(lateralVelocity) > COUNTERMOVEMENT_LATERAL_SPEED);
+        boolean applyCountermovement = overshootRisk || airborneDriftRisk;
+
         if (client.options != null) {
             if (client.options.forwardKey != null) {
-                client.options.forwardKey.setPressed(true);
+                client.options.forwardKey.setPressed(!applyCountermovement);
             }
             if (client.options.sprintKey != null) {
-                client.options.sprintKey.setPressed(true);
+                client.options.sprintKey.setPressed(!applyCountermovement && player.isOnGround() && waypointHorizontalDistance > 1.75D);
             }
             if (client.options.backKey != null) {
-                client.options.backKey.setPressed(false);
+                client.options.backKey.setPressed(applyCountermovement && forwardVelocity > COUNTERMOVEMENT_SPEED);
             }
             if (client.options.leftKey != null) {
-                client.options.leftKey.setPressed(false);
+                client.options.leftKey.setPressed(applyCountermovement && lateralVelocity < -COUNTERMOVEMENT_LATERAL_SPEED);
             }
             if (client.options.rightKey != null) {
-                client.options.rightKey.setPressed(false);
+                client.options.rightKey.setPressed(applyCountermovement && lateralVelocity > COUNTERMOVEMENT_LATERAL_SPEED);
             }
             if (client.options.jumpKey != null) {
                 boolean swimUp = player.isSubmergedInWater() || isWaterNode(world, playerFootPos) || isWaterNode(world, waypoint);

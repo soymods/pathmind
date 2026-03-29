@@ -2,6 +2,7 @@ package com.pathmind.execution;
 
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.PlayerInventoryBridge;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
@@ -9,16 +10,20 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
+import net.minecraft.item.BlockItem;
+import net.minecraft.item.ItemStack;
 import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
+import net.minecraft.world.RaycastContext;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,9 +72,16 @@ public final class PathmindNavigator {
     private static final int MAX_VISIBLE_CANDIDATE_PATHS = 3;
     private static final int MAX_GOAL_PATH_ATTEMPTS = 10;
     private static final double WATER_PENALTY = 3.5D;
+    private static final double WATER_AVOIDANCE_PENALTY = 12.0D;
+    private static final double FLOWING_WATER_PENALTY = 2.5D;
+    private static final double DEEP_WATER_PENALTY = 2.0D;
+    private static final double WATER_DANGER_PENALTY = 10.0D;
+    private static final double WATER_NO_EXIT_PENALTY = 4.0D;
     private static final double EDGE_PENALTY = 1.25D;
     private static final double DANGER_PENALTY = 12.0D;
     private static final double MIN_PROGRESS_FOR_REPLAN_SQ = 9.0D;
+    private static final double BREAK_MOVE_PENALTY = 4.5D;
+    private static final double PLACE_MOVE_PENALTY = 5.0D;
     private static final Move[] MOVES = {
         new Move(0, -1, 1.0D),
         new Move(0, 1, 1.0D),
@@ -91,6 +103,9 @@ public final class PathmindNavigator {
     private long lastJumpAtMs;
     private double bestDistanceSq = Double.MAX_VALUE;
     private GoalMode goalMode = GoalMode.EXACT;
+    private WaterMode waterMode = WaterMode.NORMAL;
+    private boolean allowBlockBreaking = true;
+    private boolean allowBlockPlacing = true;
     private BlockPos resolvedGoalPos;
     private List<BlockPos> currentPath = List.of();
     private List<List<BlockPos>> candidatePaths = List.of();
@@ -99,6 +114,7 @@ public final class PathmindNavigator {
     private BlockPos committedJumpWaypoint;
     private long committedJumpUntilMs;
     private long lastInteractAtMs;
+    private BlockPos activeBreakTarget;
     private Vec3d lastMovementSamplePos = Vec3d.ZERO;
     private long lastMovementAtMs;
     private final Map<EdgeKey, Long> failedEdges = new HashMap<>();
@@ -120,12 +136,18 @@ public final class PathmindNavigator {
         NEAREST_STANDABLE
     }
 
+    public enum WaterMode {
+        NORMAL,
+        AVOID
+    }
+
     public record Snapshot(
         boolean active,
         State state,
         BlockPos targetPos,
         BlockPos resolvedGoalPos,
         BlockPos activeWaypoint,
+        List<BlockPos> breakTargets,
         String commandLabel,
         double distance,
         int nodeCount,
@@ -138,6 +160,9 @@ public final class PathmindNavigator {
     public record DebugInfo(
         State state,
         String goalMode,
+        String waterMode,
+        boolean allowBlockBreaking,
+        boolean allowBlockPlacing,
         BlockPos targetPos,
         BlockPos resolvedGoalPos,
         BlockPos activeWaypoint,
@@ -181,6 +206,7 @@ public final class PathmindNavigator {
         this.committedJumpWaypoint = null;
         this.committedJumpUntilMs = 0L;
         this.lastInteractAtMs = 0L;
+        this.activeBreakTarget = null;
         this.lastMovementSamplePos = Vec3d.ofCenter(this.targetPos);
         this.lastMovementAtMs = this.startedAtMs;
         this.failedEdges.clear();
@@ -192,6 +218,30 @@ public final class PathmindNavigator {
 
     public synchronized boolean isActive() {
         return state == State.PATHING && activeFuture != null && targetPos != null;
+    }
+
+    public synchronized WaterMode getWaterMode() {
+        return waterMode;
+    }
+
+    public synchronized void setWaterMode(WaterMode waterMode) {
+        this.waterMode = waterMode == null ? WaterMode.NORMAL : waterMode;
+    }
+
+    public synchronized boolean isBlockBreakingAllowed() {
+        return allowBlockBreaking;
+    }
+
+    public synchronized void setBlockBreakingAllowed(boolean allowBlockBreaking) {
+        this.allowBlockBreaking = allowBlockBreaking;
+    }
+
+    public synchronized boolean isBlockPlacingAllowed() {
+        return allowBlockPlacing;
+    }
+
+    public synchronized void setBlockPlacingAllowed(boolean allowBlockPlacing) {
+        this.allowBlockPlacing = allowBlockPlacing;
     }
 
     public synchronized Snapshot getSnapshot() {
@@ -209,6 +259,15 @@ public final class PathmindNavigator {
         List<List<BlockPos>> candidateCopies = candidatePaths.isEmpty()
             ? List.of()
             : candidatePaths.stream().map(List::copyOf).toList();
+        List<BlockPos> breakTargets = List.of();
+        if (client != null && client.world != null && activeWaypoint != null) {
+            List<BlockPos> requiredBreakTargets = getRequiredBreakTargets(client.world, activeWaypoint);
+            if (requiredBreakTargets != null && !requiredBreakTargets.isEmpty()) {
+                breakTargets = List.copyOf(requiredBreakTargets);
+            } else if (activeBreakTarget != null) {
+                breakTargets = List.of(activeBreakTarget);
+            }
+        }
         BlockPos resolvedGoal = resolvedGoalPos != null ? resolvedGoalPos : (pathCopy.isEmpty() ? targetPos : pathCopy.get(pathCopy.size() - 1));
         return new Snapshot(
             isActive(),
@@ -216,6 +275,7 @@ public final class PathmindNavigator {
             targetPos,
             resolvedGoal,
             activeWaypoint,
+            breakTargets,
             commandLabel,
             distance,
             pathCopy.size(),
@@ -232,6 +292,9 @@ public final class PathmindNavigator {
         return new DebugInfo(
             state,
             goalMode.name(),
+            waterMode.name(),
+            allowBlockBreaking,
+            allowBlockPlacing,
             targetPos,
             resolvedGoalPos,
             activeWaypoint,
@@ -264,6 +327,7 @@ public final class PathmindNavigator {
         this.committedJumpWaypoint = null;
         this.committedJumpUntilMs = 0L;
         this.lastInteractAtMs = 0L;
+        this.activeBreakTarget = null;
         this.lastMovementSamplePos = Vec3d.ofCenter(this.targetPos);
         this.lastMovementAtMs = this.startedAtMs;
         this.lastReplanReason = "preview";
@@ -384,6 +448,17 @@ public final class PathmindNavigator {
             return;
         }
 
+        if (shouldForceFinalApproach(world, playerFootPos, target)) {
+            waypoint = target.toImmutable();
+            synchronized (this) {
+                activeWaypoint = waypoint;
+            }
+        }
+
+        if (handleWaypointBlockInteraction(client, world, player, playerFootPos, waypoint, now)) {
+            return;
+        }
+
         BlockPos climbAnchor = resolveClimbAnchor(world, playerFootPos, waypoint);
         boolean climbNode = climbAnchor != null;
         Vec3d waypointCenter = new Vec3d(
@@ -423,6 +498,8 @@ public final class PathmindNavigator {
         boolean interactableStep = requiresInteractableTraversal(world, playerFootPos, waypoint)
             || hasPathOpenableAhead(world, playerFootPos, waypoint)
             || isPathOpenable(world.getBlockState(playerFootPos.down()));
+        boolean breakRequiredStep = requiresBreakingForWaypoint(world, waypoint);
+        boolean placeRequiredStep = needsPlacedSupport(world, waypoint) && shouldPlaceForWaypoint(playerFootPos, waypoint);
         boolean verticalDropStep = playerFootPos.getX() == waypoint.getX()
             && playerFootPos.getZ() == waypoint.getZ()
             && waypoint.getY() < playerFootPos.getY()
@@ -448,10 +525,10 @@ public final class PathmindNavigator {
 
         if (client.options != null) {
             if (client.options.forwardKey != null) {
-                client.options.forwardKey.setPressed(!verticalDropStep && (climbNode || !applyCountermovement));
+                client.options.forwardKey.setPressed(!verticalDropStep && !breakRequiredStep && (climbNode || !applyCountermovement));
             }
             if (client.options.sprintKey != null) {
-                client.options.sprintKey.setPressed(!verticalDropStep && !climbNode && !interactableStep && !applyCountermovement && player.isOnGround() && waypointHorizontalDistance > 1.75D);
+                client.options.sprintKey.setPressed(!verticalDropStep && !breakRequiredStep && !placeRequiredStep && !climbNode && !interactableStep && !applyCountermovement && player.isOnGround() && waypointHorizontalDistance > 1.75D);
             }
             if (client.options.backKey != null) {
                 client.options.backKey.setPressed(!verticalDropStep && !climbNode && applyCountermovement && forwardVelocity > COUNTERMOVEMENT_SPEED);
@@ -527,6 +604,8 @@ public final class PathmindNavigator {
 
         if (player.isOnGround()
             && millisSinceJump >= JUMP_RETRY_COOLDOWN_MS
+            && !breakRequiredStep
+            && !placeRequiredStep
             && ((!interactableStep && waypoint.getY() > playerFootPos.getY())
             || (shouldStepJump(world, playerFootPos, waypoint) && !climbNode && !interactableStep))) {
             player.jump();
@@ -867,14 +946,14 @@ public final class PathmindNavigator {
         List<Neighbor> neighbors = new ArrayList<>(MOVES.length);
         long now = System.currentTimeMillis();
         for (Move move : MOVES) {
-            BlockPos candidate = findNeighbor(world, current, move.dx, move.dz, start, goal, false);
-            if (candidate == null) {
+            Neighbor neighbor = findNeighbor(world, current, move.dx, move.dz, start, goal, false);
+            if (neighbor == null) {
                 continue;
             }
-            if (isFailedNode(candidate, now) || isFailedEdge(current, candidate, now)) {
+            if (isFailedNode(neighbor.pos(), now) || isFailedEdge(current, neighbor.pos(), now)) {
                 continue;
             }
-            neighbors.add(new Neighbor(candidate, move.cost + moveTypePenalty(world, current, candidate)));
+            neighbors.add(new Neighbor(neighbor.pos(), move.cost + neighbor.cost()));
         }
         addClimbNeighbors(world, current, start, goal, neighbors, now);
         addSafeDropNeighbors(world, current, start, goal, neighbors, now);
@@ -918,7 +997,7 @@ public final class PathmindNavigator {
         }
     }
 
-    private BlockPos findNeighbor(World world, BlockPos current, int dx, int dz, BlockPos start, BlockPos goal, boolean allowRelaxedBounds) {
+    private Neighbor findNeighbor(World world, BlockPos current, int dx, int dz, BlockPos start, BlockPos goal, boolean allowRelaxedBounds) {
         if (dx == 0 && dz == 0) {
             return null;
         }
@@ -940,7 +1019,8 @@ public final class PathmindNavigator {
             if (!isChunkLoaded(world, candidate)) {
                 continue;
             }
-            if (!isNavigableNode(world, candidate)) {
+            Neighbor assistedNeighbor = resolveNeighborAccess(world, current, candidate);
+            if (assistedNeighbor == null) {
                 continue;
             }
             if (Math.abs(candidate.getY() - current.getY()) > MAX_STEP_UP && candidate.getY() > current.getY()) {
@@ -949,7 +1029,7 @@ public final class PathmindNavigator {
             if (isHardDanger(world, candidate)) {
                 continue;
             }
-            return candidate.toImmutable();
+            return assistedNeighbor;
         }
         return null;
     }
@@ -966,7 +1046,7 @@ public final class PathmindNavigator {
         if (target != null
             && isWithinSearchBounds(start, target, target)
             && isChunkLoaded(world, target)
-            && isNavigableNode(world, target)
+            && isGoalNodeReachable(world, target)
             && !isHardDanger(world, target)) {
             return List.of(target.toImmutable());
         }
@@ -983,7 +1063,7 @@ public final class PathmindNavigator {
                         BlockPos candidate = new BlockPos(target.getX() + dx, target.getY() + dy, target.getZ() + dz);
                         if (!isWithinSearchBounds(start, candidate, target)
                             || !isChunkLoaded(world, candidate)
-                            || !isNavigableNode(world, candidate)
+                            || !isGoalNodeReachable(world, candidate)
                             || isHardDanger(world, candidate)
                             || !seen.add(candidate)) {
                             continue;
@@ -1019,6 +1099,57 @@ public final class PathmindNavigator {
             }
         }
         return count;
+    }
+
+    private boolean isGoalNodeReachable(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return false;
+        }
+        if (isNavigableNode(world, pos)) {
+            return true;
+        }
+        if (getRequiredBreakTargets(world, pos) == null) {
+            return false;
+        }
+        if (needsPlacedSupport(world, pos)) {
+            return canPlaceSupportAt(world, pos.down());
+        }
+        return hasCollision(world, pos.down()) || isWaterNode(world, pos);
+    }
+
+    private Neighbor resolveNeighborAccess(World world, BlockPos from, BlockPos candidate) {
+        if (isNavigableNode(world, candidate)) {
+            return new Neighbor(candidate.toImmutable(), moveTypePenalty(world, from, candidate));
+        }
+
+        double extraCost = moveTypePenalty(world, from, candidate);
+        List<BlockPos> breakTargets = getRequiredBreakTargets(world, candidate);
+        if (breakTargets == null) {
+            return null;
+        }
+        if (!breakTargets.isEmpty()) {
+            if (!allowBlockBreaking) {
+                return null;
+            }
+            for (BlockPos breakTarget : breakTargets) {
+                extraCost += breakPenalty(world, breakTarget);
+            }
+        }
+
+        if (allowBlockPlacing && needsPlacedSupport(world, candidate)) {
+            BlockPos activeTarget = targetPos;
+            if (activeTarget != null && candidate.down().equals(activeTarget)) {
+                return null;
+            }
+            if (!canPlaceSupportAt(world, candidate.down())) {
+                return null;
+            }
+            extraCost += PLACE_MOVE_PENALTY;
+        } else if (!hasCollision(world, candidate.down()) && !isWaterNode(world, candidate)) {
+            return null;
+        }
+
+        return new Neighbor(candidate.toImmutable(), extraCost);
     }
 
     private BlockPos findNearbyStandable(World world, BlockPos around, int maxRadius) {
@@ -1218,6 +1349,13 @@ public final class PathmindNavigator {
         return !state.getCollisionShape(world, pos).isEmpty();
     }
 
+    private boolean needsPlacedSupport(World world, BlockPos footPos) {
+        return world != null
+            && footPos != null
+            && !hasCollision(world, footPos.down())
+            && !isWaterNode(world, footPos);
+    }
+
     private boolean canOccupy(World world, BlockPos pos) {
         if (world == null || pos == null) {
             return false;
@@ -1226,10 +1364,41 @@ public final class PathmindNavigator {
         if (state == null || state.isAir()) {
             return true;
         }
+        if (state.isReplaceable()) {
+            return true;
+        }
         if (isClimbableBlock(state) || isPathOpenable(state)) {
             return true;
         }
         return state.getCollisionShape(world, pos).isEmpty();
+    }
+
+    private List<BlockPos> getRequiredBreakTargets(World world, BlockPos footPos) {
+        if (world == null || footPos == null) {
+            return null;
+        }
+        List<BlockPos> targets = new ArrayList<>(2);
+        if (!collectBreakTarget(world, footPos, targets)) {
+            return null;
+        }
+        if (!collectBreakTarget(world, footPos.up(), targets)) {
+            return null;
+        }
+        return targets;
+    }
+
+    private boolean collectBreakTarget(World world, BlockPos pos, List<BlockPos> targets) {
+        if (world == null || pos == null) {
+            return false;
+        }
+        if (canOccupy(world, pos)) {
+            return true;
+        }
+        if (!isBreakableForNavigator(world, pos)) {
+            return false;
+        }
+        targets.add(pos.toImmutable());
+        return true;
     }
 
     private BlockPos resolvePlanningTarget(ClientWorld world, BlockPos start, BlockPos target) {
@@ -1343,6 +1512,21 @@ public final class PathmindNavigator {
         double penalty = 0.0D;
         if (isWaterNode(world, to)) {
             penalty += WATER_PENALTY;
+            if (waterMode == WaterMode.AVOID) {
+                penalty += WATER_AVOIDANCE_PENALTY;
+            }
+            if (!isStillWater(world, to)) {
+                penalty += FLOWING_WATER_PENALTY;
+            }
+            if (waterDepth(world, to) >= 2) {
+                penalty += DEEP_WATER_PENALTY;
+            }
+            if (isDangerousWater(world, to)) {
+                penalty += WATER_DANGER_PENALTY;
+            }
+            if (!hasSafeWaterExit(world, to)) {
+                penalty += WATER_NO_EXIT_PENALTY;
+            }
         }
         if (!hasCollision(world, to.down()) && !isWaterNode(world, to)) {
             penalty += EDGE_PENALTY;
@@ -1361,6 +1545,64 @@ public final class PathmindNavigator {
             return false;
         }
         return isWater(world.getFluidState(pos)) || isWater(world.getFluidState(pos.up()));
+    }
+
+    private boolean isStillWater(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return false;
+        }
+        FluidState fluid = world.getFluidState(pos);
+        FluidState fluidAbove = world.getFluidState(pos.up());
+        return (isWater(fluid) && fluid.isStill()) || (isWater(fluidAbove) && fluidAbove.isStill());
+    }
+
+    private int waterDepth(World world, BlockPos pos) {
+        if (world == null || pos == null || !isWaterNode(world, pos)) {
+            return 0;
+        }
+        int depth = 0;
+        BlockPos cursor = pos;
+        while (depth < 4 && isWaterNode(world, cursor)) {
+            depth++;
+            cursor = cursor.down();
+        }
+        return depth;
+    }
+
+    private boolean hasSafeWaterExit(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return false;
+        }
+        for (Move move : MOVES) {
+            BlockPos candidate = new BlockPos(pos.getX() + move.dx, pos.getY(), pos.getZ() + move.dz);
+            if (isChunkLoaded(world, candidate) && !isWaterNode(world, candidate) && isStandable(world, candidate) && !isHardDanger(world, candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isDangerousWater(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return false;
+        }
+        BlockState state = world.getBlockState(pos);
+        BlockState below = world.getBlockState(pos.down());
+        if (state.isOf(Blocks.BUBBLE_COLUMN) || below.isOf(Blocks.BUBBLE_COLUMN)) {
+            return true;
+        }
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                BlockPos adjacent = pos.add(dx, 0, dz);
+                if (isLava(world.getFluidState(adjacent)) || isLava(world.getFluidState(adjacent.up()))) {
+                    return true;
+                }
+                if (isDangerousBlock(world.getBlockState(adjacent)) || isDangerousBlock(world.getBlockState(adjacent.down()))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private boolean isWater(FluidState fluidState) {
@@ -1413,6 +1655,64 @@ public final class PathmindNavigator {
             || state.isOf(Blocks.SWEET_BERRY_BUSH)
             || state.isOf(Blocks.WITHER_ROSE)
             || state.isOf(Blocks.POWDER_SNOW);
+    }
+
+    private boolean isBreakableForNavigator(World world, BlockPos pos) {
+        if (!allowBlockBreaking || world == null || pos == null) {
+            return false;
+        }
+        BlockState state = world.getBlockState(pos);
+        if (state == null || state.isAir() || isPathOpenable(state) || isClimbableBlock(state)) {
+            return false;
+        }
+        if (state.isOf(Blocks.BEDROCK)
+            || state.isOf(Blocks.BARRIER)
+            || state.isOf(Blocks.COMMAND_BLOCK)
+            || state.isOf(Blocks.CHAIN_COMMAND_BLOCK)
+            || state.isOf(Blocks.REPEATING_COMMAND_BLOCK)
+            || state.isOf(Blocks.STRUCTURE_BLOCK)
+            || state.isOf(Blocks.STRUCTURE_VOID)
+            || state.isOf(Blocks.JIGSAW)
+            || state.isOf(Blocks.END_PORTAL_FRAME)
+            || state.isOf(Blocks.END_PORTAL)
+            || state.isOf(Blocks.NETHER_PORTAL)) {
+            return false;
+        }
+        return state.getHardness(world, pos) >= 0.0F;
+    }
+
+    private double breakPenalty(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return BREAK_MOVE_PENALTY;
+        }
+        BlockState state = world.getBlockState(pos);
+        if (state == null || state.isAir()) {
+            return 0.0D;
+        }
+        float hardness = state.getHardness(world, pos);
+        if (hardness < 0.0F) {
+            return Double.POSITIVE_INFINITY;
+        }
+        return BREAK_MOVE_PENALTY + Math.max(0.0D, hardness * 1.2D);
+    }
+
+    private boolean canPlaceSupportAt(World world, BlockPos pos) {
+        if (!allowBlockPlacing || world == null || pos == null) {
+            return false;
+        }
+        if (!canOccupy(world, pos)) {
+            return false;
+        }
+        for (Direction direction : Direction.values()) {
+            BlockPos adjacent = pos.offset(direction);
+            if (adjacent.equals(pos.up())) {
+                continue;
+            }
+            if (hasCollision(world, adjacent)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isClimbableNode(World world, BlockPos pos) {
@@ -1579,6 +1879,309 @@ public final class PathmindNavigator {
         }
     }
 
+    private boolean handleWaypointBlockInteraction(
+        MinecraftClient client,
+        ClientWorld world,
+        ClientPlayerEntity player,
+        BlockPos playerFootPos,
+        BlockPos waypoint,
+        long now
+    ) {
+        if (client == null || world == null || player == null || playerFootPos == null || waypoint == null) {
+            return false;
+        }
+        if (shouldSuppressMiningNearGoal(world, player, playerFootPos, waypoint)) {
+            synchronized (this) {
+                activeBreakTarget = null;
+            }
+            return false;
+        }
+
+        boolean obstructionCleared = false;
+        synchronized (this) {
+            if (activeBreakTarget != null && canOccupy(world, activeBreakTarget)) {
+                activeBreakTarget = null;
+                currentPath = List.of();
+                candidatePaths = List.of();
+                activeWaypoint = null;
+                pathIndex = 0;
+                lastPlanAtMs = 0L;
+                lastReplanReason = "obstruction cleared";
+                obstructionCleared = true;
+            }
+        }
+        if (obstructionCleared) {
+            releaseMovementKeys(client);
+            return false;
+        }
+
+        if (allowBlockBreaking) {
+            BlockPos breakTarget = selectBreakTarget(world, playerFootPos, waypoint);
+            if (breakTarget != null && shouldBreakForWaypoint(playerFootPos, waypoint, breakTarget)) {
+                return continueBreakingBlock(client, player, breakTarget, now);
+            }
+        }
+
+        if (allowBlockPlacing && shouldPlaceForWaypoint(playerFootPos, waypoint) && needsPlacedSupport(world, waypoint)) {
+            return tryPlaceSupportBlock(client, world, player, waypoint.down(), now);
+        }
+
+        synchronized (this) {
+            activeBreakTarget = null;
+        }
+        return false;
+    }
+
+    private BlockPos selectBreakTarget(World world, BlockPos playerFootPos, BlockPos waypoint) {
+        if (world == null || waypoint == null) {
+            return null;
+        }
+        if (isNavigableNode(world, waypoint)) {
+            return null;
+        }
+        List<BlockPos> breakTargets = getRequiredBreakTargets(world, waypoint);
+        if (breakTargets == null || breakTargets.isEmpty()) {
+            return null;
+        }
+        synchronized (this) {
+            if (activeBreakTarget != null && breakTargets.contains(activeBreakTarget) && isBreakableForNavigator(world, activeBreakTarget)) {
+                return activeBreakTarget;
+            }
+        }
+        BlockPos preferredTarget = breakTargets.get(0);
+        double bestPenalty = breakPenalty(world, preferredTarget);
+        for (int i = 1; i < breakTargets.size(); i++) {
+            BlockPos candidate = breakTargets.get(i);
+            double penalty = breakPenalty(world, candidate);
+            if (penalty < bestPenalty) {
+                bestPenalty = penalty;
+                preferredTarget = candidate;
+            }
+        }
+        return preferredTarget;
+    }
+
+    private boolean continueBreakingBlock(MinecraftClient client, ClientPlayerEntity player, BlockPos target, long now) {
+        if (client == null || client.interactionManager == null || client.world == null || player == null || target == null) {
+            return false;
+        }
+        BlockPos waypoint;
+        synchronized (this) {
+            waypoint = activeWaypoint;
+        }
+        if (waypoint == null) {
+            return false;
+        }
+        List<BlockPos> requiredTargets = getRequiredBreakTargets(client.world, waypoint);
+        if (requiredTargets == null || !requiredTargets.contains(target)) {
+            synchronized (this) {
+                activeBreakTarget = null;
+            }
+            return false;
+        }
+        if (player.squaredDistanceTo(Vec3d.ofCenter(target)) > 25.0D) {
+            return false;
+        }
+        releaseMovementKeys(client);
+        lookAtBlock(player, target);
+        Direction face = resolveBreakFace(player, target);
+        if (!hasBreakLineOfSight(client.world, player, target)) {
+            synchronized (this) {
+                activeBreakTarget = null;
+            }
+            return false;
+        }
+        boolean startingNewTarget;
+        synchronized (this) {
+            startingNewTarget = activeBreakTarget == null || !activeBreakTarget.equals(target);
+            activeBreakTarget = target.toImmutable();
+            if (startingNewTarget) {
+                lastInteractAtMs = now;
+            }
+        }
+        if (startingNewTarget) {
+            client.interactionManager.attackBlock(target, face);
+        }
+        client.interactionManager.updateBlockBreakingProgress(target, face);
+        player.swingHand(Hand.MAIN_HAND);
+        return true;
+    }
+
+    private boolean shouldSuppressMiningNearGoal(World world, ClientPlayerEntity player, BlockPos playerFootPos, BlockPos waypoint) {
+        if (world == null || player == null || playerFootPos == null || waypoint == null) {
+            return false;
+        }
+        BlockPos activeTarget;
+        synchronized (this) {
+            activeTarget = targetPos;
+        }
+        if (activeTarget == null) {
+            return false;
+        }
+        if (horizontalDistanceSq(playerFootPos, activeTarget) > 2.25D || Math.abs(playerFootPos.getY() - activeTarget.getY()) > 1) {
+            return false;
+        }
+        if (!activeTarget.equals(waypoint) && !activeTarget.up().equals(waypoint)) {
+            return false;
+        }
+        return isWithinGoalArrivalRange(player, activeTarget)
+            || isStandable(world, activeTarget)
+            || isNavigableNode(world, activeTarget);
+    }
+
+    private boolean shouldForceFinalApproach(World world, BlockPos playerFootPos, BlockPos target) {
+        if (world == null || playerFootPos == null || target == null) {
+            return false;
+        }
+        return isStandable(world, target)
+            && horizontalDistanceSq(playerFootPos, target) <= 4.0D
+            && Math.abs(playerFootPos.getY() - target.getY()) <= 1;
+    }
+
+    private Direction resolveBreakFace(ClientPlayerEntity player, BlockPos target) {
+        if (player == null || target == null) {
+            return Direction.UP;
+        }
+        Vec3d delta = Vec3d.ofCenter(target).subtract(player.getEyePos());
+        return Direction.getFacing(delta.x, delta.y, delta.z).getOpposite();
+    }
+
+    private boolean shouldBreakForWaypoint(BlockPos playerFootPos, BlockPos waypoint, BlockPos breakTarget) {
+        if (playerFootPos == null || waypoint == null || breakTarget == null) {
+            return false;
+        }
+        if (horizontalDistanceSq(playerFootPos, waypoint) > 4.0D || Math.abs(waypoint.getY() - playerFootPos.getY()) > 1) {
+            return false;
+        }
+        return breakTarget.equals(waypoint) || breakTarget.equals(waypoint.up());
+    }
+
+    private boolean requiresBreakingForWaypoint(World world, BlockPos waypoint) {
+        if (world == null || waypoint == null) {
+            return false;
+        }
+        List<BlockPos> breakTargets = getRequiredBreakTargets(world, waypoint);
+        return breakTargets != null && !breakTargets.isEmpty();
+    }
+
+    private boolean shouldPlaceForWaypoint(BlockPos playerFootPos, BlockPos waypoint) {
+        if (playerFootPos == null || waypoint == null) {
+            return false;
+        }
+        BlockPos activeTarget;
+        synchronized (this) {
+            activeTarget = targetPos;
+        }
+        if (activeTarget != null) {
+            if (waypoint.equals(activeTarget) || waypoint.down().equals(activeTarget)) {
+                return false;
+            }
+        }
+        return horizontalDistanceSq(playerFootPos, waypoint) <= 1.25D
+            && waypoint.getY() >= playerFootPos.getY()
+            && waypoint.getY() - playerFootPos.getY() <= 1;
+    }
+
+    private void lookAtBlock(ClientPlayerEntity player, BlockPos target) {
+        if (player == null || target == null) {
+            return;
+        }
+        Vec3d delta = Vec3d.ofCenter(target).subtract(player.getEyePos());
+        double horizontalDistance = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
+        float targetYaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
+        float targetPitch = (float) -Math.toDegrees(Math.atan2(delta.y, Math.max(0.0001D, horizontalDistance)));
+        float clampedPitch = MathHelper.clamp(targetPitch, -60.0F, 60.0F);
+        player.setYaw(targetYaw);
+        player.setHeadYaw(targetYaw);
+        player.setBodyYaw(targetYaw);
+        player.setPitch(clampedPitch);
+    }
+
+    private boolean hasBreakLineOfSight(ClientWorld world, ClientPlayerEntity player, BlockPos target) {
+        if (world == null || player == null || target == null) {
+            return false;
+        }
+        BlockHitResult hit = world.raycast(new RaycastContext(
+            player.getEyePos(),
+            Vec3d.ofCenter(target),
+            RaycastContext.ShapeType.OUTLINE,
+            RaycastContext.FluidHandling.NONE,
+            player
+        ));
+        return hit != null && hit.getType() == HitResult.Type.BLOCK && target.equals(hit.getBlockPos());
+    }
+
+    private boolean tryPlaceSupportBlock(
+        MinecraftClient client,
+        ClientWorld world,
+        ClientPlayerEntity player,
+        BlockPos placePos,
+        long now
+    ) {
+        if (client == null || world == null || player == null || placePos == null || client.interactionManager == null) {
+            return false;
+        }
+        if (now - lastInteractAtMs < 250L) {
+            return true;
+        }
+        PlacementTarget placementTarget = findPlacementTarget(world, placePos);
+        if (placementTarget == null) {
+            return false;
+        }
+        int hotbarSlot = findPlaceableHotbarSlot(player);
+        if (hotbarSlot < 0) {
+            return false;
+        }
+        int previousSlot = PlayerInventoryBridge.getSelectedSlot(player.getInventory());
+        PlayerInventoryBridge.setSelectedSlot(player.getInventory(), hotbarSlot);
+        releaseMovementKeys(client);
+        client.interactionManager.interactBlock(
+            player,
+            Hand.MAIN_HAND,
+            new BlockHitResult(placementTarget.hitPos(), placementTarget.face(), placementTarget.supportPos(), false)
+        );
+        player.swingHand(Hand.MAIN_HAND);
+        PlayerInventoryBridge.setSelectedSlot(player.getInventory(), previousSlot);
+        synchronized (this) {
+            lastInteractAtMs = now;
+        }
+        return true;
+    }
+
+    private int findPlaceableHotbarSlot(ClientPlayerEntity player) {
+        if (player == null || player.getInventory() == null) {
+            return -1;
+        }
+        int hotbarSize = net.minecraft.entity.player.PlayerInventory.getHotbarSize();
+        for (int slot = 0; slot < hotbarSize; slot++) {
+            ItemStack stack = player.getInventory().getStack(slot);
+            if (!stack.isEmpty() && stack.getItem() instanceof BlockItem) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    private PlacementTarget findPlacementTarget(World world, BlockPos placePos) {
+        if (world == null || placePos == null) {
+            return null;
+        }
+        for (Direction direction : Direction.values()) {
+            BlockPos support = placePos.offset(direction);
+            if (!hasCollision(world, support)) {
+                continue;
+            }
+            Direction face = direction.getOpposite();
+            Vec3d hitPos = Vec3d.ofCenter(support).add(
+                face.getOffsetX() * 0.5D,
+                face.getOffsetY() * 0.5D,
+                face.getOffsetZ() * 0.5D
+            );
+            return new PlacementTarget(support, face, hitPos);
+        }
+        return null;
+    }
+
     private BlockPos resolvePlayerFootPos(ClientPlayerEntity player) {
         return player == null ? null : player.getBlockPos().toImmutable();
     }
@@ -1653,6 +2256,9 @@ public final class PathmindNavigator {
     }
 
     private record ScoredPath(List<BlockPos> path, double cost) {
+    }
+
+    private record PlacementTarget(BlockPos supportPos, Direction face, Vec3d hitPos) {
     }
 
     private record EdgeKey(BlockPos from, BlockPos to) {

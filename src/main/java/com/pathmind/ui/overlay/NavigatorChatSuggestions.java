@@ -72,8 +72,10 @@ public final class NavigatorChatSuggestions {
             if (i == selectedIndex) {
                 context.fill(x + 1, rowY - 1, x + WIDTH - 1, rowY + ENTRY_HEIGHT - 1, 0x503A3A3A);
             }
-            context.drawTextWithShadow(textRenderer, entry.command(), x + 6, rowY, UITheme.TEXT_HEADER);
-            context.drawTextWithShadow(textRenderer, entry.hint(), x + 74, rowY, UITheme.TEXT_SECONDARY);
+            int commandX = x + 6;
+            int hintX = Math.min(x + WIDTH - 8, commandX + textRenderer.getWidth(entry.command()) + 12);
+            context.drawTextWithShadow(textRenderer, entry.command(), commandX, rowY, UITheme.TEXT_HEADER);
+            context.drawTextWithShadow(textRenderer, entry.hint(), hintX, rowY, UITheme.TEXT_SECONDARY);
         }
     }
 
@@ -133,22 +135,17 @@ public final class NavigatorChatSuggestions {
             return currentText == null ? "" : currentText;
         }
         String current = currentText == null ? "" : currentText;
-        if ("!travel".equals(completion)) {
-            String normalized = current.stripTrailing().stripLeading();
-            if (normalized.startsWith("!travel")) {
-                return "!travel";
+        String normalized = current.stripTrailing().stripLeading().toLowerCase(Locale.ROOT);
+        for (String rootCommand : List.of("!travel", "!path", "!nav", "!flag", "!stop")) {
+            if (rootCommand.equals(completion) && normalized.startsWith(rootCommand)) {
+                return rootCommand;
             }
         }
-        if ("!path".equals(completion)) {
-            String normalized = current.stripTrailing().stripLeading();
-            if (normalized.startsWith("!path")) {
-                return "!path";
-            }
-        }
-        if ("!nav debug".equals(completion)) {
-            String normalized = current.stripTrailing().stripLeading();
-            if (normalized.startsWith("!nav")) {
-                return "!nav debug";
+        for (String branchCommand : List.of("!nav debug", "!nav water", "!nav water normal", "!nav water avoid",
+            "!flag break", "!flag place", "!flag break enable", "!flag break disable",
+            "!flag place enable", "!flag place disable")) {
+            if (branchCommand.equals(completion)) {
+                return completion;
             }
         }
         return completion;
@@ -162,43 +159,103 @@ public final class NavigatorChatSuggestions {
         if (!input.startsWith("!")) {
             return List.of();
         }
-        if (input.endsWith(" ")) {
-            return List.of();
-        }
+        boolean endsWithSpace = input.endsWith(" ");
+        String trimmed = endsWithSpace ? input.substring(0, input.length() - 1) : input;
+        String[] parts = trimmed.substring(1).isBlank() ? new String[0] : trimmed.substring(1).split("\\s+");
 
         List<SuggestionEntry> suggestions = new ArrayList<>();
-        if ("!".equals(input)
-            || "!t".startsWith(input)
-            || "!tr".startsWith(input)
-            || "!tra".startsWith(input)
-            || "!trav".startsWith(input)
-            || "!trave".startsWith(input)
-            || "!travel".startsWith(input)) {
-            suggestions.add(new SuggestionEntry("!travel", "x y z", "!travel"));
+
+        if (parts.length == 0) {
+            return rootSuggestions("");
         }
-        if ("!".equals(input)
-            || "!p".startsWith(input)
-            || "!pa".startsWith(input)
-            || "!pat".startsWith(input)
-            || "!path".startsWith(input)) {
-            suggestions.add(new SuggestionEntry("!path", "preview route", "!path"));
+        if (parts.length == 1 && !endsWithSpace) {
+            return rootSuggestions(parts[0]);
         }
-        if ("!".equals(input)
-            || "!n".startsWith(input)
-            || "!na".startsWith(input)
-            || "!nav".startsWith(input)
-            || "!nav ".equals(input)
-            || "!nav d".startsWith(input)
-            || "!nav de".startsWith(input)
-            || "!nav deb".startsWith(input)
-            || "!nav debu".startsWith(input)
-            || "!nav debug".startsWith(input)) {
-            suggestions.add(new SuggestionEntry("!nav debug", "planner state", "!nav debug"));
+
+        String root = parts[0];
+        if ("travel".equals(root) || "path".equals(root)) {
+            return movementSuggestions(root, parts.length, endsWithSpace);
         }
-        if ("!".equals(input) || "!s".startsWith(input) || "!st".startsWith(input) || "!sto".startsWith(input) || "!stop".startsWith(input)) {
-            suggestions.add(new SuggestionEntry("!stop", "cancel navigator", "!stop"));
+        if ("flag".equals(root)) {
+            return flagSuggestions(parts, endsWithSpace);
+        }
+        if ("nav".equals(root)) {
+            return navSuggestions(parts, endsWithSpace);
         }
         return suggestions;
+    }
+
+    private List<SuggestionEntry> rootSuggestions(String partialRoot) {
+        List<SuggestionEntry> suggestions = new ArrayList<>();
+        addIfMatches(suggestions, "!travel", "go somewhere", "!travel", partialRoot);
+        addIfMatches(suggestions, "!path", "preview route", "!path", partialRoot);
+        addIfMatches(suggestions, "!nav", "navigator tools", "!nav", partialRoot);
+        addIfMatches(suggestions, "!flag", "toggle flags", "!flag", partialRoot);
+        addIfMatches(suggestions, "!stop", "cancel navigator", "!stop", partialRoot);
+        return suggestions;
+    }
+
+    private List<SuggestionEntry> movementSuggestions(String root, int partCount, boolean endsWithSpace) {
+        List<SuggestionEntry> suggestions = new ArrayList<>();
+        if (partCount == 1 && endsWithSpace) {
+            suggestions.add(new SuggestionEntry("<x> <y> <z>", "absolute or ~ coords", "!" + root + " "));
+            suggestions.add(new SuggestionEntry("<x> <z>", "keep current y", "!" + root + " "));
+        }
+        return suggestions;
+    }
+
+    private List<SuggestionEntry> flagSuggestions(String[] parts, boolean endsWithSpace) {
+        List<SuggestionEntry> suggestions = new ArrayList<>();
+        if (parts.length == 1 && endsWithSpace) {
+            suggestions.add(new SuggestionEntry("break", "breaking flag", "!flag break"));
+            suggestions.add(new SuggestionEntry("place", "placing flag", "!flag place"));
+            return suggestions;
+        }
+        if (parts.length == 2 && !endsWithSpace) {
+            addIfMatches(suggestions, "break", "breaking flag", "!flag break", parts[1]);
+            addIfMatches(suggestions, "place", "placing flag", "!flag place", parts[1]);
+            return suggestions;
+        }
+        if (parts.length == 2 && endsWithSpace && ("break".equals(parts[1]) || "place".equals(parts[1]))) {
+            suggestions.add(new SuggestionEntry("enable", "turn on", "!flag " + parts[1] + " enable"));
+            suggestions.add(new SuggestionEntry("disable", "turn off", "!flag " + parts[1] + " disable"));
+            return suggestions;
+        }
+        if (parts.length == 3 && ("break".equals(parts[1]) || "place".equals(parts[1])) && !endsWithSpace) {
+            addIfMatches(suggestions, "enable", "turn on", "!flag " + parts[1] + " enable", parts[2]);
+            addIfMatches(suggestions, "disable", "turn off", "!flag " + parts[1] + " disable", parts[2]);
+        }
+        return suggestions;
+    }
+
+    private List<SuggestionEntry> navSuggestions(String[] parts, boolean endsWithSpace) {
+        List<SuggestionEntry> suggestions = new ArrayList<>();
+        if (parts.length == 1 && endsWithSpace) {
+            suggestions.add(new SuggestionEntry("debug", "planner state", "!nav debug"));
+            suggestions.add(new SuggestionEntry("water", "water mode", "!nav water"));
+            return suggestions;
+        }
+        if (parts.length == 2 && !endsWithSpace) {
+            addIfMatches(suggestions, "debug", "planner state", "!nav debug", parts[1]);
+            addIfMatches(suggestions, "water", "water mode", "!nav water", parts[1]);
+            return suggestions;
+        }
+        if (parts.length == 2 && "water".equals(parts[1]) && endsWithSpace) {
+            suggestions.add(new SuggestionEntry("normal", "allow water", "!nav water normal"));
+            suggestions.add(new SuggestionEntry("avoid", "avoid water", "!nav water avoid"));
+            return suggestions;
+        }
+        if (parts.length == 3 && "water".equals(parts[1]) && !endsWithSpace) {
+            addIfMatches(suggestions, "normal", "allow water", "!nav water normal", parts[2]);
+            addIfMatches(suggestions, "avoid", "avoid water", "!nav water avoid", parts[2]);
+        }
+        return suggestions;
+    }
+
+    private void addIfMatches(List<SuggestionEntry> suggestions, String label, String hint, String completion, String partial) {
+        if (partial == null || partial.isBlank() || label.startsWith("!" + partial) || label.startsWith(partial)) {
+            suggestions.add(new SuggestionEntry(label, hint, completion));
+        }
     }
 
     private TextFieldWidget resolveChatField(ChatScreen chatScreen) {

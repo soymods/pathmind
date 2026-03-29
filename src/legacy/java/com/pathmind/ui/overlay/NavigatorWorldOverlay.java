@@ -1,5 +1,6 @@
 package com.pathmind.ui.overlay;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.pathmind.execution.PathmindNavigator;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -19,6 +20,7 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFA52B;
     private static final int STEP_COLOR = 0xFF7FD36B;
+    private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final double DASH_LENGTH = 0.42D;
     private static final double DASH_GAP = 0.24D;
     private static final double DASH_CYCLE = DASH_LENGTH + DASH_GAP;
@@ -52,6 +54,7 @@ public final class NavigatorWorldOverlay {
 
         try {
             renderStepMarkers(matrices, consumers, snapshot.path(), cameraX, cameraY, cameraZ);
+            renderBreakTargets(matrices, consumers, snapshot.breakTargets(), cameraX, cameraY, cameraZ);
             renderPath(matrices, consumers, snapshot.path(), goalPos, cameraX, cameraY, cameraZ);
             renderGoal(matrices, consumers, goalPos, cameraX, cameraY, cameraZ);
         } catch (Throwable ignored) {
@@ -185,6 +188,62 @@ public final class NavigatorWorldOverlay {
             }
             Box marker = Box.of(cameraRelative(pathPoint(step), cameraX, cameraY, cameraZ), 0.34D, 0.34D, 0.34D);
             renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
+        }
+    }
+
+    private static void renderBreakTargets(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        List<BlockPos> breakTargets,
+        double cameraX,
+        double cameraY,
+        double cameraZ
+    ) {
+        if (breakTargets == null || breakTargets.isEmpty()) {
+            return;
+        }
+        setDepthTestEnabled(false);
+        for (BlockPos breakTarget : breakTargets) {
+            if (breakTarget == null) {
+                continue;
+            }
+            Box marker = new Box(
+                breakTarget.getX() + 0.02D - cameraX,
+                breakTarget.getY() + 0.02D - cameraY,
+                breakTarget.getZ() + 0.02D - cameraZ,
+                breakTarget.getX() + 0.98D - cameraX,
+                breakTarget.getY() + 0.98D - cameraY,
+                breakTarget.getZ() + 0.98D - cameraZ
+            );
+            renderBoxOutline(matrices, consumers, marker, BREAK_COLOR);
+        }
+        setDepthTestEnabled(true);
+    }
+
+    private static void setDepthTestEnabled(boolean enabled) {
+        if (invokeDepthMethod(RenderSystem.class, enabled ? "enableDepthTest" : "disableDepthTest")) {
+            return;
+        }
+        if (invokeDepthMethod(RenderSystem.class, enabled ? "_enableDepthTest" : "_disableDepthTest")) {
+            return;
+        }
+        try {
+            Class<?> glStateManager = Class.forName("com.mojang.blaze3d.platform.GlStateManager");
+            if (invokeDepthMethod(glStateManager, enabled ? "_enableDepthTest" : "_disableDepthTest")) {
+                return;
+            }
+            invokeDepthMethod(glStateManager, enabled ? "enableDepthTest" : "disableDepthTest");
+        } catch (ReflectiveOperationException ignored) {
+            // Older mappings may not expose the depth helpers consistently.
+        }
+    }
+
+    private static boolean invokeDepthMethod(Class<?> owner, String methodName) {
+        try {
+            owner.getMethod(methodName).invoke(null);
+            return true;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
         }
     }
 

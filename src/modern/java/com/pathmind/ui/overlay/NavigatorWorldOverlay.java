@@ -20,8 +20,10 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFC857;
     private static final int STEP_COLOR = 0xFF7FD36B;
+    private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final float PATH_LINE_WIDTH = 2.5F;
     private static final float STEP_STROKE_WIDTH = 1.4F;
+    private static final float BREAK_STROKE_WIDTH = 1.8F;
     private static final double GOAL_INSET = 0.02D;
     private static final double DASH_LENGTH = 0.42D;
     private static final double DASH_GAP = 0.24D;
@@ -48,6 +50,7 @@ public final class NavigatorWorldOverlay {
 
         try (GizmoDrawing.CollectorScope ignored = worldRenderer.startDrawingGizmos()) {
             renderStepMarkers(snapshot.path());
+            renderBreakTargets(snapshot.breakTargets());
             renderPath(snapshot.path(), goalPos);
             renderGoal(goalPos);
         } catch (Throwable ignored) {
@@ -120,6 +123,26 @@ public final class NavigatorWorldOverlay {
             Vec3d center = Vec3d.ofCenter(step);
             Box marker = Box.of(center.add(0.0D, 0.15D, 0.0D), 0.34D, 0.34D, 0.34D);
             renderBoxOutline(marker, STEP_COLOR, STEP_STROKE_WIDTH);
+        }
+    }
+
+    private static void renderBreakTargets(List<BlockPos> breakTargets) {
+        if (breakTargets == null || breakTargets.isEmpty()) {
+            return;
+        }
+        for (BlockPos breakTarget : breakTargets) {
+            if (breakTarget == null) {
+                continue;
+            }
+            Box marker = new Box(
+                breakTarget.getX() + 0.02D,
+                breakTarget.getY() + 0.02D,
+                breakTarget.getZ() + 0.02D,
+                breakTarget.getX() + 0.98D,
+                breakTarget.getY() + 0.98D,
+                breakTarget.getZ() + 0.98D
+            );
+            renderBoxOutline(marker, BREAK_COLOR, BREAK_STROKE_WIDTH);
         }
     }
 

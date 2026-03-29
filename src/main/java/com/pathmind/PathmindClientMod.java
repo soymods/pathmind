@@ -559,7 +559,17 @@ public class PathmindClientMod implements ClientModInitializer {
             return true;
         }
 
-        showNavigatorMessage("Unknown Pathmind Nav command. Use !travel, !path, !nav debug, or !stop.");
+        if (parts[0].equalsIgnoreCase("nav") && parts.length >= 3 && parts[1].equalsIgnoreCase("water")) {
+            handleNavigatorWaterMode(parts[2]);
+            return true;
+        }
+
+        if (parts[0].equalsIgnoreCase("flag") && parts.length >= 3) {
+            handleNavigatorFlag(parts[1], parts[2]);
+            return true;
+        }
+
+        showNavigatorMessage("Unknown Pathmind Nav command. Use !travel, !path, !nav debug, !nav water, !flag, or !stop.");
         return true;
     }
 
@@ -607,6 +617,9 @@ public class PathmindClientMod implements ClientModInitializer {
         showNavigatorMessage(
             "Nav Debug: state=" + info.state()
                 + " goal=" + info.goalMode()
+                + " water=" + info.waterMode()
+                + " break=" + (info.allowBlockBreaking() ? "on" : "off")
+                + " place=" + (info.allowBlockPlacing() ? "on" : "off")
                 + " target=" + formatDebugPos(info.targetPos())
                 + " resolved=" + formatDebugPos(info.resolvedGoalPos())
         );
@@ -663,6 +676,53 @@ public class PathmindClientMod implements ClientModInitializer {
 
     private int normalizeNavigatorCoordinate(int coordinate) {
         return coordinate - 1;
+    }
+
+    private void handleNavigatorWaterMode(String modeToken) {
+        if (modeToken == null) {
+            showNavigatorMessage("Usage: !nav water <normal|avoid>");
+            return;
+        }
+        if (modeToken.equalsIgnoreCase("avoid")) {
+            PathmindNavigator.getInstance().setWaterMode(PathmindNavigator.WaterMode.AVOID);
+            showNavigatorMessage("Pathmind Nav water mode: avoid");
+            return;
+        }
+        if (modeToken.equalsIgnoreCase("normal") || modeToken.equalsIgnoreCase("allow")) {
+            PathmindNavigator.getInstance().setWaterMode(PathmindNavigator.WaterMode.NORMAL);
+            showNavigatorMessage("Pathmind Nav water mode: normal");
+            return;
+        }
+        showNavigatorMessage("Usage: !nav water <normal|avoid>");
+    }
+
+    private void handleNavigatorFlag(String flagName, String action) {
+        if (flagName == null || action == null) {
+            showNavigatorMessage("Usage: !flag <break|place> <enable|disable>");
+            return;
+        }
+        boolean enable;
+        if (action.equalsIgnoreCase("enable") || action.equalsIgnoreCase("on")) {
+            enable = true;
+        } else if (action.equalsIgnoreCase("disable") || action.equalsIgnoreCase("off")) {
+            enable = false;
+        } else {
+            showNavigatorMessage("Usage: !flag <break|place> <enable|disable>");
+            return;
+        }
+
+        PathmindNavigator navigator = PathmindNavigator.getInstance();
+        if (flagName.equalsIgnoreCase("break") || flagName.equalsIgnoreCase("breaking")) {
+            navigator.setBlockBreakingAllowed(enable);
+            showNavigatorMessage("Pathmind Nav flag break: " + (enable ? "enabled" : "disabled"));
+            return;
+        }
+        if (flagName.equalsIgnoreCase("place") || flagName.equalsIgnoreCase("placing")) {
+            navigator.setBlockPlacingAllowed(enable);
+            showNavigatorMessage("Pathmind Nav flag place: " + (enable ? "enabled" : "disabled"));
+            return;
+        }
+        showNavigatorMessage("Usage: !flag <break|place> <enable|disable>");
     }
 
     private String formatDebugPos(BlockPos pos) {

@@ -1,5 +1,6 @@
 package com.pathmind.ui.overlay;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.pathmind.execution.PathmindNavigator;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -23,6 +24,7 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFA52B;
     private static final int STEP_COLOR = 0xFF7FD36B;
+    private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final double DASH_LENGTH = 0.42D;
     private static final double DASH_GAP = 0.24D;
     private static final double DASH_CYCLE = DASH_LENGTH + DASH_GAP;
@@ -67,6 +69,7 @@ public final class NavigatorWorldOverlay {
 
         try {
             renderStepMarkers(matrices, consumers, snapshot.path());
+            renderBreakTargets(matrices, consumers, snapshot.breakTargets());
             renderPath(matrices, consumers, player, snapshot.path(), goalPos);
             renderGoal(matrices, consumers, goalPos);
         } catch (Throwable ignored) {
@@ -208,6 +211,32 @@ public final class NavigatorWorldOverlay {
             Box marker = Box.of(pathPoint(step), 0.34D, 0.34D, 0.34D);
             renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
         }
+    }
+
+    private static void renderBreakTargets(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        List<BlockPos> breakTargets
+    ) {
+        if (breakTargets == null || breakTargets.isEmpty()) {
+            return;
+        }
+        RenderSystem.disableDepthTest();
+        for (BlockPos breakTarget : breakTargets) {
+            if (breakTarget == null) {
+                continue;
+            }
+            Box marker = new Box(
+                breakTarget.getX() + 0.02D,
+                breakTarget.getY() + 0.02D,
+                breakTarget.getZ() + 0.02D,
+                breakTarget.getX() + 0.98D,
+                breakTarget.getY() + 0.98D,
+                breakTarget.getZ() + 0.98D
+            );
+            renderBoxOutline(matrices, consumers, marker, BREAK_COLOR);
+        }
+        RenderSystem.enableDepthTest();
     }
 
     private static void renderFilledPrism(

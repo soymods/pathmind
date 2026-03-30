@@ -1431,7 +1431,10 @@ public final class PathmindNavigator {
             return ControllerMode.COMMIT_JUMP;
         }
         BlockPos breakTarget = selectBreakTarget(world, playerFootPos, waypoint, plannedPrimitive);
+        boolean miningAscentStep = plannedPrimitive != null
+            && plannedPrimitive.type() == PlannedPrimitiveType.MINE_ASCEND;
         if (breakTarget != null
+            || miningAscentStep
             || (allowBlockPlacing
                 && plannedPrimitive != null
                 && plannedPrimitive.placeTarget() != null)) {
@@ -2727,6 +2730,13 @@ public final class PathmindNavigator {
         if (dx > 1 || dz > 1 || Math.abs(dy) > MAX_STEP_UP + MAX_SAFE_FALL_DISTANCE) {
             return false;
         }
+        if (dx == 0
+            && dz == 0
+            && dy > 0
+            && (primitive == null
+                || (!isClimbPrimitive(primitive) && !isPillarPrimitive(primitive)))) {
+            return false;
+        }
         if (dx == 1 && dz == 1 && dy != 0) {
             return false;
         }
@@ -3268,9 +3278,22 @@ public final class PathmindNavigator {
     }
 
     private Neighbor resolveNeighborAccess(World world, BlockPos from, BlockPos candidate) {
+        if (world == null || from == null || candidate == null) {
+            return null;
+        }
+        boolean sameColumnUp = candidate.getX() == from.getX()
+            && candidate.getZ() == from.getZ()
+            && candidate.getY() > from.getY();
+        boolean climbTransition = sameColumnUp && isClimbTransition(world, from, candidate);
+        if (sameColumnUp && !climbTransition && !canPillarTo(world, from, candidate)) {
+            return null;
+        }
         double extraCost = moveTypePenalty(world, from, candidate);
         List<BlockPos> breakTargets = getRequiredBreakTargets(world, from, candidate);
         if (breakTargets == null) {
+            return null;
+        }
+        if (sameColumnUp && !climbTransition && !breakTargets.isEmpty()) {
             return null;
         }
         boolean navigableCandidate = isNavigableNode(world, candidate);
@@ -3902,6 +3925,46 @@ public final class PathmindNavigator {
         return true;
     }
 
+    private Vec3d resolveWaypointAimPoint(
+        BlockPos playerFootPos,
+        BlockPos waypoint,
+        BlockPos climbAnchor,
+        PlannedPrimitive plannedPrimitive,
+        double playerY
+    ) {
+        BlockPos horizontalAim = climbAnchor != null ? climbAnchor : waypoint;
+        if (horizontalAim == null) {
+            return Vec3d.ZERO;
+        }
+        double aimX = horizontalAim.getX() + 0.5D;
+        double aimZ = horizontalAim.getZ() + 0.5D;
+        if (playerFootPos != null
+            && waypoint != null
+            && plannedPrimitive != null
+            && isJumpPrimitive(plannedPrimitive)
+            && waypoint.getY() > playerFootPos.getY()) {
+            int stepX = Integer.compare(waypoint.getX(), playerFootPos.getX());
+            int stepZ = Integer.compare(waypoint.getZ(), playerFootPos.getZ());
+            if (stepX != 0 || stepZ != 0) {
+                aimX -= stepX * 0.32D;
+                aimZ -= stepZ * 0.32D;
+            }
+        }
+        return new Vec3d(aimX, playerY, aimZ);
+    }
+
+    private BlockPos resolveMinedAscentAdvanceBlock(BlockPos from, BlockPos waypoint) {
+        if (from == null || waypoint == null) {
+            return null;
+        }
+        int stepX = Integer.compare(waypoint.getX(), from.getX());
+        int stepZ = Integer.compare(waypoint.getZ(), from.getZ());
+        if (stepX == 0 && stepZ == 0) {
+            return null;
+        }
+        return new BlockPos(from.getX() + stepX, from.getY(), from.getZ() + stepZ);
+    }
+
     private boolean canAttemptMiningAdvanceJump(World world, BlockPos from, BlockPos waypoint) {
         if (world == null || from == null || waypoint == null) {
             return false;
@@ -4369,6 +4432,86 @@ public final class PathmindNavigator {
             }
         }
 
+        if (plannedPrimitive != null
+            && plannedPrimitive.type() == PlannedPrimitiveType.MINE_ASCEND
+            && waypoint.getY() > playerFootPos.getY()
+            && player.isOnGround()
+            && canAttemptMiningAdvanceJump(world, playerFootPos, waypoint)) {
+            Vec3d currentVelocity = player.getVelocity();
+            double dx = waypoint.getX() + 0.5D - player.getX();
+            double dz = waypoint.getZ() + 0.5D - player.getZ();
+            double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+            if (horizontalDistance > 0.0001D) {
+                player.setVelocity(
+                    currentVelocity.x + (dx / horizontalDistance) * 0.14D,
+                    currentVelocity.y,
+                    currentVelocity.z + (dz / horizontalDistance) * 0.14D
+                );
+            }
+            if (client.options != null) {
+                if (client.options.forwardKey != null) {
+                    client.options.forwardKey.setPressed(true);
+                }
+                if (client.options.jumpKey != null) {
+                    client.options.jumpKey.setPressed(true);
+                }
+            }
+            player.jump();
+            synchronized (this) {
+                activeBreakTarget = null;
+                lastJumpAtMs = now;
+                committedJumpWaypoint = waypoint.toImmutable();
+                committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
+                lastReplanReason = "mined ascent jump";
+                lastStuckReason = "airborne";
+            }
+            noteControllerActivity(now);
+            return true;
+        }
+
+        if (plannedPrimitive != null
+            && plannedPrimitive.type() == PlannedPrimitiveType.MINE_ASCEND
+            && horizontalDistanceSq(playerFootPos, waypoint) > WAYPOINT_REACHED_DISTANCE_SQ
+            && Math.abs(waypoint.getY() - playerFootPos.getY()) <= 1) {
+            BlockPos advanceBlock = resolveMinedAscentAdvanceBlock(playerFootPos, waypoint);
+            if (advanceBlock == null) {
+                return false;
+            }
+            Vec3d currentPos = new Vec3d(player.getX(), player.getY(), player.getZ());
+            Vec3d advanceAim = Vec3d.ofCenter(advanceBlock, player.getY() - advanceBlock.getY());
+            double dx = advanceAim.x - currentPos.x;
+            double dz = advanceAim.z - currentPos.z;
+            double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+            if (horizontalDistance > 0.0001D) {
+                float targetYaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
+                float nextYaw = stepAngle(player.getYaw(), targetYaw, MAX_YAW_STEP);
+                player.setYaw(nextYaw);
+                player.setHeadYaw(nextYaw);
+                player.setBodyYaw(nextYaw);
+                Vec3d velocity = player.getVelocity();
+                player.setVelocity(
+                    velocity.x * 0.20D + (dx / horizontalDistance) * 0.15D,
+                    velocity.y,
+                    velocity.z * 0.20D + (dz / horizontalDistance) * 0.15D
+                );
+            }
+            if (client.options != null) {
+                if (client.options.forwardKey != null) {
+                    client.options.forwardKey.setPressed(true);
+                }
+                if (client.options.jumpKey != null) {
+                    client.options.jumpKey.setPressed(false);
+                }
+            }
+            synchronized (this) {
+                activeBreakTarget = null;
+                lastReplanReason = "mined ascent advance";
+                lastStuckReason = "advancing into mined step";
+            }
+            noteControllerActivity(now);
+            return true;
+        }
+
         BlockPos placeTarget;
         synchronized (this) {
             placeTarget = null;
@@ -4644,11 +4787,7 @@ public final class PathmindNavigator {
         FollowSegmentType segmentType = climbNode ? FollowSegmentType.CLIMB : (verticalDropStep ? FollowSegmentType.DROP : FollowSegmentType.GROUND);
         BlockPos segmentTarget = climbNode ? (climbAnchor != null ? climbAnchor : waypoint) : waypoint;
 
-        Vec3d waypointCenter = new Vec3d(
-            (climbNode ? climbAnchor.getX() : waypoint.getX()) + 0.5D,
-            player.getY(),
-            (climbNode ? climbAnchor.getZ() : waypoint.getZ()) + 0.5D
-        );
+        Vec3d waypointCenter = resolveWaypointAimPoint(playerFootPos, waypoint, climbNode ? climbAnchor : null, plannedPrimitive, player.getY());
         double waypointDx = waypointCenter.x - currentPos.x;
         double waypointDz = waypointCenter.z - currentPos.z;
         double waypointHorizontalDistance = Math.sqrt(waypointDx * waypointDx + waypointDz * waypointDz);
@@ -4708,6 +4847,13 @@ public final class PathmindNavigator {
             && waypoint.getY() > playerFootPos.getY();
         boolean placeRequiredStep = primitiveRequiresPlace(plannedPrimitive)
             || (plannedPrimitive == null && needsPlacedSupport(world, waypoint) && shouldPlaceForWaypoint(world, playerFootPos, waypoint));
+        boolean ascentCommitStep = plannedPrimitive != null
+            && isJumpPrimitive(plannedPrimitive)
+            && waypoint.getY() > playerFootPos.getY()
+            && !breakRequiredStep
+            && !placeRequiredStep
+            && !pillarStep
+            && !verticalDropStep;
         boolean blockedTowardWaypoint = isBlockedTowardWaypoint(world, playerFootPos, waypoint) && !miningAdvanceStep;
         boolean applyCountermovement = !nearFinalGoal
             && !pillarStep
@@ -4730,17 +4876,20 @@ public final class PathmindNavigator {
             double correctionZ = MathHelper.clamp(waypointDz * 0.22D, -0.10D, 0.10D);
             Vec3d velocity = player.getVelocity();
             player.setVelocity(velocity.x * 0.15D + correctionX, velocity.y, velocity.z * 0.15D + correctionZ);
-        } else if (miningAdvanceStep) {
-            double correctionX = MathHelper.clamp(waypointDx * 0.16D, -0.07D, 0.07D);
-            double correctionZ = MathHelper.clamp(waypointDz * 0.16D, -0.07D, 0.07D);
+        } else if (miningAdvanceStep || ascentCommitStep) {
+            double correctionScale = ascentCommitStep ? 0.22D : 0.16D;
+            double correctionLimit = ascentCommitStep ? 0.11D : 0.07D;
+            double velocityBlend = ascentCommitStep ? 0.30D : 0.45D;
+            double correctionX = MathHelper.clamp(waypointDx * correctionScale, -correctionLimit, correctionLimit);
+            double correctionZ = MathHelper.clamp(waypointDz * correctionScale, -correctionLimit, correctionLimit);
             Vec3d velocity = player.getVelocity();
-            player.setVelocity(velocity.x * 0.45D + correctionX, velocity.y, velocity.z * 0.45D + correctionZ);
+            player.setVelocity(velocity.x * velocityBlend + correctionX, velocity.y, velocity.z * velocityBlend + correctionZ);
             noteControllerActivity(now);
         }
 
         if (client.options != null) {
             if (client.options.forwardKey != null) {
-                client.options.forwardKey.setPressed((miningAdvanceStep && waypointHorizontalDistance > 0.08D)
+                client.options.forwardKey.setPressed(((miningAdvanceStep || ascentCommitStep) && waypointHorizontalDistance > 0.01D)
                     || (!verticalDropStep && !pillarStep && !blockedTowardWaypoint && !breakRequiredStep && (climbNode || !applyCountermovement)));
             }
             if (client.options.sprintKey != null) {
@@ -4773,7 +4922,8 @@ public final class PathmindNavigator {
                     && !pillarStep
                     && ((swimUp && waypoint.getY() >= playerFootPos.getY())
                     || climbUp
-                    || miningAdvanceJumpStep));
+                    || miningAdvanceJumpStep
+                    || ascentCommitStep));
             }
             if (client.options.sneakKey != null) {
                 client.options.sneakKey.setPressed(!verticalDropStep && climbDown);
@@ -4841,6 +4991,17 @@ public final class PathmindNavigator {
                 ? canAttemptMiningAdvanceJump(world, playerFootPos, waypoint)
                 : canAttemptJump(world, playerFootPos, waypoint);
             if (canJump) {
+                if (!desiredDirection.equals(Vec3d.ZERO)) {
+                    Vec3d velocity = player.getVelocity();
+                    player.setVelocity(
+                        velocity.x + desiredDirection.x * 0.12D,
+                        velocity.y,
+                        velocity.z + desiredDirection.z * 0.12D
+                    );
+                }
+                if (client.options != null && client.options.forwardKey != null) {
+                    client.options.forwardKey.setPressed(true);
+                }
                 player.jump();
                 synchronized (this) {
                     lastJumpAtMs = now;

@@ -142,6 +142,7 @@ public final class NavigatorChatSuggestions {
             }
         }
         for (String branchCommand : List.of("!nav debug", "!nav water", "!nav water normal", "!nav water avoid",
+            "!nav logs", "!nav logs enable", "!nav logs disable",
             "!flag break", "!flag place", "!flag break enable", "!flag break disable",
             "!flag place enable", "!flag place disable")) {
             if (branchCommand.equals(completion)) {
@@ -198,8 +199,17 @@ public final class NavigatorChatSuggestions {
     private List<SuggestionEntry> movementSuggestions(String root, int partCount, boolean endsWithSpace) {
         List<SuggestionEntry> suggestions = new ArrayList<>();
         if (partCount == 1 && endsWithSpace) {
-            suggestions.add(new SuggestionEntry("<x> <y> <z>", "absolute or ~ coords", "!" + root + " "));
-            suggestions.add(new SuggestionEntry("<x> <z>", "keep current y", "!" + root + " "));
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client != null && client.player != null) {
+                int x = client.player.getBlockX();
+                int y = client.player.getBlockY();
+                int z = client.player.getBlockZ();
+                suggestions.add(new SuggestionEntry(x + " " + y + " " + z, "current coords", "!" + root + " " + x + " " + y + " " + z));
+                suggestions.add(new SuggestionEntry(x + " " + z, "current x z", "!" + root + " " + x + " " + z));
+            } else {
+                suggestions.add(new SuggestionEntry("<x> <y> <z>", "absolute or ~ coords", "!" + root + " "));
+                suggestions.add(new SuggestionEntry("<x> <z>", "keep current y", "!" + root + " "));
+            }
         }
         return suggestions;
     }
@@ -233,11 +243,23 @@ public final class NavigatorChatSuggestions {
         if (parts.length == 1 && endsWithSpace) {
             suggestions.add(new SuggestionEntry("debug", "planner state", "!nav debug"));
             suggestions.add(new SuggestionEntry("water", "water mode", "!nav water"));
+            suggestions.add(new SuggestionEntry("logs", "event log file", "!nav logs"));
             return suggestions;
         }
         if (parts.length == 2 && !endsWithSpace) {
             addIfMatches(suggestions, "debug", "planner state", "!nav debug", parts[1]);
             addIfMatches(suggestions, "water", "water mode", "!nav water", parts[1]);
+            addIfMatches(suggestions, "logs", "event log file", "!nav logs", parts[1]);
+            return suggestions;
+        }
+        if (parts.length == 2 && "logs".equals(parts[1]) && endsWithSpace) {
+            suggestions.add(new SuggestionEntry("enable", "write log file", "!nav logs enable"));
+            suggestions.add(new SuggestionEntry("disable", "stop writing log file", "!nav logs disable"));
+            return suggestions;
+        }
+        if (parts.length == 3 && "logs".equals(parts[1]) && !endsWithSpace) {
+            addIfMatches(suggestions, "enable", "write log file", "!nav logs enable", parts[2]);
+            addIfMatches(suggestions, "disable", "stop writing log file", "!nav logs disable", parts[2]);
             return suggestions;
         }
         if (parts.length == 2 && "water".equals(parts[1]) && endsWithSpace) {

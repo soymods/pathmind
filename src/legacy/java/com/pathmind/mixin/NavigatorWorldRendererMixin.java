@@ -1,29 +1,33 @@
 package com.pathmind.mixin;
 
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.pathmind.ui.overlay.NavigatorWorldOverlay;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.debug.DebugRenderer;
-import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.client.render.WorldRenderer;
+import net.minecraft.client.util.ObjectAllocator;
+import org.joml.Matrix4f;
+import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(DebugRenderer.class)
+@Mixin(WorldRenderer.class)
 public class NavigatorWorldRendererMixin {
-    @Inject(
-        method = "renderLate(Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider$Immediate;DDD)V",
-        at = @At("TAIL"),
-        require = 0
-    )
-    private void pathmind$renderLegacyLateNavigatorOverlay(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        double cameraX,
-        double cameraY,
-        double cameraZ,
+    @Inject(method = "render", at = @At("TAIL"))
+    private void pathmind$renderLegacyNavigatorOverlay(
+        ObjectAllocator allocator,
+        RenderTickCounter tickCounter,
+        boolean renderBlockOutline,
+        Camera camera,
+        Matrix4f positionMatrix,
+        Matrix4f projectionMatrix,
+        GpuBufferSlice fogBuffer,
+        Vector4f fogColor,
+        boolean tick,
         CallbackInfo ci
     ) {
-        NavigatorWorldOverlay.render(matrices, consumers, cameraX, cameraY, cameraZ);
+        NavigatorWorldOverlay.render(positionMatrix);
     }
 }

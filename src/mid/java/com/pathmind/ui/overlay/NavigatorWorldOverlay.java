@@ -15,6 +15,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +25,9 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFA52B;
     private static final int STEP_COLOR = 0xFF7FD36B;
+    private static final int VISITED_STEP_COLOR = 0xFF3E8E7E;
     private static final int BREAK_COLOR = 0xFFFF5A4F;
+    private static final int PLACE_COLOR = 0xFFC47BFF;
     private static final double DASH_LENGTH = 0.42D;
     private static final double DASH_GAP = 0.24D;
     private static final double DASH_CYCLE = DASH_LENGTH + DASH_GAP;
@@ -68,13 +71,17 @@ public final class NavigatorWorldOverlay {
         matrices.multiplyPositionMatrix(positionMatrix);
 
         try {
-            renderStepMarkers(matrices, consumers, snapshot.path());
+            beginOverlayPass();
+            renderCandidatePaths(matrices, consumers, player, snapshot.candidatePaths());
+            renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.pathIndex());
             renderBreakTargets(matrices, consumers, snapshot.breakTargets());
+            renderPlaceTargets(matrices, consumers, snapshot.placeTargets());
             renderPath(matrices, consumers, player, snapshot.path(), goalPos);
             renderGoal(matrices, consumers, goalPos);
         } catch (Throwable ignored) {
             // Never fail the world renderer because of overlay drawing.
         } finally {
+            endOverlayPass();
             consumers.draw();
         }
     }
@@ -198,7 +205,8 @@ public final class NavigatorWorldOverlay {
     private static void renderStepMarkers(
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
-        List<BlockPos> path
+        List<BlockPos> path,
+        int pathIndex
     ) {
         if (path == null || path.size() < 2) {
             return;
@@ -209,7 +217,8 @@ public final class NavigatorWorldOverlay {
                 continue;
             }
             Box marker = Box.of(pathPoint(step), 0.34D, 0.34D, 0.34D);
-            renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
+            int color = i < Math.max(0, pathIndex) ? VISITED_STEP_COLOR : STEP_COLOR;
+            renderBoxOutline(matrices, consumers, marker, color);
         }
     }
 
@@ -221,7 +230,6 @@ public final class NavigatorWorldOverlay {
         if (breakTargets == null || breakTargets.isEmpty()) {
             return;
         }
-        RenderSystem.disableDepthTest();
         for (BlockPos breakTarget : breakTargets) {
             if (breakTarget == null) {
                 continue;
@@ -236,6 +244,39 @@ public final class NavigatorWorldOverlay {
             );
             renderBoxOutline(matrices, consumers, marker, BREAK_COLOR);
         }
+    }
+
+    private static void renderPlaceTargets(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        List<BlockPos> placeTargets
+    ) {
+        if (placeTargets == null || placeTargets.isEmpty()) {
+            return;
+        }
+        for (BlockPos placeTarget : placeTargets) {
+            if (placeTarget == null) {
+                continue;
+            }
+            Box marker = new Box(
+                placeTarget.getX() + 0.02D,
+                placeTarget.getY() + 0.02D,
+                placeTarget.getZ() + 0.02D,
+                placeTarget.getX() + 0.98D,
+                placeTarget.getY() + 0.98D,
+                placeTarget.getZ() + 0.98D
+            );
+            renderBoxOutline(matrices, consumers, marker, PLACE_COLOR);
+        }
+    }
+
+    private static void beginOverlayPass() {
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthFunc(GL11.GL_ALWAYS);
+    }
+
+    private static void endOverlayPass() {
+        RenderSystem.depthFunc(GL11.GL_LEQUAL);
         RenderSystem.enableDepthTest();
     }
 

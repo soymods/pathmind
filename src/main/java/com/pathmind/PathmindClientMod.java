@@ -9,6 +9,7 @@ import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
 import com.pathmind.ui.overlay.NavigatorChatSuggestions;
+import com.pathmind.ui.overlay.NavigatorDebugOverlay;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.ChatMessageTracker;
@@ -59,6 +60,7 @@ public class PathmindClientMod implements ClientModInitializer {
     private static final String RECIPE_CACHE_NOTIFICATION_KEY = "recipe_cache_warmup";
     private static final int NAVIGATOR_NOTIFICATION_COLOR = 0xFF66D8FF;
     private static ActiveNodeOverlay activeNodeOverlay;
+    private static NavigatorDebugOverlay navigatorDebugOverlay;
     private static NodeErrorNotificationOverlay nodeErrorNotificationOverlay;
     private static VariablesOverlay variablesOverlay;
     private volatile boolean worldShutdownHandled;
@@ -124,6 +126,7 @@ public class PathmindClientMod implements ClientModInitializer {
 
         PresetManager.initialize();
         activeNodeOverlay = new ActiveNodeOverlay();
+        navigatorDebugOverlay = new NavigatorDebugOverlay();
         nodeErrorNotificationOverlay = NodeErrorNotificationOverlay.getInstance();
         variablesOverlay = new VariablesOverlay();
 
@@ -220,6 +223,9 @@ public class PathmindClientMod implements ClientModInitializer {
         }
         if (variablesOverlay != null) {
             variablesOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+        }
+        if (navigatorDebugOverlay != null) {
+            navigatorDebugOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
         }
         if (nodeErrorNotificationOverlay != null) {
             nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
@@ -564,12 +570,17 @@ public class PathmindClientMod implements ClientModInitializer {
             return true;
         }
 
+        if (parts[0].equalsIgnoreCase("nav") && parts.length >= 3 && parts[1].equalsIgnoreCase("logs")) {
+            handleNavigatorLogs(parts[2]);
+            return true;
+        }
+
         if (parts[0].equalsIgnoreCase("flag") && parts.length >= 3) {
             handleNavigatorFlag(parts[1], parts[2]);
             return true;
         }
 
-        showNavigatorMessage("Unknown Pathmind Nav command. Use !travel, !path, !nav debug, !nav water, !flag, or !stop.");
+        showNavigatorMessage("Unknown Pathmind Nav command. Use !travel, !path, !nav debug, !nav water, !nav logs, !flag, or !stop.");
         return true;
     }
 
@@ -608,28 +619,8 @@ public class PathmindClientMod implements ClientModInitializer {
     }
 
     private void handleNavigatorDebug() {
-        PathmindNavigator.DebugInfo info = PathmindNavigator.getInstance().getDebugInfo();
-        if (info == null) {
-            showNavigatorMessage("Nav Debug: idle");
-            return;
-        }
-
-        showNavigatorMessage(
-            "Nav Debug: state=" + info.state()
-                + " goal=" + info.goalMode()
-                + " water=" + info.waterMode()
-                + " break=" + (info.allowBlockBreaking() ? "on" : "off")
-                + " place=" + (info.allowBlockPlacing() ? "on" : "off")
-                + " target=" + formatDebugPos(info.targetPos())
-                + " resolved=" + formatDebugPos(info.resolvedGoalPos())
-        );
-        showNavigatorMessage(
-            "Nav Debug: waypoint=" + formatDebugPos(info.activeWaypoint())
-                + " pathIndex=" + info.pathIndex()
-                + " nodes=" + info.nodeCount()
-                + " replan=" + sanitizeDebugText(info.lastReplanReason())
-                + " stuck=" + sanitizeDebugText(info.lastStuckReason())
-        );
+        boolean enabled = navigatorDebugOverlay != null && navigatorDebugOverlay.toggle();
+        showNavigatorMessage(enabled ? "Pathmind Nav debug overlay enabled." : "Pathmind Nav debug overlay disabled.");
     }
 
     private BlockPos parseNavigatorTarget(MinecraftClient client, String[] parts, int coordinateStartIndex, String usageCommand) {
@@ -641,14 +632,14 @@ public class PathmindClientMod implements ClientModInitializer {
         int remaining = parts.length - coordinateStartIndex;
         try {
             if (remaining == 2) {
-                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), true);
-                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockZ(), true);
+                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
+                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockZ(), false);
                 return new BlockPos(x, client.player.getBlockY(), z);
             }
             if (remaining == 3) {
-                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), true);
+                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
                 int y = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockY(), false);
-                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 2], client.player.getBlockZ(), true);
+                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 2], client.player.getBlockZ(), false);
                 return new BlockPos(x, y, z);
             }
         } catch (NumberFormatException exception) {
@@ -666,16 +657,12 @@ public class PathmindClientMod implements ClientModInitializer {
         }
         if (!token.startsWith("~")) {
             int absolute = Integer.parseInt(token);
-            return normalizeAbsoluteHorizontal ? normalizeNavigatorCoordinate(absolute) : absolute;
+            return absolute;
         }
         if (token.length() == 1) {
             return base;
         }
         return base + Integer.parseInt(token.substring(1));
-    }
-
-    private int normalizeNavigatorCoordinate(int coordinate) {
-        return coordinate - 1;
     }
 
     private void handleNavigatorWaterMode(String modeToken) {
@@ -694,6 +681,24 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
         showNavigatorMessage("Usage: !nav water <normal|avoid>");
+    }
+
+    private void handleNavigatorLogs(String modeToken) {
+        if (modeToken == null) {
+            showNavigatorMessage("Usage: !nav logs <enable|disable>");
+            return;
+        }
+        if (modeToken.equalsIgnoreCase("enable") || modeToken.equalsIgnoreCase("on")) {
+            PathmindNavigator.getInstance().setEventLoggingEnabled(true);
+            showNavigatorMessage("Pathmind Nav logs enabled: logs/navigator-debug.log");
+            return;
+        }
+        if (modeToken.equalsIgnoreCase("disable") || modeToken.equalsIgnoreCase("off")) {
+            PathmindNavigator.getInstance().setEventLoggingEnabled(false);
+            showNavigatorMessage("Pathmind Nav logs disabled.");
+            return;
+        }
+        showNavigatorMessage("Usage: !nav logs <enable|disable>");
     }
 
     private void handleNavigatorFlag(String flagName, String action) {

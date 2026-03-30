@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.pathmind.execution.PathmindNavigator;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.render.BufferBuilderStorage;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -11,6 +12,8 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +23,9 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFA52B;
     private static final int STEP_COLOR = 0xFF7FD36B;
+    private static final int VISITED_STEP_COLOR = 0xFF3E8E7E;
     private static final int BREAK_COLOR = 0xFFFF5A4F;
+    private static final int PLACE_COLOR = 0xFFC47BFF;
     private static final double DASH_LENGTH = 0.42D;
     private static final double DASH_GAP = 0.24D;
     private static final double DASH_CYCLE = DASH_LENGTH + DASH_GAP;
@@ -29,6 +34,32 @@ public final class NavigatorWorldOverlay {
     private static final double GOAL_INSET = 0.02D;
 
     private NavigatorWorldOverlay() {
+    }
+
+    public static void render(Matrix4f positionMatrix) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        ClientPlayerEntity player = client != null ? client.player : null;
+        if (client == null || player == null || positionMatrix == null) {
+            return;
+        }
+
+        BufferBuilderStorage bufferBuilders = client.getBufferBuilders();
+        if (bufferBuilders == null) {
+            return;
+        }
+        VertexConsumerProvider.Immediate consumers = bufferBuilders.getEffectVertexConsumers();
+        if (consumers == null) {
+            return;
+        }
+
+        Vec3d cameraPos = client.gameRenderer != null && client.gameRenderer.getCamera() != null
+            ? client.gameRenderer.getCamera().getPos()
+            : player.getPos();
+
+        MatrixStack matrices = new MatrixStack();
+        matrices.loadIdentity();
+        matrices.multiplyPositionMatrix(positionMatrix);
+        render(matrices, consumers, cameraPos.x, cameraPos.y, cameraPos.z);
     }
 
     public static void render(
@@ -52,13 +83,25 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
+        MinecraftClient client = MinecraftClient.getInstance();
+        ClientPlayerEntity player = client != null ? client.player : null;
+        if (player == null) {
+            return;
+        }
+
         try {
-            renderStepMarkers(matrices, consumers, snapshot.path(), cameraX, cameraY, cameraZ);
+            beginOverlayPass();
+            renderCandidatePaths(matrices, consumers, player, snapshot.candidatePaths(), cameraX, cameraY, cameraZ);
+            renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.pathIndex(), cameraX, cameraY, cameraZ);
             renderBreakTargets(matrices, consumers, snapshot.breakTargets(), cameraX, cameraY, cameraZ);
+            renderPlaceTargets(matrices, consumers, snapshot.placeTargets(), cameraX, cameraY, cameraZ);
             renderPath(matrices, consumers, snapshot.path(), goalPos, cameraX, cameraY, cameraZ);
             renderGoal(matrices, consumers, goalPos, cameraX, cameraY, cameraZ);
         } catch (Throwable ignored) {
             // Never fail the debug renderer because of Pathmind indicators.
+        } finally {
+            consumers.draw();
+            endOverlayPass();
         }
     }
 
@@ -92,6 +135,34 @@ public final class NavigatorWorldOverlay {
             return;
         }
         renderDashedSegments(matrices, consumers, points, animationPhase(), PATH_COLOR);
+    }
+
+    private static void renderCandidatePaths(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        ClientPlayerEntity player,
+        List<List<BlockPos>> candidatePaths,
+        double cameraX,
+        double cameraY,
+        double cameraZ
+    ) {
+        if (player == null || candidatePaths == null || candidatePaths.size() <= 1) {
+            return;
+        }
+
+        double phase = animationPhase();
+        for (int i = 1; i < candidatePaths.size(); i++) {
+            List<BlockPos> candidate = candidatePaths.get(i);
+            if (candidate == null || candidate.isEmpty()) {
+                continue;
+            }
+            List<Vec3d> points = new ArrayList<>(candidate.size() + 1);
+            points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraX, cameraY, cameraZ));
+            for (BlockPos node : candidate) {
+                points.add(cameraRelative(pathPoint(node), cameraX, cameraY, cameraZ));
+            }
+            renderDashedSegments(matrices, consumers, points, phase, CANDIDATE_PATH_COLOR);
+        }
     }
 
     private static void renderDashedSegments(
@@ -174,6 +245,7 @@ public final class NavigatorWorldOverlay {
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
         List<BlockPos> path,
+        int pathIndex,
         double cameraX,
         double cameraY,
         double cameraZ
@@ -187,7 +259,8 @@ public final class NavigatorWorldOverlay {
                 continue;
             }
             Box marker = Box.of(cameraRelative(pathPoint(step), cameraX, cameraY, cameraZ), 0.34D, 0.34D, 0.34D);
-            renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
+            int color = i < Math.max(0, pathIndex) ? VISITED_STEP_COLOR : STEP_COLOR;
+            renderBoxOutline(matrices, consumers, marker, color);
         }
     }
 
@@ -202,7 +275,6 @@ public final class NavigatorWorldOverlay {
         if (breakTargets == null || breakTargets.isEmpty()) {
             return;
         }
-        setDepthTestEnabled(false);
         for (BlockPos breakTarget : breakTargets) {
             if (breakTarget == null) {
                 continue;
@@ -217,7 +289,43 @@ public final class NavigatorWorldOverlay {
             );
             renderBoxOutline(matrices, consumers, marker, BREAK_COLOR);
         }
+    }
+
+    private static void renderPlaceTargets(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        List<BlockPos> placeTargets,
+        double cameraX,
+        double cameraY,
+        double cameraZ
+    ) {
+        if (placeTargets == null || placeTargets.isEmpty()) {
+            return;
+        }
+        for (BlockPos placeTarget : placeTargets) {
+            if (placeTarget == null) {
+                continue;
+            }
+            Box marker = new Box(
+                placeTarget.getX() + 0.02D - cameraX,
+                placeTarget.getY() + 0.02D - cameraY,
+                placeTarget.getZ() + 0.02D - cameraZ,
+                placeTarget.getX() + 0.98D - cameraX,
+                placeTarget.getY() + 0.98D - cameraY,
+                placeTarget.getZ() + 0.98D - cameraZ
+            );
+            renderBoxOutline(matrices, consumers, marker, PLACE_COLOR);
+        }
+    }
+
+    private static void beginOverlayPass() {
+        setDepthFuncAlways(true);
+        setDepthTestEnabled(false);
+    }
+
+    private static void endOverlayPass() {
         setDepthTestEnabled(true);
+        setDepthFuncAlways(false);
     }
 
     private static void setDepthTestEnabled(boolean enabled) {
@@ -244,6 +352,14 @@ public final class NavigatorWorldOverlay {
             return true;
         } catch (ReflectiveOperationException ignored) {
             return false;
+        }
+    }
+
+    private static void setDepthFuncAlways(boolean always) {
+        try {
+            RenderSystem.class.getMethod("depthFunc", int.class).invoke(null, always ? GL11.GL_ALWAYS : GL11.GL_LEQUAL);
+        } catch (ReflectiveOperationException ignored) {
+            // Older mappings may not expose depthFunc consistently.
         }
     }
 

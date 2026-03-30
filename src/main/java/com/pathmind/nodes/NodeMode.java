@@ -45,10 +45,6 @@ public enum NodeMode {
     PLAYER_GUI_OPEN("Open Player GUI", "Open the player's inventory screen"),
     PLAYER_GUI_CLOSE("Close GUI", "Close the currently open screen"),
 
-    // Screen control modes
-    SCREEN_OPEN_CHAT("Open Chat", "Open the chat screen for typing"),
-    SCREEN_CLOSE_CURRENT("Close Screen", "Close the currently open screen"),
-
     // UI Utils modes
     UI_UTILS_CLOSE_WITHOUT_PACKET("Close Without Packet", "Close the current GUI without sending a close packet"),
     UI_UTILS_CLOSE_SIGN_WITHOUT_PACKET("Close Sign Without Packet", "Close the sign editor without sending its update packet"),
@@ -137,10 +133,6 @@ public enum NodeMode {
                 return new NodeMode[]{
                     CRAFT_PLAYER_GUI, CRAFT_CRAFTING_TABLE
                 };
-            case SCREEN_CONTROL:
-                return new NodeMode[]{
-                    SCREEN_OPEN_CHAT, SCREEN_CLOSE_CURRENT
-                };
             case UI_UTILS:
                 return new NodeMode[]{
                     UI_UTILS_CLOSE_WITHOUT_PACKET,
@@ -204,8 +196,6 @@ public enum NodeMode {
                 return PLAYER_GUI_OPEN;
             case CLOSE_GUI:
                 return PLAYER_GUI_CLOSE;
-            case SCREEN_CONTROL:
-                return SCREEN_OPEN_CHAT;
             case UI_UTILS:
                 return UI_UTILS_CLOSE_WITHOUT_PACKET;
             case FARM:

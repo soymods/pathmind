@@ -205,8 +205,6 @@
   "pathmind.node.type.return.desc": "Stops current function",
   "pathmind.node.type.runPreset": "Run Preset",
   "pathmind.node.type.runPreset.desc": "Runs every START node in the selected preset",
-  "pathmind.node.type.screenControl": "Sterowanie ekranem",
-  "pathmind.node.type.screenControl.desc": "Otwórz lub zamknij ekrany w grze",
   "pathmind.node.type.sensorAtCoordinates": "We współrzędnych",
   "pathmind.node.type.sensorAtCoordinates.desc": "Wykrywa, czy gracz znajduje się w określonych współrzędnych",
   "pathmind.node.type.sensorChatMessage": "Wiadomość na czacie",

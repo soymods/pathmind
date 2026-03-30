@@ -211,8 +211,6 @@
   "pathmind.node.type.return.desc": "Stops current function",
   "pathmind.node.type.runPreset": "Run Preset",
   "pathmind.node.type.runPreset.desc": "Runs every START node in the selected preset",
-  "pathmind.node.type.screenControl": "Screen Control",
-  "pathmind.node.type.screenControl.desc": "Open or close in-game screens",
   "pathmind.node.type.sensorAtCoordinates": "At Coordinates",
   "pathmind.node.type.sensorAtCoordinates.desc": "Detect if player is at specific coordinates",
   "pathmind.node.type.sensorChatMessage": "Chat Message",

@@ -6995,9 +6995,6 @@ public class Node {
             case UI_UTILS:
                 executeUiUtilsCommand(future);
                 break;
-            case SCREEN_CONTROL:
-                executeScreenControlCommand(future);
-                break;
             case WAIT:
                 executeWaitCommand(future);
                 break;
@@ -9165,44 +9162,6 @@ public class Node {
 
                 future.complete(null);
             });
-    }
-
-    private void executeScreenControlCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        NodeMode screenMode = mode != null ? mode : NodeMode.SCREEN_OPEN_CHAT;
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-
-        if (client == null) {
-            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
-            return;
-        }
-
-        try {
-            runOnClientThread(client, () -> {
-                switch (screenMode) {
-                    case SCREEN_OPEN_CHAT:
-                        client.setScreen(ChatScreenCompatibilityBridge.create(""));
-                        break;
-                    case SCREEN_CLOSE_CURRENT:
-                        if (client.player != null) {
-                            client.player.closeHandledScreen();
-                        }
-                        client.setScreen(null);
-                        break;
-                    default:
-                        throw new IllegalStateException("Unknown screen control mode: " + screenMode);
-                }
-            });
-            future.complete(null);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            future.completeExceptionally(e);
-        } catch (RuntimeException e) {
-            sendNodeErrorMessage(client, e.getMessage());
-            future.complete(null);
-        }
     }
 
     private void executeUiUtilsCommand(CompletableFuture<Void> future) {

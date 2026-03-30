@@ -131,7 +131,6 @@ public enum NodeType {
     // Utility Commands
     RUN_PRESET("pathmind.node.type.runPreset", 0xFF607D8B, "pathmind.node.type.runPreset.desc"),
     CUSTOM_NODE("pathmind.node.type.customNode", 0xFF26A69A, "pathmind.node.type.customNode.desc"),
-    SCREEN_CONTROL("pathmind.node.type.screenControl", 0xFF9E9E9E, "pathmind.node.type.screenControl.desc"),
     WAIT("pathmind.node.type.wait", 0xFF607D8B, "pathmind.node.type.wait.desc"),
     MESSAGE("pathmind.node.type.message", 0xFF9E9E9E, "pathmind.node.type.message.desc"),
     TEMPLATE("pathmind.node.type.template", 0xFF26A69A, "pathmind.node.type.template.desc"),
@@ -328,7 +327,6 @@ public enum NodeType {
                 return NodeCategory.GUI;
             case CUSTOM_NODE:
                 return NodeCategory.CUSTOM;
-            case SCREEN_CONTROL:
             case RUN_PRESET:
             case WAIT:
             case MESSAGE:

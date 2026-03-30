@@ -99,6 +99,10 @@ public final class PathmindNavigator {
     private static final int MAX_VISIBLE_CANDIDATE_PATHS = 3;
     private static final int MAX_GOAL_PATH_ATTEMPTS = 6;
     private static final long PATHFIND_TIME_BUDGET_MS = 220L;
+    private static final long COARSE_PATHFIND_TIME_BUDGET_MS = 180L;
+    private static final int COARSE_MAX_EXPANSIONS = 90000;
+    private static final int COARSE_LOOKAHEAD_STEPS = 18;
+    private static final double COARSE_PLANNING_DISTANCE_SQ = 18.0D * 18.0D;
     private static final int MAX_DEBUG_EVENTS = 12;
     private static final Path NAV_DEBUG_LOG_PATH = Path.of(System.getProperty("user.dir"), "logs", "navigator-debug.log");
     private static final long DEBUG_HEARTBEAT_INTERVAL_MS = 1500L;
@@ -150,6 +154,7 @@ public final class PathmindNavigator {
     private boolean allowBlockPlacing = true;
     private boolean eventLoggingEnabled = true;
     private BlockPos resolvedGoalPos;
+    private BlockPos committedPathGoalPos;
     private List<BlockPos> currentPath = List.of();
     private List<PlannedPrimitive> currentPlan = List.of();
     private List<List<BlockPos>> candidatePaths = List.of();
@@ -306,6 +311,7 @@ public final class PathmindNavigator {
         this.bestDistanceSq = Double.MAX_VALUE;
         this.goalMode = GoalMode.EXACT;
         this.resolvedGoalPos = targetPos.toImmutable();
+        this.committedPathGoalPos = this.resolvedGoalPos;
         this.currentPath = List.of();
         this.currentPlan = List.of();
         this.candidatePaths = List.of();
@@ -583,6 +589,7 @@ public final class PathmindNavigator {
         this.lastJumpAtMs = 0L;
         this.goalMode = GoalMode.EXACT;
         this.resolvedGoalPos = this.targetPos;
+        this.committedPathGoalPos = this.resolvedGoalPos;
         this.currentPath = List.of();
         this.currentPlan = List.of();
         this.candidatePaths = List.of();
@@ -638,6 +645,7 @@ public final class PathmindNavigator {
         this.candidatePathsVisibleUntilMs = Long.MAX_VALUE;
         this.goalMode = computation.goalMode();
         this.resolvedGoalPos = computation.resolvedGoalPos();
+        this.committedPathGoalPos = this.resolvedGoalPos != null ? this.resolvedGoalPos.toImmutable() : this.targetPos;
         this.pathIndex = chooseInitialPathIndex(this.currentPath, start, this.targetPos);
         this.furthestVisitedPathIndex = this.pathIndex;
         this.activeWaypoint = this.currentPath.get(this.pathIndex);
@@ -717,6 +725,7 @@ public final class PathmindNavigator {
                     ? computation.goalMode()
                     : GoalMode.EXACT;
                 resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? computation.resolvedGoalPos() : target.toImmutable();
+                committedPathGoalPos = computation.resolvedGoalPos() != null ? computation.resolvedGoalPos().toImmutable() : resolvedGoalPos;
                 pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
                 furthestVisitedPathIndex = pathIndex;
                 activeWaypoint = currentPath.get(pathIndex);
@@ -759,6 +768,7 @@ public final class PathmindNavigator {
                             ? recovery.goalMode()
                             : GoalMode.EXACT;
                         resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? recovery.resolvedGoalPos() : target.toImmutable();
+                        committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().toImmutable() : resolvedGoalPos;
                         pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
                         furthestVisitedPathIndex = pathIndex;
                         activeWaypoint = currentPath.get(pathIndex);
@@ -793,6 +803,7 @@ public final class PathmindNavigator {
             waypoint = target.toImmutable();
             synchronized (this) {
                 activeWaypoint = waypoint;
+                activePlannedPrimitive = new PlannedPrimitive(waypoint, PlannedPrimitiveType.WALK, List.of(), null);
             }
         }
 
@@ -862,6 +873,7 @@ public final class PathmindNavigator {
                 waypoint = target.toImmutable();
                 synchronized (this) {
                     activeWaypoint = waypoint;
+                    activePlannedPrimitive = new PlannedPrimitive(waypoint, PlannedPrimitiveType.WALK, List.of(), null);
                 }
             }
         }
@@ -910,6 +922,7 @@ public final class PathmindNavigator {
         activeWaypoint = null;
         plannedBreakTargets = List.of();
         resolvedGoalPos = null;
+        committedPathGoalPos = null;
         committedJumpWaypoint = null;
         committedJumpUntilMs = 0L;
         lastInteractAtMs = 0L;
@@ -971,6 +984,7 @@ public final class PathmindNavigator {
         activeWaypoint = null;
         plannedBreakTargets = List.of();
         resolvedGoalPos = null;
+        committedPathGoalPos = null;
         committedJumpWaypoint = null;
         committedJumpUntilMs = 0L;
         lastInteractAtMs = 0L;
@@ -1031,6 +1045,7 @@ public final class PathmindNavigator {
         activeWaypoint = null;
         plannedBreakTargets = List.of();
         resolvedGoalPos = null;
+        committedPathGoalPos = null;
         committedJumpWaypoint = null;
         committedJumpUntilMs = 0L;
         lastInteractAtMs = 0L;
@@ -1074,6 +1089,7 @@ public final class PathmindNavigator {
 
     private boolean shouldReplan(ClientWorld world, BlockPos start, BlockPos target, long now) {
         synchronized (this) {
+            BlockPos committedGoal = committedPathGoalLocked(target);
             if (currentPath.isEmpty() || activeWaypoint == null) {
                 return true;
             }
@@ -1098,8 +1114,12 @@ public final class PathmindNavigator {
             if (!isPlayerNearPath(start)) {
                 return true;
             }
-            return !isPathGoalStillValid(currentPath, target);
+            return !isPathGoalStillValid(currentPath, committedGoal);
         }
+    }
+
+    private BlockPos committedPathGoalLocked(BlockPos fallbackTarget) {
+        return committedPathGoalPos != null ? committedPathGoalPos : fallbackTarget;
     }
 
     private boolean isWaypointActionable(World world, BlockPos waypoint) {
@@ -1193,10 +1213,11 @@ public final class PathmindNavigator {
             return false;
         }
         synchronized (this) {
+            BlockPos committedGoal = committedPathGoalLocked(target);
             return !currentPath.isEmpty()
                 && pathIndex >= 0
                 && pathIndex < currentPath.size()
-                && isPathGoalStillValid(currentPath, target)
+                && isPathGoalStillValid(currentPath, committedGoal)
                 && isPlayerNearPath(playerFootPos);
         }
     }
@@ -1213,10 +1234,11 @@ public final class PathmindNavigator {
             return false;
         }
         synchronized (this) {
+            BlockPos committedGoal = committedPathGoalLocked(target);
             if (currentPath.isEmpty() || activeWaypoint == null) {
                 return false;
             }
-            if (!isPathGoalStillValid(currentPath, target) || !isPlayerNearPath(playerFootPos)) {
+            if (!isPathGoalStillValid(currentPath, committedGoal) || !isPlayerNearPath(playerFootPos)) {
                 return false;
             }
             if (!isWaypointActionable(world, activeWaypoint)) {
@@ -1649,6 +1671,7 @@ public final class PathmindNavigator {
                         ? recovery.goalMode()
                         : GoalMode.EXACT;
                     resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? recovery.resolvedGoalPos() : target.toImmutable();
+                    committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().toImmutable() : resolvedGoalPos;
                     pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
                     furthestVisitedPathIndex = pathIndex;
                     activeWaypoint = currentPath.get(pathIndex);
@@ -1868,6 +1891,7 @@ public final class PathmindNavigator {
             candidatePaths = List.of();
             candidatePathsVisibleUntilMs = 0L;
             activeWaypoint = null;
+            committedPathGoalPos = null;
             pathIndex = 0;
             furthestVisitedPathIndex = 0;
             plannedBreakTargets = List.of();
@@ -2027,7 +2051,8 @@ public final class PathmindNavigator {
             if (waypoint == null) {
                 continue;
             }
-            List<BlockPos> requiredBreakTargets = getRequiredBreakTargets(world, waypoint);
+            BlockPos previous = i > 0 ? path.get(i - 1) : waypoint;
+            List<BlockPos> requiredBreakTargets = getRequiredBreakTargets(world, previous, waypoint);
             if (requiredBreakTargets == null || requiredBreakTargets.isEmpty()) {
                 continue;
             }
@@ -2051,7 +2076,7 @@ public final class PathmindNavigator {
                 continue;
             }
             BlockPos previous = i > 0 ? path.get(i - 1) : target;
-            List<BlockPos> breakTargets = getRequiredBreakTargets(world, target);
+            List<BlockPos> breakTargets = getRequiredBreakTargets(world, previous, target);
             if (breakTargets == null) {
                 breakTargets = List.of();
             } else {
@@ -2229,6 +2254,15 @@ public final class PathmindNavigator {
             return new PathComputation(List.of(), List.of(), List.of(), null, GoalMode.EXACT, FailureReason.NO_LOADED_FRONTIER);
         }
 
+        BlockPos exactPlanningTarget = planningTarget;
+        if (shouldUseHierarchicalPlanning(normalizedStart, planningTarget)) {
+            List<BlockPos> coarsePath = findCoarsePath(world, normalizedStart, planningTarget);
+            BlockPos localPlanningTarget = selectLocalPlanningTarget(world, normalizedStart, coarsePath, planningTarget);
+            if (localPlanningTarget != null) {
+                planningTarget = localPlanningTarget;
+            }
+        }
+
         List<BlockPos> goalCandidates = collectGoalCandidates(world, normalizedStart, planningTarget);
         if (goalCandidates.isEmpty()) {
             BlockPos nearby = findNearbyStandable(world, planningTarget, 4);
@@ -2301,8 +2335,110 @@ public final class PathmindNavigator {
             .limit(MAX_VISIBLE_CANDIDATE_PATHS)
             .toList();
         BlockPos resolvedGoal = scoredPaths.get(0).path().isEmpty() ? null : scoredPaths.get(0).path().get(scoredPaths.get(0).path().size() - 1);
-        GoalMode goalMode = resolvedGoal != null && resolvedGoal.equals(target) ? GoalMode.EXACT : GoalMode.NEAREST_STANDABLE;
+        GoalMode goalMode = resolvedGoal != null && resolvedGoal.equals(exactPlanningTarget) ? GoalMode.EXACT : GoalMode.NEAREST_STANDABLE;
         return new PathComputation(scoredPaths.get(0).path(), scoredPaths.get(0).plannedPrimitives(), visibleCandidates, resolvedGoal, goalMode, null);
+    }
+
+    private boolean shouldUseHierarchicalPlanning(BlockPos start, BlockPos target) {
+        if (start == null || target == null) {
+            return false;
+        }
+        return horizontalDistanceSq(start, target) >= COARSE_PLANNING_DISTANCE_SQ;
+    }
+
+    private BlockPos selectLocalPlanningTarget(World world, BlockPos start, List<BlockPos> coarsePath, BlockPos fallbackTarget) {
+        if (fallbackTarget == null) {
+            return null;
+        }
+        if (coarsePath == null || coarsePath.isEmpty()) {
+            return fallbackTarget;
+        }
+        if (coarsePath.size() <= COARSE_LOOKAHEAD_STEPS + 1) {
+            return coarsePath.get(coarsePath.size() - 1);
+        }
+        int upperBound = Math.min(coarsePath.size() - 1, COARSE_LOOKAHEAD_STEPS);
+        BlockPos selected = null;
+        for (int i = upperBound; i >= 1; i--) {
+            BlockPos candidate = coarsePath.get(i);
+            if (candidate == null || !isWaypointActionable(world, candidate)) {
+                continue;
+            }
+            selected = candidate.toImmutable();
+            break;
+        }
+        return selected != null ? selected : fallbackTarget;
+    }
+
+    private List<BlockPos> findCoarsePath(ClientWorld world, BlockPos start, BlockPos goal) {
+        if (world == null || start == null || goal == null) {
+            return List.of();
+        }
+        long deadlineMs = System.currentTimeMillis() + COARSE_PATHFIND_TIME_BUDGET_MS;
+        PriorityQueue<CoarseSearchNode> openSet = new PriorityQueue<>(Comparator.comparingDouble(CoarseSearchNode::fScore));
+        Map<BlockPos, BlockPos> cameFrom = new HashMap<>();
+        Map<BlockPos, Double> gScore = new HashMap<>();
+        Set<BlockPos> closed = new HashSet<>();
+        BlockPos bestPartial = start;
+        double bestPartialHeuristic = heuristic(start, List.of(goal));
+
+        gScore.put(start, 0.0D);
+        openSet.add(new CoarseSearchNode(start, heuristic(start, List.of(goal)), 0.0D));
+
+        int expansions = 0;
+        while (!openSet.isEmpty() && expansions < COARSE_MAX_EXPANSIONS) {
+            if (System.currentTimeMillis() >= deadlineMs) {
+                break;
+            }
+            CoarseSearchNode current = openSet.poll();
+            BlockPos currentPos = current.pos();
+            if (!closed.add(currentPos)) {
+                continue;
+            }
+            if (currentPos.equals(goal)) {
+                return reconstructCoarsePath(cameFrom, currentPos);
+            }
+            double currentHeuristic = heuristic(currentPos, List.of(goal));
+            if (currentHeuristic < bestPartialHeuristic) {
+                bestPartial = currentPos;
+                bestPartialHeuristic = currentHeuristic;
+            }
+            expansions++;
+
+            for (BlockPos neighbor : getCoarseNeighbors(world, currentPos, start, goal)) {
+                if (closed.contains(neighbor)) {
+                    continue;
+                }
+                BlockPos previous = cameFrom.get(currentPos);
+                double tentativeG = current.gScore()
+                    + moveTypePenalty(world, currentPos, neighbor)
+                    + elevationPenalty(currentPos, neighbor)
+                    + turnPenalty(previous, currentPos, neighbor)
+                    + terrainPenalty(world, currentPos, neighbor);
+                double knownG = gScore.getOrDefault(neighbor, Double.POSITIVE_INFINITY);
+                if (tentativeG >= knownG) {
+                    continue;
+                }
+                cameFrom.put(neighbor, currentPos);
+                gScore.put(neighbor, tentativeG);
+                openSet.add(new CoarseSearchNode(neighbor, tentativeG + heuristic(neighbor, List.of(goal)), tentativeG));
+            }
+        }
+
+        if (bestPartial != null && !bestPartial.equals(start)) {
+            return reconstructCoarsePath(cameFrom, bestPartial);
+        }
+        return List.of();
+    }
+
+    private List<BlockPos> reconstructCoarsePath(Map<BlockPos, BlockPos> cameFrom, BlockPos end) {
+        List<BlockPos> path = new ArrayList<>();
+        BlockPos cursor = end;
+        while (cursor != null) {
+            path.add(cursor.toImmutable());
+            cursor = cameFrom.get(cursor);
+        }
+        Collections.reverse(path);
+        return List.copyOf(path);
     }
 
     private boolean endsAtGoal(List<BlockPos> path, BlockPos goal) {
@@ -2658,6 +2794,122 @@ public final class PathmindNavigator {
         addSafeDropNeighbors(world, current, start, goal, neighbors, now);
         addPillarNeighbors(world, current, start, goal, neighbors, now);
         return neighbors;
+    }
+
+    private List<BlockPos> getCoarseNeighbors(World world, BlockPos current, BlockPos start, BlockPos goal) {
+        List<BlockPos> neighbors = new ArrayList<>(MOVES.length + 4);
+        long now = System.currentTimeMillis();
+        for (Move move : MOVES) {
+            BlockPos neighbor = findCoarseNeighbor(world, current, move.dx, move.dz, start, goal);
+            if (neighbor == null) {
+                continue;
+            }
+            if (isFailedNode(neighbor, now) || isFailedEdge(current, neighbor, now)) {
+                continue;
+            }
+            neighbors.add(neighbor);
+        }
+        addCoarseClimbNeighbors(world, current, start, goal, neighbors, now);
+        addCoarseDropNeighbors(world, current, start, goal, neighbors, now);
+        return neighbors;
+    }
+
+    private BlockPos findCoarseNeighbor(World world, BlockPos current, int dx, int dz, BlockPos start, BlockPos goal) {
+        if (world == null || current == null || (dx == 0 && dz == 0)) {
+            return null;
+        }
+        int baseX = current.getX() + dx;
+        int baseZ = current.getZ() + dz;
+        for (int dy = MAX_STEP_UP; dy >= -MAX_DROP_DOWN; dy--) {
+            BlockPos candidate = new BlockPos(baseX, current.getY() + dy, baseZ);
+            if (!isWithinSearchBounds(start, candidate, goal)) {
+                continue;
+            }
+            if (!isChunkLoaded(world, candidate) || isHardDanger(world, candidate)) {
+                continue;
+            }
+            if (!isCoarseNavigableNode(world, candidate)) {
+                continue;
+            }
+            if (!isCoarsePlannerTraversableMove(world, current, candidate)) {
+                continue;
+            }
+            return candidate.toImmutable();
+        }
+        return null;
+    }
+
+    private void addCoarseClimbNeighbors(World world, BlockPos current, BlockPos start, BlockPos goal, List<BlockPos> neighbors, long now) {
+        if (world == null || current == null || !isClimbableNode(world, current)) {
+            return;
+        }
+        for (int dy : new int[]{1, -1}) {
+            BlockPos candidate = current.add(0, dy, 0);
+            if (!isWithinSearchBounds(start, candidate, goal)
+                || !isChunkLoaded(world, candidate)
+                || isHardDanger(world, candidate)
+                || isFailedNode(candidate, now)
+                || isFailedEdge(current, candidate, now)
+                || !isCoarseNavigableNode(world, candidate)
+                || !isClimbTransition(world, current, candidate)) {
+                continue;
+            }
+            neighbors.add(candidate.toImmutable());
+        }
+    }
+
+    private void addCoarseDropNeighbors(World world, BlockPos current, BlockPos start, BlockPos goal, List<BlockPos> neighbors, long now) {
+        if (world == null || current == null) {
+            return;
+        }
+        for (int drop = 1; drop <= MAX_SAFE_FALL_DISTANCE; drop++) {
+            BlockPos candidate = current.add(0, -drop, 0);
+            if (!isWithinSearchBounds(start, candidate, goal)
+                || !isChunkLoaded(world, candidate)
+                || isHardDanger(world, candidate)
+                || isFailedNode(candidate, now)
+                || isFailedEdge(current, candidate, now)
+                || !isCoarseNavigableNode(world, candidate)
+                || !canSafelyDropTo(world, current, candidate)) {
+                continue;
+            }
+            neighbors.add(candidate.toImmutable());
+        }
+    }
+
+    private boolean isCoarseNavigableNode(World world, BlockPos footPos) {
+        return isNavigableNode(world, footPos) && !requiresBreakingForWaypoint(world, footPos) && !needsPlacedSupport(world, footPos);
+    }
+
+    private boolean isCoarsePlannerTraversableMove(World world, BlockPos from, BlockPos to) {
+        if (world == null || from == null || to == null) {
+            return false;
+        }
+        int dx = Math.abs(to.getX() - from.getX());
+        int dz = Math.abs(to.getZ() - from.getZ());
+        int dy = to.getY() - from.getY();
+        if (dx > 1 || dz > 1 || (dx == 0 && dz == 0)) {
+            return false;
+        }
+        if (dx == 1 && dz == 1) {
+            return false;
+        }
+        if (dy > 0) {
+            if (isClimbTransition(world, from, to)) {
+                return true;
+            }
+            if (requiresInteractableTraversal(world, from, to)) {
+                return false;
+            }
+            return canAttemptJump(world, from, to);
+        }
+        if (dy < 0 && dx == 0 && dz == 0) {
+            return canSafelyDropTo(world, from, to);
+        }
+        if (requiresInteractableTraversal(world, from, to)) {
+            return false;
+        }
+        return true;
     }
 
     private boolean isTrappedExcavationState(World world, BlockPos current, BlockPos goal, long now) {
@@ -3016,15 +3268,16 @@ public final class PathmindNavigator {
     }
 
     private Neighbor resolveNeighborAccess(World world, BlockPos from, BlockPos candidate) {
-        if (isNavigableNode(world, candidate)) {
-            PlannedPrimitive primitive = createPlannedPrimitive(world, from, candidate, List.of(), null);
-            return new Neighbor(new SearchVertex(candidate.toImmutable(), primitive.type()), moveTypePenalty(world, from, candidate), primitive);
-        }
-
         double extraCost = moveTypePenalty(world, from, candidate);
-        List<BlockPos> breakTargets = getRequiredBreakTargets(world, candidate);
+        List<BlockPos> breakTargets = getRequiredBreakTargets(world, from, candidate);
         if (breakTargets == null) {
             return null;
+        }
+        boolean navigableCandidate = isNavigableNode(world, candidate);
+        boolean requiresSupport = allowBlockPlacing && needsPlacedSupport(world, candidate);
+        if (navigableCandidate && breakTargets.isEmpty() && !requiresSupport) {
+            PlannedPrimitive primitive = createPlannedPrimitive(world, from, candidate, List.of(), null);
+            return new Neighbor(new SearchVertex(candidate.toImmutable(), primitive.type()), extraCost, primitive);
         }
         if (!breakTargets.isEmpty()) {
             if (!allowBlockBreaking) {
@@ -3042,7 +3295,7 @@ public final class PathmindNavigator {
             }
         }
 
-        if (allowBlockPlacing && needsPlacedSupport(world, candidate)) {
+        if (requiresSupport) {
             BlockPos activeTarget = targetPos;
             if (activeTarget != null && candidate.down().equals(activeTarget)) {
                 return null;
@@ -3067,7 +3320,7 @@ public final class PathmindNavigator {
             return null;
         }
 
-        BlockPos placeTarget = allowBlockPlacing && needsPlacedSupport(world, candidate) ? candidate.down().toImmutable() : null;
+        BlockPos placeTarget = requiresSupport ? candidate.down().toImmutable() : null;
         List<BlockPos> normalizedBreakTargets = breakTargets == null ? List.of() : breakTargets.stream()
             .filter(pos -> pos != null && isBreakableForNavigator(world, pos))
             .map(BlockPos::toImmutable)
@@ -3443,14 +3696,32 @@ public final class PathmindNavigator {
     }
 
     private List<BlockPos> getRequiredBreakTargets(World world, BlockPos footPos) {
+        return getRequiredBreakTargets(world, footPos, footPos);
+    }
+
+    private List<BlockPos> getRequiredBreakTargets(World world, BlockPos from, BlockPos footPos) {
         if (world == null || footPos == null) {
             return null;
         }
-        List<BlockPos> targets = new ArrayList<>(2);
+        boolean ascending = from != null
+            && !from.equals(footPos)
+            && footPos.getY() > from.getY();
+        List<BlockPos> targets = new ArrayList<>(ascending ? 5 : 3);
+        if (ascending && from != null) {
+            if (!collectBreakTarget(world, from.up(), targets)) {
+                return null;
+            }
+            if (!collectBreakTarget(world, from.up(2), targets)) {
+                return null;
+            }
+        }
         if (!collectBreakTarget(world, footPos, targets)) {
             return null;
         }
         if (!collectBreakTarget(world, footPos.up(), targets)) {
+            return null;
+        }
+        if (ascending && !collectBreakTarget(world, footPos.up(2), targets)) {
             return null;
         }
         return targets;
@@ -3625,6 +3896,37 @@ public final class PathmindNavigator {
         }
 
         if (waypoint.getY() > from.getY() && !canOccupy(world, waypoint.up())) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean canAttemptMiningAdvanceJump(World world, BlockPos from, BlockPos waypoint) {
+        if (world == null || from == null || waypoint == null) {
+            return false;
+        }
+        if (!isExcavationClearable(world, from.up(2))) {
+            return false;
+        }
+
+        int stepX = Integer.compare(waypoint.getX(), from.getX());
+        int stepZ = Integer.compare(waypoint.getZ(), from.getZ());
+        BlockPos front = new BlockPos(from.getX() + stepX, from.getY(), from.getZ() + stepZ);
+
+        if (stepX != 0 || stepZ != 0) {
+            if (!isExcavationClearable(world, front.up())) {
+                return false;
+            }
+            if (waypoint.getY() > from.getY() && !isExcavationClearable(world, front.up(2))) {
+                return false;
+            }
+            if (waypoint.getY() > from.getY() && isCorneredJump(world, from, stepX, stepZ)) {
+                return false;
+            }
+        }
+
+        if (waypoint.getY() > from.getY() && !isExcavationClearable(world, waypoint.up())) {
             return false;
         }
 
@@ -4052,19 +4354,12 @@ public final class PathmindNavigator {
             return false;
         }
 
-        boolean obstructionCleared = false;
         synchronized (this) {
             if (activeBreakTarget != null && canOccupy(world, activeBreakTarget)) {
                 activeBreakTarget = null;
                 lastProgressAtMs = now;
                 lastReplanReason = "obstruction cleared";
-                obstructionCleared = true;
             }
-        }
-        if (obstructionCleared) {
-            noteControllerActivity(now);
-            releaseMovementKeys(client);
-            return false;
         }
 
         if (allowBlockBreaking) {
@@ -4142,6 +4437,7 @@ public final class PathmindNavigator {
             candidatePaths = List.of();
             candidatePathsVisibleUntilMs = 0L;
             activeWaypoint = null;
+            committedPathGoalPos = null;
             pathIndex = 0;
             furthestVisitedPathIndex = 0;
             plannedBreakTargets = List.of();
@@ -4402,11 +4698,17 @@ public final class PathmindNavigator {
         boolean liveBreaking = liveBreakTarget != null && isBreakableForNavigator(world, liveBreakTarget);
         boolean breakRequiredStep = liveBreaking
             || pendingBreakTarget != null
-            || primitiveRequiresBreak(plannedPrimitive)
             || (plannedPrimitive == null && requiresBreakingForWaypoint(world, waypoint));
+        boolean miningAdvanceStep = primitiveRequiresBreak(plannedPrimitive)
+            && !liveBreaking
+            && pendingBreakTarget == null;
+        boolean miningAdvanceJumpStep = miningAdvanceStep
+            && plannedPrimitive != null
+            && plannedPrimitive.type() == PlannedPrimitiveType.MINE_ASCEND
+            && waypoint.getY() > playerFootPos.getY();
         boolean placeRequiredStep = primitiveRequiresPlace(plannedPrimitive)
             || (plannedPrimitive == null && needsPlacedSupport(world, waypoint) && shouldPlaceForWaypoint(world, playerFootPos, waypoint));
-        boolean blockedTowardWaypoint = isBlockedTowardWaypoint(world, playerFootPos, waypoint);
+        boolean blockedTowardWaypoint = isBlockedTowardWaypoint(world, playerFootPos, waypoint) && !miningAdvanceStep;
         boolean applyCountermovement = !nearFinalGoal
             && !pillarStep
             && !climbNode
@@ -4428,11 +4730,18 @@ public final class PathmindNavigator {
             double correctionZ = MathHelper.clamp(waypointDz * 0.22D, -0.10D, 0.10D);
             Vec3d velocity = player.getVelocity();
             player.setVelocity(velocity.x * 0.15D + correctionX, velocity.y, velocity.z * 0.15D + correctionZ);
+        } else if (miningAdvanceStep) {
+            double correctionX = MathHelper.clamp(waypointDx * 0.16D, -0.07D, 0.07D);
+            double correctionZ = MathHelper.clamp(waypointDz * 0.16D, -0.07D, 0.07D);
+            Vec3d velocity = player.getVelocity();
+            player.setVelocity(velocity.x * 0.45D + correctionX, velocity.y, velocity.z * 0.45D + correctionZ);
+            noteControllerActivity(now);
         }
 
         if (client.options != null) {
             if (client.options.forwardKey != null) {
-                client.options.forwardKey.setPressed(!verticalDropStep && !pillarStep && !blockedTowardWaypoint && !breakRequiredStep && (climbNode || !applyCountermovement));
+                client.options.forwardKey.setPressed((miningAdvanceStep && waypointHorizontalDistance > 0.08D)
+                    || (!verticalDropStep && !pillarStep && !blockedTowardWaypoint && !breakRequiredStep && (climbNode || !applyCountermovement)));
             }
             if (client.options.sprintKey != null) {
                 client.options.sprintKey.setPressed(segmentType == FollowSegmentType.GROUND
@@ -4460,7 +4769,11 @@ public final class PathmindNavigator {
                     || player.isSubmergedInWater()
                     || isWaterNode(world, playerFootPos)
                     || isWaterNode(world, waypoint);
-                client.options.jumpKey.setPressed(!verticalDropStep && !pillarStep && ((swimUp && waypoint.getY() >= playerFootPos.getY()) || climbUp));
+                client.options.jumpKey.setPressed(!verticalDropStep
+                    && !pillarStep
+                    && ((swimUp && waypoint.getY() >= playerFootPos.getY())
+                    || climbUp
+                    || miningAdvanceJumpStep));
             }
             if (client.options.sneakKey != null) {
                 client.options.sneakKey.setPressed(!verticalDropStep && climbDown);
@@ -4491,67 +4804,43 @@ public final class PathmindNavigator {
                 && (hasCommittedEscapeWorkLocked(now) || isActiveEscapeBreakTargetLocked());
         }
 
-        long segmentIdleMs = followSegmentIdleMs(now);
-        if (segmentType == FollowSegmentType.GROUND) {
-            boolean wallPushStall = !busyExcavating
-                && !jumpExecutionLocked
-                && player.isOnGround()
-                && !breakRequiredStep
-                && !placeRequiredStep
-                && !interactableStep
-                && committedJumpWaypoint == null
-                && (forwardVelocity > 0.02D || blockedTowardWaypoint)
-                && waypointHorizontalDistance > 0.6D
-                && blockedTowardWaypoint
-                && (segmentIdleMs > WALL_PUSH_REDIRECT_MS || millisSinceMovement > WALL_PUSH_REDIRECT_MS);
-            if (wallPushStall) {
-                releaseMovementKeys(client);
-                rewindCurrentPathIndex(playerFootPos, waypoint);
-                recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment wall redirect", "front blocked");
-                return true;
+        if (player.isOnGround() && committedJumpWaypoint != null) {
+            synchronized (this) {
+                if (acceptCommittedJumpLandingLocked(world, playerFootPos, committedJumpWaypoint)) {
+                    committedJumpWaypoint = null;
+                    committedJumpUntilMs = 0L;
+                } else if (now > committedJumpUntilMs) {
+                    BlockPos missedJumpWaypoint = committedJumpWaypoint;
+                    committedJumpWaypoint = null;
+                    committedJumpUntilMs = 0L;
+                    rewindCurrentPathIndex(playerFootPos, missedJumpWaypoint);
+                    recoverFromStuck(client, world, playerFootPos, missedJumpWaypoint, target, currentPos, now, "jump redirect", "missed jump");
+                    return true;
+                }
             }
         }
 
-        if (!jumpExecutionLocked && millisSinceDistanceChange > DISTANCE_STALL_REDIRECT_MS) {
-            releaseMovementKeys(client);
-            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "distance stall redirect", "goal distance stalled");
-            return true;
-        }
-
-        long segmentStallWindow = switch (segmentType) {
-            case GROUND -> STANDSTILL_REDIRECT_MS;
-            case CLIMB -> 1200L;
-            case DROP -> 1100L;
-        };
-        if (!busyExcavating
-            && !jumpExecutionLocked
-            && (segmentIdleMs > segmentStallWindow || millisSinceMovement > segmentStallWindow + 250L)) {
-            releaseMovementKeys(client);
-            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment redirect", segmentType.name().toLowerCase());
-            return true;
-        }
-
-        if ((!busyExcavating && millisSinceProgress > STUCK_TIMEOUT_MS) || (busyExcavating && millisSinceProgress > STUCK_TIMEOUT_MS * 2L)) {
-            releaseMovementKeys(client);
-            rememberFailedMove(playerFootPos, waypoint, now);
-            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment timeout", "no progress");
-            return true;
-        }
-
         long millisSinceJump;
+        boolean hasCommittedJump;
         synchronized (this) {
             millisSinceJump = now - lastJumpAtMs;
+            hasCommittedJump = committedJumpWaypoint != null;
         }
         boolean wantsJump = segmentType == FollowSegmentType.GROUND
             && player.isOnGround()
-            && millisSinceJump >= JUMP_RETRY_COOLDOWN_MS
+            && !hasCommittedJump
+            && (miningAdvanceJumpStep || millisSinceJump >= JUMP_RETRY_COOLDOWN_MS)
             && !breakRequiredStep
             && !placeRequiredStep
             && (isJumpPrimitive(plannedPrimitive)
+            || miningAdvanceJumpStep
             || (plannedPrimitive == null && (!interactableStep && waypoint.getY() > playerFootPos.getY()))
             || (plannedPrimitive == null && shouldStepJump(world, playerFootPos, waypoint) && !interactableStep));
         if (wantsJump) {
-            if (canAttemptJump(world, playerFootPos, waypoint)) {
+            boolean canJump = miningAdvanceJumpStep
+                ? canAttemptMiningAdvanceJump(world, playerFootPos, waypoint)
+                : canAttemptJump(world, playerFootPos, waypoint);
+            if (canJump) {
                 player.jump();
                 synchronized (this) {
                     lastJumpAtMs = now;
@@ -4569,21 +4858,56 @@ public final class PathmindNavigator {
             }
         }
 
-        if (player.isOnGround() && committedJumpWaypoint != null) {
-            synchronized (this) {
-                if (acceptCommittedJumpLandingLocked(world, playerFootPos, committedJumpWaypoint)) {
-                    committedJumpWaypoint = null;
-                    committedJumpUntilMs = 0L;
-                } else if (now > committedJumpUntilMs) {
-                    BlockPos missedJumpWaypoint = committedJumpWaypoint;
-                    committedJumpWaypoint = null;
-                    committedJumpUntilMs = 0L;
-                    rewindCurrentPathIndex(playerFootPos, missedJumpWaypoint);
-                    recoverFromStuck(client, world, playerFootPos, missedJumpWaypoint, target, currentPos, now, "jump redirect", "missed jump");
-                    return true;
-                }
+        long segmentIdleMs = followSegmentIdleMs(now);
+        if (segmentType == FollowSegmentType.GROUND) {
+            boolean wallPushStall = !busyExcavating
+                && !jumpExecutionLocked
+                && player.isOnGround()
+                && !breakRequiredStep
+                && !placeRequiredStep
+                && !interactableStep
+                && committedJumpWaypoint == null
+                && !miningAdvanceJumpStep
+                && (forwardVelocity > 0.02D || blockedTowardWaypoint)
+                && waypointHorizontalDistance > 0.6D
+                && blockedTowardWaypoint
+                && (segmentIdleMs > WALL_PUSH_REDIRECT_MS || millisSinceMovement > WALL_PUSH_REDIRECT_MS);
+            if (wallPushStall) {
+                releaseMovementKeys(client);
+                rewindCurrentPathIndex(playerFootPos, waypoint);
+                recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment wall redirect", "front blocked");
+                return true;
             }
         }
+
+        if (!jumpExecutionLocked && !miningAdvanceJumpStep && millisSinceDistanceChange > DISTANCE_STALL_REDIRECT_MS) {
+            releaseMovementKeys(client);
+            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "distance stall redirect", "goal distance stalled");
+            return true;
+        }
+
+        long segmentStallWindow = switch (segmentType) {
+            case GROUND -> STANDSTILL_REDIRECT_MS;
+            case CLIMB -> 1200L;
+            case DROP -> 1100L;
+        };
+        if (!busyExcavating
+            && !jumpExecutionLocked
+            && !miningAdvanceJumpStep
+            && (segmentIdleMs > segmentStallWindow || millisSinceMovement > segmentStallWindow + 250L)) {
+            releaseMovementKeys(client);
+            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment redirect", segmentType.name().toLowerCase());
+            return true;
+        }
+
+        if (((!busyExcavating && millisSinceProgress > STUCK_TIMEOUT_MS) || (busyExcavating && millisSinceProgress > STUCK_TIMEOUT_MS * 2L))
+            && !miningAdvanceJumpStep) {
+            releaseMovementKeys(client);
+            rememberFailedMove(playerFootPos, waypoint, now);
+            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment timeout", "no progress");
+            return true;
+        }
+
         return false;
     }
 
@@ -5164,17 +5488,32 @@ public final class PathmindNavigator {
                 return activeBreakTarget;
             }
         }
-        BlockPos preferredTarget = breakTargets.get(0);
-        double bestPenalty = breakPenalty(world, preferredTarget);
-        for (int i = 1; i < breakTargets.size(); i++) {
-            BlockPos candidate = breakTargets.get(i);
-            double penalty = breakPenalty(world, candidate);
-            if (penalty < bestPenalty) {
-                bestPenalty = penalty;
-                preferredTarget = candidate;
+        BlockPos pendingTarget = firstPendingBreakTarget(world, breakTargets);
+        if (pendingTarget != null && isPlannedBreakTargetReachable(playerFootPos, pendingTarget)) {
+            return pendingTarget;
+        }
+        for (BlockPos candidate : breakTargets) {
+            if (!isBreakableForNavigator(world, candidate)) {
+                continue;
+            }
+            if (!isPlannedBreakTargetReachable(playerFootPos, candidate)) {
+                continue;
+            }
+            return candidate;
+        }
+        return null;
+    }
+
+    private BlockPos firstPendingBreakTarget(World world, List<BlockPos> breakTargets) {
+        if (world == null || breakTargets == null || breakTargets.isEmpty()) {
+            return null;
+        }
+        for (BlockPos candidate : breakTargets) {
+            if (candidate != null && isBreakableForNavigator(world, candidate)) {
+                return candidate;
             }
         }
-        return preferredTarget;
+        return null;
     }
 
     private boolean isPlannedBreakTargetReachable(BlockPos playerFootPos, BlockPos target) {
@@ -5182,7 +5521,7 @@ public final class PathmindNavigator {
             return false;
         }
         return horizontalDistanceSq(playerFootPos, target) <= 9.0D
-            && Math.abs(playerFootPos.getY() - target.getY()) <= 2;
+            && Math.abs(playerFootPos.getY() - target.getY()) <= 3;
     }
 
     private boolean isTrappedInCrampedSpace(World world, BlockPos playerFootPos, BlockPos waypoint) {
@@ -5271,7 +5610,7 @@ public final class PathmindNavigator {
         int dy = target.getY() - playerFootPos.getY();
         int dz = target.getZ() - playerFootPos.getZ();
         if (Math.abs(dx) + Math.abs(dz) == 0) {
-            return dy == 1 || dy == 2;
+            return dy >= 1 && dy <= 2;
         }
         if (direction == null || direction.getAxis().isVertical()) {
             return false;
@@ -5332,7 +5671,7 @@ public final class PathmindNavigator {
             BlockPos chosen = null;
 
             boolean canFlat = isValidEscapeStepCandidate(world, cursor, flat, now) && hasExcavatableThreeHighClearance(world, flat);
-            boolean canUp = isValidEscapeStepCandidate(world, cursor, up, now) && canExcavateJumpCorridor(world, cursor, up);
+            boolean canUp = isValidEscapeStepCandidate(world, cursor, up, now) && canExcavateEscapeJumpCorridor(world, cursor, up);
 
             boolean preferUp = goal.getY() > cursor.getY() || !canFlat;
             if (preferUp && canUp) {
@@ -5356,13 +5695,26 @@ public final class PathmindNavigator {
             addEscapePrimitive(primitives, EscapePrimitiveType.MOVE, chosen);
 
             cursor = chosen;
-            if (hasThreeHighExcavationClearance(world, cursor)
-                && countDirectWalkNeighbors(world, cursor, cursor, goal, now) >= 2) {
+            if (isEscapeLipReached(world, current, cursor, goal, now)) {
                 break;
             }
         }
 
         return route.isEmpty() ? null : new StairEscapePlan(new EscapePlan(direction, List.copyOf(route), List.copyOf(primitives)));
+    }
+
+    private boolean isEscapeLipReached(World world, BlockPos start, BlockPos cursor, BlockPos goal, long now) {
+        if (world == null || start == null || cursor == null || goal == null) {
+            return false;
+        }
+        if (!hasThreeHighExcavationClearance(world, cursor)) {
+            return false;
+        }
+        if (countDirectWalkNeighbors(world, cursor, cursor, goal, now) < 2) {
+            return false;
+        }
+        int targetLipY = Math.max(start.getY() + 1, goal.getY() - 1);
+        return cursor.getY() >= targetLipY;
     }
 
     private boolean isValidEscapeStepCandidate(World world, BlockPos from, BlockPos candidate, long now) {
@@ -5405,22 +5757,19 @@ public final class PathmindNavigator {
         ));
     }
 
+    private boolean canExcavateEscapeJumpCorridor(World world, BlockPos from, BlockPos to) {
+        return canExcavateJumpCorridor(world, from, to);
+    }
+
     private void addOrderedExcavationBreaks(List<EscapePrimitive> plan, World world, List<BlockPos> candidates) {
         if (plan == null || world == null || candidates == null || candidates.isEmpty()) {
             return;
         }
-        List<BlockPos> ordered = new ArrayList<>();
         for (BlockPos candidate : candidates) {
-            if (candidate != null && isBreakableForNavigator(world, candidate)) {
-                BlockPos immutable = candidate.toImmutable();
-                if (!ordered.contains(immutable)) {
-                    ordered.add(immutable);
-                }
+            if (candidate == null || !isBreakableForNavigator(world, candidate)) {
+                continue;
             }
-        }
-        ordered.sort(Comparator.comparingDouble(pos -> breakPenalty(world, pos)));
-        for (BlockPos target : ordered) {
-            addPlannedBreak(plan, world, target);
+            addPlannedBreak(plan, world, candidate.toImmutable());
         }
     }
 
@@ -5563,7 +5912,14 @@ public final class PathmindNavigator {
             }
             return false;
         }
-        if (!requiredTargets.isEmpty() && !target.equals(requiredTargets.get(0))) {
+        BlockPos pendingTarget = firstPendingBreakTarget(client.world, requiredTargets);
+        if (pendingTarget == null) {
+            synchronized (this) {
+                activeBreakTarget = null;
+            }
+            return false;
+        }
+        if (!target.equals(pendingTarget)) {
             synchronized (this) {
                 activeBreakTarget = null;
             }
@@ -5644,6 +6000,7 @@ public final class PathmindNavigator {
             pathIndex = 0;
             furthestVisitedPathIndex = 0;
             activeWaypoint = pillarTarget.toImmutable();
+            committedPathGoalPos = pillarTarget.toImmutable();
             plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
             rebuildCurrentPlanLocked(world);
             if (!isPillarPrimitive(activePlannedPrimitive)) {
@@ -5659,6 +6016,7 @@ public final class PathmindNavigator {
                     ? continuation.goalMode()
                     : GoalMode.EXACT;
                 resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? continuation.resolvedGoalPos() : navTarget.toImmutable();
+                committedPathGoalPos = continuation.resolvedGoalPos() != null ? continuation.resolvedGoalPos().toImmutable() : resolvedGoalPos;
             }
         }
     }
@@ -6375,6 +6733,9 @@ public final class PathmindNavigator {
         private BlockPos pos() {
             return vertex.pos();
         }
+    }
+
+    private record CoarseSearchNode(BlockPos pos, double fScore, double gScore) {
     }
 
     private record Neighbor(SearchVertex vertex, double cost, PlannedPrimitive primitive) {

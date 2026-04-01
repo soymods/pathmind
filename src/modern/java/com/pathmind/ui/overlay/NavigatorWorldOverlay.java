@@ -52,7 +52,7 @@ public final class NavigatorWorldOverlay {
 
         try (GizmoDrawing.CollectorScope ignored = worldRenderer.startDrawingGizmos()) {
             renderCandidatePaths(snapshot.candidatePaths());
-            renderStepMarkers(snapshot.path(), snapshot.pathIndex());
+            renderStepMarkers(snapshot.path(), snapshot.visitedPathIndex());
             renderBreakTargets(snapshot.breakTargets());
             renderPlaceTargets(snapshot.placeTargets());
             renderPath(snapshot.path(), goalPos);

@@ -73,7 +73,7 @@ public final class NavigatorWorldOverlay {
         try {
             beginOverlayPass();
             renderCandidatePaths(matrices, consumers, player, snapshot.candidatePaths());
-            renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.pathIndex());
+            renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.visitedPathIndex());
             renderBreakTargets(matrices, consumers, snapshot.breakTargets());
             renderPlaceTargets(matrices, consumers, snapshot.placeTargets());
             renderPath(matrices, consumers, player, snapshot.path(), goalPos);

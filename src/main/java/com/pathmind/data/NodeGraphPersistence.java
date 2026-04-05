@@ -181,6 +181,10 @@ public class NodeGraphPersistence {
                 node.setGotoAllowBreakWhileExecuting(Boolean.TRUE.equals(nodeData.getGotoAllowBreakWhileExecuting()));
                 node.setGotoAllowPlaceWhileExecuting(Boolean.TRUE.equals(nodeData.getGotoAllowPlaceWhileExecuting()));
             }
+            if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
+                Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
+                node.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
+            }
             if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -463,6 +467,11 @@ public class NodeGraphPersistence {
             } else {
                 nodeData.setGotoAllowBreakWhileExecuting(null);
                 nodeData.setGotoAllowPlaceWhileExecuting(null);
+            }
+            if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
+                nodeData.setKeyPressedActivatesInGuis(node.isKeyPressedActivatesInGuis());
+            } else {
+                nodeData.setKeyPressedActivatesInGuis(null);
             }
 
             data.getNodes().add(nodeData);

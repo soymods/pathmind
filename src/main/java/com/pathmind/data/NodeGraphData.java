@@ -127,6 +127,7 @@ public class NodeGraphData {
         private String bookText;
         private Boolean gotoAllowBreakWhileExecuting;
         private Boolean gotoAllowPlaceWhileExecuting;
+        private Boolean keyPressedActivatesInGuis;
         private String templateName;
         private Integer templateVersion;
         private Boolean customNodeInstance;
@@ -247,6 +248,14 @@ public class NodeGraphData {
 
         public void setGotoAllowPlaceWhileExecuting(Boolean gotoAllowPlaceWhileExecuting) {
             this.gotoAllowPlaceWhileExecuting = gotoAllowPlaceWhileExecuting;
+        }
+
+        public Boolean getKeyPressedActivatesInGuis() {
+            return keyPressedActivatesInGuis;
+        }
+
+        public void setKeyPressedActivatesInGuis(Boolean keyPressedActivatesInGuis) {
+            this.keyPressedActivatesInGuis = keyPressedActivatesInGuis;
         }
 
         public String getTemplateName() {

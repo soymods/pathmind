@@ -2098,6 +2098,9 @@ public class ExecutionManager {
                 nodeData.setGotoAllowBreakWhileExecuting(node.isGotoAllowBreakWhileExecuting());
                 nodeData.setGotoAllowPlaceWhileExecuting(node.isGotoAllowPlaceWhileExecuting());
             }
+            if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
+                nodeData.setKeyPressedActivatesInGuis(node.isKeyPressedActivatesInGuis());
+            }
             if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
                 nodeData.setTemplateName(node.getTemplateName());
                 nodeData.setTemplateVersion(node.getTemplateVersion());

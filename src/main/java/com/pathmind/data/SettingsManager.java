@@ -36,6 +36,9 @@ public final class SettingsManager {
         public Boolean showHudOverlays = true;
         public Boolean skipPresetDeleteConfirm = false;
         public Integer nodeDelayMs = 150;
+        public Boolean gotoAllowBreakWhileExecuting = false;
+        public Boolean gotoAllowPlaceWhileExecuting = false;
+        public Boolean keyPressedActivatesInGuis = true;
 
         public Settings() {
         }
@@ -203,6 +206,15 @@ public final class SettingsManager {
             settings.nodeDelayMs = 150;
         } else if (settings.nodeDelayMs < 0) {
             settings.nodeDelayMs = 0;
+        }
+        if (settings.gotoAllowBreakWhileExecuting == null) {
+            settings.gotoAllowBreakWhileExecuting = false;
+        }
+        if (settings.gotoAllowPlaceWhileExecuting == null) {
+            settings.gotoAllowPlaceWhileExecuting = false;
+        }
+        if (settings.keyPressedActivatesInGuis == null) {
+            settings.keyPressedActivatesInGuis = true;
         }
         return settings;
     }

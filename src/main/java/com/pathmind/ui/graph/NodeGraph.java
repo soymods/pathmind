@@ -1185,6 +1185,10 @@ public class NodeGraph {
             if (newNode.hasBookTextInput() && nodeData.getBookText() != null) {
                 newNode.setBookText(nodeData.getBookText());
             }
+            if (newNode.getType() == NodeType.SENSOR_KEY_PRESSED) {
+                Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
+                newNode.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
+            }
             newNode.recalculateDimensions();
             nodes.add(newNode);
             idToNode.put(nodeData.getId(), newNode);
@@ -1300,6 +1304,11 @@ public class NodeGraph {
                 nodeData.setTemplateVersion(null);
                 nodeData.setCustomNodeInstance(null);
                 nodeData.setTemplateGraph(null);
+            }
+            if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
+                nodeData.setKeyPressedActivatesInGuis(node.isKeyPressedActivatesInGuis());
+            } else {
+                nodeData.setKeyPressedActivatesInGuis(null);
             }
 
             List<NodeGraphData.ParameterData> paramDataList = new ArrayList<>();
@@ -12606,6 +12615,10 @@ public class NodeGraph {
             if (startNodeNumber != null) {
                 node.setStartNodeNumber(startNodeNumber);
             }
+            if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
+                Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
+                node.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
+            }
             node.recalculateDimensions();
 
             nodes.add(node);
@@ -12659,6 +12672,10 @@ public class NodeGraph {
                 textNode.setTemplateVersion(nodeData.getTemplateVersion() != null ? nodeData.getTemplateVersion() : 0);
                 textNode.setCustomNodeInstance(Boolean.TRUE.equals(nodeData.getCustomNodeInstance()));
                 textNode.setTemplateGraphData(nodeData.getTemplateGraph());
+            }
+            if (textNode != null && textNode.getType() == NodeType.SENSOR_KEY_PRESSED) {
+                Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
+                textNode.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
             }
         }
 

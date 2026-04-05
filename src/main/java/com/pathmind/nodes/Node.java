@@ -161,8 +161,6 @@ public class Node {
     private static final String LIST_SLOT_PLAYER_PREFIX = "player:";
     private static final long CRAFTING_ACTION_DELAY_MS = 75L;
     private static final long CONTROL_POLL_INTERVAL_MS = 10L;
-    private static final long INVENTORY_TRANSFER_SETTLE_TIMEOUT_MS = 750L;
-    private static final long INVENTORY_TRANSFER_SETTLE_POLL_MS = 10L;
     private static final int CRAFTING_OUTPUT_POLL_LIMIT = 5;
     private static final int SENSOR_SLOT_MARGIN_HORIZONTAL = 8;
     private static final int SENSOR_SLOT_INNER_PADDING = 4;
@@ -337,6 +335,7 @@ public class Node {
     private int variableFieldWidthOverride;
     private boolean gotoAllowBreakWhileExecuting;
     private boolean gotoAllowPlaceWhileExecuting;
+    private boolean keyPressedActivatesInGuis;
     private String templateName;
     private int templateVersion;
     private boolean customNodeInstance;
@@ -381,6 +380,7 @@ public class Node {
         this.variableFieldWidthOverride = 0;
         this.gotoAllowBreakWhileExecuting = false;
         this.gotoAllowPlaceWhileExecuting = false;
+        this.keyPressedActivatesInGuis = true;
         this.templateName = usesTemplateBacking() ? "Template" : "";
         this.templateVersion = 0;
         this.customNodeInstance = type == NodeType.CUSTOM_NODE;
@@ -893,7 +893,11 @@ public class Node {
     }
 
     public boolean isGotoAllowBreakWhileExecuting() {
-        return type == NodeType.GOTO && gotoAllowBreakWhileExecuting;
+        if (type != NodeType.GOTO) {
+            return false;
+        }
+        com.pathmind.data.SettingsManager.Settings settings = com.pathmind.data.SettingsManager.getCurrent();
+        return settings.gotoAllowBreakWhileExecuting != null && settings.gotoAllowBreakWhileExecuting;
     }
 
     public void setGotoAllowBreakWhileExecuting(boolean gotoAllowBreakWhileExecuting) {
@@ -904,7 +908,11 @@ public class Node {
     }
 
     public boolean isGotoAllowPlaceWhileExecuting() {
-        return type == NodeType.GOTO && gotoAllowPlaceWhileExecuting;
+        if (type != NodeType.GOTO) {
+            return false;
+        }
+        com.pathmind.data.SettingsManager.Settings settings = com.pathmind.data.SettingsManager.getCurrent();
+        return settings.gotoAllowPlaceWhileExecuting != null && settings.gotoAllowPlaceWhileExecuting;
     }
 
     public void setGotoAllowPlaceWhileExecuting(boolean gotoAllowPlaceWhileExecuting) {
@@ -912,6 +920,21 @@ public class Node {
             return;
         }
         this.gotoAllowPlaceWhileExecuting = gotoAllowPlaceWhileExecuting;
+    }
+
+    public boolean isKeyPressedActivatesInGuis() {
+        if (type != NodeType.SENSOR_KEY_PRESSED) {
+            return true;
+        }
+        com.pathmind.data.SettingsManager.Settings settings = com.pathmind.data.SettingsManager.getCurrent();
+        return settings.keyPressedActivatesInGuis == null || settings.keyPressedActivatesInGuis;
+    }
+
+    public void setKeyPressedActivatesInGuis(boolean keyPressedActivatesInGuis) {
+        if (type != NodeType.SENSOR_KEY_PRESSED) {
+            return;
+        }
+        this.keyPressedActivatesInGuis = keyPressedActivatesInGuis;
     }
 
     public boolean hasAttachedActionNode() {
@@ -14757,10 +14780,6 @@ public class Node {
         }
 
         boolean moveEntireStack = moveCount >= available;
-        ItemStack sourceBefore = sourceResolution.slot.getStack().copy();
-        ItemStack targetBefore = !shiftClickTarget && targetResolution != null
-            ? targetResolution.slot.getStack().copy()
-            : ItemStack.EMPTY;
 
         if (shiftClickTarget) {
             interactionManager.clickSlot(
@@ -14782,16 +14801,9 @@ public class Node {
             );
         }
 
-        flushScreenHandlerUpdates(client, handler, inventory);
-        waitForInventoryTransferSettlement(
-            client,
-            handler,
-            sourceResolution.handlerSlotIndex,
-            sourceBefore,
-            shiftClickTarget ? -1 : targetResolution.handlerSlotIndex,
-            targetBefore,
-            future
-        );
+        inventory.markDirty();
+        client.player.playerScreenHandler.sendContentUpdates();
+        future.complete(null);
     }
 
     private void performInventoryTransfer(ClientPlayerInteractionManager interactionManager, ScreenHandler handler,
@@ -14815,73 +14827,6 @@ public class Node {
             moved++;
         }
         interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
-    }
-
-    private void flushScreenHandlerUpdates(net.minecraft.client.MinecraftClient client,
-                                           ScreenHandler handler,
-                                           PlayerInventory inventory) {
-        if (inventory != null) {
-            inventory.markDirty();
-        }
-        if (handler != null) {
-            handler.sendContentUpdates();
-        }
-        if (client != null && client.player != null && client.player.playerScreenHandler != null
-            && client.player.playerScreenHandler != handler) {
-            client.player.playerScreenHandler.sendContentUpdates();
-        }
-    }
-
-    private void waitForInventoryTransferSettlement(net.minecraft.client.MinecraftClient client,
-                                                    ScreenHandler originalHandler,
-                                                    int sourceSlot,
-                                                    ItemStack sourceBefore,
-                                                    int targetSlot,
-                                                    ItemStack targetBefore,
-                                                    CompletableFuture<Void> future) {
-        new Thread(() -> {
-            try {
-                long deadline = System.currentTimeMillis() + INVENTORY_TRANSFER_SETTLE_TIMEOUT_MS;
-                while (true) {
-                    Boolean settled = supplyFromClient(client, () -> {
-                        if (client.player == null) {
-                            return true;
-                        }
-                        ScreenHandler currentHandler = client.player.currentScreenHandler;
-                        if (currentHandler == null || originalHandler == null || currentHandler.syncId != originalHandler.syncId) {
-                            return true;
-                        }
-                        if (!currentHandler.getCursorStack().isEmpty()) {
-                            return false;
-                        }
-
-                        boolean sourceChanged = hasSlotChangedFromSnapshot(currentHandler, sourceSlot, sourceBefore);
-                        boolean targetChanged = targetSlot < 0 || hasSlotChangedFromSnapshot(currentHandler, targetSlot, targetBefore);
-                        return sourceChanged || targetChanged;
-                    });
-                    if (Boolean.TRUE.equals(settled) || System.currentTimeMillis() >= deadline) {
-                        future.complete(null);
-                        return;
-                    }
-                    Thread.sleep(INVENTORY_TRANSFER_SETTLE_POLL_MS);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                future.completeExceptionally(e);
-            }
-        }, "Pathmind-Move-Item-Settle").start();
-    }
-
-    private boolean hasSlotChangedFromSnapshot(ScreenHandler handler, int slotIndex, ItemStack before) {
-        if (handler == null || slotIndex < 0 || slotIndex >= handler.slots.size()) {
-            return true;
-        }
-        Slot slot = handler.getSlot(slotIndex);
-        if (slot == null) {
-            return true;
-        }
-        ItemStack current = slot.getStack();
-        return !ItemStack.areEqual(current, before);
     }
 
     private SlotSelectionType resolveInventorySlotSelectionType(int parameterSlotIndex) {
@@ -19763,6 +19708,9 @@ public class Node {
     private boolean isKeyPressed(String keyName) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.getWindow() == null) {
+            return false;
+        }
+        if (!isKeyPressedActivatesInGuis() && client.currentScreen != null) {
             return false;
         }
         Integer keyCode = resolveKeyCode(keyName);

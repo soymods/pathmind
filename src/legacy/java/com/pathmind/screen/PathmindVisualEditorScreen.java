@@ -1345,6 +1345,11 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleDirectionModeTabClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
                 if (nodeGraph.handleModeFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     return true;

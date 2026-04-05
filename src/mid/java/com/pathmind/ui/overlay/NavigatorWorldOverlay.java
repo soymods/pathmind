@@ -1,6 +1,5 @@
 package com.pathmind.ui.overlay;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.pathmind.execution.PathmindNavigator;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -15,7 +14,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -271,13 +269,9 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void beginOverlayPass() {
-        RenderSystem.disableDepthTest();
-        RenderSystem.depthFunc(GL11.GL_ALWAYS);
     }
 
     private static void endOverlayPass() {
-        RenderSystem.depthFunc(GL11.GL_LEQUAL);
-        RenderSystem.enableDepthTest();
     }
 
     private static void renderFilledPrism(

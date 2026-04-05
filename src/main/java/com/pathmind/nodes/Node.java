@@ -726,7 +726,6 @@ public class Node {
         return isStopControlNode()
             || type == NodeType.START_CHAIN
             || type == NodeType.RUN_PRESET
-            || type == NodeType.SWING
             || type == NodeType.CRAWL
             || type == NodeType.CROUCH
             || type == NodeType.SPRINT
@@ -1395,6 +1394,9 @@ public class Node {
         if (type == NodeType.USE) {
             return true;
         }
+        if (type == NodeType.SWING) {
+            return true;
+        }
         if (type == NodeType.DROP_ITEM) {
             return true;
         }
@@ -1472,7 +1474,7 @@ public class Node {
         if (usesVillagerTradeNumberField()) {
             return "Number";
         }
-        if (type == NodeType.USE) {
+        if (type == NodeType.USE || type == NodeType.SWING) {
             return "Hold Duration";
         }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
@@ -1531,6 +1533,9 @@ public class Node {
         if (type == NodeType.USE) {
             return "UseDurationSeconds";
         }
+        if (type == NodeType.SWING) {
+            return "Duration";
+        }
         if (type == NodeType.DROP_ITEM) {
             return "Count";
         }
@@ -1564,6 +1569,7 @@ public class Node {
             || type == NodeType.SENSOR_ITEM_IN_SLOT
             || type == NodeType.SENSOR_CHAT_MESSAGE
             || type == NodeType.USE
+            || type == NodeType.SWING
             || type == NodeType.DROP_ITEM;
     }
 
@@ -1796,6 +1802,7 @@ public class Node {
         String amountKey = getAmountParameterKey();
         if (getParameter(amountKey) == null) {
             boolean decimalAmount = type == NodeType.USE
+                || type == NodeType.SWING
                 || type == NodeType.SENSOR_CHAT_MESSAGE
                 || type == NodeType.SENSOR_FABRIC_EVENT;
             ParameterType amountType = decimalAmount ? ParameterType.DOUBLE : ParameterType.INTEGER;
@@ -2834,6 +2841,10 @@ public class Node {
                 parameters.add(new NodeParameter("SneakWhileUsing", ParameterType.BOOLEAN, "false"));
                 parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
                 break;
+            case SWING:
+                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "0.0"));
+                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
+                break;
             case INTERACT:
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
                 parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, ""));
@@ -3374,6 +3385,12 @@ public class Node {
         if (type == NodeType.USE) {
             String paramName = parameter.getName();
             if ("UseDurationSeconds".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
+                return "";
+            }
+        }
+        if (type == NodeType.SWING) {
+            String paramName = parameter.getName();
+            if ("Duration".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
                 return "";
             }
         }
@@ -16577,6 +16594,10 @@ public class Node {
     }
 
     private boolean shouldAbortForRepeatUntilGuard() {
+        ExecutionManager manager = ExecutionManager.getInstance();
+        if (manager != null && manager.isStopRequested()) {
+            return true;
+        }
         Node guard = activeRepeatUntilGuard;
         return guard != null && guard != this && guard.isRepeatUntilConditionMetForPolling();
     }
@@ -17446,33 +17467,91 @@ public class Node {
         }
 
         Hand hand = resolveHand(getParameter("Hand"), Hand.MAIN_HAND);
-        int count = Math.max(1, getIntParameter("Count", 1));
-        double intervalSeconds = Math.max(0.0, getDoubleParameter("IntervalSeconds", 0.0));
+        boolean holdDurationEnabled = isAmountInputEnabled();
+        double durationSeconds = holdDurationEnabled
+            ? Math.max(0.0, getDoubleParameter("Duration", 0.0))
+            : 0.0;
+        int legacyCount = Math.max(1, getIntParameter("Count", 1));
+        double legacyIntervalSeconds = Math.max(0.0, getDoubleParameter("IntervalSeconds", 0.0));
 
         new Thread(() -> {
+            boolean releaseAttackKey = false;
             try {
-                for (int i = 0; i < count; i++) {
-                    runOnClientThread(client, () -> {
-                        if (hand == Hand.MAIN_HAND && client.interactionManager != null) {
-                            HitResult target = client.crosshairTarget;
-                            if (target instanceof EntityHitResult entityHit) {
-                                client.interactionManager.attackEntity(client.player, entityHit.getEntity());
+                if (holdDurationEnabled && durationSeconds > 0.0) {
+                    if (hand == Hand.MAIN_HAND) {
+                        long durationMs = (long) Math.ceil(durationSeconds * 1000.0);
+                        long deadline = System.currentTimeMillis() + durationMs;
+                        runOnClientThread(client, () -> {
+                            if (client.options != null && client.options.attackKey != null) {
+                                client.options.attackKey.setPressed(true);
                             }
+                        });
+                        releaseAttackKey = true;
+                        while (System.currentTimeMillis() < deadline) {
+                            if (shouldAbortForRepeatUntilGuard()) {
+                                break;
+                            }
+                            long remainingMs = deadline - System.currentTimeMillis();
+                            Thread.sleep(Math.min(CONTROL_POLL_INTERVAL_MS, Math.max(1L, remainingMs)));
                         }
-                        client.player.swingHand(hand);
-                        if (client.player.networkHandler != null) {
-                            client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
+                    } else {
+                        long durationMs = (long) Math.ceil(durationSeconds * 1000.0);
+                        long deadline = System.currentTimeMillis() + durationMs;
+                        boolean swung = false;
+                        while (!swung || System.currentTimeMillis() < deadline) {
+                            runOnClientThread(client, () -> {
+                                client.player.swingHand(hand);
+                                if (client.player.networkHandler != null) {
+                                    client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
+                                }
+                            });
+                            swung = true;
+                            if (shouldAbortForRepeatUntilGuard()) {
+                                break;
+                            }
+                            long remainingMs = deadline - System.currentTimeMillis();
+                            if (remainingMs <= 0L) {
+                                break;
+                            }
+                            Thread.sleep(Math.min(50L, remainingMs));
                         }
-                    });
+                    }
+                } else {
+                    for (int i = 0; i < legacyCount; i++) {
+                        runOnClientThread(client, () -> {
+                            if (hand == Hand.MAIN_HAND && client.interactionManager != null) {
+                                HitResult target = client.crosshairTarget;
+                                if (target instanceof EntityHitResult entityHit) {
+                                    client.interactionManager.attackEntity(client.player, entityHit.getEntity());
+                                }
+                            }
+                            client.player.swingHand(hand);
+                            if (client.player.networkHandler != null) {
+                                client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
+                            }
+                        });
 
-                    if (intervalSeconds > 0.0 && i < count - 1) {
-                        Thread.sleep((long) (intervalSeconds * 1000));
+                        if (legacyIntervalSeconds > 0.0 && i < legacyCount - 1) {
+                            Thread.sleep((long) (legacyIntervalSeconds * 1000));
+                        }
                     }
                 }
                 future.complete(null);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 future.completeExceptionally(e);
+            } finally {
+                if (releaseAttackKey) {
+                    try {
+                        runOnClientThread(client, () -> {
+                            if (client.options != null && client.options.attackKey != null) {
+                                client.options.attackKey.setPressed(false);
+                            }
+                        });
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
         }, "Pathmind-Swing").start();
     }

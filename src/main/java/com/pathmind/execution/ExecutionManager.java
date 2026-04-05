@@ -844,6 +844,10 @@ public class ExecutionManager {
         return CURRENT_EXECUTION_ID.get();
     }
 
+    public boolean isStopRequested() {
+        return cancelRequested;
+    }
+
     public void runWithExecutionContext(int executionId, Runnable runnable) {
         Integer previous = CURRENT_EXECUTION_ID.get();
         if (executionId >= 0) {

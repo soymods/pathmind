@@ -7076,7 +7076,8 @@ public class NodeGraph {
 
         String value = amountEditBuffer == null ? "" : amountEditBuffer.trim();
         if ((amountEditingNode.getType() == NodeType.PARAM_DURATION
-            || amountEditingNode.getType() == NodeType.USE) && !value.startsWith("~")) {
+            || amountEditingNode.getType() == NodeType.USE
+            || amountEditingNode.getType() == NodeType.SWING) && !value.startsWith("~")) {
             // Accept locale decimal input like "1,5" for duration-style fields.
             value = value.replace(',', '.');
         }
@@ -7085,6 +7086,7 @@ public class NodeGraph {
         }
         if (amountEditingNode.getType() != NodeType.PARAM_DURATION
             && amountEditingNode.getType() != NodeType.USE
+            && amountEditingNode.getType() != NodeType.SWING
             && !value.isEmpty()
             && !isNumericOrVariableReference(value, amountEditingNode, true, false)) {
             amountEditingNode.sendNodeErrorMessageToPlayer("Please enter a number, arithmetic expression, or variable (~variable_name).");
@@ -7098,7 +7100,8 @@ public class NodeGraph {
                 || amountEditingNode.getType() == NodeType.SENSOR_IN_STOCK) {
                 value = "1";
             } else if (amountEditingNode.getType() == NodeType.PARAM_DURATION
-                || amountEditingNode.getType() == NodeType.USE) {
+                || amountEditingNode.getType() == NodeType.USE
+                || amountEditingNode.getType() == NodeType.SWING) {
                 value = "";
             } else {
                 value = amountEditOriginalValue != null && !amountEditOriginalValue.isEmpty()

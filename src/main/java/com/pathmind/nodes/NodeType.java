@@ -18,6 +18,11 @@ public enum NodeType {
     SET_VARIABLE("pathmind.node.type.setVariable", 0xFFFF9800, "pathmind.node.type.setVariable.desc"),
     CHANGE_VARIABLE("pathmind.node.type.changeVariable", 0xFFFF9800, "pathmind.node.type.changeVariable.desc"),
     CREATE_LIST("pathmind.node.type.createList", 0xFFFF9800, "pathmind.node.type.createList.desc"),
+    ADD_TO_LIST("pathmind.node.type.addToList", 0xFFFF9800, "pathmind.node.type.addToList.desc"),
+    REMOVE_FIRST_FROM_LIST("pathmind.node.type.removeFirstFromList", 0xFFFF9800, "pathmind.node.type.removeFirstFromList.desc"),
+    REMOVE_LAST_FROM_LIST("pathmind.node.type.removeLastFromList", 0xFFFF9800, "pathmind.node.type.removeLastFromList.desc"),
+    REMOVE_LIST_ITEM("pathmind.node.type.removeListItem", 0xFFFF9800, "pathmind.node.type.removeListItem.desc"),
+    REMOVE_FROM_LIST("pathmind.node.type.removeFromList", 0xFFFF9800, "pathmind.node.type.removeFromList.desc"),
     LIST_ITEM("pathmind.node.type.listItem", 0xFFFF9800, "pathmind.node.type.listItem.desc"),
     LIST_LENGTH("pathmind.node.type.listLength", 0xFFFF9800, "pathmind.node.type.listLength.desc"),
 
@@ -233,6 +238,11 @@ public enum NodeType {
             case SET_VARIABLE:
             case CHANGE_VARIABLE:
             case CREATE_LIST:
+            case ADD_TO_LIST:
+            case REMOVE_FIRST_FROM_LIST:
+            case REMOVE_LAST_FROM_LIST:
+            case REMOVE_LIST_ITEM:
+            case REMOVE_FROM_LIST:
             case LIST_ITEM:
             case LIST_LENGTH:
                 return NodeCategory.VARIABLES;
@@ -457,6 +467,11 @@ public enum NodeType {
             case OPERATOR_BOOLEAN_AND:
             case OPERATOR_BOOLEAN_XOR:
             case CREATE_LIST:
+            case ADD_TO_LIST:
+            case REMOVE_FIRST_FROM_LIST:
+            case REMOVE_LAST_FROM_LIST:
+            case REMOVE_LIST_ITEM:
+            case REMOVE_FROM_LIST:
             case LIST_ITEM:
             case LIST_LENGTH:
                 return true;

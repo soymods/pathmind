@@ -1,6 +1,8 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.execution.ExecutionManager.RuntimeList;
+import com.pathmind.execution.ExecutionManager.RuntimeListEntry;
 import com.pathmind.execution.ExecutionManager.RuntimeVariable;
 import com.pathmind.execution.ExecutionManager.RuntimeVariableEntry;
 import com.pathmind.nodes.NodeType;
@@ -41,7 +43,8 @@ public class VariablesOverlay {
 
     public void render(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
         List<RuntimeVariableEntry> entries = executionManager.getRuntimeVariableEntries();
-        List<String> lines = entries.isEmpty() ? List.of() : buildDisplayLines(entries);
+        List<RuntimeListEntry> listEntries = executionManager.getRuntimeListEntries();
+        List<String> lines = (entries.isEmpty() && listEntries.isEmpty()) ? List.of() : buildDisplayLines(entries, listEntries);
         boolean hasFreshLines = !lines.isEmpty();
         if (hasFreshLines) {
             lastDisplayLines = lines;
@@ -97,7 +100,7 @@ public class VariablesOverlay {
         }
     }
 
-    private List<String> buildDisplayLines(List<RuntimeVariableEntry> entries) {
+    private List<String> buildDisplayLines(List<RuntimeVariableEntry> entries, List<RuntimeListEntry> listEntries) {
         Map<String, Integer> nameCounts = new HashMap<>();
         for (RuntimeVariableEntry entry : entries) {
             String name = entry.getName();
@@ -106,9 +109,16 @@ public class VariablesOverlay {
             }
             nameCounts.put(name, nameCounts.getOrDefault(name, 0) + 1);
         }
+        for (RuntimeListEntry entry : listEntries) {
+            String name = entry.getName();
+            if (name == null) {
+                continue;
+            }
+            nameCounts.put(name, nameCounts.getOrDefault(name, 0) + 1);
+        }
 
         List<String> lines = new ArrayList<>();
-        lines.add("Variables");
+        lines.add("Runtime");
 
         for (RuntimeVariableEntry entry : entries) {
             RuntimeVariable variable = entry.getVariable();
@@ -136,10 +146,55 @@ public class VariablesOverlay {
             lines.add(label + " = " + value);
         }
 
+        for (RuntimeListEntry entry : listEntries) {
+            RuntimeList list = entry.getList();
+            if (list == null) {
+                continue;
+            }
+
+            String name = entry.getName();
+            if (name == null || name.trim().isEmpty()) {
+                continue;
+            }
+
+            String label = name.trim();
+            if (nameCounts.getOrDefault(name, 0) > 1) {
+                String suffix = shortId(entry.getStartNodeId());
+                if (!suffix.isEmpty()) {
+                    label = label + " (" + suffix + ")";
+                }
+            }
+
+            String value = formatListValue(list);
+            if (!value.isEmpty()) {
+                lines.add(label + " = " + value);
+            }
+        }
+
         if (lines.size() == 1) {
             lines.clear();
         }
         return lines;
+    }
+
+    private String formatListValue(RuntimeList list) {
+        if (list == null) {
+            return "";
+        }
+        List<String> entries = list.getEntries();
+        int size = entries.size();
+        String type = list.getElementType() != null ? list.getElementType().name().replace("PARAM_", "").toLowerCase() : "unknown";
+        if (size <= 0) {
+            return "list<" + type + "> [0]";
+        }
+        String preview = entries.get(0);
+        if (preview == null) {
+            preview = "";
+        }
+        if (preview.length() > 24) {
+            preview = preview.substring(0, 24) + "...";
+        }
+        return "list<" + type + "> [" + size + "] " + preview;
     }
 
     private String formatValue(NodeType type, Map<String, String> values) {

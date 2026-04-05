@@ -128,8 +128,45 @@ public class ExecutionManager {
             return elementType;
         }
 
-        public List<String> getEntries() {
-            return Collections.unmodifiableList(entries);
+        public synchronized List<String> getEntries() {
+            return Collections.unmodifiableList(new ArrayList<>(entries));
+        }
+
+        public synchronized int size() {
+            return entries.size();
+        }
+
+        public synchronized boolean isEmpty() {
+            return entries.isEmpty();
+        }
+
+        public synchronized String getEntry(int index) {
+            if (index < 0 || index >= entries.size()) {
+                return null;
+            }
+            return entries.get(index);
+        }
+
+        public synchronized void addEntry(String entry) {
+            if (entry == null || entry.trim().isEmpty()) {
+                return;
+            }
+            entries.add(entry.trim());
+        }
+
+        public synchronized String removeFirstEntry() {
+            return entries.isEmpty() ? null : entries.remove(0);
+        }
+
+        public synchronized String removeLastEntry() {
+            return entries.isEmpty() ? null : entries.remove(entries.size() - 1);
+        }
+
+        public synchronized String removeEntry(int index) {
+            if (index < 0 || index >= entries.size()) {
+                return null;
+            }
+            return entries.remove(index);
         }
     }
 
@@ -154,6 +191,30 @@ public class ExecutionManager {
 
         public RuntimeVariable getVariable() {
             return variable;
+        }
+    }
+
+    public static final class RuntimeListEntry {
+        private final String startNodeId;
+        private final String name;
+        private final RuntimeList list;
+
+        public RuntimeListEntry(String startNodeId, String name, RuntimeList list) {
+            this.startNodeId = startNodeId;
+            this.name = name;
+            this.list = list;
+        }
+
+        public String getStartNodeId() {
+            return startNodeId;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public RuntimeList getList() {
+            return list;
         }
     }
 
@@ -328,6 +389,26 @@ public class ExecutionManager {
                     continue;
                 }
                 entries.add(new RuntimeVariableEntry(startId, entry.getKey(), entry.getValue()));
+            }
+        }
+        return entries;
+    }
+
+    public List<RuntimeListEntry> getRuntimeListEntries() {
+        if (activeChains.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<RuntimeListEntry> entries = new ArrayList<>();
+        for (ChainController controller : activeChains.values()) {
+            if (controller == null || controller.runtimeLists.isEmpty()) {
+                continue;
+            }
+            String startId = controller.startNode != null ? controller.startNode.getId() : "";
+            for (Map.Entry<String, RuntimeList> entry : controller.runtimeLists.entrySet()) {
+                if (entry.getKey() == null || entry.getValue() == null) {
+                    continue;
+                }
+                entries.add(new RuntimeListEntry(startId, entry.getKey(), entry.getValue()));
             }
         }
         return entries;

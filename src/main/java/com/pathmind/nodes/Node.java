@@ -129,6 +129,8 @@ import com.pathmind.util.InputCompatibilityBridge;
  */
 public class Node {
     private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
+    private static final Gson LIST_ENTRY_GSON = new Gson();
+    private static final String LIST_ENTRY_SERIALIZED_PREFIX = "pm_list:";
     public static final int NO_OUTPUT = -1;
     private final String id;
     private final NodeType type;
@@ -530,6 +532,12 @@ public class Node {
     }
 
     public EnumSet<NodeValueTrait> getProvidedTraits() {
+        if (type == NodeType.LIST_ITEM) {
+            NodeType resolved = getResolvedValueType();
+            if (resolved != NodeType.LIST_ITEM) {
+                return NodeTraitRegistry.getProvidedTraits(resolved);
+            }
+        }
         EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(type);
         if (type == NodeType.SENSOR_POSITION_OF) {
             if (isSensorPositionSingleAxisMode()) {
@@ -667,7 +675,8 @@ public class Node {
     public boolean shouldRenderInlineParameters() {
         return type == NodeType.UI_UTILS
             || type == NodeType.SENSOR_FABRIC_EVENT
-            || type == NodeType.TRADE;
+            || type == NodeType.TRADE
+            || type == NodeType.REMOVE_LIST_ITEM;
     }
 
     private boolean isInlineParameterNode() {
@@ -1333,6 +1342,12 @@ public class Node {
 
     public NodeType getResolvedValueType() {
         return switch (type) {
+            case LIST_ITEM -> {
+                ExecutionManager.RuntimeList runtimeList = resolveRuntimeList(this);
+                yield runtimeList != null && runtimeList.getElementType() != null
+                    ? runtimeList.getElementType()
+                    : NodeType.LIST_ITEM;
+            }
             case SENSOR_POSITION_OF -> isSensorPositionSingleAxisMode() ? NodeType.PARAM_AMOUNT : NodeType.PARAM_COORDINATE;
             case SENSOR_DISTANCE_BETWEEN -> NodeType.PARAM_DISTANCE;
             case SENSOR_TARGETED_BLOCK_FACE -> NodeType.PARAM_BLOCK_FACE;
@@ -1442,7 +1457,13 @@ public class Node {
     }
 
     public boolean hasVariableInputField() {
-        return type == NodeType.CREATE_LIST || type == NodeType.LIST_LENGTH;
+        return type == NodeType.CREATE_LIST
+            || type == NodeType.ADD_TO_LIST
+            || type == NodeType.REMOVE_FIRST_FROM_LIST
+            || type == NodeType.REMOVE_LAST_FROM_LIST
+            || type == NodeType.REMOVE_LIST_ITEM
+            || type == NodeType.REMOVE_FROM_LIST
+            || type == NodeType.LIST_LENGTH;
     }
 
     public String getStopTargetFieldParameterKey() {
@@ -1454,7 +1475,7 @@ public class Node {
 
     public String getVariableFieldParameterKey() {
         return switch (type) {
-            case CREATE_LIST, LIST_LENGTH -> "List";
+            case CREATE_LIST, ADD_TO_LIST, REMOVE_FIRST_FROM_LIST, REMOVE_LAST_FROM_LIST, REMOVE_LIST_ITEM, REMOVE_FROM_LIST, LIST_LENGTH -> "List";
             default -> "Variable";
         };
     }
@@ -2930,6 +2951,22 @@ public class Node {
             case CREATE_LIST:
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
                 break;
+            case ADD_TO_LIST:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                break;
+            case REMOVE_FIRST_FROM_LIST:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                break;
+            case REMOVE_LAST_FROM_LIST:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                break;
+            case REMOVE_LIST_ITEM:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                parameters.add(new NodeParameter("Index", ParameterType.INTEGER, "1"));
+                break;
+            case REMOVE_FROM_LIST:
+                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                break;
             case LIST_ITEM:
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
                 parameters.add(new NodeParameter("Index", ParameterType.INTEGER, "1"));
@@ -3549,6 +3586,13 @@ public class Node {
                 values.put(normalizeParameterKey("Threshold"), amount);
                 values.put("Value", amount);
                 values.put(normalizeParameterKey("Value"), amount);
+                break;
+            }
+            case LIST_ITEM: {
+                Node resolved = resolveListItemValueNode(this, null, false, null);
+                if (resolved != null) {
+                    return resolved.exportParameterValues();
+                }
                 break;
             }
             case OPERATOR_RANDOM: {
@@ -5315,6 +5359,12 @@ public class Node {
     }
 
     private Optional<Vec3d> resolvePositionTarget(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
+        if (parameterNode != null && parameterNode.getType() == NodeType.LIST_ITEM) {
+            Node resolved = resolveListItemValueNode(parameterNode, future, false, data);
+            if (resolved != null) {
+                return resolvePositionTarget(resolved, data, future);
+            }
+        }
         if (data != null && data.targetVector != null) {
             return Optional.of(data.targetVector);
         }
@@ -5843,6 +5893,13 @@ public class Node {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null) {
             return false;
+        }
+
+        if (parameterNode != null && parameterNode.getType() == NodeType.LIST_ITEM) {
+            Node resolved = resolveListItemValueNode(parameterNode, future, false, data);
+            if (resolved != null) {
+                return resolveLookOrientation(resolved, data, future);
+            }
         }
 
         if (parameterNode != null && parameterNode.getType() == NodeType.PARAM_BLOCK_FACE) {
@@ -7203,6 +7260,21 @@ public class Node {
             case CREATE_LIST:
                 executeCreateListCommand(future);
                 break;
+            case ADD_TO_LIST:
+                executeAddToListCommand(future);
+                break;
+            case REMOVE_FIRST_FROM_LIST:
+                executeRemoveFromListCommand(future, RemoveListMode.FIRST);
+                break;
+            case REMOVE_LAST_FROM_LIST:
+                executeRemoveFromListCommand(future, RemoveListMode.LAST);
+                break;
+            case REMOVE_LIST_ITEM:
+                executeRemoveFromListCommand(future, RemoveListMode.INDEX);
+                break;
+            case REMOVE_FROM_LIST:
+                executeRemoveFromListCommand(future, RemoveListMode.VALUE);
+                break;
             
             // Legacy nodes
             case PATH:
@@ -7446,24 +7518,19 @@ public class Node {
         future.complete(null);
     }
 
-    private void executeCreateListCommand(CompletableFuture<Void> future) {
+    private enum RemoveListMode {
+        FIRST,
+        LAST,
+        INDEX,
+        VALUE
+    }
+
+    private void executeAddToListCommand(CompletableFuture<Void> future) {
         Node parameterNode = getAttachedParameter(0);
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (parameterNode == null) {
             if (client != null) {
-                sendNodeErrorMessage(client, "Create List requires an entity, player, item, or GUI parameter.");
-            }
-            future.complete(null);
-            return;
-        }
-
-        NodeType parameterType = parameterNode.getType();
-        if (parameterType != NodeType.PARAM_ENTITY
-            && parameterType != NodeType.PARAM_PLAYER
-            && parameterType != NodeType.PARAM_ITEM
-            && parameterType != NodeType.PARAM_GUI) {
-            if (client != null) {
-                sendNodeErrorMessage(client, "Create List requires an entity, player, item, or GUI parameter.");
+                sendNodeErrorMessage(client, "Add To List requires an entity, player, or item parameter.");
             }
             future.complete(null);
             return;
@@ -7478,7 +7545,182 @@ public class Node {
             return;
         }
 
+        ListValueEntry listValue = resolveListValueEntry(parameterNode, future);
+        if (future.isDone()) {
+            return;
+        }
+        if (listValue == null || listValue.entry == null || listValue.entry.trim().isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "No matching target found nearby for " + type.getDisplayName() + ".");
+            }
+            future.complete(null);
+            return;
+        }
+
+        Node startNode = resolveExecutionStartNode();
+        if (startNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "No active node tree available for list update.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager manager = ExecutionManager.getInstance();
+        ExecutionManager.RuntimeList runtimeList = manager.getRuntimeList(startNode, listName.trim());
+        if (runtimeList == null) {
+            runtimeList = new ExecutionManager.RuntimeList(listValue.elementType, Collections.singletonList(listValue.entry));
+            manager.setRuntimeList(startNode, listName.trim(), runtimeList);
+            future.complete(null);
+            return;
+        }
+
+        if (runtimeList.getElementType() != listValue.elementType) {
+            if (client != null) {
+                sendNodeErrorMessage(client,
+                    "List \"" + listName.trim() + "\" stores " + describeListElementType(runtimeList.getElementType())
+                        + " entries and cannot accept " + describeListElementType(listValue.elementType) + ".");
+            }
+            future.complete(null);
+            return;
+        }
+
+        runtimeList.addEntry(listValue.entry);
+        future.complete(null);
+    }
+
+    private void executeRemoveFromListCommand(CompletableFuture<Void> future, RemoveListMode mode) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        String listName = getStringParameter("List", "");
+        if (listName == null || listName.trim().isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "List name cannot be empty.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        ExecutionManager.RuntimeList runtimeList = resolveRuntimeList(this);
+        if (runtimeList == null || runtimeList.isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" is empty or missing.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        String removed = null;
+        if (mode == RemoveListMode.FIRST) {
+            removed = runtimeList.removeFirstEntry();
+        } else if (mode == RemoveListMode.LAST) {
+            removed = runtimeList.removeLastEntry();
+        } else if (mode == RemoveListMode.INDEX) {
+            int index = getIntParameter("Index", 1);
+            if (index <= 0) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "List item index must be 1 or greater.");
+                }
+                future.complete(null);
+                return;
+            }
+            removed = runtimeList.removeEntry(index - 1);
+            if (removed == null) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" has no item " + index + ".");
+                }
+                future.complete(null);
+                return;
+            }
+        } else {
+            Node valueNode = getAttachedParameter(0);
+            if (valueNode == null) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Remove From List requires a value parameter.");
+                }
+                future.complete(null);
+                return;
+            }
+            int removedCount = 0;
+            while (true) {
+                int matchedIndex = findListEntryIndexByValue(runtimeList, valueNode, future);
+                if (future.isDone()) {
+                    return;
+                }
+                if (matchedIndex < 0) {
+                    break;
+                }
+                removed = runtimeList.removeEntry(matchedIndex);
+                if (removed == null) {
+                    break;
+                }
+                removedCount++;
+            }
+            if (removedCount <= 0) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "No matching entry was found in list \"" + listName.trim() + "\".");
+                }
+                future.complete(null);
+                return;
+            }
+        }
+
+        if (removed == null && client != null) {
+            sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" is empty or missing.");
+        }
+        future.complete(null);
+    }
+
+    private void executeCreateListCommand(CompletableFuture<Void> future) {
+        Node parameterNode = getAttachedParameter(0);
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (parameterNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "Create List requires an entity, player, item, or GUI parameter.");
+            }
+            future.complete(null);
+            return;
+        }
+
+        NodeType parameterType = parameterNode.getType();
+        String listName = getStringParameter("List", "");
+        if (listName == null || listName.trim().isEmpty()) {
+            if (client != null) {
+                sendNodeErrorMessage(client, "List name cannot be empty.");
+            }
+            future.complete(null);
+            return;
+        }
+
         if (client == null || client.player == null || client.world == null) {
+            future.complete(null);
+            return;
+        }
+
+        if (parameterType != NodeType.PARAM_ENTITY
+            && parameterType != NodeType.PARAM_PLAYER
+            && parameterType != NodeType.PARAM_ITEM
+            && parameterType != NodeType.PARAM_GUI) {
+            ListValueEntry singleValue = resolveListValueEntry(parameterNode, future);
+            if (future.isDone()) {
+                return;
+            }
+            if (singleValue == null || singleValue.entry == null || singleValue.entry.trim().isEmpty()) {
+                if (client != null) {
+                    sendNodeErrorMessage(client, "Create List could not resolve a value from the attached parameter.");
+                }
+                future.complete(null);
+                return;
+            }
+
+            ExecutionManager manager = ExecutionManager.getInstance();
+            Node startNode = resolveExecutionStartNode();
+            if (startNode == null) {
+                sendNodeErrorMessage(client, "No active node tree available for list creation.");
+                future.complete(null);
+                return;
+            }
+            manager.setRuntimeList(startNode, listName.trim(),
+                new ExecutionManager.RuntimeList(singleValue.elementType, Collections.singletonList(singleValue.entry)));
             future.complete(null);
             return;
         }
@@ -7486,16 +7728,9 @@ public class Node {
         List<Entity> matches = new ArrayList<>();
         if (parameterType == NodeType.PARAM_ENTITY) {
             String state = getEntityParameterState(parameterNode);
-            double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
             String rawEntity = getParameterString(parameterNode, "Entity");
             if (isAnySelectionValue(rawEntity)) {
-                double searchRadius = Math.max(1.0, range);
-                Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-                matches.addAll(client.world.getOtherEntities(
-                    client.player,
-                    searchBox,
-                    entity -> entity != null && !entity.isRemoved() && EntityStateOptions.matchesState(entity, state)
-                ));
+                matches.addAll(findRenderedEntities(client, state));
             } else {
                 List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
                 if (entityIds.isEmpty()) {
@@ -7510,7 +7745,7 @@ public class Node {
                         continue;
                     }
                     EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-                    matches.addAll(findEntitiesByType(client, entityType, range, state));
+                    matches.addAll(findRenderedEntitiesByType(client, entityType, state));
                 }
             }
         } else if (parameterType == NodeType.PARAM_PLAYER) {
@@ -7656,6 +7891,361 @@ public class Node {
             entries.add((playerSlot ? LIST_SLOT_PLAYER_PREFIX : LIST_SLOT_GUI_PREFIX) + slotIndex);
         }
         return entries;
+    }
+
+    private List<Entity> findRenderedEntities(net.minecraft.client.MinecraftClient client, String state) {
+        if (client == null || client.player == null || client.world == null) {
+            return Collections.emptyList();
+        }
+        double renderDistance = Math.max(16.0, client.options.getViewDistance().getValue() * 16.0);
+        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
+        return client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity != null
+                && entity.isAlive()
+                && EntityStateOptions.matchesState(entity, state)
+        );
+    }
+
+    private List<Entity> findRenderedEntitiesByType(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, String state) {
+        if (client == null || client.player == null || client.world == null || entityType == null) {
+            return Collections.emptyList();
+        }
+        double renderDistance = Math.max(16.0, client.options.getViewDistance().getValue() * 16.0);
+        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
+        return client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity != null
+                && entity.isAlive()
+                && entity.getType() == entityType
+                && EntityStateOptions.matchesState(entity, state)
+        );
+    }
+
+    private static final class ListValueEntry {
+        private final NodeType elementType;
+        private final String entry;
+
+        private ListValueEntry(NodeType elementType, String entry) {
+            this.elementType = elementType;
+            this.entry = entry;
+        }
+    }
+
+    private ListValueEntry resolveListValueEntry(Node parameterNode, CompletableFuture<Void> future) {
+        if (parameterNode == null) {
+            return null;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null) {
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        NodeType parameterType = parameterNode.getType();
+        switch (parameterType) {
+            case PARAM_ENTITY: {
+                String state = getEntityParameterState(parameterNode);
+                double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+                String rawEntity = getParameterString(parameterNode, "Entity");
+                Entity nearest = null;
+                double nearestDistance = Double.MAX_VALUE;
+                if (isAnySelectionValue(rawEntity)) {
+                    double searchRadius = Math.max(1.0, range);
+                    Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+                    for (Entity candidate : client.world.getOtherEntities(
+                        client.player,
+                        searchBox,
+                        entity -> entity != null && !entity.isRemoved() && EntityStateOptions.matchesState(entity, state))) {
+                        double distance = candidate.squaredDistanceTo(client.player);
+                        if (distance < nearestDistance) {
+                            nearest = candidate;
+                            nearestDistance = distance;
+                        }
+                    }
+                } else {
+                    for (String candidateId : resolveEntityIdsFromParameter(parameterNode)) {
+                        Identifier identifier = Identifier.tryParse(candidateId);
+                        if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+                            continue;
+                        }
+                        EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+                        Optional<Entity> candidate = findNearestEntity(client, entityType, range, state);
+                        if (candidate.isEmpty()) {
+                            continue;
+                        }
+                        double distance = candidate.get().squaredDistanceTo(client.player);
+                        if (distance < nearestDistance) {
+                            nearest = candidate.get();
+                            nearestDistance = distance;
+                        }
+                    }
+                }
+                return nearest != null ? new ListValueEntry(NodeType.PARAM_ENTITY, nearest.getUuidAsString()) : null;
+            }
+            case PARAM_PLAYER: {
+                String playerName = getParameterString(parameterNode, "Player");
+                if (isSelfPlayerValue(playerName)) {
+                    return new ListValueEntry(NodeType.PARAM_PLAYER, client.player.getUuidAsString());
+                }
+                if (isAnyPlayerValue(playerName)) {
+                    Optional<AbstractClientPlayerEntity> nearest = findNearestPlayer(client, client.player);
+                    return nearest.map(player -> new ListValueEntry(NodeType.PARAM_PLAYER, player.getUuidAsString())).orElse(null);
+                }
+                for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
+                    if (player != null && playerName != null && playerName.equalsIgnoreCase(
+                        GameProfileCompatibilityBridge.getName(player.getGameProfile()))) {
+                        return new ListValueEntry(NodeType.PARAM_PLAYER, player.getUuidAsString());
+                    }
+                }
+                return null;
+            }
+            case PARAM_ITEM: {
+                double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
+                Entity nearest = null;
+                double nearestDistance = Double.MAX_VALUE;
+                for (String candidateId : resolveItemIdsFromParameter(parameterNode)) {
+                    Identifier identifier = Identifier.tryParse(candidateId);
+                    if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                        continue;
+                    }
+                    Item item = Registries.ITEM.get(identifier);
+                    for (ItemEntity itemEntity : findItemsByType(client, item, range)) {
+                        if (itemEntity == null || itemEntity.isRemoved()) {
+                            continue;
+                        }
+                        double distance = itemEntity.squaredDistanceTo(client.player);
+                        if (distance < nearestDistance) {
+                            nearest = itemEntity;
+                            nearestDistance = distance;
+                        }
+                    }
+                }
+                return nearest != null ? new ListValueEntry(NodeType.PARAM_ITEM, nearest.getUuidAsString()) : null;
+            }
+            default:
+                NodeType resolvedType = parameterNode.getResolvedValueType();
+                Map<String, String> exported = parameterNode.exportParameterValues();
+                if (resolvedType == null || exported == null || exported.isEmpty()) {
+                    if (client != null) {
+                        sendNodeErrorMessage(client, "No value available to add to the list.");
+                    }
+                    if (future != null && !future.isDone()) {
+                        future.complete(null);
+                    }
+                    return null;
+                }
+                return new ListValueEntry(resolvedType, serializeListEntryValues(exported));
+        }
+    }
+
+    private String describeListElementType(NodeType type) {
+        if (type == NodeType.PARAM_ENTITY) {
+            return "entity";
+        }
+        if (type == NodeType.PARAM_PLAYER) {
+            return "player";
+        }
+        if (type == NodeType.PARAM_ITEM) {
+            return "item";
+        }
+        if (type == NodeType.PARAM_GUI) {
+            return "GUI";
+        }
+        return "unknown";
+    }
+
+    private String serializeListEntryValues(Map<String, String> values) {
+        return LIST_ENTRY_SERIALIZED_PREFIX + LIST_ENTRY_GSON.toJson(values == null ? Collections.emptyMap() : values);
+    }
+
+    private Map<String, String> deserializeListEntryValues(String entry) {
+        if (entry == null || !entry.startsWith(LIST_ENTRY_SERIALIZED_PREFIX)) {
+            return Collections.emptyMap();
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, String> parsed = LIST_ENTRY_GSON.fromJson(
+                entry.substring(LIST_ENTRY_SERIALIZED_PREFIX.length()), Map.class);
+            return parsed == null ? Collections.emptyMap() : parsed;
+        } catch (Exception ignored) {
+            return Collections.emptyMap();
+        }
+    }
+
+    private int findListEntryIndexByValue(ExecutionManager.RuntimeList list, Node valueNode, CompletableFuture<Void> future) {
+        if (list == null || valueNode == null) {
+            return -1;
+        }
+        Node comparisonNode = valueNode;
+        if (comparisonNode.getType() == NodeType.VARIABLE) {
+            comparisonNode = resolveVariableValueNode(comparisonNode, 0, future);
+            if (comparisonNode == null) {
+                return -1;
+            }
+        }
+        for (int i = 0; i < list.size(); i++) {
+            Node entryNode = buildListEntrySnapshot(list, i + 1, false, null, future);
+            if (entryNode == null) {
+                continue;
+            }
+            Optional<Boolean> equals = compareParameterNodes(entryNode, comparisonNode);
+            if (equals.orElse(false)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private Node buildListEntrySnapshot(ExecutionManager.RuntimeList list, int index, boolean reportErrors,
+                                        RuntimeParameterData data, CompletableFuture<Void> future) {
+        if (list == null || index <= 0 || index > list.size()) {
+            return null;
+        }
+        String entry = list.getEntry(index - 1);
+        if (entry == null || entry.isEmpty()) {
+            return null;
+        }
+
+        if (entry.startsWith(LIST_ENTRY_SERIALIZED_PREFIX)) {
+            NodeType elementType = list.getElementType();
+            if (elementType == null) {
+                return null;
+            }
+            Map<String, String> values = deserializeListEntryValues(entry);
+            if (values.isEmpty()) {
+                return null;
+            }
+            Node snapshot = new Node(elementType, 0, 0);
+            snapshot.setSocketsHidden(true);
+            snapshot.applyParameterValuesFromMap(values);
+            if (data != null) {
+                String x = values.get("X");
+                String y = values.get("Y");
+                String z = values.get("Z");
+                Integer xi = parseIntOrNull(x);
+                Integer yi = parseIntOrNull(y);
+                Integer zi = parseIntOrNull(z);
+                if (xi != null && yi != null && zi != null) {
+                    data.targetBlockPos = new BlockPos(xi, yi, zi);
+                    data.targetVector = Vec3d.ofCenter(data.targetBlockPos);
+                }
+            }
+            return snapshot;
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        NodeType elementType = list.getElementType();
+        if (elementType == NodeType.PARAM_ENTITY || elementType == NodeType.PARAM_PLAYER || elementType == NodeType.PARAM_ITEM) {
+            Node snapshot = new Node(elementType, 0, 0);
+            snapshot.setSocketsHidden(true);
+            try {
+                Entity resolved = null;
+                try {
+                    java.util.UUID uuid = java.util.UUID.fromString(entry);
+                    if (client != null) {
+                        resolved = resolveEntityByUuid(client, uuid);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                }
+
+                if (elementType == NodeType.PARAM_ENTITY) {
+                    if (resolved != null) {
+                        Identifier typeId = Registries.ENTITY_TYPE.getId(resolved.getType());
+                        if (typeId != null) {
+                            snapshot.setParameterValueAndPropagate("Entity", typeId.toString());
+                        }
+                        String state = EntityStateOptions.describe(resolved);
+                        if (state != null) {
+                            snapshot.setParameterValueAndPropagate("State", state);
+                        }
+                        if (data != null) {
+                            data.targetEntity = resolved;
+                            data.targetBlockPos = resolved.getBlockPos();
+                        }
+                    } else {
+                        snapshot.setParameterValueAndPropagate("Entity", entry);
+                    }
+                    return snapshot;
+                }
+
+                if (elementType == NodeType.PARAM_PLAYER) {
+                    if (resolved instanceof AbstractClientPlayerEntity player) {
+                        String name = GameProfileCompatibilityBridge.getName(player.getGameProfile());
+                        if (name != null) {
+                            snapshot.setParameterValueAndPropagate("Player", name);
+                        }
+                        if (data != null) {
+                            data.targetEntity = player;
+                            data.targetBlockPos = player.getBlockPos();
+                        }
+                        return snapshot;
+                    }
+                    return null;
+                }
+
+                if (elementType == NodeType.PARAM_ITEM) {
+                    if (resolved instanceof ItemEntity itemEntity) {
+                        ItemStack stack = itemEntity.getStack();
+                        if (stack != null && !stack.isEmpty()) {
+                            Identifier itemId = Registries.ITEM.getId(stack.getItem());
+                            if (itemId != null) {
+                                snapshot.setParameterValueAndPropagate("Item", itemId.toString());
+                            }
+                            if (data != null) {
+                                data.targetEntity = itemEntity;
+                                data.targetBlockPos = itemEntity.getBlockPos();
+                            }
+                            return snapshot;
+                        }
+                    }
+                    return null;
+                }
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        if (elementType == NodeType.PARAM_GUI) {
+            return null;
+        }
+        return null;
+    }
+
+    private Node resolveListItemValueNode(Node listNode, CompletableFuture<Void> future, boolean reportErrors, RuntimeParameterData data) {
+        if (listNode == null) {
+            return null;
+        }
+        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
+        String listName = getParameterString(listNode, "List");
+        String safeListName = listName == null ? "" : listName.trim();
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (list == null || list.isEmpty()) {
+            if (reportErrors && client != null) {
+                sendNodeErrorMessage(client, "List \"" + safeListName + "\" is empty or missing.");
+            }
+            if (reportErrors && future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        int index = parseNodeInt(listNode, "Index", 1);
+        if (index <= 0 || index > list.size()) {
+            if (reportErrors && client != null) {
+                sendNodeErrorMessage(client, "List \"" + safeListName + "\" has no item " + index + ".");
+            }
+            if (reportErrors && future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        return buildListEntrySnapshot(list, index, reportErrors, data, future);
     }
 
     private boolean applyNumericOperation(Node snapshot, double amount, String operation, String[] error) {
@@ -18161,6 +18751,25 @@ public class Node {
             return null;
         }
 
+        if (entry.startsWith(LIST_ENTRY_SERIALIZED_PREFIX)) {
+            Node snapshot = resolveListItemValueNode(listNode, future, true, data);
+            if (snapshot == null) {
+                return null;
+            }
+            NodeType snapshotType = snapshot.getType();
+            if (snapshotType != NodeType.PARAM_ENTITY
+                && snapshotType != NodeType.PARAM_PLAYER
+                && snapshotType != NodeType.PARAM_ITEM) {
+                return null;
+            }
+            RuntimeParameterData resolvedData = data != null ? data : new RuntimeParameterData();
+            Optional<Vec3d> resolved = resolvePositionTarget(snapshot, resolvedData, future);
+            if (resolved.isEmpty()) {
+                return null;
+            }
+            return resolvedData.targetEntity;
+        }
+
         if (list.getElementType() == NodeType.PARAM_GUI) {
             if (getParameter("Slot") == null && getParameter("SourceSlot") == null && getParameter("TargetSlot") == null) {
                 sendNodeErrorMessage(client, "List \"" + listName.trim() + "\" contains GUI slots and cannot be used by " + type.getDisplayName() + ".");
@@ -19485,6 +20094,10 @@ public class Node {
         if (node == null) {
             return Optional.empty();
         }
+        if (node.getType() == NodeType.LIST_ITEM) {
+            Node resolved = resolveListItemValueNode(node, null, false, null);
+            return resolved != null ? resolveComparableString(resolved) : Optional.empty();
+        }
         switch (node.getType()) {
             case PARAM_MESSAGE: {
                 String text = getParameterString(node, "Text");
@@ -19555,6 +20168,10 @@ public class Node {
     private Optional<Double> resolveComparableNumber(Node node) {
         if (node == null) {
             return Optional.empty();
+        }
+        if (node.getType() == NodeType.LIST_ITEM) {
+            Node resolved = resolveListItemValueNode(node, null, false, null);
+            return resolved != null ? resolveComparableNumber(resolved) : Optional.empty();
         }
         switch (node.getType()) {
             case PARAM_AMOUNT:

@@ -110,7 +110,31 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.OPERATOR_BOOLEAN_AND, EnumSet.of(NodeValueTrait.BOOLEAN));
         traits.put(NodeType.OPERATOR_BOOLEAN_XOR, EnumSet.of(NodeValueTrait.BOOLEAN));
         traits.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.NUMBER));
-        traits.put(NodeType.LIST_ITEM, EnumSet.of(NodeValueTrait.LIST_ITEM, NodeValueTrait.COORDINATE, NodeValueTrait.INVENTORY_SLOT));
+        traits.put(NodeType.LIST_ITEM, EnumSet.of(
+            NodeValueTrait.LIST_ITEM,
+            NodeValueTrait.ANY,
+            NodeValueTrait.BOOLEAN,
+            NodeValueTrait.NUMBER,
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.COORDINATE,
+            NodeValueTrait.ROTATION,
+            NodeValueTrait.DIRECTION,
+            NodeValueTrait.DURATION,
+            NodeValueTrait.RANGE,
+            NodeValueTrait.DISTANCE,
+            NodeValueTrait.INVENTORY_SLOT,
+            NodeValueTrait.MESSAGE,
+            NodeValueTrait.GUI,
+            NodeValueTrait.KEY,
+            NodeValueTrait.MOUSE_BUTTON,
+            NodeValueTrait.HAND,
+            NodeValueTrait.VILLAGER_TRADE,
+            NodeValueTrait.WAYPOINT,
+            NodeValueTrait.SCHEMATIC
+        ));
         traits.put(NodeType.LIST_LENGTH, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
 
@@ -287,7 +311,9 @@ public final class NodeTraitRegistry {
 
         accepted.put(NodeType.SET_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
         accepted.put(NodeType.CHANGE_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE));
-        accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.GUI));
+        accepted.put(NodeType.ADD_TO_LIST, EnumSet.of(NodeValueTrait.ANY));
+        accepted.put(NodeType.REMOVE_FROM_LIST, EnumSet.of(NodeValueTrait.ANY));
+        accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ANY));
         accepted.put(NodeType.TRADE, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.WAIT, EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.NUMBER));
         accepted.put(NodeType.PARAM_BLOCK_FACE, EnumSet.of(NodeValueTrait.COORDINATE, NodeValueTrait.BLOCK));
@@ -297,6 +323,8 @@ public final class NodeTraitRegistry {
         EnumMap<NodeType, Integer> slotCounts = new EnumMap<>(NodeType.class);
         slotCounts.put(NodeType.SET_VARIABLE, 2);
         slotCounts.put(NodeType.CHANGE_VARIABLE, 1);
+        slotCounts.put(NodeType.ADD_TO_LIST, 1);
+        slotCounts.put(NodeType.REMOVE_FROM_LIST, 1);
         slotCounts.put(NodeType.OPERATOR_MOD, 2);
         slotCounts.put(NodeType.OPERATOR_BOOLEAN_OR, 2);
         slotCounts.put(NodeType.OPERATOR_BOOLEAN_AND, 2);
@@ -342,6 +370,8 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.SENSOR_VILLAGER_TRADE, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.SENSOR_IN_STOCK, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.CREATE_LIST, new String[]{"Target"});
+        slotLabels.put(NodeType.ADD_TO_LIST, new String[]{"Target"});
+        slotLabels.put(NodeType.REMOVE_FROM_LIST, new String[]{"Target"});
         slotLabels.put(NodeType.TRADE, new String[]{"Villager Trade"});
         slotLabels.put(NodeType.WAIT, new String[]{"Duration"});
         slotLabels.put(NodeType.PARAM_BLOCK_FACE, new String[]{"Target"});

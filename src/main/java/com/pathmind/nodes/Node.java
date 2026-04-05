@@ -15488,12 +15488,6 @@ public class Node {
                     if ((stack == null || stack.isEmpty()) && stopIfUnavailable) {
                         break;
                     }
-                    final Block expectedPlacedBlock = stack != null && stack.getItem() instanceof BlockItem blockItem
-                        ? blockItem.getBlock()
-                        : null;
-                    final boolean[] acceptedBlockInteraction = {false};
-                    final BlockHitResult[] acceptedBlockHit = {null};
-
                     if (sneakWhileUsing) {
                         runOnClientThread(client, () -> applySneakState(client, true));
                         waitForSneakSync(client, previousSneak, true);
@@ -15509,10 +15503,6 @@ public class Node {
                         if (!performed && allowBlock && target instanceof BlockHitResult blockHit) {
                             ActionResult blockResult = client.interactionManager.interactBlock(client.player, hand, blockHit);
                             performed = blockResult.isAccepted();
-                            if (performed && expectedPlacedBlock != null) {
-                                acceptedBlockInteraction[0] = true;
-                                acceptedBlockHit[0] = blockHit;
-                            }
                         }
                         if (!performed) {
                             client.interactionManager.interactItem(client.player, hand);
@@ -15529,10 +15519,6 @@ public class Node {
                             }
                         }
                     });
-
-                    if (acceptedBlockInteraction[0] && acceptedBlockHit[0] != null && expectedPlacedBlock != null) {
-                        waitForUseBlockPlacement(client, acceptedBlockHit[0], expectedPlacedBlock);
-                    }
 
                     if (durationSeconds > 0.0) {
                         Thread.sleep((long) (durationSeconds * 1000));

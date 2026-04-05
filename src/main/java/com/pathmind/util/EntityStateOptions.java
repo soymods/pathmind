@@ -230,6 +230,26 @@ public final class EntityStateOptions {
         return true;
     }
 
+    public static String describe(Entity entity) {
+        if (entity == null) {
+            return "";
+        }
+        List<StateOption> options = getOptions(entity.getType(), EntityCompatibilityBridge.getWorld(entity));
+        if (options.isEmpty()) {
+            return "";
+        }
+        List<String> matches = new ArrayList<>();
+        for (StateOption option : options) {
+            if (option == null || option.value() == null || option.value().isBlank()) {
+                continue;
+            }
+            if (matchesState(entity, option.value())) {
+                matches.add(option.value());
+            }
+        }
+        return String.join(",", matches);
+    }
+
     private static boolean matchesStatePart(Entity entity, String statePart) {
         String normalized = statePart.trim().toLowerCase(Locale.ROOT);
         if (normalized.isEmpty()) {

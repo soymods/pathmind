@@ -1602,6 +1602,7 @@ public class NodeGraph {
                         || draggingNode.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
                         || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
                         || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
+                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_ENTITY
                         || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION
                         || draggingNode.isParameterNode()
                         || draggingNode.isSensorNode();
@@ -1690,6 +1691,7 @@ public class NodeGraph {
             || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK
+            || nodeType == NodeType.SENSOR_TARGETED_ENTITY
             || nodeType == NodeType.SENSOR_LOOK_DIRECTION
             || Node.isParameterType(nodeType)
             || Node.isSensorType(nodeType);
@@ -1776,6 +1778,7 @@ public class NodeGraph {
             || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || nodeType == NodeType.SENSOR_TARGETED_BLOCK
+            || nodeType == NodeType.SENSOR_TARGETED_ENTITY
             || nodeType == NodeType.SENSOR_LOOK_DIRECTION
             || Node.isParameterType(nodeType)
             || Node.isSensorType(nodeType);
@@ -1885,6 +1888,7 @@ public class NodeGraph {
                 || node.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
                 || node.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
                 || node.getType() == NodeType.SENSOR_TARGETED_BLOCK
+                || node.getType() == NodeType.SENSOR_TARGETED_ENTITY
                 || node.getType() == NodeType.SENSOR_LOOK_DIRECTION)
                 && parameterDropTarget != null
                 && parameterDropSlotIndex != null) {
@@ -2005,6 +2009,7 @@ public class NodeGraph {
             || draggingNode.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
             || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
+            || draggingNode.getType() == NodeType.SENSOR_TARGETED_ENTITY
             || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION)
             && draggingNode.getParentParameterHost() != null) {
             Node parent = draggingNode.getParentParameterHost();

@@ -51,6 +51,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_FABRIC_EVENT,
         NodeType.SENSOR_GUI_FILLED,
         NodeType.SENSOR_TARGETED_BLOCK,
+        NodeType.SENSOR_TARGETED_ENTITY,
         NodeType.SENSOR_TARGETED_BLOCK_FACE,
         NodeType.SENSOR_LOOK_DIRECTION
     );
@@ -99,6 +100,7 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(NodeValueTrait.COORDINATE));
         traits.put(NodeType.SENSOR_DISTANCE_BETWEEN, EnumSet.of(NodeValueTrait.DISTANCE));
         traits.put(NodeType.SENSOR_TARGETED_BLOCK, EnumSet.of(NodeValueTrait.BLOCK));
+        traits.put(NodeType.SENSOR_TARGETED_ENTITY, EnumSet.of(NodeValueTrait.ENTITY));
         traits.put(NodeType.SENSOR_TARGETED_BLOCK_FACE, EnumSet.of(NodeValueTrait.DIRECTION));
         traits.put(NodeType.SENSOR_LOOK_DIRECTION, EnumSet.of(NodeValueTrait.ROTATION));
 
@@ -371,6 +373,7 @@ public final class NodeTraitRegistry {
         if (type == NodeType.SENSOR_POSITION_OF
             || type == NodeType.SENSOR_DISTANCE_BETWEEN
             || type == NodeType.SENSOR_TARGETED_BLOCK
+            || type == NodeType.SENSOR_TARGETED_ENTITY
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || type == NodeType.SENSOR_LOOK_DIRECTION
             || type == NodeType.SENSOR_SLOT_ITEM_COUNT) {

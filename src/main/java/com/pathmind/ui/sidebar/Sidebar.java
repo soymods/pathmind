@@ -211,6 +211,7 @@ public class Sidebar {
         groups.add(new NodeGroup(
             "Entities & Visibility",
             baritoneAvailable,
+            NodeType.SENSOR_TARGETED_ENTITY,
             NodeType.SENSOR_TOUCHING_ENTITY,
             NodeType.SENSOR_IS_RENDERED,
             NodeType.SENSOR_IS_VISIBLE

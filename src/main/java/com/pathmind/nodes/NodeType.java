@@ -105,6 +105,7 @@ public enum NodeType {
     SENSOR_POSITION_OF("pathmind.node.type.sensorPositionOf", 0xFF64B5F6, "pathmind.node.type.sensorPositionOf.desc"),
     SENSOR_DISTANCE_BETWEEN("pathmind.node.type.sensorDistanceBetween", 0xFF64B5F6, "pathmind.node.type.sensorDistanceBetween.desc"),
     SENSOR_TARGETED_BLOCK("pathmind.node.type.sensorTargetedBlock", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlock.desc"),
+    SENSOR_TARGETED_ENTITY("pathmind.node.type.sensorTargetedEntity", 0xFF64B5F6, "pathmind.node.type.sensorTargetedEntity.desc"),
     SENSOR_LOOK_DIRECTION("pathmind.node.type.sensorLookDirection", 0xFF64B5F6, "pathmind.node.type.sensorLookDirection.desc"),
     SENSOR_TARGETED_BLOCK_FACE("pathmind.node.type.sensorTargetedBlockFace", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlockFace.desc"),
     SENSOR_GUI_FILLED("pathmind.node.type.sensorGuiFilled", 0xFF64B5F6, "pathmind.node.type.sensorGuiFilled.desc"),
@@ -259,6 +260,7 @@ public enum NodeType {
             case SENSOR_POSITION_OF:
             case SENSOR_DISTANCE_BETWEEN:
             case SENSOR_TARGETED_BLOCK:
+            case SENSOR_TARGETED_ENTITY:
             case SENSOR_LOOK_DIRECTION:
             case SENSOR_TARGETED_BLOCK_FACE:
             case SENSOR_GUI_FILLED:

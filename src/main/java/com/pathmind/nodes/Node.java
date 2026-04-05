@@ -733,6 +733,7 @@ public class Node {
             || type == NodeType.JUMP
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || type == NodeType.SENSOR_TARGETED_BLOCK
+            || type == NodeType.SENSOR_TARGETED_ENTITY
             || type == NodeType.SENSOR_LOOK_DIRECTION
             || isComparisonOperator()
             || type == NodeType.OPEN_INVENTORY
@@ -1336,6 +1337,7 @@ public class Node {
             case SENSOR_DISTANCE_BETWEEN -> NodeType.PARAM_DISTANCE;
             case SENSOR_TARGETED_BLOCK_FACE -> NodeType.PARAM_BLOCK_FACE;
             case SENSOR_TARGETED_BLOCK -> NodeType.PARAM_BLOCK;
+            case SENSOR_TARGETED_ENTITY -> NodeType.PARAM_ENTITY;
             case SENSOR_LOOK_DIRECTION -> NodeType.PARAM_DIRECTION;
             case SENSOR_SLOT_ITEM_COUNT -> NodeType.PARAM_AMOUNT;
             default -> type;
@@ -3671,6 +3673,27 @@ public class Node {
                 String stateValue = BlockSelection.describeState(state);
                 values.put("Block", blockId);
                 values.put(normalizeParameterKey("Block"), blockId);
+                if (stateValue == null) {
+                    stateValue = "";
+                }
+                values.put("State", stateValue);
+                values.put(normalizeParameterKey("State"), stateValue);
+                break;
+            }
+            case SENSOR_TARGETED_ENTITY: {
+                Optional<Entity> targetedEntity = getTargetedEntity();
+                if (targetedEntity.isEmpty()) {
+                    break;
+                }
+                Entity entity = targetedEntity.get();
+                Identifier id = Registries.ENTITY_TYPE.getId(entity.getType());
+                if (id == null) {
+                    break;
+                }
+                String entityId = "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+                values.put("Entity", entityId);
+                values.put(normalizeParameterKey("Entity"), entityId);
+                String stateValue = EntityStateOptions.describe(entity);
                 if (stateValue == null) {
                     stateValue = "";
                 }
@@ -7172,6 +7195,7 @@ public class Node {
             case SENSOR_CHAT_MESSAGE:
             case SENSOR_FABRIC_EVENT:
             case SENSOR_TARGETED_BLOCK:
+            case SENSOR_TARGETED_ENTITY:
             case SENSOR_LOOK_DIRECTION:
             case SENSOR_TARGETED_BLOCK_FACE:
                 completeSensorEvaluation(future);
@@ -13317,6 +13341,17 @@ public class Node {
                 }
                 break;
             }
+            case SENSOR_TARGETED_ENTITY: {
+                String entity = getRuntimeValue(values, "entity");
+                if (!entity.isEmpty()) {
+                    String state = getRuntimeValue(values, "state");
+                    if (!state.isEmpty()) {
+                        return entity + "[" + state + "]";
+                    }
+                    return entity;
+                }
+                break;
+            }
             case SENSOR_LOOK_DIRECTION: {
                 String direction = getRuntimeValue(values, "direction");
                 if (!direction.isEmpty()) {
@@ -18404,6 +18439,22 @@ public class Node {
         return Optional.ofNullable(client.world.getBlockState(pos));
     }
 
+    private Optional<Entity> getTargetedEntity() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return Optional.empty();
+        }
+        HitResult hit = client.crosshairTarget;
+        if (!(hit instanceof EntityHitResult entityHit) || hit.getType() != HitResult.Type.ENTITY) {
+            return Optional.empty();
+        }
+        Entity entity = entityHit.getEntity();
+        if (entity == null || entity.isRemoved()) {
+            return Optional.empty();
+        }
+        return Optional.of(entity);
+    }
+
     private Optional<Direction> getLookDirection() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.player == null) {
@@ -18617,6 +18668,9 @@ public class Node {
             }
             case SENSOR_TARGETED_BLOCK:
                 result = getTargetedBlockState().isPresent();
+                break;
+            case SENSOR_TARGETED_ENTITY:
+                result = getTargetedEntity().isPresent();
                 break;
             case SENSOR_LOOK_DIRECTION:
                 result = getLookDirection().isPresent();
@@ -19204,6 +19258,7 @@ public class Node {
             || valueType == NodeType.SENSOR_DISTANCE_BETWEEN
             || valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || valueType == NodeType.SENSOR_TARGETED_BLOCK
+            || valueType == NodeType.SENSOR_TARGETED_ENTITY
             || valueType == NodeType.SENSOR_LOOK_DIRECTION
             || valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
             valueType = valueNode.getResolvedValueType();
@@ -19256,6 +19311,10 @@ public class Node {
         if (blockComparison.isPresent()) {
             return blockComparison;
         }
+        Optional<Boolean> entityComparison = compareEntitySelectionValues(leftValues, rightValues);
+        if (entityComparison.isPresent()) {
+            return entityComparison;
+        }
         return Optional.of(leftValues.equals(rightValues));
     }
 
@@ -19278,6 +19337,19 @@ public class Node {
         if (rightMissingTargetedBlock && isBlockComparableNode(left)) {
             return Optional.of(false);
         }
+        boolean leftMissingTargetedEntity = left.getType() == NodeType.SENSOR_TARGETED_ENTITY
+            && (leftValues == null || leftValues.isEmpty());
+        boolean rightMissingTargetedEntity = right.getType() == NodeType.SENSOR_TARGETED_ENTITY
+            && (rightValues == null || rightValues.isEmpty());
+        if (leftMissingTargetedEntity && rightMissingTargetedEntity) {
+            return Optional.of(true);
+        }
+        if (leftMissingTargetedEntity && isEntityComparableNode(right)) {
+            return Optional.of(false);
+        }
+        if (rightMissingTargetedEntity && isEntityComparableNode(left)) {
+            return Optional.of(false);
+        }
         return Optional.empty();
     }
 
@@ -19292,20 +19364,106 @@ public class Node {
         return values != null && !getRuntimeValue(values, "block").isEmpty();
     }
 
+    private boolean isEntityComparableNode(Node node) {
+        if (node == null) {
+            return false;
+        }
+        if (node.getType() == NodeType.PARAM_ENTITY || node.getType() == NodeType.SENSOR_TARGETED_ENTITY) {
+            return true;
+        }
+        Map<String, String> values = node.exportParameterValues();
+        return values != null && !getRuntimeValue(values, "entity").isEmpty();
+    }
+
     private Optional<Boolean> compareBlockSelectionValues(Map<String, String> leftValues, Map<String, String> rightValues) {
         String leftBlock = getRuntimeValue(leftValues, "block");
         String rightBlock = getRuntimeValue(rightValues, "block");
         if (leftBlock.isEmpty() || rightBlock.isEmpty()) {
             return Optional.empty();
         }
-        String leftState = getRuntimeValue(leftValues, "state");
-        String rightState = getRuntimeValue(rightValues, "state");
-        String leftCombined = normalizeBlockSelection(leftBlock, leftState);
-        String rightCombined = normalizeBlockSelection(rightBlock, rightState);
-        if (leftCombined.isEmpty() || rightCombined.isEmpty()) {
+        boolean leftWildcard = isAnySelectionValue(leftBlock);
+        boolean rightWildcard = isAnySelectionValue(rightBlock);
+        String leftCombined = normalizeBlockSelection(leftBlock, "");
+        String rightCombined = normalizeBlockSelection(rightBlock, "");
+        if (!leftWildcard && !rightWildcard && (leftCombined.isEmpty() || rightCombined.isEmpty())) {
             return Optional.empty();
         }
-        return Optional.of(leftCombined.equalsIgnoreCase(rightCombined));
+        if (!leftWildcard && !rightWildcard && !leftCombined.equalsIgnoreCase(rightCombined)) {
+            return Optional.of(false);
+        }
+        String leftState = getRuntimeValue(leftValues, "state");
+        String rightState = getRuntimeValue(rightValues, "state");
+        return Optional.of(statesMatch(leftState, rightState));
+    }
+
+    private Optional<Boolean> compareEntitySelectionValues(Map<String, String> leftValues, Map<String, String> rightValues) {
+        String leftEntity = getRuntimeValue(leftValues, "entity");
+        String rightEntity = getRuntimeValue(rightValues, "entity");
+        if (leftEntity.isEmpty() || rightEntity.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean leftWildcard = isAnySelectionValue(leftEntity);
+        boolean rightWildcard = isAnySelectionValue(rightEntity);
+        String leftCombined = normalizeEntitySelection(leftEntity, "");
+        String rightCombined = normalizeEntitySelection(rightEntity, "");
+        if (!leftWildcard && !rightWildcard && (leftCombined.isEmpty() || rightCombined.isEmpty())) {
+            return Optional.empty();
+        }
+        if (!leftWildcard && !rightWildcard && !leftCombined.equalsIgnoreCase(rightCombined)) {
+            return Optional.of(false);
+        }
+        String leftState = getRuntimeValue(leftValues, "state");
+        String rightState = getRuntimeValue(rightValues, "state");
+        return Optional.of(statesMatch(leftState, rightState));
+    }
+
+    private boolean statesMatch(String leftState, String rightState) {
+        boolean leftWildcard = isAnySelectionValue(leftState);
+        boolean rightWildcard = isAnySelectionValue(rightState);
+        if (leftWildcard || rightWildcard) {
+            return true;
+        }
+        Set<String> leftParts = splitSelectionParts(leftState);
+        Set<String> rightParts = splitSelectionParts(rightState);
+        if (leftParts.isEmpty() || rightParts.isEmpty()) {
+            return true;
+        }
+        return leftParts.containsAll(rightParts) || rightParts.containsAll(leftParts);
+    }
+
+    private Set<String> splitSelectionParts(String rawState) {
+        if (isAnySelectionValue(rawState)) {
+            return Collections.emptySet();
+        }
+        Set<String> parts = new LinkedHashSet<>();
+        if (rawState == null) {
+            return parts;
+        }
+        for (String part : rawState.split(",")) {
+            if (part == null) {
+                continue;
+            }
+            String trimmed = part.trim().toLowerCase(Locale.ROOT);
+            if (!trimmed.isEmpty()) {
+                parts.add(trimmed);
+            }
+        }
+        return parts;
+    }
+
+    private String normalizeEntitySelection(String entity, String state) {
+        if (entity == null || entity.trim().isEmpty()) {
+            return "";
+        }
+        String normalizedEntity = normalizeResourceId(entity, "minecraft");
+        if (normalizedEntity == null || normalizedEntity.isEmpty()) {
+            return "";
+        }
+        String trimmedState = state == null ? "" : state.trim();
+        if (trimmedState.isEmpty()) {
+            return normalizedEntity;
+        }
+        return normalizedEntity + "[" + trimmedState.toLowerCase(Locale.ROOT) + "]";
     }
 
     private String normalizeBlockSelection(String block, String state) {

@@ -259,6 +259,8 @@
   "pathmind.node.type.sensorInStock.desc": "Detect if the villager trade at the selected number is currently in stock",
   "pathmind.node.type.sensorTargetedBlock": "Targeted Block",
   "pathmind.node.type.sensorTargetedBlock.desc": "Gets the block the player is targeting",
+  "pathmind.node.type.sensorTargetedEntity": "Targeted Entity",
+  "pathmind.node.type.sensorTargetedEntity.desc": "Gets the entity the player is targeting",
   "pathmind.node.type.sensorTargetedBlockFace": "Targeted Block Face",
   "pathmind.node.type.sensorTargetedBlockFace.desc": "Gets the face of the block the player is targeting",
   "pathmind.node.type.sensorTouchingBlock": "Touching Block",

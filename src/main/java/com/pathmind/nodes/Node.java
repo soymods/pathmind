@@ -5465,10 +5465,24 @@ public class Node {
                 if (client == null || client.player == null || client.world == null) {
                     return Optional.empty();
                 }
+                String rawBlock = getParameterString(parameterNode, "Block");
                 List<BlockSelection> blocks = resolveBlocksFromParameter(parameterNode);
                 if (blocks.isEmpty()) {
-                    sendParameterSearchFailure("No blocks defined on parameter for " + type.getDisplayName() + ".", future);
-                    return Optional.empty();
+                    if (!isAnySelectionValue(rawBlock)) {
+                        sendParameterSearchFailure("No blocks defined on parameter for " + type.getDisplayName() + ".", future);
+                        return Optional.empty();
+                    }
+                    double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
+                    Optional<BlockPos> nearest = findNearestAnyBlock(client, range);
+                    if (nearest.isEmpty()) {
+                        sendParameterSearchFailure("No nearby block found for " + type.getDisplayName() + ".", future);
+                        return Optional.empty();
+                    }
+                    if (data != null) {
+                        data.targetBlockPos = nearest.get();
+                        data.targetBlockIds = new ArrayList<>();
+                    }
+                    return Optional.of(Vec3d.ofCenter(nearest.get()));
                 }
                 double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
                 Optional<BlockPos> match = findNearestBlock(client, blocks, range);
@@ -6838,6 +6852,36 @@ public class Node {
                         }
                     }
                     if (!matches) {
+                        continue;
+                    }
+                    double distance = mutable.getSquaredDistance(playerPos);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestPos = mutable.toImmutable();
+                    }
+                }
+            }
+        }
+
+        return Optional.ofNullable(bestPos);
+    }
+
+    private Optional<BlockPos> findNearestAnyBlock(net.minecraft.client.MinecraftClient client, double range) {
+        if (client == null || client.player == null || client.world == null) {
+            return Optional.empty();
+        }
+        int radius = Math.max(1, Math.min((int) Math.ceil(range), 64));
+        BlockPos playerPos = client.player.getBlockPos();
+        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        BlockPos bestPos = null;
+        double bestDistance = Double.MAX_VALUE;
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    BlockState state = client.world.getBlockState(mutable);
+                    if (state.isAir()) {
                         continue;
                     }
                     double distance = mutable.getSquaredDistance(playerPos);

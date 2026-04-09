@@ -740,6 +740,9 @@ public class Node {
             || type == NodeType.SPRINT
             || type == NodeType.FLY
             || type == NodeType.JUMP
+            || type == NodeType.CONTROL_FORK
+            || type == NodeType.CONTROL_JOIN_ANY
+            || type == NodeType.CONTROL_JOIN_ALL
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || type == NodeType.SENSOR_TARGETED_BLOCK
             || type == NodeType.SENSOR_TARGETED_ENTITY
@@ -981,6 +984,9 @@ public class Node {
         if (type == NodeType.START || type == NodeType.EVENT_FUNCTION || isSensorNode() || isParameterNode()) {
             return 0;
         }
+        if (type == NodeType.CONTROL_JOIN_ANY || type == NodeType.CONTROL_JOIN_ALL) {
+            return 2;
+        }
         return 1;
     }
 
@@ -995,6 +1001,9 @@ public class Node {
             return 0;
         }
         if (type == NodeType.CONTROL_IF_ELSE) {
+            return 2;
+        }
+        if (type == NodeType.CONTROL_FORK) {
             return 2;
         }
         return 1;
@@ -1013,9 +1022,17 @@ public class Node {
 
     public int getSocketY(int socketIndex, boolean isInput) {
         int socketHeight = 12;
-        if (type == NodeType.START || type == NodeType.EVENT_FUNCTION || usesMinimalNodePresentation()) {
-            // Center sockets on compact nodes without traditional headers
+        if (type == NodeType.START || type == NodeType.EVENT_FUNCTION) {
+            // Center sockets on compact entry nodes without traditional headers
             return y + getHeight() / 2;
+        } else if (usesMinimalNodePresentation()) {
+            int socketCount = isInput ? getInputSocketCount() : getOutputSocketCount();
+            if (socketCount <= 1) {
+                return y + getHeight() / 2;
+            }
+            int totalHeight = (socketCount - 1) * socketHeight;
+            int startY = y + getHeight() / 2 - totalHeight / 2;
+            return startY + socketIndex * socketHeight;
         } else {
             int headerHeight = 14;
             int contentStartY = y + headerHeight + 6; // Start sockets below header with some padding
@@ -2954,6 +2971,12 @@ public class Node {
             case CONTROL_IF:
                 break;
             case CONTROL_IF_ELSE:
+                break;
+            case CONTROL_FORK:
+                break;
+            case CONTROL_JOIN_ANY:
+                break;
+            case CONTROL_JOIN_ALL:
                 break;
             case EVENT_FUNCTION:
                 parameters.add(new NodeParameter("Name", ParameterType.STRING, "function"));
@@ -7168,6 +7191,15 @@ public class Node {
                 break;
             case CONTROL_IF_ELSE:
                 executeControlIfElse(future);
+                break;
+            case CONTROL_FORK:
+                executeControlFork(future);
+                break;
+            case CONTROL_JOIN_ANY:
+                executeControlJoinAny(future);
+                break;
+            case CONTROL_JOIN_ALL:
+                executeControlJoinAll(future);
                 break;
             case FARM:
                 executeFarmCommand(future);
@@ -13803,6 +13835,18 @@ public class Node {
         }
         boolean condition = evaluateConditionFromParameters();
         setNextOutputSocket(condition ? 0 : 1);
+        future.complete(null);
+    }
+
+    private void executeControlFork(CompletableFuture<Void> future) {
+        future.complete(null);
+    }
+
+    private void executeControlJoinAny(CompletableFuture<Void> future) {
+        future.complete(null);
+    }
+
+    private void executeControlJoinAll(CompletableFuture<Void> future) {
         future.complete(null);
     }
 

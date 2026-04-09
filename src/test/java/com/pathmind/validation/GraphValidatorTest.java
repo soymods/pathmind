@@ -112,6 +112,28 @@ class GraphValidatorTest {
         assertFalse(hasIssueCode(result, "missing_preset"));
     }
 
+    @Test
+    void validateAllowsDistinctJoinInputs() {
+        Node startOne = new Node(NodeType.START, 0, 0);
+        Node startTwo = new Node(NodeType.START, 0, 80);
+        Node joinAny = new Node(NodeType.CONTROL_JOIN_ANY, 120, 40);
+        Node wait = new Node(NodeType.WAIT, 240, 40);
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(startOne, startTwo, joinAny, wait),
+            List.of(
+                new NodeConnection(startOne, joinAny, 0, 0),
+                new NodeConnection(startTwo, joinAny, 0, 1),
+                new NodeConnection(joinAny, wait, 0, 0)
+            ),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertFalse(result.hasErrors());
+    }
+
     private boolean hasIssueCode(GraphValidationResult result, String code) {
         return result.getIssues().stream().anyMatch(issue -> issue != null && code.equals(issue.getCode()));
     }

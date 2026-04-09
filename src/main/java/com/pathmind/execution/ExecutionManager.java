@@ -22,6 +22,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -85,6 +86,7 @@ public class ExecutionManager {
         final AtomicInteger activeExecutions;
         final Map<String, RuntimeVariable> runtimeVariables;
         final Map<String, RuntimeList> runtimeLists;
+        final Map<Node, Set<Integer>> joinBarrierInputs;
 
         ChainController(Node startNode, int rootExecutionId) {
             this.startNode = startNode;
@@ -94,6 +96,7 @@ public class ExecutionManager {
             this.activeExecutions = new AtomicInteger(1);
             this.runtimeVariables = new ConcurrentHashMap<>();
             this.runtimeLists = new ConcurrentHashMap<>();
+            this.joinBarrierInputs = new ConcurrentHashMap<>();
         }
     }
 
@@ -1303,10 +1306,15 @@ public class ExecutionManager {
     }
 
     private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId) {
-        return runChain(currentNode, controller, executionId, null);
+        return runChain(currentNode, controller, executionId, null, -1);
     }
 
     private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId, Node repeatUntilGuard) {
+        return runChain(currentNode, controller, executionId, repeatUntilGuard, -1);
+    }
+
+    private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId,
+                                             Node repeatUntilGuard, int arrivalInputSocket) {
         if (cancelRequested || controller == null || controller.cancelRequested) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1348,7 +1356,7 @@ public class ExecutionManager {
                         return handleEventCallIfNeeded(currentNode, controller, repeatUntilGuard);
                     })
                     .thenCompose(ignoredFuture -> waitForExecutionResume())
-                    .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller, executionId, repeatUntilGuard));
+                    .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller, executionId, repeatUntilGuard, arrivalInputSocket));
             });
     }
 
@@ -1441,16 +1449,28 @@ public class ExecutionManager {
         return handlersComplete.whenComplete((ignored, throwable) -> executingEvents.remove(eventName));
     }
 
-    private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller, int executionId, Node repeatUntilGuard) {
+    private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller, int executionId,
+                                                     Node repeatUntilGuard, int arrivalInputSocket) {
         if (cancelRequested || controller == null || controller.cancelRequested) {
             return CompletableFuture.completedFuture(null);
+        }
+
+        NodeType currentType = currentNode.getType();
+        if (currentType == NodeType.CONTROL_JOIN_ANY) {
+            return continueFromOutputSocket(currentNode, controller, executionId, repeatUntilGuard, 0);
+        }
+        if (currentType == NodeType.CONTROL_JOIN_ALL) {
+            if (!markJoinAllArrival(currentNode, controller, arrivalInputSocket)) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return continueFromOutputSocket(currentNode, controller, executionId, repeatUntilGuard, 0);
         }
 
         int nextSocket = currentNode.consumeNextOutputSocket();
 
         if (currentNode.hasAttachedActionNode()) {
             Node attachedAction = currentNode.getAttachedActionNode();
-            NodeType type = currentNode.getType();
+            NodeType type = currentType;
 
             if (attachedAction != null) {
                 if (type == NodeType.CONTROL_FOREVER && nextSocket != Node.NO_OUTPUT) {
@@ -1476,12 +1496,13 @@ public class ExecutionManager {
                             if (type == NodeType.CONTROL_REPEAT_UNTIL
                                 && controller.pendingRepeatUntilExitControl == currentNode) {
                                 controller.pendingRepeatUntilExitControl = null;
-                                Node exitNode = getNextConnectedNode(currentNode, activeConnections, 1);
-                                if (exitNode == null) {
-                                    exitNode = getNextConnectedNode(currentNode, activeConnections, 0);
+                                NodeConnection exitConnection = getNextConnectedConnection(currentNode, activeConnections, 1);
+                                if (exitConnection == null) {
+                                    exitConnection = getNextConnectedConnection(currentNode, activeConnections, 0);
                                 }
-                                if (exitNode != null) {
-                                    return runChain(exitNode, controller, executionId, repeatUntilGuard);
+                                if (exitConnection != null) {
+                                    return runChain(exitConnection.getInputNode(), controller, executionId, repeatUntilGuard,
+                                        exitConnection.getInputSocket());
                                 }
                                 return CompletableFuture.completedFuture(null);
                             }
@@ -1495,14 +1516,70 @@ public class ExecutionManager {
             return CompletableFuture.completedFuture(null);
         }
 
-        Node nextNode = getNextConnectedNode(currentNode, activeConnections, nextSocket);
-        if (nextNode == null && nextSocket > 0) {
-            nextNode = getNextConnectedNode(currentNode, activeConnections, 0);
+        if (currentType == NodeType.CONTROL_FORK) {
+            return continueFork(currentNode, controller, executionId, repeatUntilGuard);
         }
-        if (nextNode != null) {
-            return runChain(nextNode, controller, executionId, repeatUntilGuard);
+
+        return continueFromOutputSocket(currentNode, controller, executionId, repeatUntilGuard, nextSocket);
+    }
+
+    private CompletableFuture<Void> continueFromOutputSocket(Node currentNode, ChainController controller, int executionId,
+                                                             Node repeatUntilGuard, int outputSocket) {
+        NodeConnection nextConnection = getNextConnectedConnection(currentNode, activeConnections, outputSocket);
+        if (nextConnection == null && outputSocket > 0) {
+            nextConnection = getNextConnectedConnection(currentNode, activeConnections, 0);
         }
-        return CompletableFuture.completedFuture(null);
+        if (nextConnection == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return runChain(nextConnection.getInputNode(), controller, executionId, repeatUntilGuard, nextConnection.getInputSocket());
+    }
+
+    private CompletableFuture<Void> continueFork(Node currentNode, ChainController controller, int executionId, Node repeatUntilGuard) {
+        List<NodeConnection> branchConnections = getOutgoingConnections(currentNode, activeConnections);
+        if (branchConnections.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        List<CompletableFuture<Void>> branchFutures = new ArrayList<>();
+        NodeConnection primaryConnection = branchConnections.get(0);
+        branchFutures.add(runChain(primaryConnection.getInputNode(), controller, executionId, repeatUntilGuard,
+            primaryConnection.getInputSocket()));
+
+        for (int i = 1; i < branchConnections.size(); i++) {
+            if (cancelRequested || controller.cancelRequested) {
+                break;
+            }
+            NodeConnection branchConnection = branchConnections.get(i);
+            retainChainExecution(controller);
+            int branchExecutionId = allocateExecutionId();
+            CompletableFuture<Void> branchFuture = runChain(branchConnection.getInputNode(), controller, branchExecutionId,
+                repeatUntilGuard, branchConnection.getInputSocket());
+            branchFuture.whenComplete((ignored, throwable) ->
+                handleChainCompletion(controller, throwable, branchExecutionId));
+            branchFutures.add(branchFuture);
+        }
+
+        if (branchFutures.size() == 1) {
+            return branchFutures.get(0);
+        }
+        return CompletableFuture.allOf(branchFutures.toArray(new CompletableFuture[0]));
+    }
+
+    private boolean markJoinAllArrival(Node node, ChainController controller, int arrivalInputSocket) {
+        if (node == null || controller == null || arrivalInputSocket < 0) {
+            return false;
+        }
+
+        synchronized (controller.joinBarrierInputs) {
+            Set<Integer> arrivedInputs = controller.joinBarrierInputs.computeIfAbsent(node, ignored -> new HashSet<>());
+            arrivedInputs.add(arrivalInputSocket);
+            if (arrivedInputs.size() < node.getInputSocketCount()) {
+                return false;
+            }
+            controller.joinBarrierInputs.remove(node);
+            return true;
+        }
     }
 
     private CompletableFuture<Void> runEventHandler(Node handler, ChainController controller, int executionId, Node repeatUntilGuard) {
@@ -1890,17 +1967,32 @@ public class ExecutionManager {
         return trimmed.toLowerCase(Locale.ROOT);
     }
 
-    private Node getNextConnectedNode(Node currentNode, List<NodeConnection> connections, int outputSocket) {
+    private NodeConnection getNextConnectedConnection(Node currentNode, List<NodeConnection> connections, int outputSocket) {
         // Use branch-local object identity when traversing to avoid cross-graph collisions when
         // multiple loaded presets contain the same persisted node IDs.
         for (NodeConnection connection : connections) {
             if (connection.getOutputNode() == currentNode) {
                 if (connection.getOutputSocket() == outputSocket) {
-                    return connection.getInputNode();
+                    return connection;
                 }
             }
         }
         return null;
+    }
+
+    private List<NodeConnection> getOutgoingConnections(Node currentNode, List<NodeConnection> connections) {
+        if (currentNode == null || connections == null || connections.isEmpty()) {
+            return List.of();
+        }
+
+        List<NodeConnection> matches = new ArrayList<>();
+        for (NodeConnection connection : connections) {
+            if (connection.getOutputNode() == currentNode) {
+                matches.add(connection);
+            }
+        }
+        matches.sort((left, right) -> Integer.compare(left.getOutputSocket(), right.getOutputSocket()));
+        return matches;
     }
 
     private List<Node> findStartNodes(List<Node> nodes) {

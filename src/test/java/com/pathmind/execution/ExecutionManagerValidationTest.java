@@ -11,8 +11,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Constructor;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -95,6 +97,30 @@ class ExecutionManagerValidationTest {
 
         int resolved = (int) getIntParameter.invoke(repeat, "Count", 1);
         assertTrue(resolved == 10);
+    }
+
+    @Test
+    void joinAllBarrierWaitsForBothInputsAndResets() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node joinAll = new Node(NodeType.CONTROL_JOIN_ALL, 100, 0);
+
+        Class<?> controllerClass = Arrays.stream(ExecutionManager.class.getDeclaredClasses())
+            .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
+            .findFirst()
+            .orElseThrow();
+        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
+        constructor.setAccessible(true);
+        Object controller = constructor.newInstance(start, 1);
+
+        Method markJoinAllArrival = ExecutionManager.class.getDeclaredMethod(
+            "markJoinAllArrival", Node.class, controllerClass, int.class);
+        markJoinAllArrival.setAccessible(true);
+
+        assertTrue(!(boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 0));
+        assertTrue(!(boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 0));
+        assertTrue((boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 1));
+        assertTrue(!(boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 1));
+        assertTrue((boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 0));
     }
 
     private void setCachedSettingsForTests() throws Exception {

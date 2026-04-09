@@ -161,6 +161,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final int NODE_SEARCH_FIELD_WIDTH = 180;
     private static final int NODE_SEARCH_FIELD_HEIGHT = 22;
+    private static final int NODE_SEARCH_DROPDOWN_TOP_GAP = 2;
+    private static final int NODE_SEARCH_RESULT_HEIGHT = 18;
+    private static final int NODE_SEARCH_MAX_RESULTS = 8;
+    private static final int NODE_SEARCH_RESULT_TEXT_PADDING = 6;
     private static final String INFO_POPUP_AUTHOR = "soymods";
     private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
     private static final Text TITLE_TEXT = Text.literal("Pathmind");
@@ -188,6 +192,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean nodeSearchOpen = false;
     private int nodeSearchFieldX = 0;
     private int nodeSearchFieldY = 0;
+    private final List<NodeSearchResult> nodeSearchResults = new ArrayList<>();
+    private int nodeSearchHoverIndex = -1;
 
     // Workspace dialogs
     private final PopupAnimationHandler clearPopupAnimation = new PopupAnimationHandler();
@@ -279,6 +285,20 @@ public class PathmindVisualEditorScreen extends Screen {
             this.graphData = graphData;
             this.parentTabIndex = parentTabIndex;
             this.hostTemplateNodeId = hostTemplateNodeId;
+        }
+    }
+
+    private static final class NodeSearchResult {
+        private final NodeType nodeType;
+        private final String label;
+        private final String categoryLabel;
+        private final int score;
+
+        private NodeSearchResult(NodeType nodeType, String label, String categoryLabel, int score) {
+            this.nodeType = nodeType;
+            this.label = label;
+            this.categoryLabel = categoryLabel;
+            this.score = score;
         }
     }
 
@@ -1113,11 +1133,18 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeSearchOpen) {
-            if (button == 0 && nodeSearchField != null) {
+            if (button == 0 && nodeSearchField != null && isPointInNodeSearchField((int) mouseX, (int) mouseY)) {
                 nodeSearchField.mouseClicked(mouseX, mouseY, button);
+                return true;
             }
-            if (!isPointInRect((int) mouseX, (int) mouseY, nodeSearchFieldX - 6, nodeSearchFieldY - 18,
-                NODE_SEARCH_FIELD_WIDTH + 12, NODE_SEARCH_FIELD_HEIGHT + 24)) {
+            if (button == 0) {
+                int resultIndex = getNodeSearchResultIndexAt((int) mouseX, (int) mouseY);
+                if (resultIndex >= 0 && resultIndex < nodeSearchResults.size()) {
+                    selectNodeSearchResult(nodeSearchResults.get(resultIndex));
+                    return true;
+                }
+            }
+            if (!isPointInNodeSearchBounds((int) mouseX, (int) mouseY)) {
                 closeNodeSearch();
             }
             return true;
@@ -1726,8 +1753,25 @@ public class PathmindVisualEditorScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (nodeSearchOpen) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeNodeSearch();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                NodeSearchResult selected = getSelectedNodeSearchResult();
+                if (selected != null) {
+                    selectNodeSearchResult(selected);
+                } else {
+                    closeNodeSearch();
+                }
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_UP) {
+                moveNodeSearchSelection(-1);
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_DOWN) {
+                moveNodeSearchSelection(1);
                 return true;
             }
             if (nodeSearchField != null && nodeSearchField.keyPressed(keyCode, scanCode, modifiers)) {
@@ -4195,10 +4239,14 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeSearchField.setFocused(true);
             nodeSearchField.setSuggestion(null);
         }
+        nodeSearchResults.clear();
+        nodeSearchHoverIndex = -1;
     }
 
     private void closeNodeSearch() {
         nodeSearchOpen = false;
+        nodeSearchResults.clear();
+        nodeSearchHoverIndex = -1;
         if (nodeSearchField != null) {
             nodeSearchField.setFocused(false);
             nodeSearchField.setVisible(false);
@@ -4212,17 +4260,8 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
         String query = nodeSearchField.getText();
-        if (query == null || query.isBlank()) {
-            nodeSearchField.setSuggestion(null);
-            return;
-        }
-        String bestLabel = nodeGraph.getBestMatchingNodeLabel(query);
-        if (bestLabel != null && bestLabel.regionMatches(true, 0, query, 0, query.length()) && bestLabel.length() > query.length()) {
-            nodeSearchField.setSuggestion(bestLabel.substring(query.length()));
-        } else {
-            nodeSearchField.setSuggestion(null);
-        }
-        nodeGraph.focusBestMatchingNode(query, this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+        nodeSearchField.setSuggestion(null);
+        refreshNodeSearchResults(query);
     }
 
     private void renderNodeSearchField(DrawContext context, int mouseX, int mouseY, float delta) {
@@ -4230,12 +4269,6 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
 
-        int panelX = nodeSearchFieldX - 4;
-        int panelY = nodeSearchFieldY - 4;
-        int panelWidth = NODE_SEARCH_FIELD_WIDTH + 8;
-        int panelHeight = NODE_SEARCH_FIELD_HEIGHT + 8;
-        UIStyleHelper.drawBeveledPanel(context, panelX, panelY, panelWidth, panelHeight,
-            UITheme.BACKGROUND_SECTION, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
         context.fill(nodeSearchFieldX, nodeSearchFieldY, nodeSearchFieldX + NODE_SEARCH_FIELD_WIDTH,
             nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH,
@@ -4247,6 +4280,203 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeSearchField.setWidth(NODE_SEARCH_FIELD_WIDTH - 26);
         nodeSearchField.setHeight(NODE_SEARCH_FIELD_HEIGHT);
         nodeSearchField.render(context, mouseX, mouseY, delta);
+
+        renderNodeSearchDropdown(context, mouseX, mouseY);
+    }
+
+    private void refreshNodeSearchResults(String query) {
+        nodeSearchResults.clear();
+        nodeSearchHoverIndex = -1;
+        if (query == null) {
+            return;
+        }
+        String normalizedQuery = query.trim().toLowerCase(Locale.ROOT);
+        if (normalizedQuery.isEmpty()) {
+            return;
+        }
+
+        for (NodeType nodeType : NodeType.values()) {
+            if (nodeType == null || !nodeType.isDraggableFromSidebar()) {
+                continue;
+            }
+            int score = scoreNodeSearchCandidate(nodeType, normalizedQuery);
+            if (score <= 0) {
+                continue;
+            }
+            nodeSearchResults.add(new NodeSearchResult(
+                nodeType,
+                nodeType.getDisplayName(),
+                nodeType.getCategory().name().replace('_', ' '),
+                score
+            ));
+        }
+
+        nodeSearchResults.sort((left, right) -> {
+            int scoreCompare = Integer.compare(right.score, left.score);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+            return left.label.compareToIgnoreCase(right.label);
+        });
+        if (nodeSearchResults.size() > NODE_SEARCH_MAX_RESULTS) {
+            nodeSearchResults.subList(NODE_SEARCH_MAX_RESULTS, nodeSearchResults.size()).clear();
+        }
+        if (!nodeSearchResults.isEmpty()) {
+            nodeSearchHoverIndex = 0;
+        }
+    }
+
+    private int scoreNodeSearchCandidate(NodeType nodeType, String query) {
+        int bestScore = 0;
+        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getDisplayName(), query));
+        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getDescription(), query) - 40);
+        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getCategory().name().replace('_', ' '), query) - 80);
+        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.name(), query) - 100);
+        return bestScore;
+    }
+
+    private int scoreSearchCandidate(String candidate, String query) {
+        if (candidate == null || query == null) {
+            return 0;
+        }
+        String normalizedCandidate = candidate.trim().toLowerCase(Locale.ROOT);
+        if (normalizedCandidate.isEmpty() || query.isEmpty()) {
+            return 0;
+        }
+        if (normalizedCandidate.equals(query)) {
+            return 1000;
+        }
+        if (normalizedCandidate.startsWith(query)) {
+            return 800 - Math.max(0, normalizedCandidate.length() - query.length());
+        }
+        int containsIndex = normalizedCandidate.indexOf(query);
+        if (containsIndex >= 0) {
+            return 650 - containsIndex * 6;
+        }
+        int fuzzyScore = fuzzySearchScore(normalizedCandidate, query);
+        return fuzzyScore > 0 ? 300 + fuzzyScore : 0;
+    }
+
+    private int fuzzySearchScore(String candidate, String query) {
+        int score = 0;
+        int streak = 0;
+        int queryIndex = 0;
+        for (int i = 0; i < candidate.length() && queryIndex < query.length(); i++) {
+            if (candidate.charAt(i) == query.charAt(queryIndex)) {
+                score += 8 + streak * 4;
+                streak++;
+                queryIndex++;
+            } else {
+                streak = 0;
+            }
+        }
+        if (queryIndex != query.length()) {
+            return 0;
+        }
+        return Math.max(1, score - Math.max(0, candidate.length() - query.length()));
+    }
+
+    private void renderNodeSearchDropdown(DrawContext context, int mouseX, int mouseY) {
+        if (nodeSearchResults.isEmpty()) {
+            return;
+        }
+        int listX = nodeSearchFieldX;
+        int listY = nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT + NODE_SEARCH_DROPDOWN_TOP_GAP;
+        int listWidth = NODE_SEARCH_FIELD_WIDTH;
+        int listHeight = nodeSearchResults.size() * NODE_SEARCH_RESULT_HEIGHT;
+        context.fill(listX, listY, listX + listWidth, listY + listHeight, UITheme.BACKGROUND_SIDEBAR);
+        DrawContextBridge.drawBorder(context, listX, listY, listWidth, listHeight, UITheme.BORDER_DEFAULT);
+
+        int hoveredIndex = getNodeSearchResultIndexAt(mouseX, mouseY);
+        if (hoveredIndex >= 0) {
+            nodeSearchHoverIndex = hoveredIndex;
+        }
+
+        for (int i = 0; i < nodeSearchResults.size(); i++) {
+            NodeSearchResult result = nodeSearchResults.get(i);
+            int rowTop = listY + i * NODE_SEARCH_RESULT_HEIGHT;
+            boolean selected = i == nodeSearchHoverIndex;
+            if (selected) {
+                context.fill(listX + 1, rowTop, listX + listWidth - 1, rowTop + NODE_SEARCH_RESULT_HEIGHT, UITheme.DROPDOWN_OPTION_HOVER);
+            }
+            int textY = rowTop + Math.max(0, (NODE_SEARCH_RESULT_HEIGHT - this.textRenderer.fontHeight) / 2);
+            String label = trimToWidth(result.label, listWidth - (NODE_SEARCH_RESULT_TEXT_PADDING * 2) - 42);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(label), listX + NODE_SEARCH_RESULT_TEXT_PADDING, textY, UITheme.TEXT_PRIMARY);
+            String category = trimToWidth(result.categoryLabel, 36);
+            int categoryWidth = this.textRenderer.getWidth(category);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(category),
+                listX + listWidth - NODE_SEARCH_RESULT_TEXT_PADDING - categoryWidth, textY, UITheme.TEXT_TERTIARY);
+        }
+    }
+
+    private String trimToWidth(String value, int maxWidth) {
+        if (value == null || value.isEmpty() || this.textRenderer == null || maxWidth <= 0) {
+            return value == null ? "" : value;
+        }
+        if (this.textRenderer.getWidth(value) <= maxWidth) {
+            return value;
+        }
+        return this.textRenderer.trimToWidth(value, Math.max(0, maxWidth - this.textRenderer.getWidth("..."))) + "...";
+    }
+
+    private boolean isPointInNodeSearchField(int mouseX, int mouseY) {
+        return isPointInRect(mouseX, mouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT);
+    }
+
+    private boolean isPointInNodeSearchBounds(int mouseX, int mouseY) {
+        int totalHeight = NODE_SEARCH_FIELD_HEIGHT + getNodeSearchDropdownHeight() + (nodeSearchResults.isEmpty() ? 0 : NODE_SEARCH_DROPDOWN_TOP_GAP);
+        return isPointInRect(mouseX, mouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, totalHeight);
+    }
+
+    private int getNodeSearchDropdownHeight() {
+        return nodeSearchResults.isEmpty() ? 0 : nodeSearchResults.size() * NODE_SEARCH_RESULT_HEIGHT;
+    }
+
+    private int getNodeSearchResultIndexAt(int mouseX, int mouseY) {
+        if (nodeSearchResults.isEmpty()) {
+            return -1;
+        }
+        int listX = nodeSearchFieldX;
+        int listY = nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT + NODE_SEARCH_DROPDOWN_TOP_GAP;
+        int listHeight = getNodeSearchDropdownHeight();
+        if (!isPointInRect(mouseX, mouseY, listX, listY, NODE_SEARCH_FIELD_WIDTH, listHeight)) {
+            return -1;
+        }
+        int index = (mouseY - listY) / NODE_SEARCH_RESULT_HEIGHT;
+        return index >= 0 && index < nodeSearchResults.size() ? index : -1;
+    }
+
+    private NodeSearchResult getSelectedNodeSearchResult() {
+        if (nodeSearchResults.isEmpty()) {
+            return null;
+        }
+        if (nodeSearchHoverIndex < 0 || nodeSearchHoverIndex >= nodeSearchResults.size()) {
+            return nodeSearchResults.get(0);
+        }
+        return nodeSearchResults.get(nodeSearchHoverIndex);
+    }
+
+    private void moveNodeSearchSelection(int direction) {
+        if (nodeSearchResults.isEmpty()) {
+            nodeSearchHoverIndex = -1;
+            return;
+        }
+        if (nodeSearchHoverIndex < 0 || nodeSearchHoverIndex >= nodeSearchResults.size()) {
+            nodeSearchHoverIndex = 0;
+            return;
+        }
+        nodeSearchHoverIndex = MathHelper.clamp(nodeSearchHoverIndex + direction, 0, nodeSearchResults.size() - 1);
+    }
+
+    private void selectNodeSearchResult(NodeSearchResult result) {
+        if (result == null || result.nodeType == null) {
+            return;
+        }
+        if (shouldBlockBaritoneNode(result.nodeType) || shouldBlockUiUtilsNode(result.nodeType)) {
+            return;
+        }
+        nodeGraph.addNodeFromContextMenu(result.nodeType);
+        closeNodeSearch();
     }
 
     private void drawNodeSearchIcon(DrawContext context, int x, int y, int color) {

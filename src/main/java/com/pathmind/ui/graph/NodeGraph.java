@@ -1189,6 +1189,10 @@ public class NodeGraph {
                 Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
                 newNode.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
             }
+            if (newNode.hasBooleanToggle()) {
+                Boolean storedToggle = nodeData.getBooleanToggleValue();
+                newNode.setBooleanToggleValue(storedToggle == null || storedToggle);
+            }
             newNode.recalculateDimensions();
             nodes.add(newNode);
             idToNode.put(nodeData.getId(), newNode);
@@ -1355,6 +1359,11 @@ public class NodeGraph {
 
             Node parentParameterHost = node.getParentParameterHost();
             nodeData.setParentParameterHostId(parentParameterHost != null && allowed.contains(parentParameterHost) ? parentParameterHost.getId() : null);
+            if (node.hasBooleanToggle()) {
+                nodeData.setBooleanToggleValue(node.getBooleanToggleValue());
+            } else {
+                nodeData.setBooleanToggleValue(null);
+            }
 
             data.getNodes().add(nodeData);
         }
@@ -12623,6 +12632,10 @@ public class NodeGraph {
             if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
                 Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
                 node.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
+            }
+            if (node.hasBooleanToggle()) {
+                Boolean storedToggle = nodeData.getBooleanToggleValue();
+                node.setBooleanToggleValue(storedToggle == null || storedToggle);
             }
             node.recalculateDimensions();
 

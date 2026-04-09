@@ -745,6 +745,7 @@ public class Node {
             || type == NodeType.SENSOR_TARGETED_ENTITY
             || type == NodeType.SENSOR_LOOK_DIRECTION
             || type == NodeType.SENSOR_CURRENT_HAND
+            || type == NodeType.SENSOR_IS_ON_GROUND
             || isComparisonOperator()
             || type == NodeType.OPEN_INVENTORY
             || type == NodeType.CLOSE_GUI;

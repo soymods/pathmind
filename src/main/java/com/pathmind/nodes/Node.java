@@ -1947,6 +1947,12 @@ public class Node {
         if (getParameter("Radius") == null) {
             parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE, "64.0"));
         }
+        if (getParameter("UseBlockCap") == null) {
+            parameters.add(new NodeParameter("UseBlockCap", ParameterType.BOOLEAN, "false"));
+        }
+        if (getParameter("MaxBlocks") == null) {
+            parameters.add(new NodeParameter("MaxBlocks", ParameterType.INTEGER, "256"));
+        }
     }
 
     private boolean shouldUseLegacyVillagerTradeSelection() {
@@ -2992,6 +2998,8 @@ public class Node {
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
                 parameters.add(new NodeParameter("UseRadius", ParameterType.BOOLEAN, "false"));
                 parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE, "64.0"));
+                parameters.add(new NodeParameter("UseBlockCap", ParameterType.BOOLEAN, "false"));
+                parameters.add(new NodeParameter("MaxBlocks", ParameterType.INTEGER, "256"));
                 break;
             case ADD_TO_LIST:
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
@@ -3303,6 +3311,9 @@ public class Node {
         if (type == NodeType.CREATE_LIST && "UseRadius".equalsIgnoreCase(name)) {
             return "Use Custom Radius";
         }
+        if (type == NodeType.CREATE_LIST && "UseBlockCap".equalsIgnoreCase(name)) {
+            return "Use Block Cap";
+        }
         return name;
     }
 
@@ -3490,7 +3501,10 @@ public class Node {
         }
         if (type == NodeType.CREATE_LIST) {
             String paramName = parameter.getName();
-            if ("UseRadius".equalsIgnoreCase(paramName) || "Radius".equalsIgnoreCase(paramName)) {
+            if ("UseRadius".equalsIgnoreCase(paramName)
+                || "Radius".equalsIgnoreCase(paramName)
+                || "UseBlockCap".equalsIgnoreCase(paramName)
+                || "MaxBlocks".equalsIgnoreCase(paramName)) {
                 return "";
             }
         }
@@ -7071,6 +7085,55 @@ public class Node {
         return Optional.ofNullable(bestPos);
     }
 
+    private List<BlockPos> findBlocksWithinRange(net.minecraft.client.MinecraftClient client, List<BlockSelection> selections, double range) {
+        if (client == null || client.player == null || client.world == null || selections == null || selections.isEmpty()) {
+            return Collections.emptyList();
+        }
+        int radius = Math.max(1, (int) Math.ceil(range));
+        BlockPos playerPos = client.player.getBlockPos();
+        List<BlockPos> matches = new ArrayList<>();
+        int minChunkX = Math.floorDiv(playerPos.getX() - radius, 16);
+        int maxChunkX = Math.floorDiv(playerPos.getX() + radius, 16);
+        int minChunkZ = Math.floorDiv(playerPos.getZ() - radius, 16);
+        int maxChunkZ = Math.floorDiv(playerPos.getZ() + radius, 16);
+        int minY = client.world.getBottomY();
+        int maxY = minY + client.world.getHeight() - 1;
+        double maxDistanceSq = range * range;
+
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                if (!client.world.isChunkLoaded(chunkX, chunkZ)) {
+                    continue;
+                }
+                BlockPos.Mutable mutable = new BlockPos.Mutable();
+                int startX = chunkX << 4;
+                int startZ = chunkZ << 4;
+                for (int localX = 0; localX < 16; localX++) {
+                    for (int localZ = 0; localZ < 16; localZ++) {
+                        int worldX = startX + localX;
+                        int worldZ = startZ + localZ;
+                        for (int y = minY; y <= maxY; y++) {
+                            mutable.set(worldX, y, worldZ);
+                            if (mutable.getSquaredDistance(playerPos) > maxDistanceSq) {
+                                continue;
+                            }
+                            BlockState state = client.world.getBlockState(mutable);
+                            if (state.isAir()) {
+                                continue;
+                            }
+                            if (matchesAnyBlock(selections, state)) {
+                                matches.add(mutable.toImmutable());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        matches.sort(Comparator.comparingDouble(pos -> pos.getSquaredDistance(playerPos)));
+        return matches;
+    }
+
     private Optional<BlockPos> findNearestAnyBlock(net.minecraft.client.MinecraftClient client, double range) {
         if (client == null || client.player == null || client.world == null) {
             return Optional.empty();
@@ -7824,7 +7887,52 @@ public class Node {
         }
 
         List<Entity> matches = new ArrayList<>();
-        if (parameterType == NodeType.PARAM_ENTITY) {
+        if (parameterType == NodeType.PARAM_BLOCK) {
+            List<BlockSelection> blocks = resolveBlocksFromParameter(parameterNode);
+            if (blocks.isEmpty()) {
+                sendNodeErrorMessage(client, "No block selected for " + type.getDisplayName() + ".");
+                future.complete(null);
+                return;
+            }
+
+            List<BlockPos> positions = findBlocksWithinRange(client, blocks, searchRadius);
+            if (positions.isEmpty()) {
+                sendNodeErrorMessage(client, "No matching blocks found nearby for " + type.getDisplayName() + ".");
+                future.complete(null);
+                return;
+            }
+            if (isCreateListBlockCapEnabled() && positions.size() > getCreateListMaxBlocks()) {
+                positions = new ArrayList<>(positions.subList(0, getCreateListMaxBlocks()));
+            }
+
+            List<String> entries = new ArrayList<>();
+            for (BlockPos pos : positions) {
+                if (pos == null) {
+                    continue;
+                }
+                Map<String, String> values = new HashMap<>();
+                values.put("X", Integer.toString(pos.getX()));
+                values.put("Y", Integer.toString(pos.getY()));
+                values.put("Z", Integer.toString(pos.getZ()));
+                values.put("x", Integer.toString(pos.getX()));
+                values.put("y", Integer.toString(pos.getY()));
+                values.put("z", Integer.toString(pos.getZ()));
+                entries.add(serializeListEntryValues(values));
+            }
+
+            ExecutionManager manager = ExecutionManager.getInstance();
+            Node startNode = resolveExecutionStartNode();
+            if (startNode == null) {
+                sendNodeErrorMessage(client, "No active node tree available for list creation.");
+                future.complete(null);
+                return;
+            }
+
+            manager.setRuntimeList(startNode, listName.trim(),
+                new ExecutionManager.RuntimeList(NodeType.PARAM_COORDINATE, entries));
+            future.complete(null);
+            return;
+        } else if (parameterType == NodeType.PARAM_ENTITY) {
             String state = getEntityParameterState(parameterNode);
             String rawEntity = getParameterString(parameterNode, "Entity");
             if (isAnySelectionValue(rawEntity)) {
@@ -8126,12 +8234,22 @@ public class Node {
         return getBooleanParameter("UseRadius", false);
     }
 
+    private boolean isCreateListBlockCapEnabled() {
+        ensureCreateListRadiusParameters();
+        return getBooleanParameter("UseBlockCap", false);
+    }
+
     private double getCreateListSearchRadius(net.minecraft.client.MinecraftClient client) {
         ensureCreateListRadiusParameters();
         if (!isCreateListCustomRadiusEnabled()) {
             return getCurrentRenderDistanceBlocks(client);
         }
         return Math.max(1.0, getDoubleParameter("Radius", getCurrentRenderDistanceBlocks(client)));
+    }
+
+    private int getCreateListMaxBlocks() {
+        ensureCreateListRadiusParameters();
+        return Math.max(1, getIntParameter("MaxBlocks", 256));
     }
 
     private static final class ListValueEntry {
@@ -8254,6 +8372,9 @@ public class Node {
     }
 
     private String describeListElementType(NodeType type) {
+        if (type == NodeType.PARAM_COORDINATE) {
+            return "coordinate";
+        }
         if (type == NodeType.PARAM_ENTITY) {
             return "entity";
         }

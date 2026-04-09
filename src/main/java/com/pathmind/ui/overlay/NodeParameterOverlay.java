@@ -768,6 +768,10 @@ public class NodeParameterOverlay {
                 NodeParameter useRadius = node.getParameter("UseRadius");
                 return useRadius != null && useRadius.getBoolValue();
             }
+            if ("MaxBlocks".equalsIgnoreCase(name)) {
+                NodeParameter useBlockCap = node.getParameter("UseBlockCap");
+                return useBlockCap != null && useBlockCap.getBoolValue();
+            }
         }
         if (isCombinedDirectionNode()) {
             if (index < 0 || index >= node.getParameters().size()) {

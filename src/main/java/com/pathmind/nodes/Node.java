@@ -19189,8 +19189,11 @@ public class Node {
                 continue;
             }
             NodeType parameterType = parameter.getType();
+            NodeType resolvedType = parameterType == NodeType.LIST_ITEM
+                ? parameter.getResolvedValueType()
+                : parameterType;
             for (NodeType allowed : allowedTypes) {
-                if (parameterType == allowed) {
+                if (parameterType == allowed || resolvedType == allowed) {
                     return parameter;
                 }
             }

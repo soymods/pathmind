@@ -151,9 +151,12 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int SETTINGS_NODE_LIST_GAP = 6;
     private static final int SETTINGS_BACK_BUTTON_WIDTH = 52;
     private static final int SETTINGS_BACK_BUTTON_HEIGHT = 18;
+    private static final int CREATE_LIST_RADIUS_MIN = 1;
+    private static final int CREATE_LIST_RADIUS_MAX = 512;
     private static final NodeType[] SETTINGS_NODE_TYPES = {
         NodeType.GOTO,
-        NodeType.SENSOR_KEY_PRESSED
+        NodeType.SENSOR_KEY_PRESSED,
+        NodeType.CREATE_LIST
     };
     private static final int NODE_DELAY_MIN_MS = 0;
     private static final int NODE_DELAY_MAX_MS = 500;
@@ -258,7 +261,9 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean skipPresetDeleteConfirm = false;
     private int nodeDelayMs = 150;
     private boolean nodeDelayDragging = false;
+    private boolean createListRadiusDragging = false;
     private TextFieldWidget nodeDelayField;
+    private TextFieldWidget createListRadiusField;
     private boolean settingsNodeListView = true;
     private NodeType settingsNodeTargetType = null;
     private Node settingsNodeTarget = null;
@@ -416,6 +421,24 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
             });
             this.addSelectableChild(nodeDelayField);
+        }
+        if (createListRadiusField == null) {
+            createListRadiusField = new TextFieldWidget(this.textRenderer, 0, 0, 120, 20, Text.literal("Radius"));
+            createListRadiusField.setMaxLength(6);
+            createListRadiusField.setDrawsBackground(false);
+            createListRadiusField.setVisible(false);
+            createListRadiusField.setEditable(false);
+            createListRadiusField.setEditableColor(UITheme.TEXT_HEADER);
+            createListRadiusField.setUneditableColor(UITheme.TEXT_HEADER);
+            createListRadiusField.setTextPredicate(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            createListRadiusField.setChangedListener(value -> {
+                Node targetNode = getEffectiveSettingsTargetNode();
+                Integer parsed = parseCreateListRadiusFieldValue(value);
+                if (parsed != null && targetNode != null && parsed != getCreateListSettingsRadius(targetNode)) {
+                    setCreateListSettingsRadius(targetNode, parsed);
+                }
+            });
+            this.addSelectableChild(createListRadiusField);
         }
         if (nodeSearchField == null) {
             nodeSearchField = new TextFieldWidget(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.literal("Search nodes"));
@@ -1518,6 +1541,9 @@ public class PathmindVisualEditorScreen extends Screen {
             if (nodeDelayDragging) {
                 updateNodeDelayFromMouse((int) mouseX, getSettingsPopupX(), SETTINGS_POPUP_WIDTH);
             }
+            if (createListRadiusDragging) {
+                updateCreateListRadiusFromMouse(getEffectiveSettingsTargetNode(), (int) mouseX, getSettingsPopupX(), SETTINGS_POPUP_WIDTH);
+            }
             return true;
         }
         if (createPresetPopupAnimation.isVisible()) {
@@ -1604,6 +1630,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (settingsPopupAnimation.isVisible()) {
             nodeDelayDragging = false;
+            createListRadiusDragging = false;
             if (nodeDelayField != null) {
                 nodeDelayField.mouseReleased(mouseX, mouseY, button);
             }
@@ -1808,6 +1835,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
         }
+        if (settingsPopupAnimation.isVisible() && createListRadiusField != null && createListRadiusField.isFocused()) {
+            if (createListRadiusField.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+        }
         if (settingsPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 closeSettingsPopup();
@@ -1993,6 +2025,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (settingsPopupAnimation.isVisible()) {
             if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(chr, modifiers)) {
+                return true;
+            }
+            if (createListRadiusField != null && createListRadiusField.isFocused() && createListRadiusField.charTyped(chr, modifiers)) {
                 return true;
             }
             return true;
@@ -5546,6 +5581,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int nodeSettingsLabelY = delayDividerY + 12;
         int nodeSettingsBodyY = nodeSettingsLabelY + 14;
+        if (createListRadiusField != null) {
+            createListRadiusField.setVisible(false);
+        }
         int nodeSettingsHeaderX = contentX;
         if (!settingsNodeListView && getEffectiveSettingsTargetType() != null) {
             int backX = contentX;
@@ -5592,6 +5630,28 @@ public class PathmindVisualEditorScreen extends Screen {
                     "Activate while GUIs are open", currentSettings.keyPressedActivatesInGuis == null || currentSettings.keyPressedActivatesInGuis, popupX, scaledWidth);
                 context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, keyPressedDividerY,
                     getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+            } else if (targetType == NodeType.CREATE_LIST) {
+                Node targetNode = getEffectiveSettingsTargetNode();
+                boolean useRadius = isCreateListCustomRadiusEnabled(targetNode);
+                int radius = getCreateListSettingsRadius(targetNode);
+                drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsBodyY, scaledWidth - 40,
+                    getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
+
+                int createListToggleDividerY = nodeSettingsBodyY + 28;
+                int createListToggleRowCenterY = (nodeSettingsBodyY + 10 + createListToggleDividerY) / 2;
+                renderToggleRow(context, mouseX, mouseY, contentX, createListToggleRowCenterY,
+                    "Use custom radius instead of render distance", useRadius, popupX, scaledWidth);
+                context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, createListToggleDividerY,
+                    getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+                if (useRadius) {
+                    int createListRadiusDividerY = createListToggleDividerY + 26;
+                    int createListRadiusRowCenterY = (createListToggleDividerY + createListRadiusDividerY) / 2;
+                    renderCreateListRadiusRow(context, mouseX, mouseY, contentX, createListRadiusRowCenterY,
+                        radius, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX, popupX, scaledWidth);
+                    context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, createListRadiusDividerY,
+                        getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+                }
             }
         }
 
@@ -5775,6 +5835,72 @@ public class PathmindVisualEditorScreen extends Screen {
             handleBorder);
     }
 
+    private void renderCreateListRadiusRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
+                                           int value, int min, int max, int popupX, int scaledWidth) {
+        int labelY = centerY - this.textRenderer.fontHeight / 2;
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
+        String valueText = Integer.toString(value);
+        int[] valueBox = getCreateListRadiusFieldBounds(popupX, scaledWidth, centerY, valueText);
+        int valueBoxX = valueBox[0];
+        int valueBoxY = valueBox[1];
+        int valueBoxWidth = valueBox[2];
+        int valueBoxHeight = valueBox[3];
+        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
+        drawPopupTextWithEllipsis(context, "Radius", labelX, labelY, maxLabelWidth,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
+        boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight);
+        boolean focused = createListRadiusField != null && createListRadiusField.isFocused();
+        boolean activeField = focused;
+        int valueBoxBg = activeField ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        if (fieldHovered) {
+            valueBoxBg = activeField ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
+        }
+        int valueBoxBorder = activeField ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        if (fieldHovered) {
+            valueBoxBorder = getAccentColor();
+        }
+        valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBg);
+        valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBorder);
+        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
+        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+        if (createListRadiusField != null) {
+            if (!focused && !valueText.equals(createListRadiusField.getText())) {
+                createListRadiusField.setText(valueText);
+            }
+            createListRadiusField.setVisible(true);
+            createListRadiusField.setEditable(true);
+            createListRadiusField.setEditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
+            createListRadiusField.setUneditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
+            int textFieldHeight = Math.max(10, valueBoxHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
+            createListRadiusField.setPosition(valueBoxX + 4, valueBoxY + TEXT_FIELD_VERTICAL_PADDING);
+            createListRadiusField.setWidth(valueBoxWidth - 8);
+            createListRadiusField.setHeight(textFieldHeight);
+            createListRadiusField.render(context, mouseX, mouseY, 0f);
+        }
+        int unitX = valueBoxX + valueBoxWidth + 6;
+        int unitY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
+        context.drawTextWithShadow(this.textRenderer, Text.literal("blocks"), unitX, unitY,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
+        int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
+        boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
+        int trackColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        int trackBorder = UITheme.BORDER_SUBTLE;
+        trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
+        trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
+        context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
+        DrawContextBridge.drawBorder(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, trackBorder);
+        int clamped = MathHelper.clamp(value, min, max);
+        float t = max == min ? 0f : (clamped - min) / (float) (max - min);
+        int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
+        int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
+        int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
+        int handleBorder = (hovered || createListRadiusDragging) ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        handleBorder = getPopupAnimatedColor(settingsPopupAnimation, handleBorder);
+        context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
+        DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT, handleBorder);
+    }
+
     private int[] getNodeDelayFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         String text = valueText == null ? "" : valueText;
@@ -5783,6 +5909,19 @@ public class PathmindVisualEditorScreen extends Screen {
         int boxHeight = 16;
         int unitGap = 6;
         int unitWidth = this.textRenderer.getWidth("ms");
+        int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
+        int boxY = centerY - boxHeight / 2;
+        return new int[]{boxX, boxY, boxWidth, boxHeight};
+    }
+
+    private int[] getCreateListRadiusFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        String text = valueText == null ? "" : valueText;
+        int textWidth = this.textRenderer.getWidth(text);
+        int boxWidth = Math.max(32, textWidth + 8);
+        int boxHeight = 16;
+        int unitGap = 6;
+        int unitWidth = this.textRenderer.getWidth("blocks");
         int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
         int boxY = centerY - boxHeight / 2;
         return new int[]{boxX, boxY, boxWidth, boxHeight};
@@ -5797,6 +5936,19 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeDelayMs = value;
             currentSettings.nodeDelayMs = nodeDelayMs;
             SettingsManager.save(currentSettings);
+        }
+    }
+
+    private void updateCreateListRadiusFromMouse(Node node, int mouseX, int popupX, int popupWidth) {
+        if (node == null || node.getType() != NodeType.CREATE_LIST) {
+            return;
+        }
+        int sliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int localX = MathHelper.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
+        float t = SETTINGS_SLIDER_WIDTH <= 0 ? 0f : localX / (float) SETTINGS_SLIDER_WIDTH;
+        int value = CREATE_LIST_RADIUS_MIN + Math.round(t * (CREATE_LIST_RADIUS_MAX - CREATE_LIST_RADIUS_MIN));
+        if (value != getCreateListSettingsRadius(node)) {
+            setCreateListSettingsRadius(node, value);
         }
     }
 
@@ -5815,6 +5967,26 @@ public class PathmindVisualEditorScreen extends Screen {
         try {
             int parsed = Integer.parseInt(digits);
             return MathHelper.clamp(parsed, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer parseCreateListRadiusFieldValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        String digits = trimmed.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) {
+            return null;
+        }
+        try {
+            int parsed = Integer.parseInt(digits);
+            return MathHelper.clamp(parsed, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
         } catch (NumberFormatException e) {
             return null;
         }
@@ -5845,8 +6017,70 @@ public class PathmindVisualEditorScreen extends Screen {
                 || Boolean.TRUE.equals(currentSettings.gotoAllowPlaceWhileExecuting);
             case SENSOR_KEY_PRESSED -> currentSettings.keyPressedActivatesInGuis != null
                 && !currentSettings.keyPressedActivatesInGuis;
+            case CREATE_LIST -> {
+                boolean edited = false;
+                if (nodeGraph != null) {
+                    for (Node node : nodeGraph.getNodes()) {
+                        if (node != null && node.getType() == NodeType.CREATE_LIST) {
+                            node.ensureCreateListRadiusParameters();
+                            if (node.getParameter("UseRadius") != null && node.getParameter("UseRadius").getBoolValue()) {
+                                edited = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                yield edited;
+            }
             default -> false;
         };
+    }
+
+    private boolean isCreateListCustomRadiusEnabled(Node node) {
+        if (node == null || node.getType() != NodeType.CREATE_LIST) {
+            return false;
+        }
+        node.ensureCreateListRadiusParameters();
+        return node.getParameter("UseRadius") != null && node.getParameter("UseRadius").getBoolValue();
+    }
+
+    private int getCreateListSettingsRadius(Node node) {
+        if (node == null || node.getType() != NodeType.CREATE_LIST) {
+            return 64;
+        }
+        node.ensureCreateListRadiusParameters();
+        double value = 64.0;
+        if (node.getParameter("Radius") != null) {
+            try {
+                value = Double.parseDouble(node.getParameter("Radius").getStringValue().trim());
+            } catch (Exception ignored) {
+                value = 64.0;
+            }
+        }
+        return MathHelper.clamp((int) Math.round(value), CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
+    }
+
+    private void setCreateListCustomRadiusEnabled(Node node, boolean enabled) {
+        if (node == null || node.getType() != NodeType.CREATE_LIST) {
+            return;
+        }
+        node.ensureCreateListRadiusParameters();
+        node.setParameterValueAndPropagate("UseRadius", Boolean.toString(enabled));
+        if (nodeGraph != null) {
+            nodeGraph.notifyNodeParametersChanged(node);
+        }
+    }
+
+    private void setCreateListSettingsRadius(Node node, int radius) {
+        if (node == null || node.getType() != NodeType.CREATE_LIST) {
+            return;
+        }
+        node.ensureCreateListRadiusParameters();
+        int clamped = MathHelper.clamp(radius, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
+        node.setParameterValueAndPropagate("Radius", Integer.toString(clamped));
+        if (nodeGraph != null) {
+            nodeGraph.notifyNodeParametersChanged(node);
+        }
     }
 
     private List<NodeType> getSettingsNodeTypes() {
@@ -6004,6 +6238,16 @@ public class PathmindVisualEditorScreen extends Screen {
             int gotoBreakDividerY = nodeSettingsBodyY + 28;
             int gotoPlaceDividerY = gotoBreakDividerY + 22;
             contentBottom = gotoPlaceDividerY;
+        } else if (targetType == NodeType.CREATE_LIST) {
+            Node targetNode = getEffectiveSettingsTargetNode();
+            boolean useRadius = isCreateListCustomRadiusEnabled(targetNode);
+            int createListToggleDividerY = nodeSettingsBodyY + 28;
+            int contentY = createListToggleDividerY;
+            if (useRadius) {
+                int createListRadiusDividerY = createListToggleDividerY + 26;
+                contentY = createListRadiusDividerY;
+            }
+            contentBottom = contentY;
         } else {
             contentBottom = nodeSettingsBodyY + 28;
         }
@@ -6191,6 +6435,11 @@ public class PathmindVisualEditorScreen extends Screen {
     private void closeSettingsPopup() {
         languageDropdownOpen = false;
         nodeDelayDragging = false;
+        createListRadiusDragging = false;
+        if (createListRadiusField != null) {
+            createListRadiusField.setFocused(false);
+            createListRadiusField.setVisible(false);
+        }
         settingsNodeListView = true;
         settingsNodeTargetType = null;
         settingsNodeTarget = null;
@@ -6394,6 +6643,41 @@ public class PathmindVisualEditorScreen extends Screen {
                     || currentSettings.keyPressedActivatesInGuis);
                 SettingsManager.save(currentSettings);
                 return true;
+            }
+        } else if (bodyHovered && !settingsNodeListView && selectedType == NodeType.CREATE_LIST) {
+            Node targetNode = getEffectiveSettingsTargetNode();
+            if (targetNode != null) {
+                int createListToggleDividerY = nodeSettingsBodyY + 28;
+                int createListToggleRowCenterY = (nodeSettingsBodyY + 10 + createListToggleDividerY) / 2;
+                int createListToggleX = gridToggleX;
+                int createListToggleY = createListToggleRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
+                if (isPointInRect(mouseXi, mouseYi, createListToggleX, createListToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+                    setCreateListCustomRadiusEnabled(targetNode, !isCreateListCustomRadiusEnabled(targetNode));
+                    return true;
+                }
+
+                if (isCreateListCustomRadiusEnabled(targetNode)) {
+                    int createListRadiusDividerY = createListToggleDividerY + 26;
+                    int createListRadiusRowCenterY = (createListToggleDividerY + createListRadiusDividerY) / 2;
+                    int createListSliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
+                    int createListSliderY = createListRadiusRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
+                    String radiusText = createListRadiusField != null ? createListRadiusField.getText() : Integer.toString(getCreateListSettingsRadius(targetNode));
+                    int[] radiusValueBox = getCreateListRadiusFieldBounds(popupX, SETTINGS_POPUP_WIDTH, createListRadiusRowCenterY, radiusText);
+                    if (createListRadiusField != null) {
+                        if (bodyHovered && isPointInRect(mouseXi, mouseYi, radiusValueBox[0], radiusValueBox[1], radiusValueBox[2], radiusValueBox[3])) {
+                            createListRadiusField.setEditable(true);
+                            createListRadiusField.setFocused(true);
+                            return true;
+                        } else if (createListRadiusField.isFocused()) {
+                            createListRadiusField.setFocused(false);
+                        }
+                    }
+                    if (isPointInRect(mouseXi, mouseYi, createListSliderX, createListSliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
+                        createListRadiusDragging = true;
+                        updateCreateListRadiusFromMouse(targetNode, mouseXi, popupX, SETTINGS_POPUP_WIDTH);
+                        return true;
+                    }
+                }
             }
         }
 

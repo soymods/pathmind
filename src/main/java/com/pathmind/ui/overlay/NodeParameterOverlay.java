@@ -192,6 +192,9 @@ public class NodeParameterOverlay {
     public NodeParameterOverlay(Node node, int screenWidth, int screenHeight, int topBarHeight, Runnable onClose,
                                 Consumer<Node> onSave) {
         this.node = node;
+        if (this.node != null && this.node.getType() == NodeType.CREATE_LIST) {
+            this.node.ensureCreateListRadiusParameters();
+        }
         this.onClose = onClose;
         this.onSave = onSave;
         this.parameterValues = new ArrayList<>();
@@ -751,6 +754,21 @@ public class NodeParameterOverlay {
     }
 
     private boolean shouldDisplayParameter(int index) {
+        if (node != null && node.getType() == NodeType.CREATE_LIST) {
+            node.ensureCreateListRadiusParameters();
+            if (index < 0 || index >= node.getParameters().size()) {
+                return false;
+            }
+            NodeParameter parameter = node.getParameters().get(index);
+            if (parameter == null) {
+                return false;
+            }
+            String name = parameter.getName();
+            if ("Radius".equalsIgnoreCase(name)) {
+                NodeParameter useRadius = node.getParameter("UseRadius");
+                return useRadius != null && useRadius.getBoolValue();
+            }
+        }
         if (isCombinedDirectionNode()) {
             if (index < 0 || index >= node.getParameters().size()) {
                 return false;

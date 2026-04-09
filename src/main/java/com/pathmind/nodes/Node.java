@@ -1920,6 +1920,18 @@ public class Node {
         }
     }
 
+    public void ensureCreateListRadiusParameters() {
+        if (type != NodeType.CREATE_LIST) {
+            return;
+        }
+        if (getParameter("UseRadius") == null) {
+            parameters.add(new NodeParameter("UseRadius", ParameterType.BOOLEAN, "false"));
+        }
+        if (getParameter("Radius") == null) {
+            parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE, "64.0"));
+        }
+    }
+
     private boolean shouldUseLegacyVillagerTradeSelection() {
         if (!usesVillagerTradeNumberField()) {
             return false;
@@ -2954,6 +2966,8 @@ public class Node {
                 break;
             case CREATE_LIST:
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
+                parameters.add(new NodeParameter("UseRadius", ParameterType.BOOLEAN, "false"));
+                parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE, "64.0"));
                 break;
             case ADD_TO_LIST:
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
@@ -3262,6 +3276,9 @@ public class Node {
             && ("Item".equalsIgnoreCase(name) || "Trade".equalsIgnoreCase(name))) {
             return "Trade";
         }
+        if (type == NodeType.CREATE_LIST && "UseRadius".equalsIgnoreCase(name)) {
+            return "Use Custom Radius";
+        }
         return name;
     }
 
@@ -3446,6 +3463,12 @@ public class Node {
         }
         if (isRandomRoundingParameter(parameter)) {
             return "";
+        }
+        if (type == NodeType.CREATE_LIST) {
+            String paramName = parameter.getName();
+            if ("UseRadius".equalsIgnoreCase(paramName) || "Radius".equalsIgnoreCase(paramName)) {
+                return "";
+            }
         }
         if (type == NodeType.USE) {
             String paramName = parameter.getName();
@@ -7724,6 +7747,10 @@ public class Node {
             return;
         }
 
+        ensureCreateListRadiusParameters();
+        boolean useCustomRadius = isCreateListCustomRadiusEnabled();
+        double searchRadius = getCreateListSearchRadius(client);
+
         if (parameterType != NodeType.PARAM_ENTITY
             && parameterType != NodeType.PARAM_PLAYER
             && parameterType != NodeType.PARAM_ITEM
@@ -7758,7 +7785,9 @@ public class Node {
             String state = getEntityParameterState(parameterNode);
             String rawEntity = getParameterString(parameterNode, "Entity");
             if (isAnySelectionValue(rawEntity)) {
-                matches.addAll(findRenderedEntities(client, state));
+                matches.addAll(useCustomRadius
+                    ? findEntitiesWithinRange(client, searchRadius, state)
+                    : findRenderedEntities(client, state));
             } else {
                 List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
                 if (entityIds.isEmpty()) {
@@ -7773,17 +7802,24 @@ public class Node {
                         continue;
                     }
                     EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-                    matches.addAll(findRenderedEntitiesByType(client, entityType, state));
+                    matches.addAll(useCustomRadius
+                        ? findEntitiesByTypeWithinRange(client, entityType, searchRadius, state)
+                        : findRenderedEntitiesByType(client, entityType, state));
                 }
             }
         } else if (parameterType == NodeType.PARAM_PLAYER) {
             String playerName = getParameterString(parameterNode, "Player");
+            List<AbstractClientPlayerEntity> nearbyPlayers = useCustomRadius
+                ? findPlayersWithinRange(client, searchRadius)
+                : client.world.getPlayers();
             if (isAnyPlayerValue(playerName)) {
-                matches.addAll(client.world.getPlayers());
+                matches.addAll(nearbyPlayers);
             } else if (isSelfPlayerValue(playerName)) {
-                matches.add(client.player);
+                if (!useCustomRadius || client.player.squaredDistanceTo(client.player) <= searchRadius * searchRadius) {
+                    matches.add(client.player);
+                }
             } else {
-                for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
+                for (AbstractClientPlayerEntity player : nearbyPlayers) {
                     if (player == null) {
                         continue;
                     }
@@ -7815,14 +7851,15 @@ public class Node {
                 return;
             }
 
-            double range = parseDoubleOrDefault(getParameterString(parameterNode, "Range"), PARAMETER_SEARCH_RADIUS);
             for (String candidateId : itemIds) {
                 Identifier identifier = Identifier.tryParse(candidateId);
                 if (identifier == null || !Registries.ITEM.containsId(identifier)) {
                     continue;
                 }
                 Item item = Registries.ITEM.get(identifier);
-                matches.addAll(findItemsByType(client, item, range));
+                matches.addAll(useCustomRadius
+                    ? findItemsWithinRange(client, item, searchRadius)
+                    : findRenderedItemsByType(client, item));
             }
         } else if (parameterType == NodeType.PARAM_GUI) {
             ScreenHandler handler = client.player.currentScreenHandler;
@@ -7925,8 +7962,23 @@ public class Node {
         if (client == null || client.player == null || client.world == null) {
             return Collections.emptyList();
         }
-        double renderDistance = Math.max(16.0, client.options.getViewDistance().getValue() * 16.0);
+        double renderDistance = getCurrentRenderDistanceBlocks(client);
         Box searchBox = client.player.getBoundingBox().expand(renderDistance);
+        return client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity != null
+                && entity.isAlive()
+                && EntityStateOptions.matchesState(entity, state)
+        );
+    }
+
+    private List<Entity> findEntitiesWithinRange(net.minecraft.client.MinecraftClient client, double range, String state) {
+        if (client == null || client.player == null || client.world == null) {
+            return Collections.emptyList();
+        }
+        double searchRadius = Math.max(1.0, range);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
         return client.world.getOtherEntities(
             client.player,
             searchBox,
@@ -7940,7 +7992,7 @@ public class Node {
         if (client == null || client.player == null || client.world == null || entityType == null) {
             return Collections.emptyList();
         }
-        double renderDistance = Math.max(16.0, client.options.getViewDistance().getValue() * 16.0);
+        double renderDistance = getCurrentRenderDistanceBlocks(client);
         Box searchBox = client.player.getBoundingBox().expand(renderDistance);
         return client.world.getOtherEntities(
             client.player,
@@ -7950,6 +8002,93 @@ public class Node {
                 && entity.getType() == entityType
                 && EntityStateOptions.matchesState(entity, state)
         );
+    }
+
+    private List<Entity> findEntitiesByTypeWithinRange(net.minecraft.client.MinecraftClient client, EntityType<?> entityType,
+                                                       double range, String state) {
+        if (client == null || client.player == null || client.world == null || entityType == null) {
+            return Collections.emptyList();
+        }
+        double searchRadius = Math.max(1.0, range);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+        return client.world.getOtherEntities(
+            client.player,
+            searchBox,
+            entity -> entity != null
+                && entity.isAlive()
+                && entity.getType() == entityType
+                && EntityStateOptions.matchesState(entity, state)
+        );
+    }
+
+    private List<ItemEntity> findRenderedItemsByType(net.minecraft.client.MinecraftClient client, Item item) {
+        if (client == null || client.player == null || client.world == null || item == null) {
+            return Collections.emptyList();
+        }
+        double renderDistance = getCurrentRenderDistanceBlocks(client);
+        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
+        return client.world.getEntitiesByClass(
+            ItemEntity.class,
+            searchBox,
+            entity -> entity != null
+                && !entity.isRemoved()
+                && !entity.getStack().isEmpty()
+                && entity.getStack().isOf(item)
+        );
+    }
+
+    private List<ItemEntity> findItemsWithinRange(net.minecraft.client.MinecraftClient client, Item item, double range) {
+        if (client == null || client.player == null || client.world == null || item == null) {
+            return Collections.emptyList();
+        }
+        double searchRadius = Math.max(1.0, range);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+        return client.world.getEntitiesByClass(
+            ItemEntity.class,
+            searchBox,
+            entity -> entity != null
+                && !entity.isRemoved()
+                && !entity.getStack().isEmpty()
+                && entity.getStack().isOf(item)
+        );
+    }
+
+    private List<AbstractClientPlayerEntity> findPlayersWithinRange(net.minecraft.client.MinecraftClient client, double range) {
+        if (client == null || client.player == null || client.world == null) {
+            return Collections.emptyList();
+        }
+        double maxDistanceSquared = Math.max(1.0, range);
+        maxDistanceSquared *= maxDistanceSquared;
+        List<AbstractClientPlayerEntity> players = new ArrayList<>();
+        for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
+            if (player == null || player.isRemoved()) {
+                continue;
+            }
+            if (player.squaredDistanceTo(client.player) <= maxDistanceSquared) {
+                players.add(player);
+            }
+        }
+        return players;
+    }
+
+    private double getCurrentRenderDistanceBlocks(net.minecraft.client.MinecraftClient client) {
+        if (client == null || client.options == null) {
+            return 16.0;
+        }
+        return Math.max(16.0, client.options.getViewDistance().getValue() * 16.0);
+    }
+
+    private boolean isCreateListCustomRadiusEnabled() {
+        ensureCreateListRadiusParameters();
+        return getBooleanParameter("UseRadius", false);
+    }
+
+    private double getCreateListSearchRadius(net.minecraft.client.MinecraftClient client) {
+        ensureCreateListRadiusParameters();
+        if (!isCreateListCustomRadiusEnabled()) {
+            return getCurrentRenderDistanceBlocks(client);
+        }
+        return Math.max(1.0, getDoubleParameter("Radius", getCurrentRenderDistanceBlocks(client)));
     }
 
     private static final class ListValueEntry {

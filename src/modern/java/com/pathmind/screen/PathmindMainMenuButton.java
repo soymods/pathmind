@@ -15,14 +15,15 @@ import com.pathmind.util.TextCompatibilityBridge;
 public class PathmindMainMenuButton extends ButtonWidget {
     private static final Identifier ICON_TEXTURE = PathmindMod.id("textures/gui/button_logo.png");
     private static final int ICON_PADDING = 2;
-    private static final int BUTTON_FILL = 0xFF343434;
-    private static final int BUTTON_HOVER = 0xFF444444;
-    private static final int BUTTON_DISABLED = 0xFF252A33;
-    private static final int BORDER_LIGHT = 0xFF3A3F4C;
-    private static final int BORDER_DARK = 0xFF000000;
-    private static final int BORDER_HOVER = 0xFFFFFFFF;
+    private static final int BUTTON_FILL = 0xFF4C4C4C;
+    private static final int BUTTON_HOVER = 0xFF5A5A5A;
+    private static final int BUTTON_DISABLED = 0xFF383838;
+    private static final int BORDER_LIGHT = 0xFF8B8B8B;
+    private static final int BORDER_DARK = 0xFF1F1F1F;
+    private static final int BORDER_HOVER_LIGHT = 0xFFFFFFFF;
+    private static final int SHADOW_COLOR = 0x66000000;
     private static final String OPEN_EDITOR_KEY = "gui.pathmind.open_editor";
-    private static final String OPEN_EDITOR_FALLBACK = "Open Pathmind Editor";
+    private static final String OPEN_EDITOR_FALLBACK = "Open Pathmind";
 
     public PathmindMainMenuButton(int x, int y, int size, PressAction pressAction) {
         super(x, y, size, size, TextCompatibilityBridge.empty(), pressAction, DEFAULT_NARRATION_SUPPLIER);
@@ -60,13 +61,16 @@ public class PathmindMainMenuButton extends ButtonWidget {
         int baseFill = !this.active ? BUTTON_DISABLED : (this.isHovered() ? BUTTON_HOVER : BUTTON_FILL);
         int fill = applyAlpha(baseFill, this.alpha);
         boolean hovered = this.active && this.isHovered();
-        int topBorder = applyAlpha(hovered ? BORDER_HOVER : BORDER_LIGHT, this.alpha);
-        int bottomBorder = applyAlpha(hovered ? BORDER_HOVER : BORDER_DARK, this.alpha);
+        int topBorder = applyAlpha(hovered ? BORDER_HOVER_LIGHT : BORDER_LIGHT, this.alpha);
+        int bottomBorder = applyAlpha(BORDER_DARK, this.alpha);
+        int shadow = applyAlpha(SHADOW_COLOR, this.alpha);
 
         int x = this.getX();
         int y = this.getY();
         int w = this.width;
         int h = this.height;
+        context.fill(x + 1, y + h, x + w + 1, y + h + 1, shadow);
+        context.fill(x + w, y + 1, x + w + 1, y + h, shadow);
         context.fill(x, y, x + w, y + h, fill);
         context.fill(x, y, x + w, y + 1, topBorder);
         context.fill(x, y, x + 1, y + h, topBorder);

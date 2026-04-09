@@ -2632,7 +2632,8 @@ public class Node {
                 }
                 EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(parameterType);
                 return traits.contains(NodeValueTrait.DIRECTION)
-                    || traits.contains(NodeValueTrait.ROTATION);
+                    || traits.contains(NodeValueTrait.ROTATION)
+                    || (type == NodeType.LOOK && traits.contains(NodeValueTrait.NUMBER));
             default:
                 return false;
         }
@@ -6086,6 +6087,16 @@ public class Node {
                 if (distance > 0.0) {
                     data.resolvedLookDistance = distance;
                 }
+            }
+            return true;
+        }
+
+        if (type == NodeType.LOOK && providesTrait(parameterNode, NodeValueTrait.NUMBER)) {
+            float yaw = (float) MathHelper.wrapDegrees(client.player.getYaw() + parseNodeDouble(parameterNode, "Amount", 0.0));
+            setParameterIfPresent("Yaw", formatFloat(yaw));
+            if (data != null) {
+                data.resolvedYaw = yaw;
+                data.resolvedPitch = client.player.getPitch();
             }
             return true;
         }

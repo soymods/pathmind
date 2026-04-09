@@ -23,4 +23,14 @@ class NodeCompatibilityTest {
         assertTrue(operator.canAcceptParameterNode(sensor, 0));
         assertTrue(operator.attachParameter(sensor, 0));
     }
+
+    @Test
+    void lookAcceptsAmountParameter() {
+        Node look = new Node(NodeType.LOOK, 0, 0);
+        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        amount.getParameter("Amount").setStringValue("-45");
+
+        assertTrue(look.canAcceptParameterNode(amount, 0));
+        assertTrue(look.attachParameter(amount, 0));
+    }
 }

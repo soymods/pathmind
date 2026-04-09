@@ -156,6 +156,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.LOOK, EnumSet.of(
             NodeValueTrait.ROTATION,
             NodeValueTrait.DIRECTION,
+            NodeValueTrait.NUMBER,
             NodeValueTrait.COORDINATE,
             NodeValueTrait.BLOCK,
             NodeValueTrait.ITEM,

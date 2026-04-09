@@ -744,6 +744,7 @@ public class Node {
             || type == NodeType.SENSOR_TARGETED_BLOCK
             || type == NodeType.SENSOR_TARGETED_ENTITY
             || type == NodeType.SENSOR_LOOK_DIRECTION
+            || type == NodeType.SENSOR_CURRENT_HAND
             || isComparisonOperator()
             || type == NodeType.OPEN_INVENTORY
             || type == NodeType.CLOSE_GUI;
@@ -1354,6 +1355,8 @@ public class Node {
             case SENSOR_TARGETED_BLOCK -> NodeType.PARAM_BLOCK;
             case SENSOR_TARGETED_ENTITY -> NodeType.PARAM_ENTITY;
             case SENSOR_LOOK_DIRECTION -> NodeType.PARAM_DIRECTION;
+            case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
+            case SENSOR_IS_ON_GROUND -> NodeType.PARAM_DISTANCE;
             case SENSOR_SLOT_ITEM_COUNT -> NodeType.PARAM_AMOUNT;
             default -> type;
         };
@@ -3019,7 +3022,6 @@ public class Node {
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
-            case SENSOR_IS_ON_GROUND:
             case SENSOR_KEY_PRESSED:
                 break;
             case SENSOR_HEALTH_BELOW:
@@ -3759,6 +3761,32 @@ public class Node {
                 }
                 break;
             }
+            case SENSOR_CURRENT_HAND: {
+                Optional<Integer> currentSlot = getCurrentHotbarSlot();
+                if (currentSlot.isEmpty()) {
+                    break;
+                }
+                String slotValue = Integer.toString(currentSlot.get());
+                values.put("Slot", slotValue);
+                values.put(normalizeParameterKey("Slot"), slotValue);
+                values.put("SourceSlot", slotValue);
+                values.put(normalizeParameterKey("SourceSlot"), slotValue);
+                values.put("TargetSlot", slotValue);
+                values.put(normalizeParameterKey("TargetSlot"), slotValue);
+                break;
+            }
+            case SENSOR_IS_ON_GROUND: {
+                Optional<Double> distanceFromGround = getDistanceFromGround();
+                if (distanceFromGround.isEmpty()) {
+                    break;
+                }
+                String distanceValue = Double.toString(distanceFromGround.get());
+                values.put("Distance", distanceValue);
+                values.put(normalizeParameterKey("Distance"), distanceValue);
+                values.put("Value", distanceValue);
+                values.put(normalizeParameterKey("Value"), distanceValue);
+                break;
+            }
             case SENSOR_TARGETED_BLOCK_FACE: {
                 Optional<Direction> targetFace = getTargetedBlockFace();
                 if (targetFace.isEmpty()) {
@@ -4041,7 +4069,6 @@ public class Node {
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
-            case SENSOR_IS_ON_GROUND:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_DAYTIME:
             case SENSOR_IS_RAINING:
@@ -7244,7 +7271,6 @@ public class Node {
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
-            case SENSOR_IS_ON_GROUND:
             case SENSOR_IS_FALLING:
             case SENSOR_IS_RENDERED:
             case SENSOR_IS_VISIBLE:
@@ -7254,6 +7280,7 @@ public class Node {
             case SENSOR_TARGETED_BLOCK:
             case SENSOR_TARGETED_ENTITY:
             case SENSOR_LOOK_DIRECTION:
+            case SENSOR_CURRENT_HAND:
             case SENSOR_TARGETED_BLOCK_FACE:
                 completeSensorEvaluation(future);
                 break;
@@ -13846,6 +13873,10 @@ public class Node {
                 return getRuntimeValue(values, "schematic");
             case PARAM_INVENTORY_SLOT:
                 return getRuntimeValue(values, "slot");
+            case SENSOR_CURRENT_HAND:
+                return getRuntimeValue(values, "slot");
+            case SENSOR_IS_ON_GROUND:
+                return getRuntimeValue(values, "distance");
             case PARAM_DURATION:
                 return getRuntimeValue(values, "duration");
             case PARAM_RANGE:
@@ -15224,7 +15255,11 @@ public class Node {
             }
             slot = foundSlot;
         } else {
-            slot = MathHelper.clamp(getIntParameter("Slot", 0), 0, 8);
+            RuntimeParameterData parameterData = runtimeParameterData;
+            int resolvedSlot = parameterData != null && parameterData.slotIndex != null
+                ? parameterData.slotIndex
+                : getIntParameter("Slot", 0);
+            slot = MathHelper.clamp(resolvedSlot, 0, PlayerInventory.getHotbarSize() - 1);
         }
 
         PlayerInventoryBridge.setSelectedSlot(client.player.getInventory(), slot);
@@ -19073,6 +19108,18 @@ public class Node {
         return Optional.of(Direction.getFacing(look.x, look.y, look.z));
     }
 
+    private Optional<Integer> getCurrentHotbarSlot() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(PlayerInventoryBridge.getSelectedSlot(client.player.getInventory()));
+        } catch (IllegalStateException ignored) {
+            return Optional.empty();
+        }
+    }
+
     private Optional<Direction> getTargetedBlockFace() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null) {
@@ -19284,6 +19331,9 @@ public class Node {
             case SENSOR_LOOK_DIRECTION:
                 result = getLookDirection().isPresent();
                 break;
+            case SENSOR_CURRENT_HAND:
+                result = getCurrentHotbarSlot().isPresent();
+                break;
             case SENSOR_TARGETED_BLOCK_FACE:
                 result = getTargetedBlockFace().isPresent();
                 break;
@@ -19429,9 +19479,6 @@ public class Node {
                 break;
             case SENSOR_IS_UNDERWATER:
                 result = isUnderwater();
-                break;
-            case SENSOR_IS_ON_GROUND:
-                result = isOnGround();
                 break;
             case SENSOR_IS_FALLING: {
                 double distance = Math.max(0.0, getDoubleParameter("Distance", 2.0));
@@ -20183,6 +20230,14 @@ public class Node {
             case PARAM_DISTANCE:
                 return Optional.of(parseNodeDouble(node, "Distance", 0.0));
             case SENSOR_DISTANCE_BETWEEN: {
+                Map<String, String> values = node.exportParameterValues();
+                String distanceValue = getRuntimeValue(values, "distance");
+                if (distanceValue.isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(parseDoubleOrNull(distanceValue));
+            }
+            case SENSOR_IS_ON_GROUND: {
                 Map<String, String> values = node.exportParameterValues();
                 String distanceValue = getRuntimeValue(values, "distance");
                 if (distanceValue.isEmpty()) {
@@ -21168,9 +21223,49 @@ public class Node {
         return client != null && client.player != null && client.player.isSubmergedInWater();
     }
 
-    private boolean isOnGround() {
+    private Optional<Double> getDistanceFromGround() {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        return client != null && client.player != null && client.player.isOnGround();
+        if (client == null || client.player == null || client.world == null) {
+            return Optional.empty();
+        }
+
+        Box box = client.player.getBoundingBox();
+        double bottomY = box.minY;
+        double bottomLimit = client.world.getBottomY() - 1.0;
+        double inset = 1.0E-3;
+        Vec3d[] samplePoints = new Vec3d[] {
+            new Vec3d((box.minX + box.maxX) * 0.5, bottomY + 0.01, (box.minZ + box.maxZ) * 0.5),
+            new Vec3d(box.minX + inset, bottomY + 0.01, box.minZ + inset),
+            new Vec3d(box.minX + inset, bottomY + 0.01, box.maxZ - inset),
+            new Vec3d(box.maxX - inset, bottomY + 0.01, box.minZ + inset),
+            new Vec3d(box.maxX - inset, bottomY + 0.01, box.maxZ - inset)
+        };
+
+        Double nearestDistance = null;
+        for (Vec3d start : samplePoints) {
+            HitResult hit = client.world.raycast(new RaycastContext(
+                start,
+                new Vec3d(start.x, bottomLimit, start.z),
+                RaycastContext.ShapeType.COLLIDER,
+                RaycastContext.FluidHandling.NONE,
+                client.player
+            ));
+            if (!(hit instanceof BlockHitResult blockHit) || hit.getType() != HitResult.Type.BLOCK) {
+                continue;
+            }
+            double distance = Math.max(0.0, bottomY - blockHit.getPos().y);
+            if (nearestDistance == null || distance < nearestDistance) {
+                nearestDistance = distance;
+            }
+        }
+
+        if (nearestDistance == null) {
+            return Optional.empty();
+        }
+        if (nearestDistance < 1.0E-3) {
+            nearestDistance = 0.0;
+        }
+        return Optional.of(nearestDistance);
     }
 
     private boolean isFalling(double distance) {

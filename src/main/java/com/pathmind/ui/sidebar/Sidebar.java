@@ -189,7 +189,8 @@ public class Sidebar {
             NodeType.SENSOR_IS_UNDERWATER,
             NodeType.SENSOR_IS_ON_GROUND,
             NodeType.SENSOR_IS_FALLING,
-            NodeType.SENSOR_LOOK_DIRECTION
+            NodeType.SENSOR_LOOK_DIRECTION,
+            NodeType.SENSOR_CURRENT_HAND
         ));
         groups.add(new NodeGroup(
             "Input",

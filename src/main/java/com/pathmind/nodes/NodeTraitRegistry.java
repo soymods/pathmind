@@ -21,7 +21,6 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_IS_SWIMMING,
         NodeType.SENSOR_IS_IN_LAVA,
         NodeType.SENSOR_IS_UNDERWATER,
-        NodeType.SENSOR_IS_ON_GROUND,
         NodeType.SENSOR_IS_FALLING,
         NodeType.SENSOR_IS_RENDERED,
         NodeType.SENSOR_IS_VISIBLE,
@@ -53,7 +52,8 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_TARGETED_BLOCK,
         NodeType.SENSOR_TARGETED_ENTITY,
         NodeType.SENSOR_TARGETED_BLOCK_FACE,
-        NodeType.SENSOR_LOOK_DIRECTION
+        NodeType.SENSOR_LOOK_DIRECTION,
+        NodeType.SENSOR_CURRENT_HAND
     );
     private static final EnumSet<NodeType> SENSORS_REQUIRING_PARAMETER = EnumSet.of(
         NodeType.SENSOR_TOUCHING_BLOCK,
@@ -103,6 +103,8 @@ public final class NodeTraitRegistry {
         traits.put(NodeType.SENSOR_TARGETED_ENTITY, EnumSet.of(NodeValueTrait.ENTITY));
         traits.put(NodeType.SENSOR_TARGETED_BLOCK_FACE, EnumSet.of(NodeValueTrait.DIRECTION));
         traits.put(NodeType.SENSOR_LOOK_DIRECTION, EnumSet.of(NodeValueTrait.ROTATION));
+        traits.put(NodeType.SENSOR_CURRENT_HAND, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
+        traits.put(NodeType.SENSOR_IS_ON_GROUND, EnumSet.of(NodeValueTrait.DISTANCE));
 
         traits.put(NodeType.OPERATOR_RANDOM, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_MOD, EnumSet.of(NodeValueTrait.NUMBER));
@@ -406,6 +408,8 @@ public final class NodeTraitRegistry {
             || type == NodeType.SENSOR_TARGETED_ENTITY
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || type == NodeType.SENSOR_LOOK_DIRECTION
+            || type == NodeType.SENSOR_CURRENT_HAND
+            || type == NodeType.SENSOR_IS_ON_GROUND
             || type == NodeType.SENSOR_SLOT_ITEM_COUNT) {
             return true;
         }

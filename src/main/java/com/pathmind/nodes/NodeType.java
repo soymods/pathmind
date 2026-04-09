@@ -112,6 +112,7 @@ public enum NodeType {
     SENSOR_TARGETED_BLOCK("pathmind.node.type.sensorTargetedBlock", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlock.desc"),
     SENSOR_TARGETED_ENTITY("pathmind.node.type.sensorTargetedEntity", 0xFF64B5F6, "pathmind.node.type.sensorTargetedEntity.desc"),
     SENSOR_LOOK_DIRECTION("pathmind.node.type.sensorLookDirection", 0xFF64B5F6, "pathmind.node.type.sensorLookDirection.desc"),
+    SENSOR_CURRENT_HAND("pathmind.node.type.sensorCurrentHand", 0xFF64B5F6, "pathmind.node.type.sensorCurrentHand.desc"),
     SENSOR_TARGETED_BLOCK_FACE("pathmind.node.type.sensorTargetedBlockFace", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlockFace.desc"),
     SENSOR_GUI_FILLED("pathmind.node.type.sensorGuiFilled", 0xFF64B5F6, "pathmind.node.type.sensorGuiFilled.desc"),
     SENSOR_IS_DAYTIME("pathmind.node.type.sensorIsDaytime", 0xFF64B5F6, "pathmind.node.type.sensorIsDaytime.desc"),
@@ -272,6 +273,7 @@ public enum NodeType {
             case SENSOR_TARGETED_BLOCK:
             case SENSOR_TARGETED_ENTITY:
             case SENSOR_LOOK_DIRECTION:
+            case SENSOR_CURRENT_HAND:
             case SENSOR_TARGETED_BLOCK_FACE:
             case SENSOR_GUI_FILLED:
             case SENSOR_IS_DAYTIME:
@@ -435,6 +437,7 @@ public enum NodeType {
             case SENSOR_IS_VISIBLE:
             case SENSOR_CHAT_MESSAGE:
             case SENSOR_FABRIC_EVENT:
+            case SENSOR_CURRENT_HAND:
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
             case PARAM_ITEM:

@@ -66,6 +66,10 @@ public final class NodeCompatibility {
             return false;
         }
 
+        if (isConfigurableNumericComparisonOperand(host.getType(), candidate.getType())) {
+            return true;
+        }
+
         NodeType candidateType = candidate.getType();
         EnumSet<NodeValueTrait> accepted = NodeTraitRegistry.getAcceptedTraits(host.getType(), slotIndex);
         if (accepted.isEmpty()) {
@@ -98,5 +102,14 @@ public final class NodeCompatibility {
             }
         }
         return false;
+    }
+
+    private static boolean isConfigurableNumericComparisonOperand(NodeType hostType, NodeType candidateType) {
+        if (hostType != NodeType.OPERATOR_GREATER && hostType != NodeType.OPERATOR_LESS) {
+            return false;
+        }
+        return candidateType == NodeType.SENSOR_POSITION_OF
+            || candidateType == NodeType.SENSOR_DISTANCE_BETWEEN
+            || candidateType == NodeType.SENSOR_IS_ON_GROUND;
     }
 }

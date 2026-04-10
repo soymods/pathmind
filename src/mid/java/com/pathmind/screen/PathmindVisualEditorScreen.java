@@ -1151,6 +1151,14 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
                 return true;
             }
+            if (isPublishButtonClicked((int) mouseX, (int) mouseY, button)) {
+                if (this.client != null) {
+                    nodeGraph.save();
+                    PresetManager.setActivePreset(activePresetName);
+                    this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
+                }
+                return true;
+            }
         }
 
         if (button == 0) {
@@ -5183,13 +5191,18 @@ public class PathmindVisualEditorScreen extends Screen {
             mouseY = Integer.MIN_VALUE;
         }
         int buttonY = getWorkspaceButtonY();
-        renderMarketplaceButton(context, mouseX, mouseY, buttonY);
+        boolean marketplaceHovered = renderMarketplaceButton(context, mouseX, mouseY, buttonY);
+        boolean publishHovered = renderPublishButton(context, mouseX, mouseY, buttonY);
         boolean importHovered = renderImportExportButton(context, mouseX, mouseY, buttonY);
         boolean clearHovered = renderClearButton(context, mouseX, mouseY, buttonY);
         boolean homeHovered = renderHomeButton(context, mouseX, mouseY, buttonY);
 
         if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
-            if (homeHovered) {
+            if (publishHovered) {
+                drawWorkspaceTooltip(context, "Publish preset", mouseX, mouseY);
+            } else if (marketplaceHovered) {
+                drawWorkspaceTooltip(context, "Marketplace", mouseX, mouseY);
+            } else if (homeHovered) {
                 drawWorkspaceTooltip(context, "Reset view", mouseX, mouseY);
             } else if (clearHovered) {
                 drawWorkspaceTooltip(context, "Clear workspace", mouseX, mouseY);
@@ -5210,6 +5223,28 @@ public class PathmindVisualEditorScreen extends Screen {
         int textY = buttonY + (BOTTOM_BUTTON_SIZE - this.textRenderer.fontHeight) / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
         return hovered;
+    }
+
+    private boolean renderPublishButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+        int buttonX = getPublishButtonX();
+        boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
+        int background = hovered ? mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.78f)
+            : mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.62f);
+        int border = hovered ? UITheme.TEXT_EDITING_LABEL : UITheme.ACCENT_SKY;
+        UIStyleHelper.drawToolbarButtonFrame(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE,
+            background, border, UITheme.PANEL_INNER_BORDER);
+        drawPublishArrowIcon(context, buttonX, buttonY, hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY);
+        return hovered;
+    }
+
+    private void drawPublishArrowIcon(DrawContext context, int buttonX, int buttonY, int color) {
+        int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
+        int top = buttonY + 4;
+        int bottom = buttonY + BOTTOM_BUTTON_SIZE - 4;
+        context.drawVerticalLine(centerX, top + 2, bottom, color);
+        context.drawHorizontalLine(centerX - 3, centerX + 3, top + 2, color);
+        context.drawHorizontalLine(centerX - 2, centerX + 2, top + 1, color);
+        context.drawHorizontalLine(centerX - 1, centerX + 1, top, color);
     }
 
     private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
@@ -6356,6 +6391,10 @@ public class PathmindVisualEditorScreen extends Screen {
         return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
     }
 
+    private int getPublishButtonX() {
+        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
+    }
+
     private int getHomeButtonX() {
         return getImportExportButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
     }
@@ -6365,7 +6404,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getImportExportButtonX() {
-        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
+        return getPublishButtonX() + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
     }
 
     private int getSettingsButtonX() {
@@ -6402,6 +6441,13 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getMarketplaceButtonX();
         int buttonY = getWorkspaceButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
+    }
+
+    private boolean isPublishButtonClicked(int mouseX, int mouseY, int button) {
+        if (button != 0) return false;
+        int buttonX = getPublishButtonX();
+        int buttonY = getWorkspaceButtonY();
+        return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isSettingsButtonClicked(int mouseX, int mouseY, int button) {

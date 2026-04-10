@@ -8,6 +8,7 @@ import java.util.List;
 public final class MarketplacePreset {
     private final String id;
     private final String slug;
+    private final String authorUserId;
     private final String name;
     private final String authorName;
     private final String description;
@@ -23,6 +24,7 @@ public final class MarketplacePreset {
 
     public MarketplacePreset(String id,
                              String slug,
+                             String authorUserId,
                              String name,
                              String authorName,
                              String description,
@@ -37,6 +39,7 @@ public final class MarketplacePreset {
                              String updatedAt) {
         this.id = id;
         this.slug = slug;
+        this.authorUserId = authorUserId;
         this.name = name;
         this.authorName = authorName;
         this.description = description;
@@ -57,6 +60,10 @@ public final class MarketplacePreset {
 
     public String getSlug() {
         return slug;
+    }
+
+    public String getAuthorUserId() {
+        return authorUserId;
     }
 
     public String getName() {

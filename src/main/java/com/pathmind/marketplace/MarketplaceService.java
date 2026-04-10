@@ -46,31 +46,52 @@ public final class MarketplaceService {
     }
 
     public static CompletableFuture<List<MarketplacePreset>> fetchPublishedPresets() {
+        return fetchPresets(buildPublishedListingsUrl(), false);
+    }
+
+    public static CompletableFuture<List<MarketplacePreset>> fetchOwnedPresets(String accessToken, String userId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(buildListingsUrl()))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("apikey", PUBLISHABLE_KEY)
-                    .header("Authorization", "Bearer " + PUBLISHABLE_KEY)
-                    .header("Accept", "application/json")
-                    .GET()
-                    .build();
+                if (accessToken == null || accessToken.isBlank() || userId == null || userId.isBlank()) {
+                    return List.of();
+                }
+                return fetchPresets(buildOwnedListingsUrl(userId), accessToken, false);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to fetch owned marketplace presets", e);
+            }
+        });
+    }
 
-                HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new IOException("Marketplace request failed with HTTP " + response.statusCode());
-                }
-                List<MarketplacePreset> presets = parsePresets(response.body());
-                if (presets.isEmpty()) {
-                    return presets;
-                }
-                Map<String, Integer> likeCounts = fetchPresetLikeCounts();
-                return likeCounts.isEmpty() ? presets : applyLikeCounts(presets, likeCounts);
+    private static CompletableFuture<List<MarketplacePreset>> fetchPresets(String url, boolean hydrateLikeCounts) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return fetchPresets(url, PUBLISHABLE_KEY, hydrateLikeCounts);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to fetch marketplace presets", e);
             }
         });
+    }
+
+    private static List<MarketplacePreset> fetchPresets(String url, String bearerToken, boolean hydrateLikeCounts) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(15))
+            .header("apikey", PUBLISHABLE_KEY)
+            .header("Authorization", "Bearer " + bearerToken)
+            .header("Accept", "application/json")
+            .GET()
+            .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Marketplace request failed with HTTP " + response.statusCode());
+        }
+        List<MarketplacePreset> presets = parsePresets(response.body());
+        if (!hydrateLikeCounts || presets.isEmpty()) {
+            return presets;
+        }
+        Map<String, Integer> likeCounts = fetchPresetLikeCounts();
+        return likeCounts.isEmpty() ? presets : applyLikeCounts(presets, likeCounts);
     }
 
     public static String buildPublicGraphUrl(String filePath) {
@@ -302,12 +323,20 @@ public final class MarketplaceService {
         });
     }
 
-    private static String buildListingsUrl() {
+    private static String buildPublishedListingsUrl() {
         return PROJECT_URL
             + "/rest/v1/marketplace_presets"
-            + "?select=id,slug,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,file_path,published,created_at,updated_at"
+            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,file_path,published,created_at,updated_at"
             + "&published=eq.true"
             + "&order=created_at.desc";
+    }
+
+    private static String buildOwnedListingsUrl(String userId) {
+        return PROJECT_URL
+            + "/rest/v1/marketplace_presets"
+            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,file_path,published,created_at,updated_at"
+            + "&author_user_id=eq." + URLEncoder.encode(userId, StandardCharsets.UTF_8)
+            + "&order=updated_at.desc";
     }
 
     private static Map<String, Integer> fetchPresetLikeCounts() throws IOException, InterruptedException {
@@ -652,6 +681,7 @@ public final class MarketplaceService {
         return new MarketplacePreset(
             getString(row, "id"),
             getString(row, "slug"),
+            getNullableString(row, "author_user_id"),
             getString(row, "name"),
             getString(row, "author_name"),
             getString(row, "description"),
@@ -674,6 +704,7 @@ public final class MarketplaceService {
         return new MarketplacePreset(
             preset.getId(),
             preset.getSlug(),
+            preset.getAuthorUserId(),
             preset.getName(),
             preset.getAuthorName(),
             preset.getDescription(),

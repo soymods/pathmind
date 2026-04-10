@@ -198,8 +198,11 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void refreshListings() {
         loading = true;
-        statusMessage = "Loading published presets...";
-        MarketplaceService.fetchPublishedPresets().whenComplete((results, throwable) -> {
+        statusMessage = myPresetsOnly ? "Loading your presets..." : "Loading published presets...";
+        CompletableFuture<List<MarketplacePreset>> request = myPresetsOnly && authSession != null
+            ? MarketplaceService.fetchOwnedPresets(authSession.getAccessToken(), authSession.getUserId())
+            : MarketplaceService.fetchPublishedPresets();
+        request.whenComplete((results, throwable) -> {
             if (this.client == null) {
                 return;
             }
@@ -210,7 +213,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     presets = List.of();
                     selectedIndex = -1;
                     pageIndex = 0;
-                    statusMessage = "Failed to load marketplace presets.";
+                    statusMessage = myPresetsOnly ? "Failed to load your presets." : "Failed to load marketplace presets.";
                     return;
                 }
 
@@ -1392,8 +1395,11 @@ public class PathmindMarketplaceScreen extends Screen {
                 handleAuthButton();
             } else {
                 myPresetsOnly = !myPresetsOnly;
+                refreshListings();
             }
-            applyFilters();
+            if (!myPresetsOnly || authSession == null) {
+                applyFilters();
+            }
             return true;
         }
         if (!loading && isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE)) {
@@ -2036,7 +2042,11 @@ public class PathmindMarketplaceScreen extends Screen {
                 if (throwable != null || session == null) {
                     authSession = null;
                     likedPresetIds.clear();
-                    applyFilters();
+                    if (myPresetsOnly) {
+                        refreshListings();
+                    } else {
+                        applyFilters();
+                    }
                     if (!silent && popupPreset != null) {
                         popupStatusMessage = "Sign in to like presets and count downloads.";
                         popupStatusColor = UITheme.TEXT_TERTIARY;
@@ -2044,7 +2054,11 @@ public class PathmindMarketplaceScreen extends Screen {
                     return;
                 }
                 authSession = session;
-                applyFilters();
+                if (myPresetsOnly) {
+                    refreshListings();
+                } else {
+                    applyFilters();
+                }
                 refreshLikedPresetIds(silent);
             });
         });
@@ -2104,7 +2118,11 @@ public class PathmindMarketplaceScreen extends Screen {
                         return;
                     }
                     authSession = session;
-                    applyFilters();
+                    if (myPresetsOnly) {
+                        refreshListings();
+                    } else {
+                        applyFilters();
+                    }
                     refreshLikedPresetIds(false);
                 });
             });
@@ -2125,7 +2143,11 @@ public class PathmindMarketplaceScreen extends Screen {
                 authSession = null;
                 likedPresetIds.clear();
                 closeAccountPopup();
-                applyFilters();
+                if (myPresetsOnly) {
+                    refreshListings();
+                } else {
+                    applyFilters();
+                }
                 if (popupPreset != null) {
                     popupStatusMessage = throwable == null ? "Signed out." : "Failed to sign out cleanly.";
                     popupStatusColor = throwable == null ? UITheme.TEXT_SECONDARY : UITheme.STATE_ERROR;
@@ -2591,16 +2613,9 @@ public class PathmindMarketplaceScreen extends Screen {
         if (preset == null || authSession == null) {
             return false;
         }
-        String presetAuthor = normalizeSearch(preset.getAuthorName());
-        if (presetAuthor.isEmpty()) {
-            return false;
-        }
-        String displayName = normalizeSearch(authSession.getDisplayName());
-        String email = normalizeSearch(authSession.getEmail());
-        if (!displayName.isEmpty() && presetAuthor.equals(displayName)) {
-            return true;
-        }
-        return !email.isEmpty() && presetAuthor.equals(email);
+        String presetAuthorUserId = fallback(preset.getAuthorUserId(), "");
+        String currentUserId = fallback(authSession.getUserId(), "");
+        return !presetAuthorUserId.isBlank() && presetAuthorUserId.equals(currentUserId);
     }
 
     private void setPresetLiked(String presetId, boolean liked) {
@@ -2740,6 +2755,7 @@ public class PathmindMarketplaceScreen extends Screen {
         return new MarketplacePreset(
             preset.getId(),
             preset.getSlug(),
+            preset.getAuthorUserId(),
             preset.getName(),
             preset.getAuthorName(),
             preset.getDescription(),

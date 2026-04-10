@@ -573,6 +573,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         renderValidationPanel(context, mouseX, mouseY, validationResult);
         renderValidationButton(context, mouseX, mouseY, controlsDisabled, validationResult);
+        renderBottomLeftWorkspaceButtons(context, mouseX, mouseY);
         renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
 
         if (controlsDisabled) {
@@ -5200,6 +5201,14 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         int buttonY = getWorkspaceButtonY();
         renderMarketplaceButton(context, mouseX, mouseY, buttonY);
+    }
+
+    private void renderBottomLeftWorkspaceButtons(DrawContext context, int mouseX, int mouseY) {
+        if (isPopupObscuringWorkspace()) {
+            mouseX = Integer.MIN_VALUE;
+            mouseY = Integer.MIN_VALUE;
+        }
+        int buttonY = getSettingsButtonY();
         boolean importHovered = renderImportExportButton(context, mouseX, mouseY, buttonY);
         boolean clearHovered = renderClearButton(context, mouseX, mouseY, buttonY);
         boolean homeHovered = renderHomeButton(context, mouseX, mouseY, buttonY);
@@ -6379,15 +6388,15 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getHomeButtonX() {
-        return getImportExportButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
+        return getSettingsButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 3;
     }
 
     private int getClearButtonX() {
-        return getImportExportButtonX() + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
+        return getSettingsButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
     }
 
     private int getImportExportButtonX() {
-        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
+        return getSettingsButtonX() + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
     }
 
     private int getSettingsButtonX() {
@@ -6401,21 +6410,21 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean isHomeButtonClicked(int mouseX, int mouseY, int button) {
         if (button != 0) return false;
         int buttonX = getHomeButtonX();
-        int buttonY = getWorkspaceButtonY();
+        int buttonY = getSettingsButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isClearButtonClicked(int mouseX, int mouseY, int button) {
         if (button != 0) return false;
         int buttonX = getClearButtonX();
-        int buttonY = getWorkspaceButtonY();
+        int buttonY = getSettingsButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isImportExportButtonClicked(int mouseX, int mouseY, int button) {
         if (button != 0) return false;
         int buttonX = getImportExportButtonX();
-        int buttonY = getWorkspaceButtonY();
+        int buttonY = getSettingsButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 

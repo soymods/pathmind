@@ -7,6 +7,7 @@ import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
+import com.pathmind.marketplace.MarketplaceRateLimitManager;
 import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
@@ -59,7 +60,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int OUTER_PADDING = 12;
     private static final int TOP_BAR_HEIGHT = 30;
     private static final int SECTION_TOP_GAP = 4;
-    private static final int SECTION_HEADER_HEIGHT = 32;
+    private static final int SECTION_HEADER_HEIGHT = 54;
     private static final int SECTION_BODY_PADDING = 12;
     private static final int FOOTER_HEIGHT = 14;
     private static final int CARD_GAP = 8;
@@ -75,10 +76,13 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int SORT_BUTTON_WIDTH = 82;
     private static final int SORT_BUTTON_HEIGHT = 18;
     private static final int SORT_OPTION_HEIGHT = 18;
+    private static final int MY_PRESETS_BUTTON_WIDTH = 86;
     private static final int ACCOUNT_BUTTON_WIDTH = 88;
     private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
 
     private final Screen parent;
+    private final boolean openPublishOnInit;
+    private final String preferredPublishPresetName;
 
     private List<MarketplacePreset> allPresets = List.of();
     private List<MarketplacePreset> presets = List.of();
@@ -96,11 +100,18 @@ public class PathmindMarketplaceScreen extends Screen {
     private int popupScrollDragOffset = 0;
     private final PopupAnimationHandler presetPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler accountPopupAnimation = new PopupAnimationHandler();
+    private final PopupAnimationHandler publishPopupAnimation = new PopupAnimationHandler();
     private final AnimatedValue sortDropdownAnimation = AnimatedValue.forHover();
     private MarketplaceAuthManager.AuthSession authSession = null;
     private final Set<String> likedPresetIds = new HashSet<>();
+    private final Set<String> savedMarketplacePresetIds = new HashSet<>();
     private boolean authBusy = false;
     private boolean accountPopupOpen = false;
+    private boolean publishPopupOpen = false;
+    private boolean publishBusy = false;
+    private boolean deleteBusy = false;
+    private String deletingPresetId = null;
+    private boolean myPresetsOnly = false;
     private String avatarTextureUrl = null;
     private Identifier avatarTextureId = null;
     private boolean avatarLoading = false;
@@ -108,6 +119,8 @@ public class PathmindMarketplaceScreen extends Screen {
     private final Set<String> previewGraphLoading = new HashSet<>();
     private final Map<String, Long> likePulseEndTimes = new HashMap<>();
     private final Map<String, Long> savePulseEndTimes = new HashMap<>();
+    private final Map<String, Long> deletePulseEndTimes = new HashMap<>();
+    private String pendingLikePresetId = null;
     private boolean popupPreviewDragging = false;
     private int popupPreviewDragLastX = 0;
     private int popupPreviewDragLastY = 0;
@@ -115,12 +128,26 @@ public class PathmindMarketplaceScreen extends Screen {
     private float popupPreviewPanY = 0f;
     private float popupPreviewZoom = 1f;
     private TextFieldWidget searchField;
+    private TextFieldWidget publishNameField;
+    private TextFieldWidget publishDescriptionField;
+    private TextFieldWidget publishTagsField;
     private SortMode sortMode = SortMode.NEWEST;
     private boolean sortDropdownOpen = false;
+    private String publishSourcePresetName = "";
+    private MarketplacePreset editingPreset = null;
+    private boolean popupMetadataEditing = false;
+    private String publishStatusMessage = "";
+    private int publishStatusColor = UITheme.TEXT_SECONDARY;
 
     public PathmindMarketplaceScreen(Screen parent) {
+        this(parent, false, null);
+    }
+
+    public PathmindMarketplaceScreen(Screen parent, boolean openPublishOnInit, String preferredPublishPresetName) {
         super(Text.literal("Marketplace"));
         this.parent = parent;
+        this.openPublishOnInit = openPublishOnInit;
+        this.preferredPublishPresetName = preferredPublishPresetName;
     }
 
     @Override
@@ -135,12 +162,39 @@ public class PathmindMarketplaceScreen extends Screen {
             searchField.setChangedListener(value -> applyFilters());
             this.addSelectableChild(searchField);
         }
+        if (publishNameField == null) {
+            publishNameField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 18, Text.literal("Preset name"));
+            publishNameField.setMaxLength(64);
+            publishNameField.setDrawsBackground(false);
+            publishNameField.setEditableColor(UITheme.TEXT_PRIMARY);
+            publishNameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            this.addSelectableChild(publishNameField);
+        }
+        if (publishDescriptionField == null) {
+            publishDescriptionField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 18, Text.literal("Description"));
+            publishDescriptionField.setMaxLength(180);
+            publishDescriptionField.setDrawsBackground(false);
+            publishDescriptionField.setEditableColor(UITheme.TEXT_PRIMARY);
+            publishDescriptionField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            this.addSelectableChild(publishDescriptionField);
+        }
+        if (publishTagsField == null) {
+            publishTagsField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 18, Text.literal("Tags"));
+            publishTagsField.setMaxLength(96);
+            publishTagsField.setDrawsBackground(false);
+            publishTagsField.setEditableColor(UITheme.TEXT_PRIMARY);
+            publishTagsField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            this.addSelectableChild(publishTagsField);
+        }
         if (!initialFetchStarted) {
             initialFetchStarted = true;
             refreshListings();
         }
         refreshSavedPresetState();
         refreshAuthState(false);
+        if (openPublishOnInit && !publishPopupOpen) {
+            openPublishPopup(preferredPublishPresetName);
+        }
     }
 
     private void refreshListings() {
@@ -172,8 +226,14 @@ public class PathmindMarketplaceScreen extends Screen {
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
         presetPopupAnimation.tick();
         accountPopupAnimation.tick();
+        publishPopupAnimation.tick();
         sortDropdownAnimation.animateTo(sortDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
         sortDropdownAnimation.tick();
+
+        if (isAnyMarketplacePopupVisible()) {
+            mouseX = Integer.MIN_VALUE;
+            mouseY = Integer.MIN_VALUE;
+        }
 
         Layout layout = getLayout();
         renderTopBar(context, mouseX, mouseY, layout);
@@ -184,6 +244,9 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         if (accountPopupOpen || accountPopupAnimation.isVisible()) {
             renderAccountPopup(context, mouseX, mouseY, layout);
+        }
+        if (publishPopupOpen || publishPopupAnimation.isVisible()) {
+            renderPublishPopup(context, mouseX, mouseY, layout);
         }
     }
 
@@ -210,12 +273,12 @@ public class PathmindMarketplaceScreen extends Screen {
     private void renderGallerySection(DrawContext context, int mouseX, int mouseY, Layout layout) {
         int bodyY = layout.sectionY + SECTION_HEADER_HEIGHT;
         int bodyHeight = layout.sectionHeight - SECTION_HEADER_HEIGHT - FOOTER_HEIGHT;
-        drawGalleryBackdrop(context, layout.bodyX, bodyY, layout.bodyWidth, bodyHeight);
+        drawGalleryBackdrop(context, layout.bodyX, layout.sectionY, layout.bodyWidth, layout.sectionHeight - FOOTER_HEIGHT);
         int scissorTop = Math.max(layout.sectionY, bodyY - 6);
         context.enableScissor(layout.bodyX, scissorTop, layout.bodyX + layout.bodyWidth, bodyY + bodyHeight);
 
         if (loading || presets.isEmpty()) {
-            String message = loading ? "Fetching latest listings..." : "Nothing to show yet.";
+            String message = loading ? "Fetching latest listings..." : fallback(statusMessage, "Nothing to show yet.");
             int messageColor = loading ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(message),
                 layout.bodyX + layout.bodyWidth / 2, bodyY + bodyHeight / 2, messageColor);
@@ -264,12 +327,16 @@ public class PathmindMarketplaceScreen extends Screen {
         drawDropdownChevron(context, layout.sortButtonX + SORT_BUTTON_WIDTH - 12, layout.sortButtonY + 6,
             sortDropdownOpen ? getAccentColor() : UITheme.TEXT_SECONDARY, sortDropdownOpen);
 
+        boolean myPresetsHovered = isPointInRect(mouseX, mouseY, layout.myPresetsButtonX, layout.myPresetsButtonY, MY_PRESETS_BUTTON_WIDTH, SORT_BUTTON_HEIGHT);
+        drawActionButton(context, layout.myPresetsButtonX, layout.myPresetsButtonY, MY_PRESETS_BUTTON_WIDTH, SORT_BUTTON_HEIGHT,
+            "My Presets", myPresetsHovered, authSession == null && !myPresetsOnly, myPresetsOnly);
+
         String resultLabel = loading
             ? "Loading..."
             : presets.size() + " result" + (presets.size() == 1 ? "" : "s");
         int resultWidth = this.textRenderer.getWidth(resultLabel);
-        int resultX = Math.max(layout.searchFieldX + SEARCH_FIELD_WIDTH + SORT_BUTTON_WIDTH + 16, layout.refreshButtonX - resultWidth - 6);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, searchY + 5, UITheme.TEXT_SECONDARY);
+        int resultX = Math.max(layout.searchFieldX, layout.refreshButtonX - resultWidth - 6);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, layout.resultRowY + 5, UITheme.TEXT_SECONDARY);
 
         boolean refreshHovered = isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE);
         drawIconButton(context, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE, refreshHovered, loading);
@@ -301,18 +368,26 @@ public class PathmindMarketplaceScreen extends Screen {
         );
         renderGraphPreviewSurface(context, previewX, previewY, previewWidth, previewHeight, preset, true, false, 0f, 0f);
 
-        int heartX = rect.x + rect.width - 24;
+        int deleteX = previewX + previewWidth - 14;
+        int deleteY = previewY + 2;
+        int heartX = previewX + previewWidth - 14;
         int bookmarkX = heartX - 14;
+        int actionY = previewY + previewHeight - 14;
         boolean liked = isPresetLiked(preset);
         boolean saved = isPresetSavedLocally(preset);
-        drawAnimatedBookmarkIcon(context, bookmarkX, rect.y + 10, preset, saved, false);
-        drawAnimatedHeartIcon(context, heartX, rect.y + 10, preset, liked, false);
+        boolean ownPreset = isOwnPreset(preset);
+        if (ownPreset) {
+            drawAnimatedDeleteIcon(context, deleteX, deleteY, preset, false);
+        }
+        drawAnimatedBookmarkIcon(context, bookmarkX, actionY, preset, saved, false);
+        drawAnimatedHeartIcon(context, heartX, actionY, preset, liked, false);
 
         int textX = rect.x + 8;
         String downloadsLine = preset.getDownloadsCount() + " dl";
         String likesLine = preset.getLikesCount() + " like";
         int statsRight = rect.x + rect.width - 8;
-        int statsColor = getAccentColor();
+        int downloadsColor = UITheme.STATE_SUCCESS;
+        int likesColor = 0xFFE05454;
         int footerTop = previewY + previewHeight + 8;
         int statsLineY = footerTop + 3;
         int statsSecondLineY = footerTop + 14;
@@ -326,10 +401,10 @@ public class PathmindMarketplaceScreen extends Screen {
             textX, footerTop + 10, UITheme.TEXT_SECONDARY);
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(downloadsLine),
-            statsRight - this.textRenderer.getWidth(downloadsLine), statsLineY, statsColor);
+            statsRight - this.textRenderer.getWidth(downloadsLine), statsLineY, downloadsColor);
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(likesLine),
-            statsRight - this.textRenderer.getWidth(likesLine), statsSecondLineY, statsColor);
+            statsRight - this.textRenderer.getWidth(likesLine), statsSecondLineY, likesColor);
     }
 
     private void drawGraphPreview(DrawContext context, int x, int y, int width, int height) {
@@ -722,10 +797,14 @@ public class PathmindMarketplaceScreen extends Screen {
         drawAnimatedHeartIcon(context, popupHeartX, popupY + 10, popupPreset, isPresetLiked(popupPreset), true);
 
         int cursorY = previewY + previewHeight + 12;
-        context.drawTextWithShadow(this.textRenderer,
-            Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, popupPreset.getName(), textWidth)),
-            textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
-        cursorY += 14;
+        if (popupMetadataEditing) {
+            cursorY = drawPopupEditableField(context, mouseX, mouseY, textX, cursorY, textWidth, "Title", publishNameField) + 3;
+        } else {
+            context.drawTextWithShadow(this.textRenderer,
+                Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, popupPreset.getName(), textWidth)),
+                textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
+            cursorY += 14;
+        }
         context.drawTextWithShadow(this.textRenderer,
             Text.literal("by " + TextRenderUtil.trimWithEllipsis(this.textRenderer, fallback(popupPreset.getAuthorName(), "Unknown"), textWidth - 20)),
             textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
@@ -737,21 +816,27 @@ public class PathmindMarketplaceScreen extends Screen {
         drawPopupStatPill(context, textX + downloadsWidth + 6, cursorY, likesWidth, "Likes", Integer.toString(popupPreset.getLikesCount()));
         cursorY += 24;
 
-        String tagsLine = formatTags(popupPreset.getTags());
-        if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
-            cursorY = drawWrappedValue(
-                context,
-                textX,
-                cursorY,
-                textWidth,
-                "Tags: " + tagsLine,
-                presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY),
-                2
-            );
+        if (popupMetadataEditing) {
+            cursorY = drawPopupEditableField(context, mouseX, mouseY, textX, cursorY, textWidth, "Tags", publishTagsField) + 1;
+        } else {
+            String tagsLine = formatTags(popupPreset.getTags());
+            if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
+                cursorY = drawWrappedValue(
+                    context,
+                    textX,
+                    cursorY,
+                    textWidth,
+                    "Tags: " + tagsLine,
+                    presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY),
+                    2
+                );
+            }
         }
 
         int descriptionTop = cursorY + 8;
-        int descriptionHeight = Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
+        int descriptionHeight = popupMetadataEditing
+            ? 46
+            : Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
         UIStyleHelper.drawBeveledPanel(
             context,
             textX,
@@ -764,9 +849,20 @@ public class PathmindMarketplaceScreen extends Screen {
         );
         context.drawTextWithShadow(this.textRenderer, Text.literal("About"), textX + 8, descriptionTop + 6,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        cursorY = drawWrappedValue(context, textX + 8, descriptionTop + 18, textWidth - 16,
-            fallback(popupPreset.getDescription(), "No description provided."),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY), 5);
+        if (popupMetadataEditing) {
+            int fieldY = descriptionTop + 18;
+            drawPopupFieldFrame(context, mouseX, mouseY, textX + 8, fieldY, textWidth - 16, 18, publishDescriptionField);
+            if (publishDescriptionField != null) {
+                publishDescriptionField.setPosition(textX + 14, fieldY + 5);
+                publishDescriptionField.setWidth(textWidth - 28);
+                publishDescriptionField.render(context, mouseX, mouseY, 0f);
+            }
+            cursorY = descriptionTop + descriptionHeight;
+        } else {
+            cursorY = drawWrappedValue(context, textX + 8, descriptionTop + 18, textWidth - 16,
+                fallback(popupPreset.getDescription(), "No description provided."),
+                presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY), 5);
+        }
 
         CompatibilityStatus compatibility = getCompatibilityStatus(popupPreset);
         int compatibilityHeight = 30;
@@ -826,19 +922,26 @@ public class PathmindMarketplaceScreen extends Screen {
             );
         }
 
+        boolean ownPreset = isOwnPreset(popupPreset);
         int closeButtonX = popupX + (popup.closeButtonX - popup.x);
         int authButtonX = popupX + (popup.authButtonX - popup.x);
-        int downloadButtonX = popupX + (popup.downloadButtonX - popup.x);
+        int deleteButtonX = popupX + (popup.deleteButtonX - popup.x);
+        int downloadButtonX = popupX + ((ownPreset ? popup.downloadButtonX : popup.deleteButtonX) - popup.x);
         int buttonY = popupY + (popup.buttonY - popup.y);
         boolean closeHovered = isPointInRect(mouseX, mouseY, closeButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         boolean authHovered = isPointInRect(mouseX, mouseY, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
+        boolean deleteHovered = isPointInRect(mouseX, mouseY, deleteButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         boolean downloadHovered = isPointInRect(mouseX, mouseY, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         drawActionButton(context, closeButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             "Close", closeHovered, false);
         drawActionButton(context, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            getPopupAuthButtonLabel(), authHovered, authBusy);
+            getPopupAuthButtonLabel(), authHovered, authBusy || publishBusy, popupMetadataEditing);
+        if (ownPreset) {
+            drawActionButton(context, deleteButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
+                deleteBusy ? "..." : "Delete", deleteHovered, deleteBusy || publishBusy);
+        }
         drawActionButton(context, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            importingPreset ? "Downloading..." : "Download", downloadHovered, importingPreset);
+            importingPreset ? "Downloading..." : "Download", downloadHovered, importingPreset || deleteBusy);
         context.disableScissor();
     }
 
@@ -901,6 +1004,137 @@ public class PathmindMarketplaceScreen extends Screen {
         context.disableScissor();
     }
 
+    private void renderPublishPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
+        PublishPopupLayout popup = getPublishPopupLayout(layout);
+        context.fill(0, 0, this.width, this.height, publishPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
+        int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int popupWidth = bounds[2];
+        int popupHeight = bounds[3];
+        if (popupWidth <= 0 || popupHeight <= 0) {
+            return;
+        }
+        context.enableScissor(popupX, popupY, popupX + popupWidth, popupY + popupHeight);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            popupX,
+            popupY,
+            popupWidth,
+            popupHeight,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY),
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+
+        String title = editingPreset == null ? "Publish Preset" : "Edit Metadata";
+        context.drawTextWithShadow(this.textRenderer, Text.literal(title), popupX + 12, popupY + 10,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
+        context.drawHorizontalLine(popupX, popupX + popupWidth - 1, popupY + 28,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+
+        int contentX = popupX + 12;
+        int contentWidth = popupWidth - 24;
+        int sourceY = popupY + 40;
+        String sourceLine = editingPreset == null
+            ? "Source preset: " + fallback(publishSourcePresetName, "Unknown")
+            : "Editing listing by " + fallback(editingPreset.getAuthorName(), "Unknown");
+        drawWrappedValue(context, contentX, sourceY, contentWidth,
+            sourceLine,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
+
+        int fieldWidth = popupWidth - 24;
+        int fieldHeight = 18;
+        int labelGap = 11;
+        int nameLabelY = popupY + 53;
+        int descriptionLabelY = popupY + 92;
+        int tagsLabelY = popupY + 131;
+        drawPublishField(context, mouseX, mouseY, contentX, nameLabelY, fieldWidth, fieldHeight, "Name", publishNameField, labelGap);
+        drawPublishField(context, mouseX, mouseY, contentX, descriptionLabelY, fieldWidth, fieldHeight, "Description", publishDescriptionField, labelGap);
+        drawPublishField(context, mouseX, mouseY, contentX, tagsLabelY, fieldWidth, fieldHeight, "Tags", publishTagsField, labelGap);
+
+        String tagsHint = "Comma-separated tags. Slug updates automatically from the name.";
+        drawWrappedValue(context, contentX, popupY + 166, contentWidth, tagsHint,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
+
+        if (!publishStatusMessage.isEmpty()) {
+            context.drawTextWithShadow(this.textRenderer,
+                Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, publishStatusMessage, contentWidth)),
+                contentX,
+                popupY + popupHeight - 40,
+                publishPopupAnimation.getAnimatedPopupColor(publishStatusColor));
+        }
+
+        int cancelButtonX = popupX + (popup.cancelButtonX - popup.x);
+        int authButtonX = popupX + (popup.authButtonX - popup.x);
+        int submitButtonX = popupX + (popup.submitButtonX - popup.x);
+        int buttonY = popupY + (popup.buttonY - popup.y);
+        boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
+        boolean authHovered = isPointInRect(mouseX, mouseY, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
+        boolean submitHovered = isPointInRect(mouseX, mouseY, submitButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
+        drawAnimatedActionButton(context, cancelButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
+            "Cancel", cancelHovered, false, publishPopupAnimation);
+        drawAnimatedActionButton(context, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
+            getPublishAuthButtonLabel(), authHovered, publishBusy || authSession != null, publishPopupAnimation);
+        drawAnimatedActionButton(context, submitButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
+            publishBusy ? "Working..." : (editingPreset == null ? "Publish" : "Save"),
+            submitHovered, publishBusy, publishPopupAnimation);
+        context.disableScissor();
+    }
+
+    private int drawPublishField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height,
+                                 String label, TextFieldWidget field, int labelGap) {
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), x, y,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
+        int fieldY = y + labelGap;
+        boolean hovered = isPointInRect(mouseX, mouseY, x, fieldY, width, height);
+        boolean focused = field != null && field.isFocused();
+        UIStyleHelper.drawToolbarButtonFrame(
+            context,
+            x,
+            fieldY,
+            width,
+            height,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
+            publishPopupAnimation.getAnimatedPopupColor(focused || hovered ? getAccentColor() : UITheme.BORDER_SUBTLE),
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+        if (field != null) {
+            field.setPosition(x + 6, fieldY + 5);
+            field.setWidth(width - 12);
+            field.render(context, mouseX, mouseY, 0f);
+        }
+        return fieldY + height;
+    }
+
+    private int drawPopupEditableField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, String label, TextFieldWidget field) {
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), x, y,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
+        int fieldY = y + 11;
+        drawPopupFieldFrame(context, mouseX, mouseY, x, fieldY, width, 18, field);
+        if (field != null) {
+            field.setPosition(x + 6, fieldY + 5);
+            field.setWidth(width - 12);
+            field.render(context, mouseX, mouseY, 0f);
+        }
+        return fieldY + 18;
+    }
+
+    private void drawPopupFieldFrame(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height, TextFieldWidget field) {
+        boolean hovered = isPointInRect(mouseX, mouseY, x, y, width, height);
+        boolean focused = field != null && field.isFocused();
+        UIStyleHelper.drawToolbarButtonFrame(
+            context,
+            x,
+            y,
+            width,
+            height,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
+            presetPopupAnimation.getAnimatedPopupColor(focused || hovered ? getAccentColor() : UITheme.BORDER_SUBTLE),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+    }
+
     @Override
     public boolean mouseClicked(Click click, boolean inBounds) {
         int mouseX = (int) click.x();
@@ -911,6 +1145,62 @@ public class PathmindMarketplaceScreen extends Screen {
         }
 
         Layout layout = getLayout();
+        if (publishPopupOpen) {
+            PublishPopupLayout publishPopup = getPublishPopupLayout(layout);
+            int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, publishPopup.width, publishPopup.height);
+            int popupX = bounds[0];
+            int popupY = bounds[1];
+            int popupWidth = bounds[2];
+            int popupHeight = bounds[3];
+            int cancelButtonX = popupX + (publishPopup.cancelButtonX - publishPopup.x);
+            int authButtonX = popupX + (publishPopup.authButtonX - publishPopup.x);
+            int submitButtonX = popupX + (publishPopup.submitButtonX - publishPopup.x);
+            int buttonY = popupY + (publishPopup.buttonY - publishPopup.y);
+
+            int fieldX = popupX + 12;
+            int fieldWidth = popupWidth - 24;
+            int nameFieldY = popupY + 64;
+            int descriptionFieldY = nameFieldY + 39;
+            int tagsFieldY = descriptionFieldY + 39;
+
+            boolean clickedField = false;
+            if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
+                focusPublishField(publishNameField);
+                publishNameField.mouseClicked(click, inBounds);
+                clickedField = true;
+            } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX, descriptionFieldY, fieldWidth, 18)) {
+                focusPublishField(publishDescriptionField);
+                publishDescriptionField.mouseClicked(click, inBounds);
+                clickedField = true;
+            } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
+                focusPublishField(publishTagsField);
+                publishTagsField.mouseClicked(click, inBounds);
+                clickedField = true;
+            } else {
+                focusPublishField(null);
+            }
+            if (clickedField) {
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
+                closePublishPopup();
+                return true;
+            }
+            if (!publishBusy && authSession == null
+                && isPointInRect(mouseX, mouseY, authButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
+                handleAuthButton();
+                return true;
+            }
+            if (!publishBusy && isPointInRect(mouseX, mouseY, submitButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
+                startPublishSubmission();
+                return true;
+            }
+            if (!isPointInRect(mouseX, mouseY, popupX, popupY, popupWidth, popupHeight)) {
+                closePublishPopup();
+                return true;
+            }
+            return true;
+        }
         if (accountPopupOpen) {
             AccountPopupLayout accountPopup = getAccountPopupLayout(layout);
             int[] bounds = accountPopupAnimation.getScaledPopupBounds(this.width, this.height, accountPopup.width, accountPopup.height);
@@ -950,13 +1240,42 @@ public class PathmindMarketplaceScreen extends Screen {
             int previewHeight = previewRect.height;
             int closeButtonX = popupX + (popup.closeButtonX - popup.x);
             int authButtonX = popupX + (popup.authButtonX - popup.x);
-            int downloadButtonX = popupX + (popup.downloadButtonX - popup.x);
+            int deleteButtonX = popupX + (popup.deleteButtonX - popup.x);
+            boolean ownPreset = isOwnPreset(popupPreset);
+            int downloadButtonX = popupX + ((ownPreset ? popup.downloadButtonX : popup.deleteButtonX) - popup.x);
             int buttonY = popupY + (popup.buttonY - popup.y);
             Rect popupBookmarkHit = new Rect(popupX + popupWidth - 42, popupY + 10, 12, 12);
             Rect popupHeartHit = new Rect(popupX + popupWidth - 24, popupY + 10, 12, 12);
             int zoomButtonSize = 14;
             Rect zoomOutHit = new Rect(previewX + previewWidth - zoomButtonSize * 2 - 8, previewY + 6, zoomButtonSize, zoomButtonSize);
             Rect zoomInHit = new Rect(previewX + previewWidth - zoomButtonSize - 6, previewY + 6, zoomButtonSize, zoomButtonSize);
+            if (popupMetadataEditing) {
+                int fieldX = popupX + 12;
+                int fieldWidth = popupWidth - 24;
+                int baseContentY = previewY + previewHeight;
+                int nameFieldY = baseContentY + 23;
+                int tagsFieldY = baseContentY + 93;
+                int descriptionFieldY = baseContentY + 138;
+                boolean clickedField = false;
+                if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
+                    focusPublishField(publishNameField);
+                    publishNameField.mouseClicked(click, inBounds);
+                    clickedField = true;
+                } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
+                    focusPublishField(publishTagsField);
+                    publishTagsField.mouseClicked(click, inBounds);
+                    clickedField = true;
+                } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX + 8, descriptionFieldY, fieldWidth - 16, 18)) {
+                    focusPublishField(publishDescriptionField);
+                    publishDescriptionField.mouseClicked(click, inBounds);
+                    clickedField = true;
+                } else {
+                    focusPublishField(null);
+                }
+                if (clickedField) {
+                    return true;
+                }
+            }
             if (isPointInRect(mouseX, mouseY, popupBookmarkHit.x, popupBookmarkHit.y, popupBookmarkHit.width, popupBookmarkHit.height)) {
                 savePresetLocally(popupPreset, false);
                 return true;
@@ -994,11 +1313,24 @@ public class PathmindMarketplaceScreen extends Screen {
                 return true;
             }
             if (!authBusy && isPointInRect(mouseX, mouseY, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
-                if (authSession == null) {
+                if (popupPreset != null && isOwnPreset(popupPreset)) {
+                    if (popupMetadataEditing) {
+                        startPublishSubmission();
+                    } else {
+                        beginPopupMetadataEdit(popupPreset);
+                    }
+                } else if (authSession == null) {
                     handleAuthButton();
                 } else {
                     startToggleLike();
                 }
+                return true;
+            }
+            if (ownPreset
+                && !deleteBusy
+                && !publishBusy
+                && isPointInRect(mouseX, mouseY, deleteButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
+                startDeletePreset(popupPreset, true);
                 return true;
             }
             if (!importingPreset && isPointInRect(mouseX, mouseY, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
@@ -1046,6 +1378,16 @@ public class PathmindMarketplaceScreen extends Screen {
             sortDropdownOpen = !sortDropdownOpen;
             return true;
         }
+        if (isPointInRect(mouseX, mouseY, layout.myPresetsButtonX, layout.myPresetsButtonY, MY_PRESETS_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+            if (authSession == null) {
+                myPresetsOnly = true;
+                handleAuthButton();
+            } else {
+                myPresetsOnly = !myPresetsOnly;
+            }
+            applyFilters();
+            return true;
+        }
         if (!loading && isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE)) {
             refreshListings();
             return true;
@@ -1068,8 +1410,17 @@ public class PathmindMarketplaceScreen extends Screen {
         for (int index = startIndex; index < endIndex; index++) {
             Rect rect = getCardRect(layout, index - startIndex, visibleCount);
             MarketplacePreset preset = presets.get(index);
-            Rect heartHit = new Rect(rect.x + rect.width - 26, rect.y + 8, 12, 12);
-            Rect bookmarkHit = new Rect(rect.x + rect.width - 40, rect.y + 8, 12, 12);
+            int previewX = rect.x + 8;
+            int previewY = rect.y + 8;
+            int previewWidth = rect.width - 16;
+            int previewHeight = rect.height - 46;
+            Rect deleteHit = new Rect(previewX + previewWidth - 14, previewY + 2, 12, 12);
+            Rect heartHit = new Rect(previewX + previewWidth - 14, previewY + previewHeight - 14, 12, 12);
+            Rect bookmarkHit = new Rect(previewX + previewWidth - 28, previewY + previewHeight - 14, 12, 12);
+            if (isOwnPreset(preset) && isPointInRect(mouseX, mouseY, deleteHit.x, deleteHit.y, deleteHit.width, deleteHit.height)) {
+                startDeletePreset(preset, false);
+                return true;
+            }
             if (isPointInRect(mouseX, mouseY, heartHit.x, heartHit.y, heartHit.width, heartHit.height)) {
                 startToggleLike(preset, false);
                 return true;
@@ -1184,6 +1535,10 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public void close() {
+        if (publishPopupOpen) {
+            closePublishPopup();
+            return;
+        }
         if (accountPopupOpen) {
             closeAccountPopup();
             return;
@@ -1200,6 +1555,30 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyInput input) {
+        if (publishPopupOpen || popupMetadataEditing) {
+            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+                if (publishPopupOpen) {
+                    closePublishPopup();
+                } else {
+                    endPopupMetadataEdit(false);
+                }
+                return true;
+            }
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(input)) {
+                return true;
+            }
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(input)) {
+                return true;
+            }
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(input)) {
+                return true;
+            }
+            if ((input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
+                startPublishSubmission();
+                return true;
+            }
+            return true;
+        }
         if (sortDropdownOpen) {
             if (input.key() == GLFW.GLFW_KEY_ESCAPE || input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) {
                 sortDropdownOpen = false;
@@ -1224,6 +1603,18 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public boolean charTyped(CharInput input) {
+        if (publishPopupOpen || popupMetadataEditing) {
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(input)) {
+                return true;
+            }
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(input)) {
+                return true;
+            }
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(input)) {
+                return true;
+            }
+            return true;
+        }
         if (searchField != null && searchField.isFocused() && searchField.charTyped(input)) {
             return true;
         }
@@ -1237,8 +1628,18 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void drawActionButton(DrawContext context, int x, int y, int width, int height, String label, boolean hovered, boolean disabled) {
-        int bgColor = disabled ? UITheme.TOOLBAR_BG_DISABLED : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
-        int borderColor = disabled ? UITheme.BORDER_SUBTLE : hovered ? getAccentColor() : UITheme.BORDER_DEFAULT;
+        drawActionButton(context, x, y, width, height, label, hovered, disabled, false);
+    }
+
+    private void drawActionButton(DrawContext context, int x, int y, int width, int height, String label,
+                                  boolean hovered, boolean disabled, boolean active) {
+        int bgColor = disabled
+            ? UITheme.TOOLBAR_BG_DISABLED
+            : active ? (hovered
+                ? AnimationHelper.lerpColor(getAccentColor(), UITheme.TEXT_HEADER, 0.18f)
+                : AnimationHelper.lerpColor(getAccentColor(), UITheme.BORDER_SOCKET, 0.25f))
+            : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
+        int borderColor = disabled ? UITheme.BORDER_SUBTLE : (hovered || active) ? getAccentColor() : UITheme.BORDER_DEFAULT;
         UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
         int textColor = disabled ? UITheme.TEXT_TERTIARY : hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY;
         int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
@@ -1338,12 +1739,16 @@ public class PathmindMarketplaceScreen extends Screen {
             return 0;
         }
         int height = 120 + 12;
-        height += 14;
+        height += popupMetadataEditing ? 32 : 14;
         height += 14;
         height += 20;
-        String tagsLine = formatTags(popupPreset.getTags());
-        if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
-            height += measureWrappedValueHeight(textWidth, "Tags: " + tagsLine, 2);
+        if (popupMetadataEditing) {
+            height += 31;
+        } else {
+            String tagsLine = formatTags(popupPreset.getTags());
+            if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
+                height += measureWrappedValueHeight(textWidth, "Tags: " + tagsLine, 2);
+            }
         }
         height += 30 + 8;
         height += measureWrappedValueHeight(textWidth,
@@ -1355,7 +1760,9 @@ public class PathmindMarketplaceScreen extends Screen {
                 : "Signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")),
             2);
         height += 2;
-        height += Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
+        height += popupMetadataEditing
+            ? 46
+            : Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
         return height;
     }
 
@@ -1405,6 +1812,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void closePopup() {
         if (!importingPreset) {
+            endPopupMetadataEdit(false);
             presetPopupAnimation.hide();
             popupPreset = null;
             popupScrollOffset = 0;
@@ -1414,8 +1822,6 @@ public class PathmindMarketplaceScreen extends Screen {
             popupPreviewPanX = 0f;
             popupPreviewPanY = 0f;
             popupPreviewZoom = 1f;
-            popupStatusMessage = "";
-            popupStatusColor = UITheme.TEXT_SECONDARY;
         }
     }
 
@@ -1468,12 +1874,21 @@ public class PathmindMarketplaceScreen extends Screen {
             refreshSavedPresetState();
             if (authSession != null && popupPreset != null && popupPreset.getId() != null && !popupPreset.getId().isBlank()) {
                 MarketplacePreset importedMarketplacePreset = popupPreset;
-                withFreshAuthSession(session -> MarketplaceService.incrementDownload(session.getAccessToken(), importedMarketplacePreset.getId())
-                    .whenComplete((unused, incrementThrowable) -> {
-                        if (incrementThrowable == null && this.client != null) {
-                            this.client.execute(() -> applyPresetCountUpdate(importedMarketplacePreset.getId(), 0, 1));
-                        }
-                    }), null);
+                withFreshAuthSession(session -> {
+                    MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumeDownloadCount(
+                        session.getUserId(),
+                        importedMarketplacePreset.getId()
+                    );
+                    if (!limitCheck.permitted()) {
+                        return;
+                    }
+                    MarketplaceService.incrementDownload(session.getAccessToken(), importedMarketplacePreset.getId())
+                        .whenComplete((unused, incrementThrowable) -> {
+                            if (incrementThrowable == null && this.client != null) {
+                                this.client.execute(() -> applyPresetCountUpdate(importedMarketplacePreset.getId(), 0, 1));
+                            }
+                        });
+                }, null);
             }
             cleanupTempFile(path);
             importingPreset = false;
@@ -1504,10 +1919,12 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void refreshSavedPresetState() {
         PresetManager.getAvailablePresets();
+        savedMarketplacePresetIds.clear();
+        savedMarketplacePresetIds.addAll(PresetManager.getSavedMarketplacePresetIds());
     }
 
     private boolean isPresetSavedLocally(MarketplacePreset preset) {
-        return findLocalPresetNameForMarketplacePreset(preset).isPresent();
+        return preset != null && preset.getId() != null && savedMarketplacePresetIds.contains(preset.getId());
     }
 
     private String normalizeSavedPresetKey(String value) {
@@ -1519,9 +1936,13 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         if (!activateAfterImport) {
-            Optional<String> existingPresetName = findLocalPresetNameForMarketplacePreset(preset);
-            if (existingPresetName.isPresent()) {
-                boolean deleted = PresetManager.deletePreset(existingPresetName.get());
+            if (isPresetSavedLocally(preset)) {
+                Optional<String> existingPresetName = findLocalPresetNameForMarketplacePreset(preset);
+                boolean deleted = existingPresetName.isPresent() && PresetManager.deletePreset(existingPresetName.get());
+                if (deleted && preset.getId() != null) {
+                    PresetManager.setMarketplacePresetSaved(preset.getId(), false);
+                    savedMarketplacePresetIds.remove(preset.getId());
+                }
                 refreshSavedPresetState();
                 applyFilters();
                 if (deleted) {
@@ -1569,6 +1990,10 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 return;
             }
+            if (preset.getId() != null) {
+                PresetManager.setMarketplacePresetSaved(preset.getId(), true);
+                savedMarketplacePresetIds.add(preset.getId());
+            }
             refreshSavedPresetState();
             applyFilters();
             triggerSavePulse(preset);
@@ -1603,6 +2028,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 if (throwable != null || session == null) {
                     authSession = null;
                     likedPresetIds.clear();
+                    applyFilters();
                     if (!silent && popupPreset != null) {
                         popupStatusMessage = "Sign in to like presets and count downloads.";
                         popupStatusColor = UITheme.TEXT_TERTIARY;
@@ -1610,6 +2036,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     return;
                 }
                 authSession = session;
+                applyFilters();
                 refreshLikedPresetIds(silent);
             });
         });
@@ -1669,6 +2096,7 @@ public class PathmindMarketplaceScreen extends Screen {
                         return;
                     }
                     authSession = session;
+                    applyFilters();
                     refreshLikedPresetIds(false);
                 });
             });
@@ -1689,6 +2117,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 authSession = null;
                 likedPresetIds.clear();
                 closeAccountPopup();
+                applyFilters();
                 if (popupPreset != null) {
                     popupStatusMessage = throwable == null ? "Signed out." : "Failed to sign out cleanly.";
                     popupStatusColor = throwable == null ? UITheme.TEXT_SECONDARY : UITheme.STATE_ERROR;
@@ -1700,6 +2129,107 @@ public class PathmindMarketplaceScreen extends Screen {
     private void closeAccountPopup() {
         accountPopupOpen = false;
         accountPopupAnimation.hide();
+    }
+
+    private void openPublishPopup(String presetName) {
+        editingPreset = null;
+        publishSourcePresetName = fallback(presetName, PresetManager.getActivePreset());
+        publishStatusMessage = "";
+        publishStatusColor = UITheme.TEXT_SECONDARY;
+        if (publishNameField != null) {
+            publishNameField.setText(publishSourcePresetName);
+        }
+        if (publishDescriptionField != null) {
+            publishDescriptionField.setText("");
+        }
+        if (publishTagsField != null) {
+            publishTagsField.setText("");
+        }
+        focusPublishField(publishNameField);
+        publishPopupOpen = true;
+        publishPopupAnimation.show();
+    }
+
+    private void openEditMetadataPopup(MarketplacePreset preset) {
+        beginPopupMetadataEdit(preset);
+    }
+
+    private void beginPopupMetadataEdit(MarketplacePreset preset) {
+        if (preset == null) {
+            return;
+        }
+        popupMetadataEditing = true;
+        editingPreset = preset;
+        publishSourcePresetName = fallback(findLocalPresetNameForMarketplacePreset(preset).orElse(null), preset.getName());
+        popupStatusMessage = "";
+        popupStatusColor = UITheme.TEXT_SECONDARY;
+        if (publishNameField != null) {
+            publishNameField.setText(fallback(preset.getName(), ""));
+        }
+        if (publishDescriptionField != null) {
+            publishDescriptionField.setText(fallback(preset.getDescription(), ""));
+        }
+        if (publishTagsField != null) {
+            publishTagsField.setText(String.join(", ", preset.getTags()));
+        }
+        focusPublishField(publishNameField);
+    }
+
+    private void endPopupMetadataEdit(boolean keepStatus) {
+        popupMetadataEditing = false;
+        editingPreset = null;
+        publishBusy = false;
+        publishSourcePresetName = "";
+        focusPublishField(null);
+        if (!keepStatus) {
+            popupStatusMessage = "";
+            popupStatusColor = UITheme.TEXT_SECONDARY;
+        }
+    }
+
+    private void closePublishPopup() {
+        publishPopupOpen = false;
+        publishBusy = false;
+        editingPreset = null;
+        publishSourcePresetName = "";
+        publishStatusMessage = "";
+        publishStatusColor = UITheme.TEXT_SECONDARY;
+        focusPublishField(null);
+        publishPopupAnimation.hide();
+    }
+
+    private void focusPublishField(TextFieldWidget target) {
+        if (publishNameField != null) {
+            publishNameField.setFocused(publishNameField == target);
+        }
+        if (publishDescriptionField != null) {
+            publishDescriptionField.setFocused(publishDescriptionField == target);
+        }
+        if (publishTagsField != null) {
+            publishTagsField.setFocused(publishTagsField == target);
+        }
+    }
+
+    private void setActiveSubmissionStatus(String message, int color) {
+        if (popupMetadataEditing) {
+            popupStatusMessage = fallback(message, "");
+            popupStatusColor = color;
+            return;
+        }
+        publishStatusMessage = fallback(message, "");
+        publishStatusColor = color;
+    }
+
+    private String extractThrowableMessage(Throwable throwable, String fallbackMessage) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && !message.isBlank()) {
+                return message;
+            }
+            current = current.getCause();
+        }
+        return fallbackMessage;
     }
 
     private void renderAccountAvatar(DrawContext context, int x, int y, int size) {
@@ -1793,6 +2323,109 @@ public class PathmindMarketplaceScreen extends Screen {
         startToggleLike(popupPreset, true);
     }
 
+    private void startPublishSubmission() {
+        if (publishBusy) {
+            return;
+        }
+        boolean inlineMetadataEdit = popupMetadataEditing && editingPreset != null;
+        String name = publishNameField == null ? "" : publishNameField.getText().trim();
+        if (name.isEmpty()) {
+            setActiveSubmissionStatus("Enter a preset name.", UITheme.STATE_ERROR);
+            focusPublishField(publishNameField);
+            return;
+        }
+        if (authSession == null) {
+            setActiveSubmissionStatus("Sign in before publishing.", UITheme.STATE_WARNING);
+            handleAuthButton();
+            return;
+        }
+
+        Path localPresetPath = editingPreset == null ? PresetManager.getPresetPath(publishSourcePresetName) : null;
+        if (editingPreset == null && (localPresetPath == null || !Files.exists(localPresetPath))) {
+            setActiveSubmissionStatus("The selected local preset could not be found.", UITheme.STATE_ERROR);
+            return;
+        }
+
+        publishBusy = true;
+        authBusy = true;
+        setActiveSubmissionStatus(editingPreset == null ? "Publishing preset..." : "Saving metadata...", UITheme.TEXT_SECONDARY);
+
+        String slugSource = editingPreset != null && name.equalsIgnoreCase(fallback(editingPreset.getName(), ""))
+            ? fallback(editingPreset.getSlug(), name)
+            : name;
+        MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
+            localPresetPath,
+            editingPreset == null ? null : editingPreset.getFilePath(),
+            sanitizeSlug(slugSource),
+            name,
+            fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")),
+            publishDescriptionField == null ? "" : publishDescriptionField.getText().trim(),
+            parseTags(publishTagsField == null ? "" : publishTagsField.getText()),
+            this.client != null ? this.client.getGameVersion() : "Unknown",
+            getInstalledPathmindVersion()
+        );
+
+        MarketplaceAuthManager.ensureValidSession().whenComplete((session, throwable) -> {
+            if (this.client == null) {
+                return;
+            }
+            this.client.execute(() -> {
+                if (throwable != null || session == null) {
+                    publishBusy = false;
+                    authBusy = false;
+                    authSession = null;
+                    setActiveSubmissionStatus("Session expired. Sign in again.", UITheme.STATE_ERROR);
+                    return;
+                }
+                authSession = session;
+                if (editingPreset == null) {
+                    MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumePublish(session.getUserId());
+                    if (!limitCheck.permitted()) {
+                        publishBusy = false;
+                        authBusy = false;
+                        setActiveSubmissionStatus(limitCheck.message(), UITheme.STATE_WARNING);
+                        return;
+                    }
+                }
+                CompletableFuture<MarketplacePreset> submitFuture = editingPreset == null
+                    ? MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
+                    : MarketplaceService.updatePresetMetadata(session.getAccessToken(), editingPreset.getId(), request);
+                submitFuture.whenComplete((preset, submitThrowable) -> {
+                    if (this.client == null) {
+                        return;
+                    }
+                    this.client.execute(() -> finishPublishSubmission(preset, submitThrowable));
+                });
+            });
+        });
+    }
+
+    private void finishPublishSubmission(MarketplacePreset preset, Throwable throwable) {
+        boolean wasEditing = editingPreset != null;
+        boolean inlineMetadataEdit = popupMetadataEditing && wasEditing;
+        publishBusy = false;
+        authBusy = false;
+        if (throwable != null) {
+            setActiveSubmissionStatus(extractThrowableMessage(throwable, wasEditing ? "Metadata update failed." : "Publish failed."), UITheme.STATE_ERROR);
+            return;
+        }
+        if (preset != null) {
+            upsertPreset(preset);
+        } else {
+            refreshListings();
+        }
+        statusMessage = wasEditing ? "Metadata updated." : "Preset published.";
+        if (inlineMetadataEdit && popupPreset != null && preset != null && preset.getId() != null && preset.getId().equals(popupPreset.getId())) {
+            popupStatusMessage = "Metadata updated.";
+            popupStatusColor = getAccentColor();
+            endPopupMetadataEdit(true);
+            applyFilters();
+            return;
+        }
+        closePublishPopup();
+        applyFilters();
+    }
+
     private void startToggleLike(MarketplacePreset target, boolean updatePopupStatus) {
         if (target == null || authBusy) {
             return;
@@ -1801,7 +2434,16 @@ public class PathmindMarketplaceScreen extends Screen {
             handleAuthButton();
             return;
         }
+        MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumeLike(authSession.getUserId(), target.getId());
+        if (!limitCheck.permitted()) {
+            if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
+                popupStatusMessage = limitCheck.message();
+                popupStatusColor = UITheme.STATE_WARNING;
+            }
+            return;
+        }
         authBusy = true;
+        pendingLikePresetId = target.getId();
         if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
             popupStatusMessage = isPresetLiked(target) ? "Removing like..." : "Saving like...";
             popupStatusColor = UITheme.TEXT_SECONDARY;
@@ -1813,6 +2455,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 this.client.execute(() -> {
                     authBusy = false;
+                    pendingLikePresetId = null;
                     if (throwable != null || liked == null) {
                         if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
                             popupStatusMessage = "Like update failed.";
@@ -1840,6 +2483,9 @@ public class PathmindMarketplaceScreen extends Screen {
             this.client.execute(() -> {
                 if (throwable != null || session == null) {
                     authBusy = false;
+                    pendingLikePresetId = null;
+                    deleteBusy = false;
+                    deletingPresetId = null;
                     authSession = null;
                     likedPresetIds.clear();
                     if (failureMessage != null && popupPreset != null) {
@@ -1852,6 +2498,57 @@ public class PathmindMarketplaceScreen extends Screen {
                 action.accept(session);
             });
         });
+    }
+
+    private void startDeletePreset(MarketplacePreset preset, boolean fromPopup) {
+        if (preset == null || deleteBusy || publishBusy) {
+            return;
+        }
+        if (authSession == null) {
+            if (fromPopup) {
+                popupStatusMessage = "Sign in before deleting presets.";
+                popupStatusColor = UITheme.STATE_WARNING;
+            }
+            handleAuthButton();
+            return;
+        }
+
+        deleteBusy = true;
+        deletingPresetId = preset.getId();
+        triggerDeletePulse(preset);
+        if (fromPopup) {
+            popupStatusMessage = "Deleting preset...";
+            popupStatusColor = UITheme.TEXT_SECONDARY;
+        }
+        withFreshAuthSession(session -> MarketplaceService.deletePreset(session.getAccessToken(), preset.getId(), preset.getFilePath())
+            .whenComplete((unused, throwable) -> {
+                if (this.client == null) {
+                    return;
+                }
+                this.client.execute(() -> finishDeletePreset(preset, throwable, fromPopup));
+            }),
+            fromPopup ? "Session expired. Sign in again." : null);
+    }
+
+    private void finishDeletePreset(MarketplacePreset preset, Throwable throwable, boolean fromPopup) {
+        deleteBusy = false;
+        deletingPresetId = null;
+        authBusy = false;
+        if (throwable != null) {
+            if (fromPopup && popupPreset != null && preset != null && preset.getId() != null && preset.getId().equals(popupPreset.getId())) {
+                popupStatusMessage = extractThrowableMessage(throwable, "Delete failed.");
+                popupStatusColor = UITheme.STATE_ERROR;
+            }
+            return;
+        }
+        boolean deletedCurrentPopup = popupPreset != null && preset != null && preset.getId() != null && preset.getId().equals(popupPreset.getId());
+        removePreset(preset == null ? null : preset.getId());
+        statusMessage = "Preset deleted.";
+        if (fromPopup && deletedCurrentPopup) {
+            closePopup();
+        } else {
+            applyFilters();
+        }
     }
 
     private Optional<String> findLocalPresetNameForMarketplacePreset(MarketplacePreset preset) {
@@ -1880,6 +2577,22 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
         return Optional.empty();
+    }
+
+    private boolean isOwnPreset(MarketplacePreset preset) {
+        if (preset == null || authSession == null) {
+            return false;
+        }
+        String presetAuthor = normalizeSearch(preset.getAuthorName());
+        if (presetAuthor.isEmpty()) {
+            return false;
+        }
+        String displayName = normalizeSearch(authSession.getDisplayName());
+        String email = normalizeSearch(authSession.getEmail());
+        if (!displayName.isEmpty() && presetAuthor.equals(displayName)) {
+            return true;
+        }
+        return !email.isEmpty() && presetAuthor.equals(email);
     }
 
     private void setPresetLiked(String presetId, boolean liked) {
@@ -1912,6 +2625,12 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private String getPopupAuthButtonLabel() {
+        if (popupPreset != null && isOwnPreset(popupPreset)) {
+            if (publishBusy) {
+                return "Working...";
+            }
+            return popupMetadataEditing ? "Save" : "Edit";
+        }
         if (authBusy) {
             return "Working...";
         }
@@ -1919,6 +2638,16 @@ public class PathmindMarketplaceScreen extends Screen {
             return "Sign In";
         }
         return isPresetLiked(popupPreset) ? "Unlike" : "Like";
+    }
+
+    private String getPublishAuthButtonLabel() {
+        if (authBusy) {
+            return "Working...";
+        }
+        if (authSession == null) {
+            return "Sign In";
+        }
+        return "Signed In";
     }
 
     private void applyPresetCountUpdate(String presetId, int likesDelta, int downloadsDelta) {
@@ -1930,6 +2659,62 @@ public class PathmindMarketplaceScreen extends Screen {
         if (popupPreset != null && presetId.equals(popupPreset.getId())) {
             popupPreset = updatedPresetCounts(popupPreset, likesDelta, downloadsDelta);
         }
+    }
+
+    private void upsertPreset(MarketplacePreset preset) {
+        if (preset == null || preset.getId() == null || preset.getId().isBlank()) {
+            refreshListings();
+            return;
+        }
+        allPresets = upsertPresetList(allPresets, preset);
+        presets = upsertPresetList(presets, preset);
+        if (popupPreset != null && preset.getId().equals(popupPreset.getId())) {
+            popupPreset = preset;
+        }
+    }
+
+    private void removePreset(String presetId) {
+        if (presetId == null || presetId.isBlank()) {
+            refreshListings();
+            return;
+        }
+        allPresets = removePresetFromList(allPresets, presetId);
+        presets = removePresetFromList(presets, presetId);
+        if (popupPreset != null && presetId.equals(popupPreset.getId())) {
+            popupPreset = null;
+        }
+        selectedIndex = presets.isEmpty() ? -1 : Math.max(0, Math.min(selectedIndex, presets.size() - 1));
+    }
+
+    private List<MarketplacePreset> removePresetFromList(List<MarketplacePreset> source, String presetId) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        List<MarketplacePreset> updated = new ArrayList<>(source.size());
+        for (MarketplacePreset preset : source) {
+            if (preset == null || presetId.equals(preset.getId())) {
+                continue;
+            }
+            updated.add(preset);
+        }
+        return List.copyOf(updated);
+    }
+
+    private List<MarketplacePreset> upsertPresetList(List<MarketplacePreset> source, MarketplacePreset preset) {
+        List<MarketplacePreset> updated = new ArrayList<>(source == null ? List.of() : source);
+        boolean replaced = false;
+        for (int i = 0; i < updated.size(); i++) {
+            MarketplacePreset candidate = updated.get(i);
+            if (candidate != null && preset.getId().equals(candidate.getId())) {
+                updated.set(i, preset);
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) {
+            updated.add(0, preset);
+        }
+        return List.copyOf(updated);
     }
 
     private List<MarketplacePreset> updatePresetCountList(List<MarketplacePreset> source, String presetId, int likesDelta, int downloadsDelta) {
@@ -2040,9 +2825,35 @@ public class PathmindMarketplaceScreen extends Screen {
         context.fill(x + 4, y + 8, x + 6, y + 10, color);
     }
 
+    private void drawDeleteIcon(DrawContext context, int x, int y, int color) {
+        context.fill(x + 2, y + 2, x + 8, y + 3, color);
+        context.fill(x + 3, y + 3, x + 7, y + 10, color);
+        context.fill(x + 1, y + 4, x + 3, y + 10, color);
+        context.fill(x + 7, y + 4, x + 9, y + 10, color);
+        context.fill(x + 4, y + 1, x + 6, y + 2, color);
+        context.fill(x + 3, y + 10, x + 7, y + 11, color);
+        context.fill(x + 4, y + 4, x + 5, y + 9, UITheme.BACKGROUND_PRIMARY);
+        context.fill(x + 5, y + 4, x + 6, y + 9, UITheme.BACKGROUND_PRIMARY);
+    }
+
+    private void drawAnimatedDeleteIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean popup) {
+        float pulse = getIconPulse(deletePulseEndTimes, preset);
+        boolean pending = isDeletePending(preset);
+        int baseColor = pending ? UITheme.TEXT_TERTIARY : UITheme.STATE_ERROR;
+        int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
+        if (pulse > 0.001f) {
+            int glowColor = popup
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f);
+            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(pulse * 110)) << 24) | (glowColor & 0x00FFFFFF));
+        }
+        drawDeleteIcon(context, x, y, color);
+    }
+
     private void drawAnimatedHeartIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean liked, boolean popup) {
         float pulse = getIconPulse(likePulseEndTimes, preset);
-        int baseColor = liked ? 0xFFE05454 : UITheme.TEXT_TERTIARY;
+        boolean pending = isLikePending(preset);
+        int baseColor = pending ? UITheme.TEXT_TERTIARY : liked ? 0xFFE05454 : UITheme.TEXT_TERTIARY;
         int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
         if (pulse > 0.001f) {
             int glowColor = popup
@@ -2064,6 +2875,14 @@ public class PathmindMarketplaceScreen extends Screen {
             context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(pulse * 110)) << 24) | (glowColor & 0x00FFFFFF));
         }
         drawBookmarkIcon(context, x, y, color);
+    }
+
+    private boolean isLikePending(MarketplacePreset preset) {
+        return preset != null && preset.getId() != null && preset.getId().equals(pendingLikePresetId);
+    }
+
+    private boolean isDeletePending(MarketplacePreset preset) {
+        return deleteBusy && preset != null && preset.getId() != null && preset.getId().equals(deletingPresetId);
     }
 
     private float getIconPulse(Map<String, Long> pulseMap, MarketplacePreset preset) {
@@ -2091,6 +2910,12 @@ public class PathmindMarketplaceScreen extends Screen {
     private void triggerSavePulse(MarketplacePreset preset) {
         if (preset != null && preset.getId() != null) {
             savePulseEndTimes.put(preset.getId(), System.currentTimeMillis() + 220L);
+        }
+    }
+
+    private void triggerDeletePulse(MarketplacePreset preset) {
+        if (preset != null && preset.getId() != null) {
+            deletePulseEndTimes.put(preset.getId(), System.currentTimeMillis() + 220L);
         }
     }
 
@@ -2123,6 +2948,15 @@ public class PathmindMarketplaceScreen extends Screen {
         popupPreviewZoom = Math.max(0.45f, Math.min(2.75f, popupPreviewZoom + direction * step));
     }
 
+    private boolean isAnyMarketplacePopupVisible() {
+        return popupPreset != null
+            || presetPopupAnimation.isVisible()
+            || accountPopupOpen
+            || accountPopupAnimation.isVisible()
+            || publishPopupOpen
+            || publishPopupAnimation.isVisible();
+    }
+
     private Layout getLayout() {
         int topBarY = OUTER_PADDING;
         int backButtonX = OUTER_PADDING;
@@ -2139,13 +2973,17 @@ public class PathmindMarketplaceScreen extends Screen {
         int searchFieldY = sectionY + 5;
         int sortButtonX = searchFieldX + SEARCH_FIELD_WIDTH + 8;
         int sortButtonY = searchFieldY;
+        int myPresetsButtonX = bodyX + bodyWidth - MY_PRESETS_BUTTON_WIDTH;
+        int myPresetsButtonY = searchFieldY;
+        int resultRowY = searchFieldY + SORT_BUTTON_HEIGHT + 6;
         int refreshButtonX = bodyX + bodyWidth - REFRESH_BUTTON_SIZE;
-        int refreshButtonY = searchFieldY;
+        int refreshButtonY = resultRowY;
         int accountButtonX = this.width - OUTER_PADDING - ACCOUNT_BUTTON_WIDTH;
         int accountButtonY = topBarY + 2;
 
         return new Layout(topBarY, backButtonX, backButtonY, sectionX, sectionY, sectionWidth, sectionHeight,
-            bodyX, bodyWidth, refreshButtonX, refreshButtonY, accountButtonX, accountButtonY, searchFieldX, searchFieldY, sortButtonX, sortButtonY);
+            bodyX, bodyWidth, refreshButtonX, refreshButtonY, accountButtonX, accountButtonY, searchFieldX, searchFieldY,
+            sortButtonX, sortButtonY, myPresetsButtonX, myPresetsButtonY, resultRowY);
     }
 
     private PopupLayout getPopupLayout(Layout layout) {
@@ -2153,13 +2991,14 @@ public class PathmindMarketplaceScreen extends Screen {
         int height = Math.min(330, this.height - 40);
         int x = (this.width - width) / 2;
         int y = (this.height - height) / 2;
-        int buttonWidth = 74;
+        int buttonWidth = 64;
         int buttonHeight = 18;
         int buttonY = y + height - 28;
-        int closeButtonX = x + width - buttonWidth * 3 - 22;
-        int authButtonX = x + width - buttonWidth * 2 - 16;
+        int closeButtonX = x + width - buttonWidth * 4 - 28;
+        int authButtonX = x + width - buttonWidth * 3 - 22;
+        int deleteButtonX = x + width - buttonWidth * 2 - 16;
         int downloadButtonX = x + width - buttonWidth - 10;
-        return new PopupLayout(x, y, width, height, closeButtonX, authButtonX, downloadButtonX, buttonY, buttonWidth, buttonHeight);
+        return new PopupLayout(x, y, width, height, closeButtonX, authButtonX, deleteButtonX, downloadButtonX, buttonY, buttonWidth, buttonHeight);
     }
 
     private Rect getPopupPreviewRect(int popupX, int popupY, int popupWidth, int popupHeight, int scrollOffset) {
@@ -2183,6 +3022,20 @@ public class PathmindMarketplaceScreen extends Screen {
         int closeButtonX = x + width - buttonWidth * 2 - 16;
         int signOutButtonX = x + width - buttonWidth - 10;
         return new AccountPopupLayout(x, y, width, height, closeButtonX, signOutButtonX, buttonY, buttonWidth, buttonHeight);
+    }
+
+    private PublishPopupLayout getPublishPopupLayout(Layout layout) {
+        int width = Math.min(392, this.width - 40);
+        int height = Math.min(248, this.height - 40);
+        int x = (this.width - width) / 2;
+        int y = (this.height - height) / 2;
+        int buttonWidth = 88;
+        int buttonHeight = 18;
+        int buttonY = y + height - 28;
+        int cancelButtonX = x + width - buttonWidth * 3 - 22;
+        int authButtonX = x + width - buttonWidth * 2 - 16;
+        int submitButtonX = x + width - buttonWidth - 10;
+        return new PublishPopupLayout(x, y, width, height, cancelButtonX, authButtonX, submitButtonX, buttonY, buttonWidth, buttonHeight);
     }
 
     private Rect getCardRect(Layout layout, int pageOffset, int visibleCount) {
@@ -2279,6 +3132,9 @@ public class PathmindMarketplaceScreen extends Screen {
         String query = searchField == null ? "" : normalizeSearch(searchField.getText());
         List<MarketplacePreset> filtered = new ArrayList<>();
         for (MarketplacePreset preset : allPresets) {
+            if (myPresetsOnly && !isOwnPreset(preset)) {
+                continue;
+            }
             if (!sortMode.matches(this, preset)) {
                 continue;
             }
@@ -2290,10 +3146,16 @@ public class PathmindMarketplaceScreen extends Screen {
         presets = List.copyOf(filtered);
         pageIndex = Math.max(0, Math.min(pageIndex, getMaxPageIndex()));
         selectedIndex = presets.isEmpty() ? -1 : Math.max(0, Math.min(selectedIndex, presets.size() - 1));
-        if (allPresets.isEmpty()) {
+        if (myPresetsOnly && authSession == null) {
+            statusMessage = "Sign in to view your presets.";
+        } else if (allPresets.isEmpty()) {
             statusMessage = "No published presets found.";
         } else if (presets.isEmpty()) {
-            statusMessage = sortMode == SortMode.SAVED ? "No saved presets match your search." : "No presets match your search.";
+            if (myPresetsOnly) {
+                statusMessage = "No published presets match your search.";
+            } else {
+                statusMessage = sortMode == SortMode.SAVED ? "No saved presets match your search." : "No presets match your search.";
+            }
         } else {
             statusMessage = "Loaded " + presets.size() + " preset" + (presets.size() == 1 ? "" : "s") + ".";
         }
@@ -2320,6 +3182,29 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private String normalizeSearch(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).trim();
+    }
+
+    private List<String> parseTags(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        List<String> tags = new ArrayList<>();
+        for (String token : value.split(",")) {
+            String normalized = token == null ? "" : token.trim();
+            if (!normalized.isEmpty() && !tags.contains(normalized)) {
+                tags.add(normalized);
+            }
+        }
+        return List.copyOf(tags);
+    }
+
+    private String sanitizeSlug(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT)
+            .replaceAll("[^a-z0-9]+", "-")
+            .replaceAll("(^-+|-+$)", "");
     }
 
     private CompatibilityStatus getCompatibilityStatus(MarketplacePreset preset) {
@@ -2404,7 +3289,10 @@ public class PathmindMarketplaceScreen extends Screen {
         int searchFieldX,
         int searchFieldY,
         int sortButtonX,
-        int sortButtonY
+        int sortButtonY,
+        int myPresetsButtonX,
+        int myPresetsButtonY,
+        int resultRowY
     ) {
     }
 
@@ -2415,6 +3303,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int height,
         int closeButtonX,
         int authButtonX,
+        int deleteButtonX,
         int downloadButtonX,
         int buttonY,
         int buttonWidth,
@@ -2429,6 +3318,20 @@ public class PathmindMarketplaceScreen extends Screen {
         int height,
         int closeButtonX,
         int signOutButtonX,
+        int buttonY,
+        int buttonWidth,
+        int buttonHeight
+    ) {
+    }
+
+    private record PublishPopupLayout(
+        int x,
+        int y,
+        int width,
+        int height,
+        int cancelButtonX,
+        int authButtonX,
+        int submitButtonX,
         int buttonY,
         int buttonWidth,
         int buttonHeight

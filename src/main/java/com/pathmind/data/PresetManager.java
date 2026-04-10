@@ -10,9 +10,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -23,6 +25,7 @@ public final class PresetManager {
     private static final String BASE_DIRECTORY_NAME = "pathmind";
     private static final String PRESETS_DIRECTORY_NAME = "presets";
     private static final String ACTIVE_PRESET_FILE_NAME = "active_preset.txt";
+    private static final String MARKETPLACE_SAVED_PRESETS_FILE_NAME = "marketplace_saved_presets.txt";
     private static final String DEFAULT_PRESET_NAME = "Default";
     private static final String IMPORTED_PRESET_FALLBACK_NAME = "Imported Workspace";
 
@@ -221,6 +224,49 @@ public final class PresetManager {
         } catch (IOException e) {
             System.err.println("Failed to delete preset: " + e.getMessage());
             return false;
+        }
+    }
+
+    public static Set<String> getSavedMarketplacePresetIds() {
+        initialize();
+        Path savedPresetsFile = getBaseDirectory().resolve(MARKETPLACE_SAVED_PRESETS_FILE_NAME);
+        if (!Files.exists(savedPresetsFile)) {
+            return Set.of();
+        }
+        try {
+            return Files.readAllLines(savedPresetsFile, StandardCharsets.UTF_8).stream()
+                .map(value -> value == null ? "" : value.trim())
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toCollection(HashSet::new));
+        } catch (IOException e) {
+            System.err.println("Failed to read marketplace saved presets: " + e.getMessage());
+            return Set.of();
+        }
+    }
+
+    public static void setMarketplacePresetSaved(String presetId, boolean saved) {
+        String normalizedId = presetId == null ? "" : presetId.trim();
+        if (normalizedId.isEmpty()) {
+            return;
+        }
+        initialize();
+        Set<String> savedPresetIds = new HashSet<>(getSavedMarketplacePresetIds());
+        if (saved) {
+            savedPresetIds.add(normalizedId);
+        } else {
+            savedPresetIds.remove(normalizedId);
+        }
+        Path savedPresetsFile = getBaseDirectory().resolve(MARKETPLACE_SAVED_PRESETS_FILE_NAME);
+        try {
+            if (savedPresetIds.isEmpty()) {
+                Files.deleteIfExists(savedPresetsFile);
+                return;
+            }
+            List<String> sortedIds = new ArrayList<>(savedPresetIds);
+            sortedIds.sort(String::compareToIgnoreCase);
+            Files.write(savedPresetsFile, sortedIds, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            System.err.println("Failed to write marketplace saved presets: " + e.getMessage());
         }
     }
 

@@ -7,6 +7,9 @@ import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.marketplace.MarketplaceAuthManager;
+import com.pathmind.marketplace.MarketplaceRateLimitManager;
+import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
@@ -55,6 +58,7 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
+import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -112,6 +116,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PRESET_TEXT_ICON_GAP = 4;
     private static final int CREATE_PRESET_POPUP_WIDTH = 320;
     private static final int CREATE_PRESET_POPUP_HEIGHT = 170;
+    private static final int PUBLISH_PRESET_POPUP_WIDTH = 380;
+    private static final int PUBLISH_PRESET_POPUP_HEIGHT = 248;
     private static final int PLAY_BUTTON_SIZE = 18;
     private static final int PLAY_BUTTON_MARGIN = 6;
     private static final int STOP_BUTTON_SIZE = 18;
@@ -235,6 +241,14 @@ public class PathmindVisualEditorScreen extends Screen {
     private TextFieldWidget createPresetField;
     private String createPresetStatus = "";
     private int createPresetStatusColor = UITheme.TEXT_SECONDARY;
+    private final PopupAnimationHandler publishPresetPopupAnimation = new PopupAnimationHandler();
+    private TextFieldWidget publishPresetNameField;
+    private TextFieldWidget publishPresetDescriptionField;
+    private TextFieldWidget publishPresetTagsField;
+    private String publishPresetStatus = "";
+    private int publishPresetStatusColor = UITheme.TEXT_SECONDARY;
+    private boolean publishPresetBusy = false;
+    private MarketplaceAuthManager.AuthSession publishPresetSession = null;
     private final PopupAnimationHandler renamePresetPopupAnimation = new PopupAnimationHandler();
     private TextFieldWidget renamePresetField;
     private TextFieldWidget inlinePresetRenameField;
@@ -387,6 +401,39 @@ public class PathmindVisualEditorScreen extends Screen {
             createPresetField.setUneditableColor(UITheme.TEXT_TERTIARY);
             createPresetField.setChangedListener(value -> clearCreatePresetStatus());
             this.addSelectableChild(createPresetField);
+        }
+        if (publishPresetNameField == null) {
+            publishPresetNameField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 20, Text.literal("Preset name"));
+            publishPresetNameField.setMaxLength(64);
+            publishPresetNameField.setDrawsBackground(false);
+            publishPresetNameField.setVisible(false);
+            publishPresetNameField.setEditable(false);
+            publishPresetNameField.setEditableColor(UITheme.TEXT_PRIMARY);
+            publishPresetNameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishPresetNameField.setChangedListener(value -> clearPublishPresetStatus());
+            this.addSelectableChild(publishPresetNameField);
+        }
+        if (publishPresetDescriptionField == null) {
+            publishPresetDescriptionField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 20, Text.literal("Description"));
+            publishPresetDescriptionField.setMaxLength(180);
+            publishPresetDescriptionField.setDrawsBackground(false);
+            publishPresetDescriptionField.setVisible(false);
+            publishPresetDescriptionField.setEditable(false);
+            publishPresetDescriptionField.setEditableColor(UITheme.TEXT_PRIMARY);
+            publishPresetDescriptionField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishPresetDescriptionField.setChangedListener(value -> clearPublishPresetStatus());
+            this.addSelectableChild(publishPresetDescriptionField);
+        }
+        if (publishPresetTagsField == null) {
+            publishPresetTagsField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 20, Text.literal("Tags"));
+            publishPresetTagsField.setMaxLength(96);
+            publishPresetTagsField.setDrawsBackground(false);
+            publishPresetTagsField.setVisible(false);
+            publishPresetTagsField.setEditable(false);
+            publishPresetTagsField.setEditableColor(UITheme.TEXT_PRIMARY);
+            publishPresetTagsField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishPresetTagsField.setChangedListener(value -> clearPublishPresetStatus());
+            this.addSelectableChild(publishPresetTagsField);
         }
 
         if (renamePresetField == null) {
@@ -552,6 +599,7 @@ public class PathmindVisualEditorScreen extends Screen {
         clearPopupAnimation.tick();
         importExportPopupAnimation.tick();
         createPresetPopupAnimation.tick();
+        publishPresetPopupAnimation.tick();
         renamePresetPopupAnimation.tick();
         presetDeletePopupAnimation.tick();
         infoPopupAnimation.tick();
@@ -562,19 +610,21 @@ public class PathmindVisualEditorScreen extends Screen {
         validationPanelAnimation.tick();
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
+        int chromeMouseX = controlsDisabled ? Integer.MIN_VALUE : mouseX;
+        int chromeMouseY = controlsDisabled ? Integer.MIN_VALUE : mouseY;
         if (controlsDisabled && validationPanelOpen) {
             validationPanelOpen = false;
         }
-        renderZoomControls(context, mouseX, mouseY, controlsDisabled);
+        renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
         if (shouldShowExecutionControls()) {
-            renderStopButton(context, mouseX, mouseY, controlsDisabled);
-            renderPlayButton(context, mouseX, mouseY, controlsDisabled);
+            renderStopButton(context, chromeMouseX, chromeMouseY, false);
+            renderPlayButton(context, chromeMouseX, chromeMouseY, false);
         }
         renderValidationPanel(context, mouseX, mouseY, validationResult);
-        renderValidationButton(context, mouseX, mouseY, controlsDisabled, validationResult);
+        renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
         renderBottomLeftWorkspaceButtons(context, mouseX, mouseY);
-        renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
+        renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
 
         if (controlsDisabled) {
             DrawContextBridge.startNewRootLayer(context);
@@ -600,6 +650,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (createPresetPopupAnimation.isVisible()) {
             renderCreatePresetPopup(context, mouseX, mouseY, delta);
+        }
+
+        if (publishPresetPopupAnimation.isVisible()) {
+            renderPublishPresetPopup(context, mouseX, mouseY, delta);
         }
 
         if (renamePresetPopupAnimation.isVisible()) {
@@ -659,6 +713,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 || clearPopupAnimation.isVisible()
                 || importExportPopupAnimation.isVisible()
                 || createPresetPopupAnimation.isVisible()
+                || publishPresetPopupAnimation.isVisible()
                 || renamePresetPopupAnimation.isVisible()
                 || presetDeletePopupAnimation.isVisible()
                 || infoPopupAnimation.isVisible()
@@ -761,6 +816,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return clearPopupAnimation.isVisible()
             || importExportPopupAnimation.isVisible()
             || createPresetPopupAnimation.isVisible()
+            || publishPresetPopupAnimation.isVisible()
             || renamePresetPopupAnimation.isVisible()
             || presetDeletePopupAnimation.isVisible()
             || infoPopupAnimation.isVisible()
@@ -778,6 +834,9 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (createPresetPopupAnimation.isVisible()) {
             return createPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
+        }
+        if (publishPresetPopupAnimation.isVisible()) {
+            return publishPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
         }
         if (renamePresetPopupAnimation.isVisible()) {
             return renamePresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
@@ -1054,6 +1113,13 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (publishPresetPopupAnimation.isVisible()) {
+            if (handlePublishPresetPopupClick(mouseX, mouseY, button)) {
+                return true;
+            }
+            return true;
+        }
+
         if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null && renamePresetField.mouseClicked(click, inBounds)) {
                 return true;
@@ -1153,6 +1219,12 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (this.client != null) {
                     this.client.setScreen(new PathmindMarketplaceScreen(this));
                 }
+                return true;
+            }
+            if (isPublishButtonClicked((int) mouseX, (int) mouseY, button)) {
+                nodeGraph.save();
+                PresetManager.setActivePreset(activePresetName);
+                openPublishPresetPopup();
                 return true;
             }
         }
@@ -1578,6 +1650,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (publishPresetPopupAnimation.isVisible()) {
+            return true;
+        }
+
         if (isInlinePresetRenameActive()) {
             return true;
         }
@@ -1679,6 +1755,19 @@ public class PathmindVisualEditorScreen extends Screen {
         if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null) {
                 createPresetField.mouseReleased(click);
+            }
+            return true;
+        }
+
+        if (publishPresetPopupAnimation.isVisible()) {
+            if (publishPresetNameField != null) {
+                publishPresetNameField.mouseReleased(click);
+            }
+            if (publishPresetDescriptionField != null) {
+                publishPresetDescriptionField.mouseReleased(click);
+            }
+            if (publishPresetTagsField != null) {
+                publishPresetTagsField.mouseReleased(click);
             }
             return true;
         }
@@ -1915,6 +2004,30 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (publishPresetPopupAnimation.isVisible()) {
+            if (publishPresetNameField != null && publishPresetNameField.keyPressed(input)) {
+                return true;
+            }
+            if (publishPresetDescriptionField != null && publishPresetDescriptionField.keyPressed(input)) {
+                return true;
+            }
+            if (publishPresetTagsField != null && publishPresetTagsField.keyPressed(input)) {
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closePublishPresetPopup();
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                attemptPublishPreset();
+                return true;
+            }
+
+            return true;
+        }
+
         if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null && renamePresetField.keyPressed(input)) {
                 return true;
@@ -2083,6 +2196,19 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null && createPresetField.charTyped(input)) {
+                return true;
+            }
+            return true;
+        }
+
+        if (publishPresetPopupAnimation.isVisible()) {
+            if (publishPresetNameField != null && publishPresetNameField.charTyped(input)) {
+                return true;
+            }
+            if (publishPresetDescriptionField != null && publishPresetDescriptionField.charTyped(input)) {
+                return true;
+            }
+            if (publishPresetTagsField != null && publishPresetTagsField.charTyped(input)) {
                 return true;
             }
             return true;
@@ -3341,16 +3467,24 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int popupWidth = 280;
         int popupHeight = 150;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = clearPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
         int buttonWidth = 90;
         int buttonHeight = 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 10;
+        int buttonY = popupY + scaledHeight - buttonHeight - 10;
         int cancelX = popupX + 20;
-        int confirmX = popupX + popupWidth - buttonWidth - 20;
+        int confirmX = popupX + scaledWidth - buttonWidth - 20;
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
+
+        if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, scaledWidth, scaledHeight)) {
+            clearPopupAnimation.hide();
+            return true;
+        }
 
         if (isPointInRect(mouseXi, mouseYi, confirmX, buttonY, buttonWidth, buttonHeight)) {
             confirmClearWorkspace();
@@ -3372,17 +3506,25 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int popupWidth = 360;
         int popupHeight = 210;
-        int popupX = (this.width - popupWidth) / 2;
-        int popupY = (this.height - popupHeight) / 2;
+        int[] bounds = importExportPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
         int buttonWidth = 100;
         int buttonHeight = 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
         int importX = popupX + 20;
         int exportX = importX + buttonWidth + 8;
-        int cancelX = popupX + popupWidth - buttonWidth - 20;
+        int cancelX = popupX + scaledWidth - buttonWidth - 20;
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
+
+        if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, scaledWidth, scaledHeight)) {
+            closeImportExportPopup();
+            return true;
+        }
 
         if (isPointInRect(mouseXi, mouseYi, importX, buttonY, buttonWidth, buttonHeight)) {
             attemptImport();
@@ -4250,6 +4392,7 @@ public class PathmindVisualEditorScreen extends Screen {
         closeInfoPopup();
         stopInlinePresetRename(false);
         closeRenamePresetPopup();
+        closePublishPresetPopup();
         createPresetPopupAnimation.show();
         if (createPresetField != null) {
             createPresetField.setText("");
@@ -4266,6 +4409,57 @@ public class PathmindVisualEditorScreen extends Screen {
             createPresetField.setFocused(false);
             createPresetField.setVisible(false);
             createPresetField.setEditable(false);
+        }
+    }
+
+    private void openPublishPresetPopup() {
+        presetDropdownOpen = false;
+        clearPublishPresetStatus();
+        closeInfoPopup();
+        stopInlinePresetRename(false);
+        closeCreatePresetPopup();
+        closeRenamePresetPopup();
+        closeSettingsPopup();
+        publishPresetSession = MarketplaceAuthManager.getCachedSession().orElse(null);
+        publishPresetPopupAnimation.show();
+        if (publishPresetNameField != null) {
+            publishPresetNameField.setText(activePresetName);
+            publishPresetNameField.setVisible(true);
+            publishPresetNameField.setEditable(true);
+            publishPresetNameField.setFocused(true);
+        }
+        if (publishPresetDescriptionField != null) {
+            publishPresetDescriptionField.setText("");
+            publishPresetDescriptionField.setVisible(true);
+            publishPresetDescriptionField.setEditable(true);
+            publishPresetDescriptionField.setFocused(false);
+        }
+        if (publishPresetTagsField != null) {
+            publishPresetTagsField.setText("");
+            publishPresetTagsField.setVisible(true);
+            publishPresetTagsField.setEditable(true);
+            publishPresetTagsField.setFocused(false);
+        }
+    }
+
+    private void closePublishPresetPopup() {
+        publishPresetPopupAnimation.hide();
+        publishPresetBusy = false;
+        clearPublishPresetStatus();
+        if (publishPresetNameField != null) {
+            publishPresetNameField.setFocused(false);
+            publishPresetNameField.setVisible(false);
+            publishPresetNameField.setEditable(false);
+        }
+        if (publishPresetDescriptionField != null) {
+            publishPresetDescriptionField.setFocused(false);
+            publishPresetDescriptionField.setVisible(false);
+            publishPresetDescriptionField.setEditable(false);
+        }
+        if (publishPresetTagsField != null) {
+            publishPresetTagsField.setFocused(false);
+            publishPresetTagsField.setVisible(false);
+            publishPresetTagsField.setEditable(false);
         }
     }
 
@@ -4592,6 +4786,56 @@ public class PathmindVisualEditorScreen extends Screen {
         return false;
     }
 
+    private boolean handlePublishPresetPopupClick(double mouseX, double mouseY, int button) {
+        if (button != 0) {
+            return false;
+        }
+
+        int[] bounds = publishPresetPopupAnimation.getScaledPopupBounds(this.width, this.height, PUBLISH_PRESET_POPUP_WIDTH, PUBLISH_PRESET_POPUP_HEIGHT);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int popupWidth = bounds[2];
+        int popupHeight = bounds[3];
+        int buttonWidth = 96;
+        int buttonHeight = 20;
+        int buttonY = popupY + popupHeight - buttonHeight - 16;
+        int cancelX = popupX + 20;
+        int publishX = popupX + popupWidth - buttonWidth - 20;
+        int fieldX = popupX + 20;
+        int fieldWidth = popupWidth - 40;
+        int fieldHeight = 16;
+
+        int mouseXi = (int) mouseX;
+        int mouseYi = (int) mouseY;
+        if (isPointInRect(mouseXi, mouseYi, cancelX, buttonY, buttonWidth, buttonHeight)) {
+            closePublishPresetPopup();
+            return true;
+        }
+        if (publishPresetSession == null
+            && isPointInRect(mouseXi, mouseYi, popupX + (popupWidth - buttonWidth) / 2, buttonY, buttonWidth, buttonHeight)) {
+            startPublishPresetSignIn();
+            return true;
+        }
+        if (isPointInRect(mouseXi, mouseYi, publishX, buttonY, buttonWidth, buttonHeight)) {
+            attemptPublishPreset();
+            return true;
+        }
+        if (isPointInRect(mouseXi, mouseYi, fieldX, getPublishPresetFieldY(popupY, 0), fieldWidth, fieldHeight)) {
+            focusPublishPresetField(publishPresetNameField);
+            return true;
+        }
+        if (isPointInRect(mouseXi, mouseYi, fieldX, getPublishPresetFieldY(popupY, 1), fieldWidth, fieldHeight)) {
+            focusPublishPresetField(publishPresetDescriptionField);
+            return true;
+        }
+        if (isPointInRect(mouseXi, mouseYi, fieldX, getPublishPresetFieldY(popupY, 2), fieldWidth, fieldHeight)) {
+            focusPublishPresetField(publishPresetTagsField);
+            return true;
+        }
+        focusPublishPresetField(null);
+        return true;
+    }
+
     private boolean handleRenamePresetPopupClick(double mouseX, double mouseY, int button) {
         if (button != 0) {
             return false;
@@ -4774,6 +5018,128 @@ public class PathmindVisualEditorScreen extends Screen {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
+    private void renderPublishPresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, publishPresetPopupAnimation.getPopupAlpha());
+
+        int popupWidth = PUBLISH_PRESET_POPUP_WIDTH;
+        int popupHeight = PUBLISH_PRESET_POPUP_HEIGHT;
+        int[] bounds = publishPresetPopupAnimation.getScaledPopupBounds(this.width, this.height, popupWidth, popupHeight);
+        int popupX = bounds[0];
+        int popupY = bounds[1];
+        int scaledWidth = bounds[2];
+        int scaledHeight = bounds[3];
+        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
+
+        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, publishPresetPopupAnimation);
+        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
+
+        context.drawCenteredTextWithShadow(
+            this.textRenderer,
+            Text.literal("Publish Preset"),
+            popupX + scaledWidth / 2,
+            popupY + 14,
+            getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_PRIMARY)
+        );
+
+        int fieldX = popupX + 20;
+        int fieldWidth = scaledWidth - 40;
+        int fieldHeight = 16;
+        int nameY = popupY + 44;
+        int descriptionY = popupY + 82;
+        int tagsY = popupY + 120;
+
+        drawPopupTextWithEllipsis(context, "Name", fieldX, nameY - 10, fieldWidth,
+            getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
+        drawPopupTextWithEllipsis(context, "Description", fieldX, descriptionY - 10, fieldWidth,
+            getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
+        drawPopupTextWithEllipsis(context, "Tags", fieldX, tagsY - 10, fieldWidth,
+            getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
+
+        renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetNameField, fieldX, nameY, fieldWidth, fieldHeight);
+        renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetDescriptionField, fieldX, descriptionY, fieldWidth, fieldHeight);
+        renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetTagsField, fieldX, tagsY, fieldWidth, fieldHeight);
+
+        String accountLabel = publishPresetBusy ? "Working..." : publishPresetSession == null
+            ? "Sign In"
+            : TextRenderUtil.trimWithEllipsis(this.textRenderer,
+                fallback(publishPresetSession.getDisplayName(), fallback(publishPresetSession.getEmail(), "Signed In")), 110);
+        drawPopupTextWithEllipsis(context, "Comma-separated tags. New publishes land in Marketplace > Newest.",
+            fieldX, tagsY + fieldHeight + 8, fieldWidth, getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_TERTIARY));
+
+        if (!publishPresetStatus.isEmpty()) {
+            drawPopupTextWithEllipsis(context, publishPresetStatus, fieldX, popupY + 188, fieldWidth,
+                getPopupAnimatedColor(publishPresetPopupAnimation, publishPresetStatusColor));
+        }
+
+        int buttonWidth = 96;
+        int buttonHeight = 20;
+        int buttonY = popupY + scaledHeight - buttonHeight - 16;
+        int cancelX = popupX + 20;
+        int publishX = popupX + scaledWidth - buttonWidth - 20;
+        int accountTextX = popupX + scaledWidth / 2 - this.textRenderer.getWidth(accountLabel) / 2;
+        int accountTextY = buttonY + (buttonHeight - this.textRenderer.fontHeight) / 2 + 1;
+
+        boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
+        boolean publishHovered = isPointInRect(mouseX, mouseY, publishX, buttonY, buttonWidth, buttonHeight);
+        boolean signInHovered = publishPresetSession == null
+            && isPointInRect(mouseX, mouseY, popupX + (scaledWidth - buttonWidth) / 2, buttonY, buttonWidth, buttonHeight);
+
+        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
+            Text.translatable("pathmind.button.cancel"), PopupButtonStyle.DEFAULT, publishPresetPopupAnimation);
+        if (publishPresetSession == null) {
+            int signInX = popupX + (scaledWidth - buttonWidth) / 2;
+            drawPopupButton(context, signInX, buttonY, buttonWidth, buttonHeight, signInHovered,
+                Text.literal(accountLabel), PopupButtonStyle.DEFAULT, publishPresetPopupAnimation);
+        } else {
+            context.drawTextWithShadow(this.textRenderer, Text.literal(accountLabel), accountTextX, accountTextY,
+                getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
+        }
+        drawPopupButton(context, publishX, buttonY, buttonWidth, buttonHeight, publishHovered,
+            Text.literal(publishPresetBusy ? "Publishing..." : "Publish"), PopupButtonStyle.PRIMARY, publishPresetPopupAnimation);
+        disablePopupScissor(context, popupScissor);
+        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+    }
+
+    private void renderPublishPresetField(DrawContext context, int mouseX, int mouseY, float delta, TextFieldWidget field,
+                                          int fieldX, int fieldY, int fieldWidth, int fieldHeight) {
+        boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
+        boolean focused = field != null && field.isFocused();
+        int borderColor = focused ? getAccentColor() : fieldHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.RENAME_INPUT_BORDER;
+        drawPopupInputFrame(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor, publishPresetPopupAnimation);
+        if (field != null) {
+            field.setVisible(true);
+            field.setEditable(true);
+            field.setEditableColor(getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_PRIMARY));
+            field.setUneditableColor(getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_TERTIARY));
+            int textFieldHeight = Math.max(10, fieldHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
+            field.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
+            field.setWidth(fieldWidth - 8);
+            field.setHeight(textFieldHeight);
+            field.render(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private int getPublishPresetFieldY(int popupY, int fieldIndex) {
+        return switch (fieldIndex) {
+            case 0 -> popupY + 44;
+            case 1 -> popupY + 82;
+            case 2 -> popupY + 120;
+            default -> popupY + 44;
+        };
+    }
+
+    private void focusPublishPresetField(TextFieldWidget target) {
+        if (publishPresetNameField != null) {
+            publishPresetNameField.setFocused(publishPresetNameField == target);
+        }
+        if (publishPresetDescriptionField != null) {
+            publishPresetDescriptionField.setFocused(publishPresetDescriptionField == target);
+        }
+        if (publishPresetTagsField != null) {
+            publishPresetTagsField.setFocused(publishPresetTagsField == target);
+        }
+    }
+
     private void renderRenamePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, renamePresetPopupAnimation.getPopupAlpha());
 
@@ -4939,6 +5305,123 @@ public class PathmindVisualEditorScreen extends Screen {
         closeCreatePresetPopup();
     }
 
+    private void attemptPublishPreset() {
+        if (publishPresetBusy) {
+            return;
+        }
+        if (publishPresetNameField == null) {
+            return;
+        }
+
+        String desiredName = publishPresetNameField.getText();
+        if (desiredName == null || desiredName.trim().isEmpty()) {
+            setPublishPresetStatus("Enter a preset name.", UITheme.STATE_ERROR);
+            return;
+        }
+
+        if (publishPresetSession == null) {
+            setPublishPresetStatus("Sign in before publishing.", UITheme.STATE_WARNING);
+            return;
+        }
+
+        nodeGraph.save();
+        PresetManager.setActivePreset(activePresetName);
+        Path presetPath = PresetManager.getPresetPath(activePresetName);
+        if (presetPath == null || !Files.exists(presetPath)) {
+            setPublishPresetStatus("The current preset file could not be found.", UITheme.STATE_ERROR);
+            return;
+        }
+
+        publishPresetBusy = true;
+        setPublishPresetStatus("Publishing preset...", UITheme.TEXT_SECONDARY);
+        MarketplaceAuthManager.AuthSession session = publishPresetSession;
+        if (session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
+            publishPresetBusy = false;
+            publishPresetSession = null;
+            setPublishPresetStatus("Sign in before publishing.", UITheme.STATE_WARNING);
+            return;
+        }
+        MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumePublish(session.getUserId());
+        if (!limitCheck.permitted()) {
+            publishPresetBusy = false;
+            setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
+            return;
+        }
+        MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
+            presetPath,
+            null,
+            sanitizePublishSlug(desiredName),
+            desiredName.trim(),
+            fallback(session.getDisplayName(), fallback(session.getEmail(), "Discord user")),
+            publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
+            parsePublishTags(publishPresetTagsField == null ? "" : publishPresetTagsField.getText()),
+            getCurrentMinecraftVersion(),
+            getModVersion()
+        );
+        MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
+            .whenComplete((preset, publishThrowable) -> {
+                if (this.client == null) {
+                    return;
+                }
+                this.client.execute(() -> finishPublishPreset(publishThrowable));
+            });
+    }
+
+    private void startPublishPresetSignIn() {
+        if (publishPresetBusy) {
+            return;
+        }
+        publishPresetBusy = true;
+        setPublishPresetStatus("Opening Discord sign-in...", UITheme.TEXT_SECONDARY);
+        MarketplaceAuthManager.startDiscordSignIn().whenComplete((session, throwable) -> {
+            if (this.client == null) {
+                return;
+            }
+            this.client.execute(() -> {
+                publishPresetBusy = false;
+                if (throwable != null || session == null) {
+                    publishPresetSession = null;
+                    setPublishPresetStatus("Discord sign-in failed.", UITheme.STATE_ERROR);
+                    return;
+                }
+                publishPresetSession = session;
+                setPublishPresetStatus("Signed in as " + fallback(session.getDisplayName(), fallback(session.getEmail(), "Discord user")) + ".", getAccentColor());
+            });
+        });
+    }
+
+    private void finishPublishPreset(Throwable throwable) {
+        publishPresetBusy = false;
+        if (throwable != null) {
+            setPublishPresetStatus(buildPublishFailureMessage(throwable), UITheme.STATE_ERROR);
+            return;
+        }
+
+        closePublishPresetPopup();
+        if (this.client != null) {
+            if (this.client.player != null) {
+                this.client.player.sendMessage(Text.literal("Preset published. Opening Marketplace > Newest."), true);
+            }
+            this.client.setScreen(new PathmindMarketplaceScreen(this));
+        }
+    }
+
+    private String buildPublishFailureMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null && current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current == null ? null : current.getMessage();
+        if (message == null || message.isBlank()) {
+            return "Publish failed.";
+        }
+        String normalized = message.replace('\n', ' ').replace('\r', ' ').trim();
+        if (normalized.length() > 120) {
+            normalized = normalized.substring(0, 117) + "...";
+        }
+        return normalized;
+    }
+
     private void attemptRenamePreset() {
         if (renamePresetField == null) {
             return;
@@ -5077,6 +5560,16 @@ public class PathmindVisualEditorScreen extends Screen {
         createPresetStatusColor = UITheme.TEXT_SECONDARY;
     }
 
+    private void setPublishPresetStatus(String message, int color) {
+        publishPresetStatus = message != null ? message : "";
+        publishPresetStatusColor = color;
+    }
+
+    private void clearPublishPresetStatus() {
+        publishPresetStatus = "";
+        publishPresetStatusColor = UITheme.TEXT_SECONDARY;
+    }
+
     private void setRenamePresetStatus(String message, int color) {
         renamePresetStatus = message != null ? message : "";
         renamePresetStatusColor = color;
@@ -5200,7 +5693,16 @@ public class PathmindVisualEditorScreen extends Screen {
             mouseY = Integer.MIN_VALUE;
         }
         int buttonY = getWorkspaceButtonY();
-        renderMarketplaceButton(context, mouseX, mouseY, buttonY);
+        boolean marketplaceHovered = renderMarketplaceButton(context, mouseX, mouseY, buttonY);
+        boolean publishHovered = renderPublishButton(context, mouseX, mouseY, buttonY);
+
+        if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
+            if (publishHovered) {
+                drawWorkspaceTooltip(context, "Publish preset", mouseX, mouseY);
+            } else if (marketplaceHovered) {
+                drawWorkspaceTooltip(context, "Marketplace", mouseX, mouseY);
+            }
+        }
     }
 
     private void renderBottomLeftWorkspaceButtons(DrawContext context, int mouseX, int mouseY) {
@@ -5235,6 +5737,28 @@ public class PathmindVisualEditorScreen extends Screen {
         int textY = buttonY + (BOTTOM_BUTTON_SIZE - this.textRenderer.fontHeight) / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
         return hovered;
+    }
+
+    private boolean renderPublishButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+        int buttonX = getPublishButtonX();
+        boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
+        int background = hovered ? mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.78f)
+            : mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.62f);
+        int border = hovered ? UITheme.TEXT_EDITING_LABEL : UITheme.ACCENT_SKY;
+        UIStyleHelper.drawToolbarButtonFrame(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE,
+            background, border, UITheme.PANEL_INNER_BORDER);
+        drawPublishArrowIcon(context, buttonX, buttonY, hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY);
+        return hovered;
+    }
+
+    private void drawPublishArrowIcon(DrawContext context, int buttonX, int buttonY, int color) {
+        int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
+        int top = buttonY + 4;
+        int bottom = buttonY + BOTTOM_BUTTON_SIZE - 4;
+        context.drawVerticalLine(centerX, top + 2, bottom, color);
+        context.drawHorizontalLine(centerX - 3, centerX + 3, top + 2, color);
+        context.drawHorizontalLine(centerX - 2, centerX + 2, top + 1, color);
+        context.drawHorizontalLine(centerX - 1, centerX + 1, top, color);
     }
 
     private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
@@ -6391,6 +6915,10 @@ public class PathmindVisualEditorScreen extends Screen {
         return getSettingsButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 3;
     }
 
+    private int getPublishButtonX() {
+        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
+    }
+
     private int getClearButtonX() {
         return getSettingsButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
     }
@@ -6433,6 +6961,13 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getMarketplaceButtonX();
         int buttonY = getWorkspaceButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
+    }
+
+    private boolean isPublishButtonClicked(int mouseX, int mouseY, int button) {
+        if (button != 0) return false;
+        int buttonX = getPublishButtonX();
+        int buttonY = getWorkspaceButtonY();
+        return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isSettingsButtonClicked(int mouseX, int mouseY, int button) {
@@ -7001,6 +7536,33 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private String getCurrentMinecraftVersion() {
         return this.client != null ? this.client.getGameVersion() : "Unknown";
+    }
+
+    private List<String> parsePublishTags(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        List<String> tags = new ArrayList<>();
+        for (String token : value.split(",")) {
+            String normalized = token == null ? "" : token.trim();
+            if (!normalized.isEmpty() && !tags.contains(normalized)) {
+                tags.add(normalized);
+            }
+        }
+        return List.copyOf(tags);
+    }
+
+    private String sanitizePublishSlug(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT)
+            .replaceAll("[^a-z0-9]+", "-")
+            .replaceAll("(^-+|-+$)", "");
+    }
+
+    private String fallback(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     private boolean isPointInRect(int mouseX, int mouseY, int x, int y, int width, int height) {

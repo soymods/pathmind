@@ -19,16 +19,17 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.ScrollbarHelper;
+import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.input.CharInput;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.input.CharInput;
-import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
@@ -376,11 +377,14 @@ public class PathmindMarketplaceScreen extends Screen {
         boolean liked = isPresetLiked(preset);
         boolean saved = isPresetSavedLocally(preset);
         boolean ownPreset = isOwnPreset(preset);
+        boolean deleteHovered = ownPreset && isPointInRect(mouseX, mouseY, deleteX, deleteY, 12, 12);
+        boolean bookmarkHovered = isPointInRect(mouseX, mouseY, bookmarkX, actionY, 12, 12);
+        boolean heartHovered = isPointInRect(mouseX, mouseY, heartX, actionY, 12, 12);
         if (ownPreset) {
-            drawAnimatedDeleteIcon(context, deleteX, deleteY, preset, false);
+            drawAnimatedDeleteIcon(context, deleteX, deleteY, preset, false, deleteHovered);
         }
-        drawAnimatedBookmarkIcon(context, bookmarkX, actionY, preset, saved, false);
-        drawAnimatedHeartIcon(context, heartX, actionY, preset, liked, false);
+        drawAnimatedBookmarkIcon(context, bookmarkX, actionY, preset, saved, false, bookmarkHovered);
+        drawAnimatedHeartIcon(context, heartX, actionY, preset, liked, false, heartHovered);
 
         int textX = rect.x + 8;
         String downloadsLine = preset.getDownloadsCount() + " dl";
@@ -793,8 +797,10 @@ public class PathmindMarketplaceScreen extends Screen {
 
         int popupBookmarkX = popupX + popupWidth - 42;
         int popupHeartX = popupX + popupWidth - 24;
-        drawAnimatedBookmarkIcon(context, popupBookmarkX, popupY + 10, popupPreset, isPresetSavedLocally(popupPreset), true);
-        drawAnimatedHeartIcon(context, popupHeartX, popupY + 10, popupPreset, isPresetLiked(popupPreset), true);
+        boolean popupBookmarkHovered = isPointInRect(mouseX, mouseY, popupBookmarkX, popupY + 10, 12, 12);
+        boolean popupHeartHovered = isPointInRect(mouseX, mouseY, popupHeartX, popupY + 10, 12, 12);
+        drawAnimatedBookmarkIcon(context, popupBookmarkX, popupY + 10, popupPreset, isPresetSavedLocally(popupPreset), true, popupBookmarkHovered);
+        drawAnimatedHeartIcon(context, popupHeartX, popupY + 10, popupPreset, isPresetLiked(popupPreset), true, popupHeartHovered);
 
         int cursorY = previewY + previewHeight + 12;
         if (popupMetadataEditing) {
@@ -2313,7 +2319,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (this.client == null || image == null) {
             return null;
         }
-        NativeImageBackedTexture texture = new NativeImageBackedTexture(() -> "pathmind_marketplace_avatar", image);
+        NativeImageBackedTexture texture = TextureCompatibilityBridge.createNativeImageBackedTexture("pathmind_marketplace_avatar", image);
         Identifier id = Identifier.of("pathmind", "textures/dynamic/marketplace_avatar_" + Integer.toHexString(avatarUrl.hashCode()));
         this.client.getTextureManager().registerTexture(id, texture);
         return id;
@@ -2836,45 +2842,69 @@ public class PathmindMarketplaceScreen extends Screen {
         context.fill(x + 5, y + 4, x + 6, y + 9, UITheme.BACKGROUND_PRIMARY);
     }
 
-    private void drawAnimatedDeleteIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean popup) {
+    private void drawAnimatedDeleteIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean popup, boolean hovered) {
         float pulse = getIconPulse(deletePulseEndTimes, preset);
+        float hoverFlash = getIconHoverFlash("delete:" + (popup ? "popup:" : "card:") + preset.getId(), hovered);
+        float intensity = Math.max(pulse, hoverFlash);
         boolean pending = isDeletePending(preset);
         int baseColor = pending ? UITheme.TEXT_TERTIARY : UITheme.STATE_ERROR;
         int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
-        if (pulse > 0.001f) {
+        if (intensity > 0.001f) {
             int glowColor = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f);
-            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(pulse * 110)) << 24) | (glowColor & 0x00FFFFFF));
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f);
+            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(intensity * 110)) << 24) | (glowColor & 0x00FFFFFF));
+            color = popup
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f);
         }
         drawDeleteIcon(context, x, y, color);
     }
 
-    private void drawAnimatedHeartIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean liked, boolean popup) {
+    private void drawAnimatedHeartIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean liked, boolean popup, boolean hovered) {
         float pulse = getIconPulse(likePulseEndTimes, preset);
+        float hoverFlash = getIconHoverFlash("heart:" + (popup ? "popup:" : "card:") + preset.getId(), hovered);
+        float intensity = Math.max(pulse, hoverFlash);
         boolean pending = isLikePending(preset);
         int baseColor = pending ? UITheme.TEXT_TERTIARY : liked ? 0xFFE05454 : UITheme.TEXT_TERTIARY;
         int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
-        if (pulse > 0.001f) {
+        if (intensity > 0.001f) {
             int glowColor = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f);
-            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(pulse * 110)) << 24) | (glowColor & 0x00FFFFFF));
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f);
+            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(intensity * 110)) << 24) | (glowColor & 0x00FFFFFF));
+            color = popup
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f);
         }
         drawHeartIcon(context, x, y, color);
     }
 
-    private void drawAnimatedBookmarkIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean saved, boolean popup) {
+    private void drawAnimatedBookmarkIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean saved, boolean popup, boolean hovered) {
         float pulse = getIconPulse(savePulseEndTimes, preset);
+        float hoverFlash = getIconHoverFlash("bookmark:" + (popup ? "popup:" : "card:") + preset.getId(), hovered);
+        float intensity = Math.max(pulse, hoverFlash);
         int baseColor = saved ? 0xFFE2B93B : UITheme.TEXT_TERTIARY;
         int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
-        if (pulse > 0.001f) {
+        if (intensity > 0.001f) {
             int glowColor = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f);
-            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(pulse * 110)) << 24) | (glowColor & 0x00FFFFFF));
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f);
+            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(intensity * 110)) << 24) | (glowColor & 0x00FFFFFF));
+            color = popup
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f);
         }
         drawBookmarkIcon(context, x, y, color);
+    }
+
+    private float getIconHoverFlash(String key, boolean hovered) {
+        float hoverProgress = HoverAnimator.getProgress("marketplace-icon:" + key, hovered);
+        if (hoverProgress <= 0.001f) {
+            return 0f;
+        }
+        float cycle = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 120.0);
+        return hoverProgress * (0.18f + cycle * 0.14f);
     }
 
     private boolean isLikePending(MarketplacePreset preset) {

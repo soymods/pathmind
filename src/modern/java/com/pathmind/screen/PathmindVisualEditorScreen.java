@@ -4807,6 +4807,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
+        if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, popupWidth, popupHeight)) {
+            closePublishPresetPopup();
+            return true;
+        }
         if (isPointInRect(mouseXi, mouseYi, cancelX, buttonY, buttonWidth, buttonHeight)) {
             closePublishPresetPopup();
             return true;

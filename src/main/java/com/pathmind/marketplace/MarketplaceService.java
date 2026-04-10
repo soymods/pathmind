@@ -32,6 +32,11 @@ public final class MarketplaceService {
     public static final String PROJECT_URL = "https://gadzentglfdzhylcchmk.supabase.co";
     public static final String PUBLISHABLE_KEY = "sb_publishable_ZJbCFcG5Yh4QM9W9as4jVA_daD3fwnn";
     public static final String BUCKET_NAME = "graphs";
+    private static final String PUBLISH_PRESET_RPC = "publish_marketplace_preset";
+    private static final String DELETE_PRESET_RPC = "delete_marketplace_preset";
+    private static final String UPDATE_PRESET_METADATA_RPC = "update_marketplace_preset_metadata";
+    private static final String TOGGLE_PRESET_LIKE_RPC = "toggle_marketplace_preset_like";
+    private static final String INCREMENT_DOWNLOAD_RPC = "increment_preset_downloads";
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(10))
@@ -176,69 +181,14 @@ public final class MarketplaceService {
                     throw new IOException("Marketplace auth expired.");
                 }
 
-                HttpRequest selectRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(PROJECT_URL
-                        + "/rest/v1/preset_likes?select=preset_id&preset_id=eq."
-                        + URLEncoder.encode(presetId, StandardCharsets.UTF_8)
-                        + "&user_id=eq."
-                        + URLEncoder.encode(userId, StandardCharsets.UTF_8)
-                        + "&limit=1"))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("apikey", PUBLISHABLE_KEY)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .header("Accept", "application/json")
-                    .GET()
-                    .build();
-
-                HttpResponse<String> selectResponse = HTTP_CLIENT.send(selectRequest, HttpResponse.BodyHandlers.ofString());
-                if (selectResponse.statusCode() < 200 || selectResponse.statusCode() >= 300) {
-                    throw new IOException("Like lookup failed with HTTP " + selectResponse.statusCode());
-                }
-
-                JsonElement lookupRoot = JsonParser.parseString(selectResponse.body());
-                boolean alreadyLiked = lookupRoot.isJsonArray() && !lookupRoot.getAsJsonArray().isEmpty();
-
-                if (alreadyLiked) {
-                    HttpRequest deleteRequest = HttpRequest.newBuilder()
-                        .uri(URI.create(PROJECT_URL
-                            + "/rest/v1/preset_likes?preset_id=eq."
-                            + URLEncoder.encode(presetId, StandardCharsets.UTF_8)
-                            + "&user_id=eq."
-                            + URLEncoder.encode(userId, StandardCharsets.UTF_8)))
-                        .timeout(Duration.ofSeconds(15))
-                        .header("apikey", PUBLISHABLE_KEY)
-                        .header("Authorization", "Bearer " + accessToken)
-                        .header("Accept", "application/json")
-                        .header("Prefer", "return=minimal")
-                        .DELETE()
-                        .build();
-
-                    HttpResponse<String> deleteResponse = HTTP_CLIENT.send(deleteRequest, HttpResponse.BodyHandlers.ofString());
-                    if (deleteResponse.statusCode() < 200 || deleteResponse.statusCode() >= 300) {
-                        throw new IOException("Unlike failed with HTTP " + deleteResponse.statusCode());
-                    }
-                    return false;
-                }
-
                 JsonObject payload = new JsonObject();
-                payload.addProperty("preset_id", presetId);
-                payload.addProperty("user_id", userId);
-                HttpRequest insertRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(PROJECT_URL + "/rest/v1/preset_likes"))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("apikey", PUBLISHABLE_KEY)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .header("Prefer", "return=minimal")
-                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
-                    .build();
-
-                HttpResponse<String> insertResponse = HTTP_CLIENT.send(insertRequest, HttpResponse.BodyHandlers.ofString());
-                if (insertResponse.statusCode() < 200 || insertResponse.statusCode() >= 300) {
-                    throw new IOException("Like insert failed with HTTP " + insertResponse.statusCode());
+                payload.addProperty("target_preset_id", presetId);
+                JsonObject result = postRpcJson(TOGGLE_PRESET_LIKE_RPC, payload, accessToken);
+                JsonElement likedElement = result.get("liked");
+                if (likedElement == null || likedElement.isJsonNull()) {
+                    throw new IOException("Like toggle returned no result.");
                 }
-                return true;
+                return likedElement.getAsBoolean();
             } catch (Exception e) {
                 throw new RuntimeException("Failed to toggle marketplace like", e);
             }
@@ -250,7 +200,7 @@ public final class MarketplaceService {
             try {
                 JsonObject payload = new JsonObject();
                 payload.addProperty("target_preset_id", presetId);
-                postRpcJson("increment_preset_downloads", payload, accessToken);
+                postRpcJson(INCREMENT_DOWNLOAD_RPC, payload, accessToken);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to increment marketplace download count", e);
             }
@@ -267,26 +217,17 @@ public final class MarketplaceService {
                     throw new IOException("Preset id is missing.");
                 }
 
-                HttpRequest deletePresetRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(PROJECT_URL + "/rest/v1/marketplace_presets?id=eq."
-                        + URLEncoder.encode(presetId, StandardCharsets.UTF_8)))
-                    .timeout(Duration.ofSeconds(20))
-                    .header("apikey", PUBLISHABLE_KEY)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .header("Accept", "application/json")
-                    .header("Prefer", "return=representation")
-                    .DELETE()
-                    .build();
-
-                HttpResponse<String> deletePresetResponse = HTTP_CLIENT.send(deletePresetRequest, HttpResponse.BodyHandlers.ofString());
-                if (deletePresetResponse.statusCode() < 200 || deletePresetResponse.statusCode() >= 300) {
-                    throw buildHttpException("Failed to delete marketplace preset", deletePresetResponse);
-                }
-                if (parseSinglePreset(deletePresetResponse.body()) == null) {
+                JsonObject payload = new JsonObject();
+                payload.addProperty("target_preset_id", presetId);
+                MarketplacePreset deletedPreset = postRpcPreset(DELETE_PRESET_RPC, payload, accessToken, "Failed to delete marketplace preset");
+                if (deletedPreset == null) {
                     throw new IOException("Marketplace preset delete was denied or no row matched.");
                 }
 
-                deleteStorageObject(accessToken, filePath);
+                String deletedFilePath = deletedPreset.getFilePath() == null || deletedPreset.getFilePath().isBlank()
+                    ? filePath
+                    : deletedPreset.getFilePath();
+                deleteStorageObject(accessToken, deletedFilePath);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to delete marketplace preset", e);
             }
@@ -313,23 +254,12 @@ public final class MarketplaceService {
                 // later in the flow, a second publish should overwrite the same owned storage object.
                 uploadPresetFile(accessToken, storagePath, request.localPresetPath(), true);
 
-                JsonObject payload = buildPresetPayload(request, slug, storagePath, userId);
-                HttpRequest requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(PROJECT_URL + "/rest/v1/marketplace_presets"))
-                    .timeout(Duration.ofSeconds(20))
-                    .header("apikey", PUBLISHABLE_KEY)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .header("Prefer", "return=representation")
-                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
-                    .build();
-
-                HttpResponse<String> response = HTTP_CLIENT.send(requestBuilder, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw buildHttpException("Failed to publish marketplace preset", response);
+                JsonObject payload = buildPublishRpcPayload(request, slug, storagePath);
+                MarketplacePreset publishedPreset = postRpcPreset(PUBLISH_PRESET_RPC, payload, accessToken, "Failed to publish marketplace preset");
+                if (publishedPreset == null) {
+                    throw new IOException("Marketplace publish returned no preset.");
                 }
-                return parseSinglePreset(response.body());
+                return publishedPreset;
             } catch (Exception e) {
                 throw new RuntimeException("Failed to publish marketplace preset", e);
             }
@@ -349,29 +279,23 @@ public final class MarketplaceService {
                     throw new IOException("Preset metadata is missing.");
                 }
 
-                JsonObject payload = buildPresetPayload(
-                    request,
-                    sanitizeSlug(request.slug()),
-                    request.existingFilePath(),
-                    null
+                JsonObject payload = new JsonObject();
+                payload.addProperty("target_preset_id", presetId);
+                payload.addProperty("preset_name", blankToEmpty(request.name()));
+                payload.addProperty("preset_description", blankToEmpty(request.description()));
+                payload.add("preset_tags", toJsonArray(request.tags()));
+                payload.addProperty("preset_game_version", blankToEmpty(request.gameVersion()));
+                payload.addProperty("preset_pathmind_version", blankToEmpty(request.pathmindVersion()));
+                MarketplacePreset updatedPreset = postRpcPreset(
+                    UPDATE_PRESET_METADATA_RPC,
+                    payload,
+                    accessToken,
+                    "Failed to update marketplace preset"
                 );
-                HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(PROJECT_URL + "/rest/v1/marketplace_presets?id=eq."
-                        + URLEncoder.encode(presetId, StandardCharsets.UTF_8)))
-                    .timeout(Duration.ofSeconds(20))
-                    .header("apikey", PUBLISHABLE_KEY)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .header("Prefer", "return=representation")
-                    .method("PATCH", HttpRequest.BodyPublishers.ofString(payload.toString()))
-                    .build();
-
-                HttpResponse<String> response = HTTP_CLIENT.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw buildHttpException("Failed to update marketplace preset", response);
+                if (updatedPreset == null) {
+                    throw new IOException("Marketplace metadata update returned no preset.");
                 }
-                return parseSinglePreset(response.body());
+                return updatedPreset;
             } catch (Exception e) {
                 throw new RuntimeException("Failed to update marketplace preset", e);
             }
@@ -433,26 +357,48 @@ public final class MarketplaceService {
 
     private static JsonObject postRpcJson(String functionName, JsonObject payload, String accessToken)
         throws IOException, InterruptedException {
+        HttpResponse<String> response = sendRpcRequest(functionName, payload, accessToken, Duration.ofSeconds(15));
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw buildHttpException("Marketplace RPC " + functionName + " failed", response);
+        }
+        JsonElement root = JsonParser.parseString(response.body());
+        return root != null && root.isJsonObject() ? root.getAsJsonObject() : new JsonObject();
+    }
+
+    private static MarketplacePreset postRpcPreset(String functionName, JsonObject payload, String accessToken, String errorMessage)
+        throws IOException, InterruptedException {
+        HttpResponse<String> response = sendRpcRequest(functionName, payload, accessToken, Duration.ofSeconds(20));
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw buildHttpException(errorMessage, response);
+        }
+        return parseSinglePreset(response.body());
+    }
+
+    private static HttpResponse<String> sendRpcRequest(String functionName, JsonObject payload, String accessToken, Duration timeout)
+        throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(PROJECT_URL + "/rest/v1/rpc/" + functionName))
-            .timeout(Duration.ofSeconds(15))
+            .timeout(timeout)
             .header("apikey", PUBLISHABLE_KEY)
             .header("Authorization", "Bearer " + accessToken)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
             .build();
+        return HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+    }
 
-        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String body = response.body() == null ? "" : response.body().toLowerCase(Locale.ROOT);
-            if (body.contains("jwt expired") || body.contains("token is expired") || body.contains("invalid jwt")) {
-                throw new IOException("Marketplace auth expired.");
-            }
-            throw new IOException("Marketplace RPC " + functionName + " failed with HTTP " + response.statusCode());
-        }
-        JsonElement root = JsonParser.parseString(response.body());
-        return root != null && root.isJsonObject() ? root.getAsJsonObject() : new JsonObject();
+    private static JsonObject buildPublishRpcPayload(PublishRequest request, String slug, String storagePath) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("preset_slug", slug);
+        payload.addProperty("preset_name", blankToEmpty(request.name()));
+        payload.addProperty("preset_author_name", blankToEmpty(request.authorName()));
+        payload.addProperty("preset_description", blankToEmpty(request.description()));
+        payload.add("preset_tags", toJsonArray(request.tags()));
+        payload.addProperty("preset_game_version", blankToEmpty(request.gameVersion()));
+        payload.addProperty("preset_pathmind_version", blankToEmpty(request.pathmindVersion()));
+        payload.addProperty("preset_file_path", blankToEmpty(storagePath));
+        return payload;
     }
 
     private static JsonObject buildPresetPayload(PublishRequest request, String slug, String storagePath, String authorUserId) {
@@ -535,6 +481,10 @@ public final class MarketplaceService {
         if (normalizedBody.contains("jwt expired") || normalizedBody.contains("token is expired") || normalizedBody.contains("invalid jwt")) {
             return new IOException("Marketplace auth expired.");
         }
+        String friendlyMessage = mapFriendlyMarketplaceError(message, body);
+        if (friendlyMessage != null) {
+            return new IOException(friendlyMessage);
+        }
         String extractedMessage = extractJsonErrorMessage(body);
         if (extractedMessage != null && !extractedMessage.isBlank()) {
             if (extractedMessage.toLowerCase(Locale.ROOT).contains("row-level security policy")) {
@@ -549,6 +499,48 @@ public final class MarketplaceService {
             return new IOException(message + " (HTTP " + response.statusCode() + "): " + body);
         }
         return new IOException(message + " (HTTP " + response.statusCode() + ")");
+    }
+
+    private static String mapFriendlyMarketplaceError(String operationMessage, String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        String normalized = body.toLowerCase(Locale.ROOT);
+        boolean publishOperation = operationMessage != null && operationMessage.toLowerCase(Locale.ROOT).contains("publish");
+        boolean updateOperation = operationMessage != null && operationMessage.toLowerCase(Locale.ROOT).contains("update");
+
+        if (normalized.contains("marketplace_presets_slug_unique")
+            || normalized.contains("duplicate key value violates unique constraint")
+            || normalized.contains("already exists")) {
+            return "A preset with this name already exists. Try a different name.";
+        }
+        if (normalized.contains("marketplace_presets_name_not_blank") || normalized.contains("preset name is required")) {
+            return "Enter a preset name.";
+        }
+        if (normalized.contains("marketplace_presets_name_len")) {
+            return "Preset name is too long.";
+        }
+        if (normalized.contains("marketplace_presets_description_len")) {
+            return "Description is too long.";
+        }
+        if (normalized.contains("publish rate limit exceeded")) {
+            return "You have published too many presets recently. Try again in a few minutes.";
+        }
+        if (normalized.contains("like rate limit exceeded")) {
+            return "You're clicking like too quickly. Try again in a moment.";
+        }
+        if (normalized.contains("authentication required")) {
+            return "Marketplace auth expired.";
+        }
+        if (normalized.contains("not found or not owned by current user")) {
+            return updateOperation
+                ? "You can only edit presets you published."
+                : "You can only delete presets you published.";
+        }
+        if (publishOperation && normalized.contains("preset file path is required")) {
+            return "Preset file upload failed.";
+        }
+        return null;
     }
 
     private static String extractJsonErrorMessage(String body) {

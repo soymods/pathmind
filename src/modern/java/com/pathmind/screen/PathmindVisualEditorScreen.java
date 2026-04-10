@@ -30,6 +30,7 @@ import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.MatrixStackBridge;
+import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
@@ -97,6 +98,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int BOTTOM_BUTTON_SIZE = 18;
     private static final int BOTTOM_BUTTON_MARGIN = 6;
     private static final int BOTTOM_BUTTON_SPACING = 6;
+    private static final int MARKETPLACE_BUTTON_WIDTH = BOTTOM_BUTTON_SIZE * 3 + BOTTOM_BUTTON_SPACING * 2;
     private static final int PRESET_DROPDOWN_WIDTH = 220;
     private static final int PRESET_DROPDOWN_HEIGHT = 18;
     private static final int PRESET_DROPDOWN_MARGIN = 6;
@@ -272,6 +274,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private Node settingsNodeTarget = null;
     private int settingsNodeListScrollOffset = 0;
     private int settingsPopupScrollOffset = 0;
+    private boolean settingsPopupScrollDragging = false;
+    private int settingsPopupScrollDragOffset = 0;
     private AccentOption accentOption = AccentOption.SKY;
     private boolean overlayCutoutActive = false;
     private int overlayCutoutX = 0;
@@ -1144,6 +1148,12 @@ public class PathmindVisualEditorScreen extends Screen {
                 openSettingsPopup();
                 return true;
             }
+            if (isMarketplaceButtonClicked((int) mouseX, (int) mouseY, button)) {
+                if (this.client != null) {
+                    this.client.setScreen(new PathmindMarketplaceScreen(this));
+                }
+                return true;
+            }
         }
 
         if (button == 0) {
@@ -1547,6 +1557,14 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
+            if (settingsPopupScrollDragging) {
+                int popupX = getSettingsPopupX();
+                int popupY = getSettingsPopupY();
+                int popupHeight = getSettingsPopupHeight();
+                int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight);
+                ScrollbarHelper.Metrics scrollMetrics = getSettingsPopupScrollMetrics(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, maxScroll);
+                settingsPopupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, (int) mouseY - settingsPopupScrollDragOffset);
+            }
             if (nodeDelayDragging) {
                 updateNodeDelayFromMouse((int) mouseX, getSettingsPopupX(), SETTINGS_POPUP_WIDTH);
             }
@@ -1568,6 +1586,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (importExportPopupAnimation.isVisible()) {
+            return true;
+        }
+
+        if (sidebar.mouseDragged(mouseX, mouseY, button)) {
             return true;
         }
 
@@ -1641,6 +1663,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
+            settingsPopupScrollDragging = false;
             nodeDelayDragging = false;
             createListRadiusDragging = false;
             if (nodeDelayField != null) {
@@ -1671,6 +1694,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (importExportPopupAnimation.isVisible()) {
+            return true;
+        }
+
+        if (sidebar.mouseReleased(button)) {
             return true;
         }
 
@@ -2155,11 +2182,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (isPointInRect((int) mouseX, (int) mouseY, bodyBounds[0], bodyBounds[1], bodyBounds[2], bodyBounds[3]) && verticalAmount != 0.0) {
                 int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight);
                 if (maxScroll > 0) {
-                    settingsPopupScrollOffset = MathHelper.clamp(
-                        settingsPopupScrollOffset - (int) Math.signum(verticalAmount) * 16,
-                        0,
-                        maxScroll
-                    );
+                    settingsPopupScrollOffset = ScrollbarHelper.applyWheel(settingsPopupScrollOffset, verticalAmount, 16, maxScroll);
                 }
                 return true;
             }
@@ -5176,6 +5199,7 @@ public class PathmindVisualEditorScreen extends Screen {
             mouseY = Integer.MIN_VALUE;
         }
         int buttonY = getWorkspaceButtonY();
+        renderMarketplaceButton(context, mouseX, mouseY, buttonY);
         boolean importHovered = renderImportExportButton(context, mouseX, mouseY, buttonY);
         boolean clearHovered = renderClearButton(context, mouseX, mouseY, buttonY);
         boolean homeHovered = renderHomeButton(context, mouseX, mouseY, buttonY);
@@ -5189,6 +5213,19 @@ public class PathmindVisualEditorScreen extends Screen {
                 drawWorkspaceTooltip(context, "Import / Export", mouseX, mouseY);
             }
         }
+    }
+
+    private boolean renderMarketplaceButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+        int buttonX = getMarketplaceButtonX();
+        boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
+        drawToolbarButtonFrame(context, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE,
+            hovered, false, false, "workspace-marketplace");
+        int textColor = hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        String label = "Marketplace";
+        int textX = buttonX + (MARKETPLACE_BUTTON_WIDTH - this.textRenderer.getWidth(label)) / 2;
+        int textY = buttonY + (BOTTOM_BUTTON_SIZE - this.textRenderer.fontHeight) / 2;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
+        return hovered;
     }
 
     private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
@@ -5677,6 +5714,16 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = popupX + scaledWidth - buttonWidth - 20;
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
         context.disableScissor();
+        ScrollbarHelper.renderCutoffDividers(
+            context,
+            bodyBounds[0],
+            bodyBounds[0] + bodyBounds[2] - 1,
+            bodyBounds[1],
+            bodyBounds[1] + bodyBounds[3],
+            settingsPopupScrollOffset,
+            maxScroll,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE)
+        );
         renderSettingsPopupScrollbar(context, popupX, popupY, scaledWidth, scaledHeight, maxScroll);
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered,
@@ -6282,29 +6329,18 @@ public class PathmindVisualEditorScreen extends Screen {
         if (maxScroll <= 0) {
             return;
         }
+        ScrollbarHelper.renderSettingsStyle(
+            context,
+            getSettingsPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight, maxScroll),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BACKGROUND_SIDEBAR),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT)
+        );
+    }
 
+    private ScrollbarHelper.Metrics getSettingsPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight, int maxScroll) {
         int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
-        int trackLeft = popupX + popupWidth - 12;
-        int trackRight = trackLeft + 4;
-        int trackTop = bodyBounds[1];
-        int trackBottom = bodyBounds[1] + bodyBounds[3];
-        int trackHeight = Math.max(1, trackBottom - trackTop);
-
-        context.fill(trackLeft, trackTop, trackRight, trackBottom,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BACKGROUND_SIDEBAR));
-        DrawContextBridge.drawBorder(context, trackLeft, trackTop, 4, trackHeight,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT));
-
-        int visibleHeight = Math.max(1, bodyBounds[3]);
-        int totalHeight = visibleHeight + maxScroll;
-        int thumbHeight = Math.max(20, (visibleHeight * trackHeight) / Math.max(1, totalHeight));
-        thumbHeight = Math.min(trackHeight, thumbHeight);
-        int maxThumbTravel = Math.max(0, trackHeight - thumbHeight);
-        int thumbOffset = maxScroll == 0 ? 0 : Math.round((float) settingsPopupScrollOffset / (float) maxScroll * maxThumbTravel);
-        int thumbTop = trackTop + thumbOffset;
-
-        context.fill(trackLeft + 1, thumbTop, trackRight - 1, thumbTop + thumbHeight,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT));
+        return ScrollbarHelper.metrics(popupX + popupWidth - 12, bodyBounds[1], 4, Math.max(1, bodyBounds[3]), maxScroll, settingsPopupScrollOffset, 20);
     }
 
     private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY,
@@ -6338,16 +6374,20 @@ public class PathmindVisualEditorScreen extends Screen {
         return sidebar != null ? sidebar.getWidth() : Sidebar.getCollapsedWidth();
     }
 
+    private int getMarketplaceButtonX() {
+        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
+    }
+
     private int getHomeButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
+        return getImportExportButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
     }
 
     private int getClearButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
+        return getImportExportButtonX() + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
     }
 
     private int getImportExportButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
+        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
     }
 
     private int getSettingsButtonX() {
@@ -6377,6 +6417,13 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getImportExportButtonX();
         int buttonY = getWorkspaceButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
+    }
+
+    private boolean isMarketplaceButtonClicked(int mouseX, int mouseY, int button) {
+        if (button != 0) return false;
+        int buttonX = getMarketplaceButtonX();
+        int buttonY = getWorkspaceButtonY();
+        return isPointInRect(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isSettingsButtonClicked(int mouseX, int mouseY, int button) {
@@ -6460,6 +6507,8 @@ public class PathmindVisualEditorScreen extends Screen {
         languageDropdownOpen = false;
         nodeDelayDragging = false;
         createListRadiusDragging = false;
+        settingsPopupScrollDragging = false;
+        settingsPopupScrollDragOffset = 0;
         if (createListRadiusField != null) {
             createListRadiusField.setFocused(false);
             createListRadiusField.setVisible(false);
@@ -6500,6 +6549,15 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight)) {
             closeSettingsPopup();
+            return true;
+        }
+
+        int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight);
+        ScrollbarHelper.Metrics scrollMetrics = getSettingsPopupScrollMetrics(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, maxScroll);
+        if (maxScroll > 0
+            && isPointInRect(mouseXi, mouseYi, scrollMetrics.trackLeft() - 3, scrollMetrics.trackTop(), scrollMetrics.trackWidth() + 6, scrollMetrics.viewportHeight())) {
+            settingsPopupScrollDragging = true;
+            settingsPopupScrollDragOffset = mouseYi - scrollMetrics.thumbTop();
             return true;
         }
 
@@ -6617,8 +6675,8 @@ public class PathmindVisualEditorScreen extends Screen {
             List<NodeType> settingsNodes = getSettingsNodeTypes();
             int[] listBounds = getSettingsNodeListBounds(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, contentX, nodeSettingsBodyY);
             int visibleRows = Math.max(1, listBounds[3] / SETTINGS_NODE_LIST_ROW_HEIGHT);
-            int maxScroll = Math.max(0, settingsNodes.size() - visibleRows);
-            settingsNodeListScrollOffset = MathHelper.clamp(settingsNodeListScrollOffset, 0, maxScroll);
+            int listMaxScroll = Math.max(0, settingsNodes.size() - visibleRows);
+            settingsNodeListScrollOffset = MathHelper.clamp(settingsNodeListScrollOffset, 0, listMaxScroll);
             int startIndex = settingsNodeListScrollOffset;
             int endIndex = Math.min(settingsNodes.size(), startIndex + visibleRows + 1);
             for (int i = startIndex; i < endIndex; i++) {

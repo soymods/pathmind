@@ -14,6 +14,7 @@ import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.ScrollbarHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
@@ -61,7 +62,10 @@ public class Sidebar {
     private final List<CustomNodeEntry> customNodes = new ArrayList<>();
     private int scrollOffset = 0;
     private int maxScroll = 0;
+    private boolean scrollDragging = false;
+    private int scrollDragOffset = 0;
     private int currentSidebarHeight = 400; // Store current sidebar height
+    private int currentSidebarStartY = 0;
     private int currentInnerSidebarWidth = INNER_SIDEBAR_WIDTH;
     private int currentRenderedWidth = INNER_SIDEBAR_WIDTH;
     
@@ -320,6 +324,7 @@ public class Sidebar {
         int effectiveMouseX = interactionsEnabled ? mouseX : Integer.MIN_VALUE;
         int effectiveMouseY = interactionsEnabled ? mouseY : Integer.MIN_VALUE;
         // Store current sidebar height so scroll can be recalculated
+        this.currentSidebarStartY = sidebarStartY;
         this.currentSidebarHeight = sidebarHeight;
         categoryOpenAnimation.animateTo(selectedCategory != null ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
         categoryOpenAnimation.tick();
@@ -603,6 +608,16 @@ public class Sidebar {
                 }
             }
 
+            ScrollbarHelper.renderCutoffDividers(
+                context,
+                nodeBackgroundLeft,
+                totalWidth - 1,
+                contentTop,
+                contentBottom,
+                scrollOffset,
+                maxScroll,
+                UITheme.BORDER_SUBTLE
+            );
             renderCategoryScrollbar(context, totalWidth, contentTop, contentBottom);
             context.disableScissor();
         }
@@ -641,8 +656,16 @@ public class Sidebar {
         if (mouseX < 0 || mouseX > currentRenderedWidth) {
             return false;
         }
-        
+
         if (button == 0) { // Left click
+            ScrollbarHelper.Metrics scrollMetrics = getCategoryScrollMetrics();
+            if (scrollMetrics != null
+                && mouseX >= scrollMetrics.trackLeft() - 3 && mouseX <= scrollMetrics.trackRight() + 3
+                && mouseY >= scrollMetrics.trackTop() && mouseY <= scrollMetrics.trackBottom()) {
+                scrollDragging = true;
+                scrollDragOffset = (int) mouseY - scrollMetrics.thumbTop();
+                return true;
+            }
             // Check tab clicks
             if (mouseX >= 0 && mouseX <= currentInnerSidebarWidth && hoveredCategory != null) {
                 if (selectedCategory != null && hoveredCategory == selectedCategory) {
@@ -669,8 +692,27 @@ public class Sidebar {
     
     public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
         if (mouseX >= 0 && mouseX <= currentRenderedWidth) {
-            scrollOffset += (int)(-amount * 20); // Scroll speed
-            scrollOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
+            scrollOffset = ScrollbarHelper.applyWheel(scrollOffset, amount, 20, maxScroll);
+            return true;
+        }
+        return false;
+    }
+
+    public boolean mouseDragged(double mouseX, double mouseY, int button) {
+        if (button != 0 || !scrollDragging) {
+            return false;
+        }
+        ScrollbarHelper.Metrics scrollMetrics = getCategoryScrollMetrics();
+        if (scrollMetrics == null) {
+            return true;
+        }
+        scrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, (int) mouseY - scrollDragOffset);
+        return true;
+    }
+
+    public boolean mouseReleased(int button) {
+        if (button == 0 && scrollDragging) {
+            scrollDragging = false;
             return true;
         }
         return false;
@@ -873,26 +915,25 @@ public class Sidebar {
         if (maxScroll <= 0 || contentBottom <= contentTop) {
             return;
         }
+        ScrollbarHelper.renderSettingsStyle(
+            context,
+            ScrollbarHelper.metrics(totalWidth - SCROLLBAR_MARGIN - UITheme.SCROLLBAR_WIDTH, contentTop, UITheme.SCROLLBAR_WIDTH,
+                Math.max(1, contentBottom - contentTop), maxScroll, scrollOffset, SCROLLBAR_MIN_KNOB_HEIGHT),
+            UITheme.BACKGROUND_SIDEBAR,
+            UITheme.BORDER_DEFAULT,
+            UITheme.BORDER_DEFAULT
+        );
+    }
 
-        int trackRight = totalWidth - SCROLLBAR_MARGIN;
-        int trackLeft = trackRight - UITheme.SCROLLBAR_WIDTH;
-        int trackTop = contentTop;
-        int trackBottom = contentBottom;
-        int trackHeight = Math.max(1, trackBottom - trackTop);
-
-        // Slim track background
-        context.fill(trackLeft, trackTop, trackRight, trackBottom, UITheme.BACKGROUND_SIDEBAR);
-
-        int visibleHeight = Math.max(1, contentBottom - contentTop);
-        int totalScrollableHeight = Math.max(visibleHeight, visibleHeight + maxScroll);
-        int knobHeight = Math.max(SCROLLBAR_MIN_KNOB_HEIGHT, (int) ((float) visibleHeight / totalScrollableHeight * trackHeight));
-        int maxKnobTravel = Math.max(0, trackHeight - knobHeight);
-        float scrollRatio = maxScroll > 0 ? (float) scrollOffset / maxScroll : 0;
-        int knobOffset = maxKnobTravel <= 0 ? 0 : (int) (scrollRatio * maxKnobTravel);
-        int knobTop = trackTop + knobOffset;
-
-        // Scrollbar knob
-        context.fill(trackLeft, knobTop, trackRight, knobTop + knobHeight, UITheme.BORDER_DEFAULT);
+    private ScrollbarHelper.Metrics getCategoryScrollMetrics() {
+        if (selectedCategory == null || maxScroll <= 0) {
+            return null;
+        }
+        int contentTop = currentSidebarStartY + PADDING;
+        int contentBottom = currentSidebarStartY + currentSidebarHeight - PADDING;
+        int viewportHeight = Math.max(1, contentBottom - contentTop);
+        int trackLeft = currentRenderedWidth - SCROLLBAR_MARGIN - UITheme.SCROLLBAR_WIDTH;
+        return ScrollbarHelper.metrics(trackLeft, contentTop, UITheme.SCROLLBAR_WIDTH, viewportHeight, maxScroll, scrollOffset, SCROLLBAR_MIN_KNOB_HEIGHT);
     }
 
     private static final class GroupHeaderInfo {

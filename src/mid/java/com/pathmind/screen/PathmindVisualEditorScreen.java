@@ -97,6 +97,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int BOTTOM_BUTTON_SIZE = 18;
     private static final int BOTTOM_BUTTON_MARGIN = 6;
     private static final int BOTTOM_BUTTON_SPACING = 6;
+    private static final int MARKETPLACE_BUTTON_WIDTH = BOTTOM_BUTTON_SIZE * 3 + BOTTOM_BUTTON_SPACING * 2;
     private static final int PRESET_DROPDOWN_WIDTH = 220;
     private static final int PRESET_DROPDOWN_HEIGHT = 18;
     private static final int PRESET_DROPDOWN_MARGIN = 6;
@@ -1142,6 +1143,12 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             if (isSettingsButtonClicked((int) mouseX, (int) mouseY, button)) {
                 openSettingsPopup();
+                return true;
+            }
+            if (isMarketplaceButtonClicked((int) mouseX, (int) mouseY, button)) {
+                if (this.client != null) {
+                    this.client.setScreen(new PathmindMarketplaceScreen(this));
+                }
                 return true;
             }
         }
@@ -5176,6 +5183,7 @@ public class PathmindVisualEditorScreen extends Screen {
             mouseY = Integer.MIN_VALUE;
         }
         int buttonY = getWorkspaceButtonY();
+        renderMarketplaceButton(context, mouseX, mouseY, buttonY);
         boolean importHovered = renderImportExportButton(context, mouseX, mouseY, buttonY);
         boolean clearHovered = renderClearButton(context, mouseX, mouseY, buttonY);
         boolean homeHovered = renderHomeButton(context, mouseX, mouseY, buttonY);
@@ -5189,6 +5197,19 @@ public class PathmindVisualEditorScreen extends Screen {
                 drawWorkspaceTooltip(context, "Import / Export", mouseX, mouseY);
             }
         }
+    }
+
+    private boolean renderMarketplaceButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+        int buttonX = getMarketplaceButtonX();
+        boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
+        drawToolbarButtonFrame(context, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE,
+            hovered, false, false, "workspace-marketplace");
+        int textColor = hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        String label = "Marketplace";
+        int textX = buttonX + (MARKETPLACE_BUTTON_WIDTH - this.textRenderer.getWidth(label)) / 2;
+        int textY = buttonY + (BOTTOM_BUTTON_SIZE - this.textRenderer.fontHeight) / 2;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
+        return hovered;
     }
 
     private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
@@ -6331,16 +6352,20 @@ public class PathmindVisualEditorScreen extends Screen {
         return sidebar != null ? sidebar.getWidth() : Sidebar.getCollapsedWidth();
     }
 
+    private int getMarketplaceButtonX() {
+        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
+    }
+
     private int getHomeButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
+        return getImportExportButtonX() + (BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING) * 2;
     }
 
     private int getClearButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
+        return getImportExportButtonX() + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
     }
 
     private int getImportExportButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
+        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
     }
 
     private int getSettingsButtonX() {
@@ -6370,6 +6395,13 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getImportExportButtonX();
         int buttonY = getWorkspaceButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
+    }
+
+    private boolean isMarketplaceButtonClicked(int mouseX, int mouseY, int button) {
+        if (button != 0) return false;
+        int buttonX = getMarketplaceButtonX();
+        int buttonY = getWorkspaceButtonY();
+        return isPointInRect(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isSettingsButtonClicked(int mouseX, int mouseY, int button) {

@@ -144,20 +144,33 @@ public final class PresetManager {
      * matches the file name (sanitized and deduplicated when necessary).
      */
     public static Optional<String> importPresetFromFile(Path sourcePath) {
+        String fileName = Optional.ofNullable(sourcePath)
+                .map(Path::getFileName)
+                .map(Path::toString)
+                .orElse("");
+        String requestedName = fileName;
+        if (requestedName.toLowerCase(Locale.ROOT).endsWith(".json")) {
+            requestedName = requestedName.substring(0, requestedName.length() - 5);
+        }
+        return importPresetFromFile(sourcePath, requestedName);
+    }
+
+    public static Optional<String> importPresetFromFile(Path sourcePath, String requestedPresetName) {
         if (sourcePath == null || !Files.exists(sourcePath)) {
             return Optional.empty();
         }
 
-        String fileName = Optional.ofNullable(sourcePath.getFileName())
-                .map(Path::toString)
-                .orElse("");
-        if (fileName.isEmpty()) {
-            fileName = IMPORTED_PRESET_FALLBACK_NAME;
-        }
-
-        String baseName = fileName;
-        if (fileName.toLowerCase(Locale.ROOT).endsWith(".json")) {
-            baseName = fileName.substring(0, fileName.length() - 5);
+        String baseName = requestedPresetName;
+        if (baseName == null || baseName.isBlank()) {
+            baseName = Optional.ofNullable(sourcePath.getFileName())
+                    .map(Path::toString)
+                    .orElse("");
+            if (baseName.isEmpty()) {
+                baseName = IMPORTED_PRESET_FALLBACK_NAME;
+            }
+            if (baseName.toLowerCase(Locale.ROOT).endsWith(".json")) {
+                baseName = baseName.substring(0, baseName.length() - 5);
+            }
         }
 
         String sanitizedBase = sanitizePresetName(baseName);

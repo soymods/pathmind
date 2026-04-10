@@ -31,7 +31,11 @@ public final class ScrollbarHelper {
         if (verticalAmount == 0.0) {
             return clampScroll(scrollOffset, maxScroll);
         }
-        int next = scrollOffset - (int) Math.signum(verticalAmount) * step;
+        int delta = (int) Math.round(verticalAmount * step);
+        if (delta == 0) {
+            delta = (int) Math.signum(verticalAmount);
+        }
+        int next = scrollOffset - delta;
         return clampScroll(next, maxScroll);
     }
 

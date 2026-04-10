@@ -792,11 +792,11 @@ public class PathmindMarketplaceScreen extends Screen {
         cursorY = drawWrappedValue(context, textX, cursorY, textWidth, sharedLine,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
-        String authLine = authSession == null
-            ? "Sign in with Discord to like presets and count imports."
-            : "Signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user"));
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, authLine,
-            presetPopupAnimation.getAnimatedPopupColor(authSession == null ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY), 2);
+        if (authSession == null) {
+            cursorY = drawWrappedValue(context, textX, cursorY, textWidth,
+                "Sign in with Discord to like presets and count imports.",
+                presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
+        }
         context.disableScissor();
 
         ScrollbarHelper.renderCutoffDividers(

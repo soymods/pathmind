@@ -8,12 +8,15 @@ import com.pathmind.data.SettingsManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
 import com.pathmind.marketplace.MarketplaceService;
+import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeParameter;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
 import net.fabricmc.loader.api.FabricLoader;
@@ -37,13 +40,17 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Read-only marketplace browser with a full-window preset gallery.
@@ -97,6 +104,16 @@ public class PathmindMarketplaceScreen extends Screen {
     private String avatarTextureUrl = null;
     private Identifier avatarTextureId = null;
     private boolean avatarLoading = false;
+    private final Map<String, PreviewGraphModel> previewGraphCache = new HashMap<>();
+    private final Set<String> previewGraphLoading = new HashSet<>();
+    private final Map<String, Long> likePulseEndTimes = new HashMap<>();
+    private final Map<String, Long> savePulseEndTimes = new HashMap<>();
+    private boolean popupPreviewDragging = false;
+    private int popupPreviewDragLastX = 0;
+    private int popupPreviewDragLastY = 0;
+    private float popupPreviewPanX = 0f;
+    private float popupPreviewPanY = 0f;
+    private float popupPreviewZoom = 1f;
     private TextFieldWidget searchField;
     private SortMode sortMode = SortMode.NEWEST;
     private boolean sortDropdownOpen = false;
@@ -122,6 +139,7 @@ public class PathmindMarketplaceScreen extends Screen {
             initialFetchStarted = true;
             refreshListings();
         }
+        refreshSavedPresetState();
         refreshAuthState(false);
     }
 
@@ -270,7 +288,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int previewX = rect.x + 8;
         int previewY = rect.y + 8;
         int previewWidth = rect.width - 16;
-        int previewHeight = rect.height - 36;
+        int previewHeight = rect.height - 46;
         UIStyleHelper.drawBeveledPanel(
             context,
             previewX,
@@ -281,20 +299,37 @@ public class PathmindMarketplaceScreen extends Screen {
             UITheme.BORDER_SUBTLE,
             UITheme.PANEL_INNER_BORDER
         );
-        drawGraphPreview(context, previewX, previewY, previewWidth, previewHeight);
+        renderGraphPreviewSurface(context, previewX, previewY, previewWidth, previewHeight, preset, true, false, 0f, 0f);
+
+        int heartX = rect.x + rect.width - 24;
+        int bookmarkX = heartX - 14;
+        boolean liked = isPresetLiked(preset);
+        boolean saved = isPresetSavedLocally(preset);
+        drawAnimatedBookmarkIcon(context, bookmarkX, rect.y + 10, preset, saved, false);
+        drawAnimatedHeartIcon(context, heartX, rect.y + 10, preset, liked, false);
 
         int textX = rect.x + 8;
-        int textWidth = rect.width - 16;
-        String statsLine = preset.getDownloadsCount() + " dl  " + preset.getLikesCount() + " like";
+        String downloadsLine = preset.getDownloadsCount() + " dl";
+        String likesLine = preset.getLikesCount() + " like";
+        int statsRight = rect.x + rect.width - 8;
+        int statsColor = getAccentColor();
+        int footerTop = previewY + previewHeight + 8;
+        int statsLineY = footerTop + 3;
+        int statsSecondLineY = footerTop + 14;
+        int statsBlockWidth = Math.max(this.textRenderer.getWidth(downloadsLine), this.textRenderer.getWidth(likesLine));
+        int textWidth = Math.max(32, rect.width - 16 - statsBlockWidth - 8);
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, preset.getName(), textWidth)),
-            textX, rect.y + rect.height - 34, UITheme.TEXT_HEADER);
+            textX, footerTop - 1, UITheme.TEXT_HEADER);
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, "by " + preset.getAuthorName(), textWidth)),
-            textX, rect.y + rect.height - 23, UITheme.TEXT_SECONDARY);
+            textX, footerTop + 10, UITheme.TEXT_SECONDARY);
         context.drawTextWithShadow(this.textRenderer,
-            Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, statsLine, textWidth)),
-            textX, rect.y + rect.height - 12, getAccentColor());
+            Text.literal(downloadsLine),
+            statsRight - this.textRenderer.getWidth(downloadsLine), statsLineY, statsColor);
+        context.drawTextWithShadow(this.textRenderer,
+            Text.literal(likesLine),
+            statsRight - this.textRenderer.getWidth(likesLine), statsSecondLineY, statsColor);
     }
 
     private void drawGraphPreview(DrawContext context, int x, int y, int width, int height) {
@@ -314,6 +349,243 @@ public class PathmindMarketplaceScreen extends Screen {
 
         context.drawHorizontalLine(x + 60, x + width / 2 - 26, y + 22, getAccentColor());
         context.drawHorizontalLine(x + width / 2 + 24, x + width - 62, y + height / 2, getAccentColor());
+    }
+
+    private void renderGraphPreviewSurface(DrawContext context, int x, int y, int width, int height,
+                                           MarketplacePreset preset, boolean interactive, boolean usePopupViewportState, float panX, float panY) {
+        PreviewGraphModel previewModel = getCachedPreviewGraph(preset);
+        if (previewModel == null || previewModel.nodes().isEmpty()) {
+            requestPreviewGraph(preset);
+            drawGraphPreview(context, x, y, width, height);
+            return;
+        }
+
+        GraphBounds bounds = GraphBounds.of(previewModel.nodes());
+        boolean popupInteractive = interactive && usePopupViewportState;
+        float horizontalPadding = popupInteractive ? 22f : 16f;
+        float verticalPadding = popupInteractive ? 20f : 14f;
+        float scaleX = bounds.width() <= 0 ? 1f : Math.max(0.01f, (width - horizontalPadding) / bounds.width());
+        float scaleY = bounds.height() <= 0 ? 1f : Math.max(0.01f, (height - verticalPadding) / bounds.height());
+        float fitScale = Math.min(scaleX, scaleY);
+        if (popupInteractive) {
+            float viewScale = Math.max(0.18f, Math.min(1f, fitScale)) * popupPreviewZoom;
+            float offsetX = x + width / 2f - (bounds.minX() + bounds.width() / 2f) * viewScale + panX;
+            float offsetY = y + height / 2f - (bounds.minY() + bounds.height() / 2f) * viewScale + panY;
+            context.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);
+            Object matrices = context.getMatrices();
+            MatrixStackBridge.push(matrices);
+            MatrixStackBridge.translate(matrices, offsetX, offsetY);
+            MatrixStackBridge.scale(matrices, viewScale, viewScale);
+            for (NodeGraphData.ConnectionData connection : previewModel.connections()) {
+                Node from = previewModel.nodeLookup().get(connection.getOutputNodeId());
+                Node to = previewModel.nodeLookup().get(connection.getInputNodeId());
+                if (from == null || to == null) {
+                    continue;
+                }
+                int outputSocket = Math.max(0, connection.getOutputSocket());
+                int inputSocket = Math.max(0, connection.getInputSocket());
+                int safeOutputSocket = Math.min(outputSocket, Math.max(0, from.getOutputSocketCount() - 1));
+                int safeInputSocket = Math.min(inputSocket, Math.max(0, to.getInputSocketCount() - 1));
+                drawPreviewConnection(
+                    context,
+                    from.getSocketX(false),
+                    from.getSocketY(safeOutputSocket, false),
+                    to.getSocketX(true),
+                    to.getSocketY(safeInputSocket, true),
+                    from.getOutputSocketColor(safeOutputSocket)
+                );
+            }
+            for (Node node : previewModel.nodes()) {
+                renderPreviewNode(context, node, 0f, 0f, 1f, true);
+            }
+            MatrixStackBridge.pop(matrices);
+            context.disableScissor();
+            return;
+        }
+        float viewScale = Math.max(0.08f, Math.min(0.6f, fitScale));
+        float offsetX = x + width / 2f - (bounds.minX() + bounds.width() / 2f) * viewScale;
+        float offsetY = y + height / 2f - (bounds.minY() + bounds.height() / 2f) * viewScale;
+
+        context.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);
+        Object matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translate(matrices, offsetX, offsetY);
+        MatrixStackBridge.scale(matrices, viewScale, viewScale);
+        for (NodeGraphData.ConnectionData connection : previewModel.connections()) {
+            Node from = previewModel.nodeLookup().get(connection.getOutputNodeId());
+            Node to = previewModel.nodeLookup().get(connection.getInputNodeId());
+            if (from == null || to == null) {
+                continue;
+            }
+            int outputSocket = Math.max(0, connection.getOutputSocket());
+            int inputSocket = Math.max(0, connection.getInputSocket());
+            int safeOutputSocket = Math.min(outputSocket, Math.max(0, from.getOutputSocketCount() - 1));
+            int safeInputSocket = Math.min(inputSocket, Math.max(0, to.getInputSocketCount() - 1));
+            drawPreviewConnection(
+                context,
+                from.getSocketX(false),
+                from.getSocketY(safeOutputSocket, false),
+                to.getSocketX(true),
+                to.getSocketY(safeInputSocket, true),
+                from.getOutputSocketColor(safeOutputSocket)
+            );
+        }
+
+        for (Node node : previewModel.nodes()) {
+            renderPreviewNode(context, node, 0f, 0f, 1f, true);
+        }
+        MatrixStackBridge.pop(matrices);
+        context.disableScissor();
+    }
+
+    private void drawPreviewConnection(DrawContext context, int startX, int startY, int endX, int endY, int color) {
+        int steps = Math.max(8, Math.max(Math.abs(endX - startX), Math.abs(endY - startY)) / 8);
+        float controlOffset = Math.max(18f, Math.abs(endX - startX) * 0.33f);
+        for (int i = 0; i <= steps; i++) {
+            float t = i / (float) steps;
+            float invT = 1f - t;
+            float p0x = startX;
+            float p0y = startY;
+            float p1x = startX + controlOffset;
+            float p1y = startY;
+            float p2x = endX - controlOffset;
+            float p2y = endY;
+            float p3x = endX;
+            float p3y = endY;
+            int x = Math.round(invT * invT * invT * p0x
+                + 3f * invT * invT * t * p1x
+                + 3f * invT * t * t * p2x
+                + t * t * t * p3x);
+            int y = Math.round(invT * invT * invT * p0y
+                + 3f * invT * invT * t * p1y
+                + 3f * invT * t * t * p2y
+                + t * t * t * p3y);
+            context.fill(x, y, x + 2, y + 2, color);
+        }
+    }
+
+    private void renderPreviewNode(DrawContext context, Node node, float offsetX, float offsetY, float scale, boolean interactive) {
+        if (node == null) {
+            return;
+        }
+        int nodeX = Math.round(offsetX + node.getX() * scale);
+        int nodeY = Math.round(offsetY + node.getY() * scale);
+        int nodeWidth = Math.max(18, Math.round(node.getWidth() * scale));
+        int nodeHeight = Math.max(14, Math.round(node.getHeight() * scale));
+        int color = node.getType() != null ? node.getType().getColor() : UITheme.BORDER_DEFAULT;
+        int borderColor = node.isStopControlNode() ? 0xFFE35B5B : color;
+        int backgroundColor = interactive ? UITheme.BACKGROUND_SECONDARY : AnimationHelper.darken(UITheme.BACKGROUND_SECONDARY, 0.94f);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            nodeX,
+            nodeY,
+            nodeWidth,
+            nodeHeight,
+            backgroundColor,
+            borderColor,
+            UITheme.PANEL_INNER_BORDER
+        );
+        boolean compactNode = node.usesMinimalNodePresentation() || node.isSensorNode() || node.isParameterNode();
+        int headerHeight = compactNode ? Math.max(10, Math.round(14f * scale)) : Math.max(12, Math.round(18f * scale));
+        context.fill(nodeX + 1, nodeY + 1, nodeX + nodeWidth - 1, nodeY + headerHeight, color & UITheme.NODE_HEADER_ALPHA_MASK);
+
+        if (scale > 0.12f) {
+            String label = TextRenderUtil.trimWithEllipsis(this.textRenderer, node.getDisplayName().getString(), Math.max(20, nodeWidth - 8));
+            context.drawTextWithShadow(this.textRenderer, Text.literal(label), nodeX + 4, nodeY + 3, UITheme.TEXT_HEADER);
+        }
+
+        if (interactive && scale > 0.18f && !compactNode) {
+            int textY = nodeY + headerHeight + 3;
+            for (String line : buildNodeBodyLines(node)) {
+                if (textY > nodeY + nodeHeight - 9) {
+                    break;
+                }
+                context.drawTextWithShadow(this.textRenderer,
+                    Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, line, Math.max(22, nodeWidth - 8))),
+                    nodeX + 4,
+                    textY,
+                    UITheme.TEXT_SECONDARY);
+                textY += 10;
+            }
+        }
+        renderNodeSockets(context, node, offsetX, offsetY, scale);
+    }
+
+    private void renderNodeSockets(DrawContext context, Node node, float offsetX, float offsetY, float scale) {
+        int socketSize = Math.max(2, Math.round(4f * scale));
+        int halfSocket = Math.max(1, socketSize / 2);
+        for (int socketIndex = 0; socketIndex < node.getInputSocketCount(); socketIndex++) {
+            int socketX = Math.round(offsetX + node.getSocketX(true) * scale);
+            int socketY = Math.round(offsetY + node.getSocketY(socketIndex, true) * scale);
+            context.fill(socketX - halfSocket, socketY - halfSocket, socketX + halfSocket + 1, socketY + halfSocket + 1, UITheme.TEXT_TERTIARY);
+        }
+        for (int socketIndex = 0; socketIndex < node.getOutputSocketCount(); socketIndex++) {
+            int socketX = Math.round(offsetX + node.getSocketX(false) * scale);
+            int socketY = Math.round(offsetY + node.getSocketY(socketIndex, false) * scale);
+            int socketColor = node.getOutputSocketColor(socketIndex);
+            context.fill(socketX - halfSocket, socketY - halfSocket, socketX + halfSocket + 1, socketY + halfSocket + 1, socketColor);
+        }
+    }
+
+    private List<String> buildNodeBodyLines(Node node) {
+        List<String> bodyLines = new ArrayList<>();
+        if (node == null) {
+            return bodyLines;
+        }
+        if (node.getMode() != null) {
+            bodyLines.add("Mode: " + node.getMode().getDisplayName());
+        }
+        for (NodeParameter parameter : node.getParameters()) {
+            if (parameter == null) {
+                continue;
+            }
+            String value = fallback(parameter.getStringValue(), "").trim();
+            if (value.isEmpty()) {
+                continue;
+            }
+            bodyLines.add(parameter.getName() + ": " + value);
+            if (bodyLines.size() >= 4) {
+                break;
+            }
+        }
+        return bodyLines;
+    }
+
+    private PreviewGraphModel getCachedPreviewGraph(MarketplacePreset preset) {
+        if (preset == null || preset.getId() == null) {
+            return null;
+        }
+        return previewGraphCache.get(preset.getId());
+    }
+
+    private void requestPreviewGraph(MarketplacePreset preset) {
+        if (preset == null || preset.getId() == null || previewGraphCache.containsKey(preset.getId()) || previewGraphLoading.contains(preset.getId())) {
+            return;
+        }
+        previewGraphLoading.add(preset.getId());
+        MarketplaceService.fetchPresetGraphData(preset).whenComplete((graphData, throwable) -> {
+            if (this.client == null) {
+                return;
+            }
+            this.client.execute(() -> {
+                previewGraphLoading.remove(preset.getId());
+                if (throwable == null && graphData != null) {
+                    previewGraphCache.put(preset.getId(), buildPreviewGraphModel(graphData));
+                }
+            });
+        });
+    }
+
+    private PreviewGraphModel buildPreviewGraphModel(NodeGraphData graphData) {
+        List<Node> rebuiltNodes = NodeGraphPersistence.convertToNodes(graphData);
+        Map<String, Node> nodeLookup = new HashMap<>();
+        for (Node node : rebuiltNodes) {
+            nodeLookup.put(node.getId(), node);
+        }
+        List<NodeGraphData.ConnectionData> connections = graphData.getConnections() == null
+            ? List.of()
+            : List.copyOf(graphData.getConnections());
+        return new PreviewGraphModel(List.copyOf(rebuiltNodes), connections, nodeLookup);
     }
 
     private void drawMiniNode(DrawContext context, int x, int y, int width, int height, int backgroundColor, int borderColor) {
@@ -410,10 +682,11 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentTop = popupY + 40;
         int contentBottom = popupY + popupHeight - 48;
         int contentHeight = Math.max(24, contentBottom - contentTop);
-        int previewX = popupX + 12;
-        int previewY = contentTop - popupScrollOffset;
-        int previewWidth = popupWidth - 24;
-        int previewHeight = 120;
+        Rect previewRect = getPopupPreviewRect(popupX, popupY, popupWidth, popupHeight, popupScrollOffset);
+        int previewX = previewRect.x;
+        int previewY = previewRect.y;
+        int previewWidth = previewRect.width;
+        int previewHeight = previewRect.height;
         int textX = popupX + 12;
         int textWidth = popupWidth - 24;
         int contentHeightTotal = measurePopupContentHeight(textWidth);
@@ -431,50 +704,99 @@ public class PathmindMarketplaceScreen extends Screen {
             presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
             presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
-        drawGraphPreview(context, previewX, previewY, previewWidth, previewHeight);
+        renderGraphPreviewSurface(context, previewX, previewY, previewWidth, previewHeight, popupPreset, true, true, popupPreviewPanX, popupPreviewPanY);
+        int zoomButtonSize = 14;
+        int zoomOutX = previewX + previewWidth - zoomButtonSize * 2 - 8;
+        int zoomInX = previewX + previewWidth - zoomButtonSize - 6;
+        int zoomButtonY = previewY + 6;
+        boolean zoomOutHovered = isPointInRect(mouseX, mouseY, zoomOutX, zoomButtonY, zoomButtonSize, zoomButtonSize);
+        boolean zoomInHovered = isPointInRect(mouseX, mouseY, zoomInX, zoomButtonY, zoomButtonSize, zoomButtonSize);
+        drawMinimalPreviewButton(context, zoomOutX, zoomButtonY, zoomButtonSize, zoomButtonSize, zoomOutHovered);
+        drawMinimalPreviewButton(context, zoomInX, zoomButtonY, zoomButtonSize, zoomButtonSize, zoomInHovered);
+        drawPreviewMinusIcon(context, zoomOutX, zoomButtonY, presetPopupAnimation.getAnimatedPopupColor(zoomOutHovered ? getAccentColor() : UITheme.TEXT_PRIMARY));
+        drawPreviewPlusIcon(context, zoomInX, zoomButtonY, presetPopupAnimation.getAnimatedPopupColor(zoomInHovered ? getAccentColor() : UITheme.TEXT_PRIMARY));
+
+        int popupBookmarkX = popupX + popupWidth - 42;
+        int popupHeartX = popupX + popupWidth - 24;
+        drawAnimatedBookmarkIcon(context, popupBookmarkX, popupY + 10, popupPreset, isPresetSavedLocally(popupPreset), true);
+        drawAnimatedHeartIcon(context, popupHeartX, popupY + 10, popupPreset, isPresetLiked(popupPreset), true);
 
         int cursorY = previewY + previewHeight + 12;
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, popupPreset.getName(), textWidth)),
             textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
         cursorY += 14;
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, "Author: " + fallback(popupPreset.getAuthorName(), "Unknown"),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, "Tags: " + formatTags(popupPreset.getTags()),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, "Game: " + fallback(popupPreset.getGameVersion(), "Any"),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, "Pathmind: " + fallback(popupPreset.getPathmindVersion(), "Unknown"),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth,
-            "Downloads: " + popupPreset.getDownloadsCount() + "  Likes: " + popupPreset.getLikesCount(),
-            presetPopupAnimation.getAnimatedPopupColor(getAccentColor()), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth,
-            authSession == null
-                ? "Account: sign in with Discord to like presets and count imports."
-                : "Account: signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")),
-            presetPopupAnimation.getAnimatedPopupColor(authSession == null ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth,
-            "Published: " + formatTimestamp(popupPreset.getCreatedAt()),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth,
-            "Updated: " + formatTimestamp(popupPreset.getUpdatedAt()),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
+        context.drawTextWithShadow(this.textRenderer,
+            Text.literal("by " + TextRenderUtil.trimWithEllipsis(this.textRenderer, fallback(popupPreset.getAuthorName(), "Unknown"), textWidth - 20)),
+            textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
+        cursorY += 14;
+
+        int downloadsWidth = Math.max(54, this.textRenderer.getWidth(popupPreset.getDownloadsCount() + " downloads") + 12);
+        int likesWidth = Math.max(42, this.textRenderer.getWidth(popupPreset.getLikesCount() + " likes") + 12);
+        drawPopupStatPill(context, textX, cursorY, downloadsWidth, "Downloads", Integer.toString(popupPreset.getDownloadsCount()));
+        drawPopupStatPill(context, textX + downloadsWidth + 6, cursorY, likesWidth, "Likes", Integer.toString(popupPreset.getLikesCount()));
+        cursorY += 24;
+
+        String tagsLine = formatTags(popupPreset.getTags());
+        if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
+            cursorY = drawWrappedValue(
+                context,
+                textX,
+                cursorY,
+                textWidth,
+                "Tags: " + tagsLine,
+                presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY),
+                2
+            );
+        }
+
+        int descriptionTop = cursorY + 8;
+        int descriptionHeight = Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            textX,
+            descriptionTop,
+            textWidth,
+            descriptionHeight,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+        context.drawTextWithShadow(this.textRenderer, Text.literal("About"), textX + 8, descriptionTop + 6,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
+        cursorY = drawWrappedValue(context, textX + 8, descriptionTop + 18, textWidth - 16,
+            fallback(popupPreset.getDescription(), "No description provided."),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY), 5);
+
         CompatibilityStatus compatibility = getCompatibilityStatus(popupPreset);
-        cursorY += 4;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("Compatibility"), textX, cursorY,
+        int compatibilityHeight = 30;
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            textX,
+            cursorY + 8,
+            textWidth,
+            compatibilityHeight,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+        context.drawTextWithShadow(this.textRenderer, Text.literal("Compatibility"), textX + 8, cursorY + 14,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        cursorY += 12;
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, compatibility.minecraftLine(),
-            presetPopupAnimation.getAnimatedPopupColor(compatibility.minecraftColor()), 2);
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, compatibility.pathmindLine(),
-            presetPopupAnimation.getAnimatedPopupColor(compatibility.pathmindColor()), 2);
-        cursorY += 4;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("Description"), textX, cursorY,
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        cursorY += 12;
-        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, fallback(popupPreset.getDescription(), "No description provided."),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY), 4);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer,
+                compatibility.minecraftLine() + "  •  " + compatibility.pathmindLine(), textWidth - 16)),
+            textX + 8, cursorY + 24,
+            presetPopupAnimation.getAnimatedPopupColor(compatibility.minecraftColor()));
+        cursorY += compatibilityHeight + 18;
+
+        String sharedLine = "Published " + formatTimestamp(popupPreset.getCreatedAt()) + "  •  Updated " + formatTimestamp(popupPreset.getUpdatedAt());
+        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, sharedLine,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
+
+        String authLine = authSession == null
+            ? "Sign in with Discord to like presets and count imports."
+            : "Signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user"));
+        cursorY = drawWrappedValue(context, textX, cursorY, textWidth, authLine,
+            presetPopupAnimation.getAnimatedPopupColor(authSession == null ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY), 2);
         context.disableScissor();
 
         ScrollbarHelper.renderCutoffDividers(
@@ -621,10 +943,46 @@ public class PathmindMarketplaceScreen extends Screen {
             int popupWidth = bounds[2];
             int popupHeight = bounds[3];
             ScrollbarHelper.Metrics scrollMetrics = getPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight);
+            Rect previewRect = getPopupPreviewRect(popupX, popupY, popupWidth, popupHeight, popupScrollOffset);
+            int previewX = previewRect.x;
+            int previewY = previewRect.y;
+            int previewWidth = previewRect.width;
+            int previewHeight = previewRect.height;
             int closeButtonX = popupX + (popup.closeButtonX - popup.x);
             int authButtonX = popupX + (popup.authButtonX - popup.x);
             int downloadButtonX = popupX + (popup.downloadButtonX - popup.x);
             int buttonY = popupY + (popup.buttonY - popup.y);
+            Rect popupBookmarkHit = new Rect(popupX + popupWidth - 42, popupY + 10, 12, 12);
+            Rect popupHeartHit = new Rect(popupX + popupWidth - 24, popupY + 10, 12, 12);
+            int zoomButtonSize = 14;
+            Rect zoomOutHit = new Rect(previewX + previewWidth - zoomButtonSize * 2 - 8, previewY + 6, zoomButtonSize, zoomButtonSize);
+            Rect zoomInHit = new Rect(previewX + previewWidth - zoomButtonSize - 6, previewY + 6, zoomButtonSize, zoomButtonSize);
+            if (isPointInRect(mouseX, mouseY, popupBookmarkHit.x, popupBookmarkHit.y, popupBookmarkHit.width, popupBookmarkHit.height)) {
+                savePresetLocally(popupPreset, false);
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, popupHeartHit.x, popupHeartHit.y, popupHeartHit.width, popupHeartHit.height)) {
+                if (authSession == null) {
+                    handleAuthButton();
+                } else {
+                    startToggleLike();
+                }
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, zoomOutHit.x, zoomOutHit.y, zoomOutHit.width, zoomOutHit.height)) {
+                adjustPopupPreviewZoom(-1);
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, zoomInHit.x, zoomInHit.y, zoomInHit.width, zoomInHit.height)) {
+                adjustPopupPreviewZoom(1);
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, previewX, previewY, previewWidth, previewHeight)) {
+                popupPreviewDragging = true;
+                popupPreviewDragLastX = mouseX;
+                popupPreviewDragLastY = mouseY;
+                return true;
+            }
             if (scrollMetrics.maxScroll() > 0
                 && isPointInRect(mouseX, mouseY, scrollMetrics.trackLeft() - 3, scrollMetrics.trackTop(), scrollMetrics.trackWidth() + 6, scrollMetrics.viewportHeight())) {
                 popupScrollDragging = true;
@@ -709,12 +1067,27 @@ public class PathmindMarketplaceScreen extends Screen {
         int visibleCount = Math.max(0, endIndex - startIndex);
         for (int index = startIndex; index < endIndex; index++) {
             Rect rect = getCardRect(layout, index - startIndex, visibleCount);
+            MarketplacePreset preset = presets.get(index);
+            Rect heartHit = new Rect(rect.x + rect.width - 26, rect.y + 8, 12, 12);
+            Rect bookmarkHit = new Rect(rect.x + rect.width - 40, rect.y + 8, 12, 12);
+            if (isPointInRect(mouseX, mouseY, heartHit.x, heartHit.y, heartHit.width, heartHit.height)) {
+                startToggleLike(preset, false);
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, bookmarkHit.x, bookmarkHit.y, bookmarkHit.width, bookmarkHit.height)) {
+                savePresetLocally(preset, false);
+                return true;
+            }
             if (isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height)) {
                 selectedIndex = index;
-                popupPreset = presets.get(index);
+                popupPreset = preset;
                 popupScrollOffset = 0;
+                popupPreviewPanX = 0f;
+                popupPreviewPanY = 0f;
+                popupPreviewZoom = 1f;
                 popupStatusMessage = "";
                 popupStatusColor = UITheme.TEXT_SECONDARY;
+                requestPreviewGraph(popupPreset);
                 presetPopupAnimation.show();
                 return true;
             }
@@ -725,6 +1098,15 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+        if (popupPreviewDragging && popupPreset != null) {
+            int currentX = (int) click.x();
+            int currentY = (int) click.y();
+            popupPreviewPanX += currentX - popupPreviewDragLastX;
+            popupPreviewPanY += currentY - popupPreviewDragLastY;
+            popupPreviewDragLastX = currentX;
+            popupPreviewDragLastY = currentY;
+            return true;
+        }
         if (popupScrollDragging && popupPreset != null) {
             Layout layout = getLayout();
             PopupLayout popup = getPopupLayout(layout);
@@ -745,6 +1127,10 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public boolean mouseReleased(Click click) {
+        if (popupPreviewDragging) {
+            popupPreviewDragging = false;
+            return true;
+        }
         if (popupScrollDragging) {
             popupScrollDragging = false;
             return true;
@@ -758,6 +1144,12 @@ public class PathmindMarketplaceScreen extends Screen {
         if (popupPreset != null) {
             PopupLayout popup = getPopupLayout(layout);
             int[] bounds = presetPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+            Rect previewRect = getPopupPreviewRect(bounds[0], bounds[1], bounds[2], bounds[3], popupScrollOffset);
+            if (isPointInRect((int) mouseX, (int) mouseY, previewRect.x, previewRect.y, previewRect.width, previewRect.height)
+                && Math.abs(verticalAmount) > 0.0001) {
+                adjustPopupPreviewZoom(verticalAmount > 0 ? 1 : -1);
+                return true;
+            }
             ScrollbarHelper.Metrics scrollMetrics = getPopupScrollMetrics(bounds[0], bounds[1], bounds[2], bounds[3]);
             if (scrollMetrics.maxScroll() > 0 && isPointInRect((int) mouseX, (int) mouseY, bounds[0] + 8, scrollMetrics.trackTop(), bounds[2] - 16, scrollMetrics.viewportHeight())) {
                 int nextOffset = ScrollbarHelper.applyWheel(popupScrollOffset, verticalAmount, 18, scrollMetrics.maxScroll());
@@ -918,6 +1310,25 @@ public class PathmindMarketplaceScreen extends Screen {
         return y + 2;
     }
 
+    private void drawPopupStatPill(DrawContext context, int x, int y, int width, String label, String value) {
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            width,
+            16,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), x + 6, y + 4,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY));
+        String shownValue = TextRenderUtil.trimWithEllipsis(this.textRenderer, value, Math.max(10, width - 12));
+        context.drawTextWithShadow(this.textRenderer, Text.literal(shownValue),
+            x + width - 6 - this.textRenderer.getWidth(shownValue), y + 4,
+            presetPopupAnimation.getAnimatedPopupColor(getAccentColor()));
+    }
+
     private int measureWrappedValueHeight(int width, String value, int maxLines) {
         return wrapText(value, width, maxLines).size() * 10 + 2;
     }
@@ -928,24 +1339,23 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         int height = 120 + 12;
         height += 14;
-        height += measureWrappedValueHeight(textWidth, "Author: " + fallback(popupPreset.getAuthorName(), "Unknown"), 2);
-        height += measureWrappedValueHeight(textWidth, "Tags: " + formatTags(popupPreset.getTags()), 2);
-        height += measureWrappedValueHeight(textWidth, "Game: " + fallback(popupPreset.getGameVersion(), "Any"), 2);
-        height += measureWrappedValueHeight(textWidth, "Pathmind: " + fallback(popupPreset.getPathmindVersion(), "Unknown"), 2);
-        height += measureWrappedValueHeight(textWidth, "Downloads: " + popupPreset.getDownloadsCount() + "  Likes: " + popupPreset.getLikesCount(), 2);
+        height += 14;
+        height += 20;
+        String tagsLine = formatTags(popupPreset.getTags());
+        if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
+            height += measureWrappedValueHeight(textWidth, "Tags: " + tagsLine, 2);
+        }
+        height += 30 + 8;
+        height += measureWrappedValueHeight(textWidth,
+            "Published " + formatTimestamp(popupPreset.getCreatedAt()) + "  •  Updated " + formatTimestamp(popupPreset.getUpdatedAt()),
+            2);
         height += measureWrappedValueHeight(textWidth,
             authSession == null
-                ? "Account: sign in with Discord to like presets and count imports."
-                : "Account: signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")),
+                ? "Sign in with Discord to like presets and count imports."
+                : "Signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")),
             2);
-        height += measureWrappedValueHeight(textWidth, "Published: " + formatTimestamp(popupPreset.getCreatedAt()), 2);
-        height += measureWrappedValueHeight(textWidth, "Updated: " + formatTimestamp(popupPreset.getUpdatedAt()), 2);
-        CompatibilityStatus compatibility = getCompatibilityStatus(popupPreset);
-        height += 4 + 12;
-        height += measureWrappedValueHeight(textWidth, compatibility.minecraftLine(), 2);
-        height += measureWrappedValueHeight(textWidth, compatibility.pathmindLine(), 2);
-        height += 4 + 12;
-        height += measureWrappedValueHeight(textWidth, fallback(popupPreset.getDescription(), "No description provided."), 4);
+        height += 2;
+        height += Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
         return height;
     }
 
@@ -1000,6 +1410,10 @@ public class PathmindMarketplaceScreen extends Screen {
             popupScrollOffset = 0;
             popupScrollDragging = false;
             popupScrollDragOffset = 0;
+            popupPreviewDragging = false;
+            popupPreviewPanX = 0f;
+            popupPreviewPanY = 0f;
+            popupPreviewZoom = 1f;
             popupStatusMessage = "";
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
@@ -1051,14 +1465,15 @@ public class PathmindMarketplaceScreen extends Screen {
             }
 
             PresetManager.setActivePreset(importedPreset.get());
+            refreshSavedPresetState();
             if (authSession != null && popupPreset != null && popupPreset.getId() != null && !popupPreset.getId().isBlank()) {
                 MarketplacePreset importedMarketplacePreset = popupPreset;
-                MarketplaceService.incrementDownload(authSession.getAccessToken(), importedMarketplacePreset.getId())
+                withFreshAuthSession(session -> MarketplaceService.incrementDownload(session.getAccessToken(), importedMarketplacePreset.getId())
                     .whenComplete((unused, incrementThrowable) -> {
                         if (incrementThrowable == null && this.client != null) {
                             this.client.execute(() -> applyPresetCountUpdate(importedMarketplacePreset.getId(), 0, 1));
                         }
-                    });
+                    }), null);
             }
             cleanupTempFile(path);
             importingPreset = false;
@@ -1084,6 +1499,96 @@ public class PathmindMarketplaceScreen extends Screen {
         try {
             Files.deleteIfExists(path);
         } catch (Exception ignored) {
+        }
+    }
+
+    private void refreshSavedPresetState() {
+        PresetManager.getAvailablePresets();
+    }
+
+    private boolean isPresetSavedLocally(MarketplacePreset preset) {
+        return findLocalPresetNameForMarketplacePreset(preset).isPresent();
+    }
+
+    private String normalizeSavedPresetKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replace(' ', '-');
+    }
+
+    private void savePresetLocally(MarketplacePreset preset, boolean activateAfterImport) {
+        if (preset == null || importingPreset) {
+            return;
+        }
+        if (!activateAfterImport) {
+            Optional<String> existingPresetName = findLocalPresetNameForMarketplacePreset(preset);
+            if (existingPresetName.isPresent()) {
+                boolean deleted = PresetManager.deletePreset(existingPresetName.get());
+                refreshSavedPresetState();
+                applyFilters();
+                if (deleted) {
+                    triggerSavePulse(preset);
+                }
+                if (popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(preset.getId())) {
+                    popupStatusMessage = deleted ? "Removed local save." : "Failed to remove local save.";
+                    popupStatusColor = deleted ? UITheme.TEXT_SECONDARY : UITheme.STATE_ERROR;
+                }
+                return;
+            }
+        }
+        importingPreset = true;
+        if (popupPreset != null) {
+            popupStatusMessage = isPresetSavedLocally(preset) ? "Already saved locally." : "Saving preset locally...";
+            popupStatusColor = UITheme.TEXT_SECONDARY;
+        }
+        MarketplaceService.downloadPresetToTempFile(preset).whenComplete((path, throwable) -> {
+            if (this.client == null) {
+                return;
+            }
+            this.client.execute(() -> finishSavePresetLocally(preset, path, throwable, activateAfterImport));
+        });
+    }
+
+    private void finishSavePresetLocally(MarketplacePreset preset, Path path, Throwable throwable, boolean activateAfterImport) {
+        if (throwable != null || path == null) {
+            importingPreset = false;
+            if (popupPreset != null) {
+                popupStatusMessage = "Failed to save preset locally.";
+                popupStatusColor = UITheme.STATE_ERROR;
+            }
+            cleanupTempFile(path);
+            return;
+        }
+        try {
+            String requestedName = fallback(preset.getSlug(), preset.getName());
+            Optional<String> importedPreset = PresetManager.importPresetFromFile(path, requestedName);
+            cleanupTempFile(path);
+            importingPreset = false;
+            if (importedPreset.isEmpty()) {
+                if (popupPreset != null) {
+                    popupStatusMessage = "Failed to save preset locally.";
+                    popupStatusColor = UITheme.STATE_ERROR;
+                }
+                return;
+            }
+            refreshSavedPresetState();
+            applyFilters();
+            triggerSavePulse(preset);
+            if (popupPreset != null) {
+                popupStatusMessage = "Saved locally as \"" + importedPreset.get() + "\".";
+                popupStatusColor = 0xFFE2B93B;
+            }
+            if (activateAfterImport) {
+                PresetManager.setActivePreset(importedPreset.get());
+                if (this.client != null) {
+                    PathmindScreens.openVisualEditorOrWarn(this.client, parent);
+                }
+            }
+        } catch (Exception e) {
+            importingPreset = false;
+            cleanupTempFile(path);
+            if (popupPreset != null) {
+                popupStatusMessage = "Failed to save preset locally.";
+                popupStatusColor = UITheme.STATE_ERROR;
+            }
         }
     }
 
@@ -1212,14 +1717,20 @@ public class PathmindMarketplaceScreen extends Screen {
                 size - 6,
                 accountPopupAnimation.getAnimatedPopupColor(0xFFFFFFFF)
             );
-            return;
+        } else {
+            String initials = fallback(authSession == null ? null : authSession.getDisplayName(), "D").trim();
+            initials = initials.isEmpty() ? "D" : initials.substring(0, 1).toUpperCase(Locale.ROOT);
+            int textX = x + (size - this.textRenderer.getWidth(initials)) / 2;
+            int textY = y + (size - this.textRenderer.fontHeight) / 2;
+            context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
         }
 
-        String initials = fallback(authSession == null ? null : authSession.getDisplayName(), "D").trim();
-        initials = initials.isEmpty() ? "D" : initials.substring(0, 1).toUpperCase(Locale.ROOT);
-        int textX = x + (size - this.textRenderer.getWidth(initials)) / 2;
-        int textY = y + (size - this.textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
+        float popupAlpha = accountPopupAnimation.getPopupAlpha();
+        if (popupAlpha < 0.999f) {
+            int fadeAlpha = Math.max(0, Math.min(255, Math.round((1f - popupAlpha) * 255f)));
+            context.fill(x + 2, y + 2, x + size - 2, y + size - 2,
+                (fadeAlpha << 24) | (UITheme.BACKGROUND_SECONDARY & 0x00FFFFFF));
+        }
     }
 
     private Identifier getOrRequestAvatarTexture() {
@@ -1279,7 +1790,11 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void startToggleLike() {
-        if (popupPreset == null || authBusy) {
+        startToggleLike(popupPreset, true);
+    }
+
+    private void startToggleLike(MarketplacePreset target, boolean updatePopupStatus) {
+        if (target == null || authBusy) {
             return;
         }
         if (authSession == null) {
@@ -1287,26 +1802,84 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         authBusy = true;
-        popupStatusMessage = isPresetLiked(popupPreset) ? "Removing like..." : "Saving like...";
-        popupStatusColor = UITheme.TEXT_SECONDARY;
-        MarketplacePreset target = popupPreset;
-        MarketplaceService.toggleLike(authSession.getAccessToken(), target.getId()).whenComplete((liked, throwable) -> {
+        if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
+            popupStatusMessage = isPresetLiked(target) ? "Removing like..." : "Saving like...";
+            popupStatusColor = UITheme.TEXT_SECONDARY;
+        }
+        withFreshAuthSession(session -> MarketplaceService.toggleLike(session.getAccessToken(), target.getId(), session.getUserId())
+            .whenComplete((liked, throwable) -> {
+                if (this.client == null) {
+                    return;
+                }
+                this.client.execute(() -> {
+                    authBusy = false;
+                    if (throwable != null || liked == null) {
+                        if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
+                            popupStatusMessage = "Like update failed.";
+                            popupStatusColor = UITheme.STATE_ERROR;
+                        }
+                        return;
+                    }
+                    setPresetLiked(target.getId(), liked);
+                    triggerLikePulse(target);
+                    applyPresetCountUpdate(target.getId(), liked ? 1 : -1, 0);
+                    if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
+                        popupStatusMessage = liked ? "Preset liked." : "Like removed.";
+                        popupStatusColor = getAccentColor();
+                    }
+                });
+            }),
+            updatePopupStatus ? "Session expired. Sign in again." : null);
+    }
+
+    private void withFreshAuthSession(Consumer<MarketplaceAuthManager.AuthSession> action, String failureMessage) {
+        MarketplaceAuthManager.ensureValidSession().whenComplete((session, throwable) -> {
             if (this.client == null) {
                 return;
             }
             this.client.execute(() -> {
-                authBusy = false;
-                if (throwable != null || liked == null) {
-                    popupStatusMessage = "Like update failed.";
-                    popupStatusColor = UITheme.STATE_ERROR;
+                if (throwable != null || session == null) {
+                    authBusy = false;
+                    authSession = null;
+                    likedPresetIds.clear();
+                    if (failureMessage != null && popupPreset != null) {
+                        popupStatusMessage = failureMessage;
+                        popupStatusColor = UITheme.STATE_ERROR;
+                    }
                     return;
                 }
-                setPresetLiked(target.getId(), liked);
-                applyPresetCountUpdate(target.getId(), liked ? 1 : -1, 0);
-                popupStatusMessage = liked ? "Preset liked." : "Like removed.";
-                popupStatusColor = getAccentColor();
+                authSession = session;
+                action.accept(session);
             });
         });
+    }
+
+    private Optional<String> findLocalPresetNameForMarketplacePreset(MarketplacePreset preset) {
+        if (preset == null) {
+            return Optional.empty();
+        }
+        String targetKey = normalizeSavedPresetKey(fallback(preset.getSlug(), preset.getName()));
+        if (targetKey.isEmpty()) {
+            return Optional.empty();
+        }
+        List<String> availablePresets = PresetManager.getAvailablePresets();
+        for (String presetName : availablePresets) {
+            if (!Files.exists(PresetManager.getPresetPath(presetName))) {
+                continue;
+            }
+            if (normalizeSavedPresetKey(presetName).equals(targetKey)) {
+                return Optional.of(presetName);
+            }
+        }
+        for (String presetName : availablePresets) {
+            if (!Files.exists(PresetManager.getPresetPath(presetName))) {
+                continue;
+            }
+            if (normalizeSavedPresetKey(presetName).startsWith(targetKey + "-")) {
+                return Optional.of(presetName);
+            }
+        }
+        return Optional.empty();
     }
 
     private void setPresetLiked(String presetId, boolean liked) {
@@ -1451,6 +2024,105 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawHorizontalLine(x + 2, x + 2, y + 2, color);
     }
 
+    private void drawHeartIcon(DrawContext context, int x, int y, int color) {
+        context.fill(x + 2, y + 1, x + 4, y + 3, color);
+        context.fill(x + 6, y + 1, x + 8, y + 3, color);
+        context.fill(x + 1, y + 3, x + 9, y + 5, color);
+        context.fill(x + 2, y + 5, x + 8, y + 7, color);
+        context.fill(x + 3, y + 7, x + 7, y + 9, color);
+        context.fill(x + 4, y + 9, x + 6, y + 11, color);
+    }
+
+    private void drawBookmarkIcon(DrawContext context, int x, int y, int color) {
+        context.fill(x + 2, y + 1, x + 8, y + 10, color);
+        context.fill(x + 3, y + 9, x + 5, y + 11, UITheme.BACKGROUND_PRIMARY);
+        context.fill(x + 5, y + 9, x + 7, y + 11, UITheme.BACKGROUND_PRIMARY);
+        context.fill(x + 4, y + 8, x + 6, y + 10, color);
+    }
+
+    private void drawAnimatedHeartIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean liked, boolean popup) {
+        float pulse = getIconPulse(likePulseEndTimes, preset);
+        int baseColor = liked ? 0xFFE05454 : UITheme.TEXT_TERTIARY;
+        int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
+        if (pulse > 0.001f) {
+            int glowColor = popup
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f);
+            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(pulse * 110)) << 24) | (glowColor & 0x00FFFFFF));
+        }
+        drawHeartIcon(context, x, y, color);
+    }
+
+    private void drawAnimatedBookmarkIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean saved, boolean popup) {
+        float pulse = getIconPulse(savePulseEndTimes, preset);
+        int baseColor = saved ? 0xFFE2B93B : UITheme.TEXT_TERTIARY;
+        int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
+        if (pulse > 0.001f) {
+            int glowColor = popup
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, pulse * 0.35f);
+            context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(pulse * 110)) << 24) | (glowColor & 0x00FFFFFF));
+        }
+        drawBookmarkIcon(context, x, y, color);
+    }
+
+    private float getIconPulse(Map<String, Long> pulseMap, MarketplacePreset preset) {
+        if (preset == null || preset.getId() == null) {
+            return 0f;
+        }
+        Long endTime = pulseMap.get(preset.getId());
+        if (endTime == null) {
+            return 0f;
+        }
+        long remaining = endTime - System.currentTimeMillis();
+        if (remaining <= 0L) {
+            pulseMap.remove(preset.getId());
+            return 0f;
+        }
+        return AnimationHelper.easeOutQuad(Math.min(1f, remaining / 220f));
+    }
+
+    private void triggerLikePulse(MarketplacePreset preset) {
+        if (preset != null && preset.getId() != null) {
+            likePulseEndTimes.put(preset.getId(), System.currentTimeMillis() + 220L);
+        }
+    }
+
+    private void triggerSavePulse(MarketplacePreset preset) {
+        if (preset != null && preset.getId() != null) {
+            savePulseEndTimes.put(preset.getId(), System.currentTimeMillis() + 220L);
+        }
+    }
+
+    private void drawMinimalPreviewButton(DrawContext context, int x, int y, int width, int height, boolean hovered) {
+        int background = presetPopupAnimation.getAnimatedPopupColor(hovered ? UITheme.BACKGROUND_SECTION : UITheme.BACKGROUND_PRIMARY);
+        int border = presetPopupAnimation.getAnimatedPopupColor(hovered ? getAccentColor() : UITheme.BORDER_SUBTLE);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            width,
+            height,
+            background,
+            border,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+        );
+    }
+
+    private void drawPreviewMinusIcon(DrawContext context, int x, int y, int color) {
+        context.fill(x + 4, y + 6, x + 10, y + 8, color);
+    }
+
+    private void drawPreviewPlusIcon(DrawContext context, int x, int y, int color) {
+        context.fill(x + 4, y + 6, x + 10, y + 8, color);
+        context.fill(x + 6, y + 4, x + 8, y + 10, color);
+    }
+
+    private void adjustPopupPreviewZoom(int direction) {
+        float step = 0.15f;
+        popupPreviewZoom = Math.max(0.45f, Math.min(2.75f, popupPreviewZoom + direction * step));
+    }
+
     private Layout getLayout() {
         int topBarY = OUTER_PADDING;
         int backButtonX = OUTER_PADDING;
@@ -1490,6 +2162,16 @@ public class PathmindMarketplaceScreen extends Screen {
         return new PopupLayout(x, y, width, height, closeButtonX, authButtonX, downloadButtonX, buttonY, buttonWidth, buttonHeight);
     }
 
+    private Rect getPopupPreviewRect(int popupX, int popupY, int popupWidth, int popupHeight, int scrollOffset) {
+        int contentTop = popupY + 40;
+        return new Rect(
+            popupX + 12,
+            contentTop - scrollOffset,
+            popupWidth - 24,
+            120
+        );
+    }
+
     private AccountPopupLayout getAccountPopupLayout(Layout layout) {
         int width = Math.min(320, this.width - 40);
         int height = 180;
@@ -1505,7 +2187,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private Rect getCardRect(Layout layout, int pageOffset, int visibleCount) {
         int columns = getGridColumns(layout);
-        int bodyY = layout.sectionY + SECTION_HEADER_HEIGHT - 4;
+        int bodyY = layout.sectionY + SECTION_HEADER_HEIGHT + 2;
         int availableWidth = layout.bodyWidth;
         int cardWidth = Math.min(CARD_MAX_WIDTH, (availableWidth - (columns - 1) * CARD_GAP) / columns);
         int column = pageOffset % columns;
@@ -1597,6 +2279,9 @@ public class PathmindMarketplaceScreen extends Screen {
         String query = searchField == null ? "" : normalizeSearch(searchField.getText());
         List<MarketplacePreset> filtered = new ArrayList<>();
         for (MarketplacePreset preset : allPresets) {
+            if (!sortMode.matches(this, preset)) {
+                continue;
+            }
             if (query.isEmpty() || matchesQuery(preset, query)) {
                 filtered.add(preset);
             }
@@ -1608,7 +2293,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (allPresets.isEmpty()) {
             statusMessage = "No published presets found.";
         } else if (presets.isEmpty()) {
-            statusMessage = "No presets match your search.";
+            statusMessage = sortMode == SortMode.SAVED ? "No saved presets match your search." : "No presets match your search.";
         } else {
             statusMessage = "Loaded " + presets.size() + " preset" + (presets.size() == 1 ? "" : "s") + ".";
         }
@@ -1758,7 +2443,44 @@ public class PathmindMarketplaceScreen extends Screen {
     ) {
     }
 
+    private record GraphBounds(float minX, float minY, float maxX, float maxY) {
+        static GraphBounds of(List<Node> nodes) {
+            if (nodes == null || nodes.isEmpty()) {
+                return new GraphBounds(0f, 0f, 1f, 1f);
+            }
+            float minX = Float.MAX_VALUE;
+            float minY = Float.MAX_VALUE;
+            float maxX = Float.MIN_VALUE;
+            float maxY = Float.MIN_VALUE;
+            for (Node node : nodes) {
+                float width = Math.max(1f, node.getWidth()) + 8f;
+                float height = Math.max(1f, node.getHeight()) + 8f;
+                minX = Math.min(minX, node.getX());
+                minY = Math.min(minY, node.getY());
+                maxX = Math.max(maxX, node.getX() + width);
+                maxY = Math.max(maxY, node.getY() + height);
+            }
+            return new GraphBounds(minX, minY, maxX, maxY);
+        }
+
+        float width() {
+            return Math.max(1f, maxX - minX);
+        }
+
+        float height() {
+            return Math.max(1f, maxY - minY);
+        }
+    }
+
+    private record PreviewGraphModel(
+        List<Node> nodes,
+        List<NodeGraphData.ConnectionData> connections,
+        Map<String, Node> nodeLookup
+    ) {
+    }
+
     private enum SortMode {
+        SAVED("Saved", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getName(), "").toLowerCase(Locale.ROOT))),
         NEWEST("Newest", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getCreatedAt(), "")).reversed()),
         UPDATED("Updated", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed()),
         DOWNLOADS("Downloads", Comparator.comparingInt(MarketplacePreset::getDownloadsCount).reversed()),
@@ -1772,6 +2494,13 @@ public class PathmindMarketplaceScreen extends Screen {
         SortMode(String label, Comparator<MarketplacePreset> comparator) {
             this.label = label;
             this.comparator = comparator;
+        }
+
+        private boolean matches(PathmindMarketplaceScreen screen, MarketplacePreset preset) {
+            if (this == SAVED) {
+                return screen.isPresetSavedLocally(preset);
+            }
+            return true;
         }
 
         private static String fallbackStatic(String value, String fallback) {

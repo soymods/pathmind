@@ -4,6 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.pathmind.data.NodeGraphData;
+import com.pathmind.data.NodeGraphPersistence;
 
 import java.io.IOException;
 import java.net.URI;
@@ -102,6 +104,21 @@ public final class MarketplaceService {
         });
     }
 
+    public static CompletableFuture<NodeGraphData> fetchPresetGraphData(MarketplacePreset preset) {
+        return downloadPresetToTempFile(preset).thenApply(path -> {
+            try {
+                return NodeGraphPersistence.loadNodeGraphFromPath(path);
+            } finally {
+                if (path != null) {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+        });
+    }
+
     public static CompletableFuture<Set<String>> fetchLikedPresetIds(String accessToken, String userId) {
         return CompletableFuture.supplyAsync(() -> {
             if (accessToken == null || accessToken.isBlank() || userId == null || userId.isBlank()) {
@@ -145,13 +162,76 @@ public final class MarketplaceService {
         });
     }
 
-    public static CompletableFuture<Boolean> toggleLike(String accessToken, String presetId) {
+    public static CompletableFuture<Boolean> toggleLike(String accessToken, String presetId, String userId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
+                if (accessToken == null || accessToken.isBlank() || presetId == null || presetId.isBlank() || userId == null || userId.isBlank()) {
+                    throw new IOException("Marketplace auth expired.");
+                }
+
+                HttpRequest selectRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(PROJECT_URL
+                        + "/rest/v1/preset_likes?select=preset_id&preset_id=eq."
+                        + URLEncoder.encode(presetId, StandardCharsets.UTF_8)
+                        + "&user_id=eq."
+                        + URLEncoder.encode(userId, StandardCharsets.UTF_8)
+                        + "&limit=1"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("apikey", PUBLISHABLE_KEY)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+
+                HttpResponse<String> selectResponse = HTTP_CLIENT.send(selectRequest, HttpResponse.BodyHandlers.ofString());
+                if (selectResponse.statusCode() < 200 || selectResponse.statusCode() >= 300) {
+                    throw new IOException("Like lookup failed with HTTP " + selectResponse.statusCode());
+                }
+
+                JsonElement lookupRoot = JsonParser.parseString(selectResponse.body());
+                boolean alreadyLiked = lookupRoot.isJsonArray() && !lookupRoot.getAsJsonArray().isEmpty();
+
+                if (alreadyLiked) {
+                    HttpRequest deleteRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(PROJECT_URL
+                            + "/rest/v1/preset_likes?preset_id=eq."
+                            + URLEncoder.encode(presetId, StandardCharsets.UTF_8)
+                            + "&user_id=eq."
+                            + URLEncoder.encode(userId, StandardCharsets.UTF_8)))
+                        .timeout(Duration.ofSeconds(15))
+                        .header("apikey", PUBLISHABLE_KEY)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Accept", "application/json")
+                        .header("Prefer", "return=minimal")
+                        .DELETE()
+                        .build();
+
+                    HttpResponse<String> deleteResponse = HTTP_CLIENT.send(deleteRequest, HttpResponse.BodyHandlers.ofString());
+                    if (deleteResponse.statusCode() < 200 || deleteResponse.statusCode() >= 300) {
+                        throw new IOException("Unlike failed with HTTP " + deleteResponse.statusCode());
+                    }
+                    return false;
+                }
+
                 JsonObject payload = new JsonObject();
                 payload.addProperty("preset_id", presetId);
-                JsonObject response = postFunctionJson("toggle-like", payload, accessToken);
-                return response.has("liked") && !response.get("liked").isJsonNull() && response.get("liked").getAsBoolean();
+                payload.addProperty("user_id", userId);
+                HttpRequest insertRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(PROJECT_URL + "/rest/v1/preset_likes"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("apikey", PUBLISHABLE_KEY)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .header("Prefer", "return=minimal")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                    .build();
+
+                HttpResponse<String> insertResponse = HTTP_CLIENT.send(insertRequest, HttpResponse.BodyHandlers.ofString());
+                if (insertResponse.statusCode() < 200 || insertResponse.statusCode() >= 300) {
+                    throw new IOException("Like insert failed with HTTP " + insertResponse.statusCode());
+                }
+                return true;
             } catch (Exception e) {
                 throw new RuntimeException("Failed to toggle marketplace like", e);
             }
@@ -162,8 +242,8 @@ public final class MarketplaceService {
         return CompletableFuture.runAsync(() -> {
             try {
                 JsonObject payload = new JsonObject();
-                payload.addProperty("preset_id", presetId);
-                postFunctionJson("increment-download", payload, accessToken);
+                payload.addProperty("target_preset_id", presetId);
+                postRpcJson("increment_preset_downloads", payload, accessToken);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to increment marketplace download count", e);
             }
@@ -178,10 +258,10 @@ public final class MarketplaceService {
             + "&order=created_at.desc";
     }
 
-    private static JsonObject postFunctionJson(String functionName, JsonObject payload, String accessToken)
+    private static JsonObject postRpcJson(String functionName, JsonObject payload, String accessToken)
         throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(PROJECT_URL + "/functions/v1/" + functionName))
+            .uri(URI.create(PROJECT_URL + "/rest/v1/rpc/" + functionName))
             .timeout(Duration.ofSeconds(15))
             .header("apikey", PUBLISHABLE_KEY)
             .header("Authorization", "Bearer " + accessToken)
@@ -196,7 +276,7 @@ public final class MarketplaceService {
             if (response.statusCode() == 401 || response.statusCode() == 403 || body.contains("unauthorized")) {
                 throw new IOException("Marketplace auth expired.");
             }
-            throw new IOException("Marketplace function " + functionName + " failed with HTTP " + response.statusCode());
+            throw new IOException("Marketplace RPC " + functionName + " failed with HTTP " + response.statusCode());
         }
         JsonElement root = JsonParser.parseString(response.body());
         return root != null && root.isJsonObject() ? root.getAsJsonObject() : new JsonObject();

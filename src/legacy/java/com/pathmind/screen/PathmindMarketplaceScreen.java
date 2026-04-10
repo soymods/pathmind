@@ -15,6 +15,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
@@ -23,8 +24,11 @@ import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.input.CharInput;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.gui.widget.TextFieldWidget;
@@ -76,6 +80,10 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int SORT_BUTTON_HEIGHT = 18;
     private static final int SORT_OPTION_HEIGHT = 18;
     private static final int MY_PRESETS_BUTTON_WIDTH = 86;
+    private static final int MY_PRESET_FILTER_BUTTON_HEIGHT = 16;
+    private static final int MY_PRESET_FILTER_ALL_WIDTH = 34;
+    private static final int MY_PRESET_FILTER_PUBLIC_WIDTH = 50;
+    private static final int MY_PRESET_FILTER_PRIVATE_WIDTH = 54;
     private static final int ACCOUNT_BUTTON_WIDTH = 88;
     private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
 
@@ -111,6 +119,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private boolean deleteBusy = false;
     private String deletingPresetId = null;
     private boolean myPresetsOnly = false;
+    private MyPresetsFilter myPresetsFilter = MyPresetsFilter.ALL;
     private String avatarTextureUrl = null;
     private Identifier avatarTextureId = null;
     private boolean avatarLoading = false;
@@ -137,6 +146,9 @@ public class PathmindMarketplaceScreen extends Screen {
     private boolean popupMetadataEditing = false;
     private String publishStatusMessage = "";
     private int publishStatusColor = UITheme.TEXT_SECONDARY;
+    private boolean publishVisibilityPublic = true;
+    private final ToggleSwitch publishVisibilityToggle = new ToggleSwitch(true);
+    private final ToggleSwitch presetVisibilityToggle = new ToggleSwitch(true);
 
     public PathmindMarketplaceScreen(Screen parent) {
         this(parent, false, null);
@@ -226,6 +238,7 @@ public class PathmindMarketplaceScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
+        syncVisibilityToggleColors();
         presetPopupAnimation.tick();
         accountPopupAnimation.tick();
         publishPopupAnimation.tick();
@@ -278,8 +291,9 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderGallerySection(DrawContext context, int mouseX, int mouseY, Layout layout) {
-        int bodyY = layout.sectionY + SECTION_HEADER_HEIGHT;
-        int bodyHeight = layout.sectionHeight - SECTION_HEADER_HEIGHT - FOOTER_HEIGHT;
+        int headerHeight = getSectionHeaderHeight();
+        int bodyY = layout.sectionY + headerHeight;
+        int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
         drawGalleryBackdrop(context, layout.bodyX, layout.sectionY, layout.bodyWidth, layout.sectionHeight - FOOTER_HEIGHT);
         int scissorTop = Math.max(layout.sectionY, bodyY - 6);
         context.enableScissor(layout.bodyX, scissorTop, layout.bodyX + layout.bodyWidth, bodyY + bodyHeight);
@@ -338,12 +352,30 @@ public class PathmindMarketplaceScreen extends Screen {
         drawActionButton(context, layout.myPresetsButtonX, layout.myPresetsButtonY, MY_PRESETS_BUTTON_WIDTH, SORT_BUTTON_HEIGHT,
             "My Presets", myPresetsHovered, authSession == null && !myPresetsOnly, myPresetsOnly);
 
+        if (myPresetsOnly) {
+            int filterY = layout.searchFieldY + SORT_BUTTON_HEIGHT + 6;
+            int allX = layout.searchFieldX;
+            int publicX = allX + MY_PRESET_FILTER_ALL_WIDTH + 6;
+            int privateX = publicX + MY_PRESET_FILTER_PUBLIC_WIDTH + 6;
+            drawActionButton(context, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT,
+                "All", isPointInRect(mouseX, mouseY, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT), false,
+                myPresetsFilter == MyPresetsFilter.ALL);
+            drawActionButton(context, publicX, filterY, MY_PRESET_FILTER_PUBLIC_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT,
+                "Public", isPointInRect(mouseX, mouseY, publicX, filterY, MY_PRESET_FILTER_PUBLIC_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT), false,
+                myPresetsFilter == MyPresetsFilter.PUBLIC);
+            drawActionButton(context, privateX, filterY, MY_PRESET_FILTER_PRIVATE_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT,
+                "Private", isPointInRect(mouseX, mouseY, privateX, filterY, MY_PRESET_FILTER_PRIVATE_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT), false,
+                myPresetsFilter == MyPresetsFilter.PRIVATE);
+        }
+
+        int resultRowY = myPresetsOnly ? layout.searchFieldY + SORT_BUTTON_HEIGHT + 6 : layout.resultRowY;
+
         String resultLabel = loading
             ? "Loading..."
             : presets.size() + " result" + (presets.size() == 1 ? "" : "s");
         int resultWidth = this.textRenderer.getWidth(resultLabel);
         int resultX = Math.max(layout.searchFieldX, layout.refreshButtonX - resultWidth - 6);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, layout.resultRowY + 5, UITheme.TEXT_SECONDARY);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, resultRowY + 5, UITheme.TEXT_SECONDARY);
 
         boolean refreshHovered = isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE);
         drawIconButton(context, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE, refreshHovered, loading);
@@ -391,6 +423,9 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         drawAnimatedBookmarkIcon(context, bookmarkX, actionY, preset, saved, false, bookmarkHovered);
         drawAnimatedHeartIcon(context, heartX, actionY, preset, liked, false, heartHovered);
+        if (!preset.isPublished()) {
+            drawPrivateEyeIcon(context, previewX + 6, previewY + 6, UITheme.STATE_WARNING);
+        }
 
         int textX = rect.x + 8;
         String downloadsLine = preset.getDownloadsCount() + " dl";
@@ -648,7 +683,7 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         previewGraphLoading.add(preset.getId());
-        MarketplaceService.fetchPresetGraphData(preset).whenComplete((graphData, throwable) -> {
+        MarketplaceService.fetchPresetGraphData(preset, authSession == null ? null : authSession.getAccessToken()).whenComplete((graphData, throwable) -> {
             if (this.client == null) {
                 return;
             }
@@ -844,6 +879,20 @@ public class PathmindMarketplaceScreen extends Screen {
                 );
             }
         }
+
+        int visibilityY = cursorY + 10;
+        String visibilityLabel = popupMetadataEditing ? "Visibility" : "Visibility: " + (popupPreset.isPublished() ? "Public" : "Private");
+        int visibilityColor = popupMetadataEditing
+            ? UITheme.TEXT_LABEL
+            : (popupPreset.isPublished() ? getAccentColor() : UITheme.STATE_WARNING);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(visibilityLabel), textX, visibilityY,
+            presetPopupAnimation.getAnimatedPopupColor(visibilityColor));
+        if (popupMetadataEditing) {
+            presetVisibilityToggle.setValue(publishVisibilityPublic);
+            presetVisibilityToggle.setPosition(textX + textWidth - presetVisibilityToggle.getWidth(), visibilityY - 2);
+            presetVisibilityToggle.render(context, mouseX, mouseY, presetPopupAnimation.getPopupAlpha());
+        }
+        cursorY = visibilityY + 14;
 
         int descriptionTop = cursorY + 8;
         int descriptionHeight = popupMetadataEditing
@@ -1069,6 +1118,19 @@ public class PathmindMarketplaceScreen extends Screen {
         drawWrappedValue(context, contentX, popupY + 166, contentWidth, tagsHint,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
+        int visibilityLabelY = popupY + 189;
+        context.drawTextWithShadow(this.textRenderer, Text.literal("Visibility"), contentX, visibilityLabelY,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
+        Rect publishToggle = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
+        publishVisibilityToggle.setValue(publishVisibilityPublic);
+        publishVisibilityToggle.setPosition(publishToggle.x, publishToggle.y);
+        publishVisibilityToggle.render(context, mouseX, mouseY, publishPopupAnimation.getPopupAlpha());
+        String visibilityHint = publishVisibilityPublic
+            ? "Visible in the public marketplace."
+            : "Private cloud preset. Only visible in My Presets.";
+        drawWrappedValue(context, contentX + 78, visibilityLabelY + 2, contentWidth - 78, visibilityHint,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
+
         if (!publishStatusMessage.isEmpty()) {
             context.drawTextWithShadow(this.textRenderer,
                 Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, publishStatusMessage, contentWidth)),
@@ -1119,6 +1181,11 @@ public class PathmindMarketplaceScreen extends Screen {
         return fieldY + height;
     }
 
+    private Rect getPublishPopupVisibilityToggleRect(int popupX, int popupY, int popupWidth) {
+        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, popupY + 188,
+            publishVisibilityToggle.getWidth(), publishVisibilityToggle.getHeight());
+    }
+
     private int drawPopupEditableField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, String label, TextFieldWidget field) {
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), x, y,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
@@ -1148,11 +1215,12 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseXRaw, double mouseYRaw, int button) {
-        int mouseX = (int) mouseXRaw;
-        int mouseY = (int) mouseYRaw;
+    public boolean mouseClicked(Click click, boolean inBounds) {
+        int mouseX = (int) click.x();
+        int mouseY = (int) click.y();
+        int button = click.button();
         if (button != 0) {
-            return super.mouseClicked(mouseXRaw, mouseYRaw, button);
+            return super.mouseClicked(click, inBounds);
         }
 
         Layout layout = getLayout();
@@ -1173,19 +1241,24 @@ public class PathmindMarketplaceScreen extends Screen {
             int nameFieldY = popupY + 64;
             int descriptionFieldY = nameFieldY + 39;
             int tagsFieldY = descriptionFieldY + 39;
+            Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
 
             boolean clickedField = false;
             if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
                 focusPublishField(publishNameField);
-                publishNameField.mouseClicked(mouseXRaw, mouseYRaw, button);
+                publishNameField.mouseClicked(click, inBounds);
                 clickedField = true;
             } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX, descriptionFieldY, fieldWidth, 18)) {
                 focusPublishField(publishDescriptionField);
-                publishDescriptionField.mouseClicked(mouseXRaw, mouseYRaw, button);
+                publishDescriptionField.mouseClicked(click, inBounds);
                 clickedField = true;
             } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
                 focusPublishField(publishTagsField);
-                publishTagsField.mouseClicked(mouseXRaw, mouseYRaw, button);
+                publishTagsField.mouseClicked(click, inBounds);
+                clickedField = true;
+            } else if (isPointInRect(mouseX, mouseY, publishVisibilityToggleRect.x, publishVisibilityToggleRect.y, publishVisibilityToggleRect.width, publishVisibilityToggleRect.height)) {
+                publishVisibilityToggle.mouseClicked(mouseX, mouseY);
+                publishVisibilityPublic = publishVisibilityToggle.getValue();
                 clickedField = true;
             } else {
                 focusPublishField(null);
@@ -1266,19 +1339,26 @@ public class PathmindMarketplaceScreen extends Screen {
                 int baseContentY = previewY + previewHeight;
                 int nameFieldY = baseContentY + 23;
                 int tagsFieldY = baseContentY + 93;
-                int descriptionFieldY = baseContentY + 138;
+                int visibilityPanelTop = baseContentY + 120;
+                int descriptionFieldY = baseContentY + 176;
+                presetVisibilityToggle.setValue(publishVisibilityPublic);
+                presetVisibilityToggle.setPosition(fieldX + fieldWidth - presetVisibilityToggle.getWidth(), visibilityPanelTop + 8);
                 boolean clickedField = false;
                 if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
                     focusPublishField(publishNameField);
-                    publishNameField.mouseClicked(mouseXRaw, mouseYRaw, button);
+                    publishNameField.mouseClicked(click, inBounds);
                     clickedField = true;
                 } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
                     focusPublishField(publishTagsField);
-                    publishTagsField.mouseClicked(mouseXRaw, mouseYRaw, button);
+                    publishTagsField.mouseClicked(click, inBounds);
                     clickedField = true;
                 } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX + 8, descriptionFieldY, fieldWidth - 16, 18)) {
                     focusPublishField(publishDescriptionField);
-                    publishDescriptionField.mouseClicked(mouseXRaw, mouseYRaw, button);
+                    publishDescriptionField.mouseClicked(click, inBounds);
+                    clickedField = true;
+                } else if (presetVisibilityToggle.contains(mouseX, mouseY)) {
+                    presetVisibilityToggle.mouseClicked(mouseX, mouseY);
+                    publishVisibilityPublic = presetVisibilityToggle.getValue();
                     clickedField = true;
                 } else {
                     focusPublishField(null);
@@ -1379,7 +1459,7 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         if (searchField != null && isPointInRect(mouseX, mouseY, layout.searchFieldX, layout.searchFieldY, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT)) {
             searchField.setFocused(true);
-            searchField.mouseClicked(mouseXRaw, mouseYRaw, button);
+            searchField.mouseClicked(click, inBounds);
             return true;
         }
         if (searchField != null) {
@@ -1395,12 +1475,36 @@ public class PathmindMarketplaceScreen extends Screen {
                 handleAuthButton();
             } else {
                 myPresetsOnly = !myPresetsOnly;
+                if (!myPresetsOnly) {
+                    myPresetsFilter = MyPresetsFilter.ALL;
+                }
                 refreshListings();
             }
             if (!myPresetsOnly || authSession == null) {
                 applyFilters();
             }
             return true;
+        }
+        if (myPresetsOnly) {
+            int filterY = layout.searchFieldY + SORT_BUTTON_HEIGHT + 6;
+            int allX = layout.searchFieldX;
+            int publicX = allX + MY_PRESET_FILTER_ALL_WIDTH + 6;
+            int privateX = publicX + MY_PRESET_FILTER_PUBLIC_WIDTH + 6;
+            if (isPointInRect(mouseX, mouseY, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
+                myPresetsFilter = MyPresetsFilter.ALL;
+                applyFilters();
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, publicX, filterY, MY_PRESET_FILTER_PUBLIC_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
+                myPresetsFilter = MyPresetsFilter.PUBLIC;
+                applyFilters();
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, privateX, filterY, MY_PRESET_FILTER_PRIVATE_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
+                myPresetsFilter = MyPresetsFilter.PRIVATE;
+                applyFilters();
+                return true;
+            }
         }
         if (!loading && isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE)) {
             refreshListings();
@@ -1458,14 +1562,14 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
 
-        return super.mouseClicked(mouseXRaw, mouseYRaw, button);
+        return super.mouseClicked(click, inBounds);
     }
 
     @Override
-    public boolean mouseDragged(double mouseXRaw, double mouseYRaw, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
         if (popupPreviewDragging && popupPreset != null) {
-            int currentX = (int) mouseXRaw;
-            int currentY = (int) mouseYRaw;
+            int currentX = (int) click.x();
+            int currentY = (int) click.y();
             popupPreviewPanX += currentX - popupPreviewDragLastX;
             popupPreviewPanY += currentY - popupPreviewDragLastY;
             popupPreviewDragLastX = currentX;
@@ -1480,18 +1584,18 @@ public class PathmindMarketplaceScreen extends Screen {
             if (scrollMetrics.maxScroll() <= 0) {
                 return true;
             }
-            int desiredThumbY = (int) mouseYRaw - popupScrollDragOffset;
+            int desiredThumbY = (int) click.y() - popupScrollDragOffset;
             int minThumbY = scrollMetrics.trackTop();
             int maxThumbY = scrollMetrics.trackTop() + Math.max(0, scrollMetrics.viewportHeight() - scrollMetrics.thumbHeight());
             int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
             popupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
             return true;
         }
-        return super.mouseDragged(mouseXRaw, mouseYRaw, button, deltaX, deltaY);
+        return super.mouseDragged(click, deltaX, deltaY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(Click click) {
         if (popupPreviewDragging) {
             popupPreviewDragging = false;
             return true;
@@ -1500,7 +1604,7 @@ public class PathmindMarketplaceScreen extends Screen {
             popupScrollDragging = false;
             return true;
         }
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override
@@ -1568,9 +1672,9 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    public boolean keyPressed(KeyInput input) {
         if (publishPopupOpen || popupMetadataEditing) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
                 if (publishPopupOpen) {
                     closePublishPopup();
                 } else {
@@ -1578,61 +1682,61 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 return true;
             }
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(keyCode, scanCode, modifiers)) {
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(input)) {
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(keyCode, scanCode, modifiers)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(input)) {
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(keyCode, scanCode, modifiers)) {
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(input)) {
                 return true;
             }
-            if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
+            if ((input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
                 startPublishSubmission();
                 return true;
             }
             return true;
         }
         if (sortDropdownOpen) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            if (input.key() == GLFW.GLFW_KEY_ESCAPE || input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) {
                 sortDropdownOpen = false;
                 return true;
             }
         }
         if (searchField != null && searchField.isFocused()) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
                 searchField.setFocused(false);
                 return true;
             }
-            if (searchField.keyPressed(keyCode, scanCode, modifiers)) {
+            if (searchField.keyPressed(input)) {
                 return true;
             }
         }
-        if (keyCode == 256) { // ESC
+        if (input.key() == 256) { // ESC
             close();
             return true;
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(input);
     }
 
     @Override
-    public boolean charTyped(char chr, int modifiers) {
+    public boolean charTyped(CharInput input) {
         if (publishPopupOpen || popupMetadataEditing) {
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(chr, modifiers)) {
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(input)) {
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(chr, modifiers)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(input)) {
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(chr, modifiers)) {
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(input)) {
                 return true;
             }
             return true;
         }
-        if (searchField != null && searchField.isFocused() && searchField.charTyped(chr, modifiers)) {
+        if (searchField != null && searchField.isFocused() && searchField.charTyped(input)) {
             return true;
         }
-        return super.charTyped(chr, modifiers);
+        return super.charTyped(input);
     }
 
     private void drawIconButton(DrawContext context, int x, int y, int width, int height, boolean hovered, boolean disabled) {
@@ -1744,6 +1848,14 @@ public class PathmindMarketplaceScreen extends Screen {
             presetPopupAnimation.getAnimatedPopupColor(getAccentColor()));
     }
 
+    private void drawPrivateEyeIcon(DrawContext context, int x, int y, int color) {
+        context.drawHorizontalLine(x + 2, x + 8, y + 4, color);
+        context.drawHorizontalLine(x + 1, x + 9, y + 5, color);
+        context.drawHorizontalLine(x + 2, x + 8, y + 6, color);
+        context.fill(x + 5, y + 4, x + 6, y + 7, color);
+        context.fill(x + 4, y + 5, x + 7, y + 6, color);
+    }
+
     private int measureWrappedValueHeight(int width, String value, int maxLines) {
         return wrapText(value, width, maxLines).size() * 10 + 2;
     }
@@ -1764,15 +1876,17 @@ public class PathmindMarketplaceScreen extends Screen {
                 height += measureWrappedValueHeight(textWidth, "Tags: " + tagsLine, 2);
             }
         }
+        height += 30 + 18;
+        height += popupMetadataEditing ? 8 : 0;
         height += 30 + 8;
         height += measureWrappedValueHeight(textWidth,
             "Published " + formatTimestamp(popupPreset.getCreatedAt()) + "  •  Updated " + formatTimestamp(popupPreset.getUpdatedAt()),
             2);
-        height += measureWrappedValueHeight(textWidth,
-            authSession == null
-                ? "Sign in with Discord to like presets and count imports."
-                : "Signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")),
-            2);
+        if (authSession == null) {
+            height += measureWrappedValueHeight(textWidth,
+                "Sign in with Discord to like presets and count imports.",
+                2);
+        }
         height += 2;
         height += popupMetadataEditing
             ? 46
@@ -1847,7 +1961,7 @@ public class PathmindMarketplaceScreen extends Screen {
         popupStatusMessage = "Downloading preset...";
         popupStatusColor = UITheme.TEXT_SECONDARY;
 
-        MarketplaceService.downloadPresetToTempFile(popupPreset).whenComplete((path, throwable) -> {
+        MarketplaceService.downloadPresetToTempFile(popupPreset, authSession == null ? null : authSession.getAccessToken()).whenComplete((path, throwable) -> {
             if (this.client == null) {
                 return;
             }
@@ -1974,7 +2088,7 @@ public class PathmindMarketplaceScreen extends Screen {
             popupStatusMessage = isPresetSavedLocally(preset) ? "Already saved locally." : "Saving preset locally...";
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
-        MarketplaceService.downloadPresetToTempFile(preset).whenComplete((path, throwable) -> {
+        MarketplaceService.downloadPresetToTempFile(preset, authSession == null ? null : authSession.getAccessToken()).whenComplete((path, throwable) -> {
             if (this.client == null) {
                 return;
             }
@@ -2175,6 +2289,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (publishTagsField != null) {
             publishTagsField.setText("");
         }
+        publishVisibilityPublic = true;
         focusPublishField(publishNameField);
         publishPopupOpen = true;
         publishPopupAnimation.show();
@@ -2202,6 +2317,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (publishTagsField != null) {
             publishTagsField.setText(String.join(", ", preset.getTags()));
         }
+        publishVisibilityPublic = preset.isPublished();
         focusPublishField(publishNameField);
     }
 
@@ -2385,6 +2501,7 @@ public class PathmindMarketplaceScreen extends Screen {
             : name;
         MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
             localPresetPath,
+            editingPreset == null ? null : editingPreset.getStorageBucket(),
             editingPreset == null ? null : editingPreset.getFilePath(),
             sanitizeSlug(slugSource),
             name,
@@ -2392,7 +2509,8 @@ public class PathmindMarketplaceScreen extends Screen {
             publishDescriptionField == null ? "" : publishDescriptionField.getText().trim(),
             parseTags(publishTagsField == null ? "" : publishTagsField.getText()),
             this.client != null ? this.client.getGameVersion() : "Unknown",
-            getInstalledPathmindVersion()
+            getInstalledPathmindVersion(),
+            publishVisibilityPublic
         );
 
         MarketplaceAuthManager.ensureValidSession().whenComplete((session, throwable) -> {
@@ -2419,7 +2537,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 CompletableFuture<MarketplacePreset> submitFuture = editingPreset == null
                     ? MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
-                    : MarketplaceService.updatePresetMetadata(session.getAccessToken(), editingPreset.getId(), request);
+                    : MarketplaceService.updatePresetMetadata(session.getAccessToken(), editingPreset, request);
                 submitFuture.whenComplete((preset, submitThrowable) -> {
                     if (this.client == null) {
                         return;
@@ -2550,7 +2668,7 @@ public class PathmindMarketplaceScreen extends Screen {
             popupStatusMessage = "Deleting preset...";
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
-        withFreshAuthSession(session -> MarketplaceService.deletePreset(session.getAccessToken(), preset.getId(), preset.getFilePath())
+        withFreshAuthSession(session -> MarketplaceService.deletePreset(session.getAccessToken(), preset.getId(), preset.getStorageBucket(), preset.getFilePath())
             .whenComplete((unused, throwable) -> {
                 if (this.client == null) {
                     return;
@@ -2764,6 +2882,7 @@ public class PathmindMarketplaceScreen extends Screen {
             preset.getPathmindVersion(),
             Math.max(0, preset.getLikesCount() + likesDelta),
             Math.max(0, preset.getDownloadsCount() + downloadsDelta),
+            preset.getStorageBucket(),
             preset.getFilePath(),
             preset.isPublished(),
             preset.getCreatedAt(),
@@ -2785,6 +2904,13 @@ public class PathmindMarketplaceScreen extends Screen {
             default:
                 return UITheme.ACCENT_SKY;
         }
+    }
+
+    private void syncVisibilityToggleColors() {
+        int offColor = 0xFFE0B84A;
+        int onColor = getAccentColor();
+        publishVisibilityToggle.setIndicatorColors(offColor, onColor);
+        presetVisibilityToggle.setIndicatorColors(offColor, onColor);
     }
 
     private String fallback(String value, String fallback) {
@@ -3074,7 +3200,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private PublishPopupLayout getPublishPopupLayout(Layout layout) {
         int width = Math.min(392, this.width - 40);
-        int height = Math.min(248, this.height - 40);
+        int height = Math.min(274, this.height - 40);
         int x = (this.width - width) / 2;
         int y = (this.height - height) / 2;
         int buttonWidth = 88;
@@ -3088,7 +3214,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private Rect getCardRect(Layout layout, int pageOffset, int visibleCount) {
         int columns = getGridColumns(layout);
-        int bodyY = layout.sectionY + SECTION_HEADER_HEIGHT + 2;
+        int bodyY = layout.sectionY + getSectionHeaderHeight() + 2;
         int availableWidth = layout.bodyWidth;
         int cardWidth = Math.min(CARD_MAX_WIDTH, (availableWidth - (columns - 1) * CARD_GAP) / columns);
         int column = pageOffset % columns;
@@ -3110,7 +3236,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private int getGridRows(Layout layout) {
-        int availableHeight = layout.sectionHeight - SECTION_HEADER_HEIGHT - FOOTER_HEIGHT - 8;
+        int availableHeight = layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT - 8;
         return Math.max(1, (availableHeight + CARD_GAP) / (CARD_SIZE + CARD_GAP));
     }
 
@@ -3183,6 +3309,9 @@ public class PathmindMarketplaceScreen extends Screen {
             if (myPresetsOnly && !isOwnPreset(preset)) {
                 continue;
             }
+            if (myPresetsOnly && !myPresetsFilter.matches(preset)) {
+                continue;
+            }
             if (!sortMode.matches(this, preset)) {
                 continue;
             }
@@ -3197,10 +3326,14 @@ public class PathmindMarketplaceScreen extends Screen {
         if (myPresetsOnly && authSession == null) {
             statusMessage = "Sign in to view your presets.";
         } else if (allPresets.isEmpty()) {
-            statusMessage = "No published presets found.";
+            statusMessage = myPresetsOnly ? "No presets in your cloud library yet." : "No published presets found.";
         } else if (presets.isEmpty()) {
             if (myPresetsOnly) {
-                statusMessage = "No published presets match your search.";
+                statusMessage = switch (myPresetsFilter) {
+                    case PUBLIC -> "No public presets match your search.";
+                    case PRIVATE -> "No private presets match your search.";
+                    default -> "No presets match your search.";
+                };
             } else {
                 statusMessage = sortMode == SortMode.SAVED ? "No saved presets match your search." : "No presets match your search.";
             }
@@ -3312,6 +3445,10 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private static boolean isPointInRect(int x, int y, int rectX, int rectY, int width, int height) {
         return x >= rectX && y >= rectY && x < rectX + width && y < rectY + height;
+    }
+
+    private int getSectionHeaderHeight() {
+        return myPresetsOnly ? SECTION_HEADER_HEIGHT + MY_PRESET_FILTER_BUTTON_HEIGHT + 8 : SECTION_HEADER_HEIGHT;
     }
 
     private record Rect(int x, int y, int width, int height) {
@@ -3456,6 +3593,20 @@ public class PathmindMarketplaceScreen extends Screen {
 
         private static String fallbackStatic(String value, String fallback) {
             return value == null || value.isBlank() ? fallback : value;
+        }
+    }
+
+    private enum MyPresetsFilter {
+        ALL,
+        PUBLIC,
+        PRIVATE;
+
+        private boolean matches(MarketplacePreset preset) {
+            return switch (this) {
+                case ALL -> true;
+                case PUBLIC -> preset != null && preset.isPublished();
+                case PRIVATE -> preset != null && !preset.isPublished();
+            };
         }
     }
 }

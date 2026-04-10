@@ -17,6 +17,7 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.control.ToggleSwitch;
+import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
@@ -117,7 +118,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int CREATE_PRESET_POPUP_WIDTH = 320;
     private static final int CREATE_PRESET_POPUP_HEIGHT = 170;
     private static final int PUBLISH_PRESET_POPUP_WIDTH = 380;
-    private static final int PUBLISH_PRESET_POPUP_HEIGHT = 248;
+    private static final int PUBLISH_PRESET_POPUP_HEIGHT = 272;
     private static final int PLAY_BUTTON_SIZE = 18;
     private static final int PLAY_BUTTON_MARGIN = 6;
     private static final int STOP_BUTTON_SIZE = 18;
@@ -249,6 +250,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private int publishPresetStatusColor = UITheme.TEXT_SECONDARY;
     private boolean publishPresetBusy = false;
     private MarketplaceAuthManager.AuthSession publishPresetSession = null;
+    private boolean publishPresetPublic = true;
+    private final ToggleSwitch publishPresetVisibilityToggle = new ToggleSwitch(true);
     private final PopupAnimationHandler renamePresetPopupAnimation = new PopupAnimationHandler();
     private TextFieldWidget renamePresetField;
     private TextFieldWidget inlinePresetRenameField;
@@ -4440,6 +4443,7 @@ public class PathmindVisualEditorScreen extends Screen {
             publishPresetTagsField.setEditable(true);
             publishPresetTagsField.setFocused(false);
         }
+        publishPresetPublic = true;
     }
 
     private void closePublishPresetPopup() {
@@ -4836,6 +4840,13 @@ public class PathmindVisualEditorScreen extends Screen {
             focusPublishPresetField(publishPresetTagsField);
             return true;
         }
+        if (isPointInRect(mouseXi, mouseYi,
+            fieldX + fieldWidth - publishPresetVisibilityToggle.getWidth(), popupY + 158,
+            publishPresetVisibilityToggle.getWidth(), publishPresetVisibilityToggle.getHeight())) {
+            publishPresetVisibilityToggle.mouseClicked(mouseXi, mouseYi);
+            publishPresetPublic = publishPresetVisibilityToggle.getValue();
+            return true;
+        }
         focusPublishPresetField(null);
         return true;
     }
@@ -5024,6 +5035,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void renderPublishPresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, publishPresetPopupAnimation.getPopupAlpha());
+        syncPublishPresetVisibilityToggleColors();
 
         int popupWidth = PUBLISH_PRESET_POPUP_WIDTH;
         int popupHeight = PUBLISH_PRESET_POPUP_HEIGHT;
@@ -5063,15 +5075,22 @@ public class PathmindVisualEditorScreen extends Screen {
         renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetDescriptionField, fieldX, descriptionY, fieldWidth, fieldHeight);
         renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetTagsField, fieldX, tagsY, fieldWidth, fieldHeight);
 
+        int visibilityY = popupY + 158;
+        drawPopupTextWithEllipsis(context, "Visibility", fieldX, visibilityY - 10, fieldWidth,
+            getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
+        renderPublishVisibilityToggle(context, mouseX, mouseY, fieldX, visibilityY, fieldWidth);
+
         String accountLabel = publishPresetBusy ? "Working..." : publishPresetSession == null
             ? "Sign In"
             : TextRenderUtil.trimWithEllipsis(this.textRenderer,
                 fallback(publishPresetSession.getDisplayName(), fallback(publishPresetSession.getEmail(), "Signed In")), 110);
-        drawPopupTextWithEllipsis(context, "Comma-separated tags. New publishes land in Marketplace > Newest.",
-            fieldX, tagsY + fieldHeight + 8, fieldWidth, getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_TERTIARY));
+        drawPopupTextWithEllipsis(context, publishPresetPublic
+                ? "Visible in the public marketplace."
+                : "Private cloud preset. Only visible in My Presets.",
+            fieldX, visibilityY + fieldHeight + 8, fieldWidth, getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_TERTIARY));
 
         if (!publishPresetStatus.isEmpty()) {
-            drawPopupTextWithEllipsis(context, publishPresetStatus, fieldX, popupY + 188, fieldWidth,
+            drawPopupTextWithEllipsis(context, publishPresetStatus, fieldX, popupY + 214, fieldWidth,
                 getPopupAnimatedColor(publishPresetPopupAnimation, publishPresetStatusColor));
         }
 
@@ -5121,6 +5140,21 @@ public class PathmindVisualEditorScreen extends Screen {
             field.setHeight(textFieldHeight);
             field.render(context, mouseX, mouseY, delta);
         }
+    }
+
+    private void renderPublishVisibilityToggle(DrawContext context, int mouseX, int mouseY, int fieldX, int fieldY, int fieldWidth) {
+        int toggleX = fieldX + fieldWidth - publishPresetVisibilityToggle.getWidth();
+        publishPresetVisibilityToggle.setValue(publishPresetPublic);
+        publishPresetVisibilityToggle.setPosition(toggleX, fieldY);
+        publishPresetVisibilityToggle.render(context, mouseX, mouseY, publishPresetPopupAnimation.getPopupAlpha());
+        String label = publishPresetPublic ? "Public" : "Private";
+        int labelColor = publishPresetPublic ? getAccentColor() : UITheme.STATE_WARNING;
+        drawPopupTextWithEllipsis(context, label, fieldX, fieldY + 4, fieldWidth - publishPresetVisibilityToggle.getWidth() - 8,
+            getPopupAnimatedColor(publishPresetPopupAnimation, labelColor));
+    }
+
+    private void syncPublishPresetVisibilityToggleColors() {
+        publishPresetVisibilityToggle.setIndicatorColors(0xFFE0B84A, getAccentColor());
     }
 
     private int getPublishPresetFieldY(int popupY, int fieldIndex) {
@@ -5354,13 +5388,15 @@ public class PathmindVisualEditorScreen extends Screen {
         MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
             presetPath,
             null,
+            null,
             sanitizePublishSlug(desiredName),
             desiredName.trim(),
             fallback(session.getDisplayName(), fallback(session.getEmail(), "Discord user")),
             publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
             parsePublishTags(publishPresetTagsField == null ? "" : publishPresetTagsField.getText()),
             getCurrentMinecraftVersion(),
-            getModVersion()
+            getModVersion(),
+            publishPresetPublic
         );
         MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
             .whenComplete((preset, publishThrowable) -> {
@@ -6912,7 +6948,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getMarketplaceButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
+        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
     }
 
     private int getHomeButtonX() {
@@ -6920,7 +6956,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getPublishButtonX() {
-        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
+        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
     }
 
     private int getClearButtonX() {

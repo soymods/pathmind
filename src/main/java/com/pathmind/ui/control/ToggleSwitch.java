@@ -20,6 +20,12 @@ public class ToggleSwitch {
     private boolean value;
     private final AnimatedValue colorProgress; // For smooth color transition
     private final AnimatedValue hoverProgress; // For hover effect
+    private int offIndicatorColor = UITheme.TOGGLE_OFF_INDICATOR;
+    private int offDimColor = UITheme.TOGGLE_OFF_DIM;
+    private int offBorderColor = UITheme.TOGGLE_OFF_BORDER;
+    private int onIndicatorColor = UITheme.TOGGLE_ON_INDICATOR;
+    private int onDimColor = UITheme.TOGGLE_ON_DIM;
+    private int onBorderColor = UITheme.TOGGLE_ON_BORDER;
 
     private int x, y;
     private boolean wasHovered = false;
@@ -52,6 +58,13 @@ public class ToggleSwitch {
      * Renders the toggle switch as two adjacent red/green rectangular indicators.
      */
     public void render(DrawContext context, int mouseX, int mouseY) {
+        render(context, mouseX, mouseY, 1f);
+    }
+
+    /**
+     * Renders the toggle switch with an overall alpha multiplier, useful for popup fade animations.
+     */
+    public void render(DrawContext context, int mouseX, int mouseY, float alpha) {
         // Update animation states
         colorProgress.tick();
         hoverProgress.tick();
@@ -64,32 +77,60 @@ public class ToggleSwitch {
 
         float colorProg = colorProgress.getValue();
         float hoverProg = hoverProgress.getValue();
+        float clampedAlpha = Math.max(0f, Math.min(1f, alpha));
 
         // Background track
         int trackColor = AnimationHelper.lerpColor(UITheme.TOGGLE_TRACK, UITheme.TOGGLE_TRACK_HOVER, hoverProg);
-        UIStyleHelper.drawBeveledPanel(context, x, y, WIDTH, HEIGHT, trackColor, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            WIDTH,
+            HEIGHT,
+            applyAlpha(trackColor, clampedAlpha),
+            applyAlpha(UITheme.BORDER_DEFAULT, clampedAlpha),
+            applyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
+        );
 
         // Red indicator (left side) - bright when OFF, dim when ON
         int redX = x + 1;
         int redY = y + 1;
         float redAlpha = 1.0f - colorProg; // Full when off, faded when on
-        int redColor = AnimationHelper.lerpColor(UITheme.TOGGLE_OFF_DIM, UITheme.TOGGLE_OFF_INDICATOR, redAlpha);
-        int redBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, UITheme.TOGGLE_OFF_BORDER, redAlpha);
+        int redColor = AnimationHelper.lerpColor(offDimColor, offIndicatorColor, redAlpha);
+        int redBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, offBorderColor, redAlpha);
         if (isHovered && !value) {
             redColor = AnimationHelper.brighten(redColor, 1.15f);
         }
-        UIStyleHelper.drawBeveledPanel(context, redX, redY, INDICATOR_SIZE, INDICATOR_SIZE, redColor, redBorder, UITheme.PANEL_INNER_BORDER);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            redX,
+            redY,
+            INDICATOR_SIZE,
+            INDICATOR_SIZE,
+            applyAlpha(redColor, clampedAlpha),
+            applyAlpha(redBorder, clampedAlpha),
+            applyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
+        );
 
         // Green indicator (right side) - bright when ON, dim when OFF
         int greenX = x + WIDTH - INDICATOR_SIZE - 1;
         int greenY = y + 1;
         float greenAlpha = colorProg; // Full when on, faded when off
-        int greenColor = AnimationHelper.lerpColor(UITheme.TOGGLE_ON_DIM, UITheme.TOGGLE_ON_INDICATOR, greenAlpha);
-        int greenBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, UITheme.TOGGLE_ON_BORDER, greenAlpha);
+        int greenColor = AnimationHelper.lerpColor(onDimColor, onIndicatorColor, greenAlpha);
+        int greenBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, onBorderColor, greenAlpha);
         if (isHovered && value) {
             greenColor = AnimationHelper.brighten(greenColor, 1.15f);
         }
-        UIStyleHelper.drawBeveledPanel(context, greenX, greenY, INDICATOR_SIZE, INDICATOR_SIZE, greenColor, greenBorder, UITheme.PANEL_INNER_BORDER);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            greenX,
+            greenY,
+            INDICATOR_SIZE,
+            INDICATOR_SIZE,
+            applyAlpha(greenColor, clampedAlpha),
+            applyAlpha(greenBorder, clampedAlpha),
+            applyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
+        );
     }
 
     /**
@@ -165,5 +206,23 @@ public class ToggleSwitch {
      */
     public boolean isAnimating() {
         return colorProgress.isAnimating();
+    }
+
+    /**
+     * Overrides the indicator palette while preserving the existing switch style and animation.
+     */
+    public void setIndicatorColors(int offColor, int onColor) {
+        this.offIndicatorColor = offColor;
+        this.offDimColor = AnimationHelper.lerpColor(UITheme.TOGGLE_TRACK, offColor, 0.42f);
+        this.offBorderColor = AnimationHelper.brighten(offColor, 1.1f);
+        this.onIndicatorColor = onColor;
+        this.onDimColor = AnimationHelper.lerpColor(UITheme.TOGGLE_TRACK, onColor, 0.42f);
+        this.onBorderColor = AnimationHelper.brighten(onColor, 1.1f);
+    }
+
+    private static int applyAlpha(int color, float alpha) {
+        int baseAlpha = (color >>> 24) & 0xFF;
+        int resolvedAlpha = Math.max(0, Math.min(255, Math.round(baseAlpha * alpha)));
+        return (resolvedAlpha << 24) | (color & 0x00FFFFFF);
     }
 }

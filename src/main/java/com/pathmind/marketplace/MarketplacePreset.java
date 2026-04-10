@@ -17,6 +17,7 @@ public final class MarketplacePreset {
     private final String pathmindVersion;
     private final int likesCount;
     private final int downloadsCount;
+    private final String storageBucket;
     private final String filePath;
     private final boolean published;
     private final String createdAt;
@@ -33,6 +34,7 @@ public final class MarketplacePreset {
                              String pathmindVersion,
                              int likesCount,
                              int downloadsCount,
+                             String storageBucket,
                              String filePath,
                              boolean published,
                              String createdAt,
@@ -48,6 +50,7 @@ public final class MarketplacePreset {
         this.pathmindVersion = pathmindVersion;
         this.likesCount = likesCount;
         this.downloadsCount = downloadsCount;
+        this.storageBucket = storageBucket;
         this.filePath = filePath;
         this.published = published;
         this.createdAt = createdAt;
@@ -96,6 +99,10 @@ public final class MarketplacePreset {
 
     public int getDownloadsCount() {
         return downloadsCount;
+    }
+
+    public String getStorageBucket() {
+        return storageBucket;
     }
 
     public String getFilePath() {

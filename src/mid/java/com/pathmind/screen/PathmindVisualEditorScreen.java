@@ -6388,11 +6388,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getMarketplaceButtonX() {
-        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
+        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
     }
 
     private int getPublishButtonX() {
-        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
+        return getSidebarVisibleWidth() + BOTTOM_BUTTON_MARGIN;
     }
 
     private int getHomeButtonX() {
@@ -6404,7 +6404,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getImportExportButtonX() {
-        return getPublishButtonX() + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
+        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
     }
 
     private int getSettingsButtonX() {

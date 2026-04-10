@@ -128,6 +128,9 @@ public class NodeGraph {
     private Node parameterDropTarget = null;
     private Integer parameterDropSlotIndex = null;
     private final Map<Node, AnimatedValue> messageScopeAnimations = new WeakHashMap<>();
+    private final Map<Node, AnimatedValue> booleanToggleAnimations = new WeakHashMap<>();
+    private final Map<Node, AnimatedValue> amountToggleAnimations = new WeakHashMap<>();
+    private final Map<Node, AnimatedValue> randomRoundingToggleAnimations = new WeakHashMap<>();
 
     // Context menu state
     private com.pathmind.ui.menu.ContextMenu contextMenu = null;
@@ -3981,10 +3984,15 @@ public class NodeGraph {
             fillColor = UITheme.BACKGROUND_SECONDARY;
             textColor = UITheme.TEXT_TERTIARY;
         } else {
-            borderColor = node.getBooleanToggleValue() ? UITheme.TOGGLE_ON_BORDER : UITheme.TOGGLE_OFF_BORDER;
-            fillColor = node.getBooleanToggleValue() ? UITheme.BOOL_TOGGLE_ON_FILL : UITheme.BOOL_TOGGLE_OFF_FILL;
+            float progress = getNodeToggleProgress(booleanToggleAnimations, node, node.getBooleanToggleValue());
+            int accentColor = getSelectedNodeAccentColor();
+            int onBorder = adjustColorBrightness(accentColor, 1.12f);
+            int onFill = adjustColorBrightness(accentColor, 0.22f);
+            borderColor = AnimationHelper.lerpColor(UITheme.TOGGLE_OFF_BORDER, onBorder, progress);
+            fillColor = AnimationHelper.lerpColor(UITheme.BOOL_TOGGLE_OFF_FILL, onFill, progress);
             if (hovered) {
-                fillColor = adjustColorBrightness(fillColor, 1.15f);
+                fillColor = adjustColorBrightness(fillColor, 1.12f);
+                borderColor = adjustColorBrightness(borderColor, 1.05f);
             }
             textColor = UITheme.TEXT_PRIMARY;
         }
@@ -4135,6 +4143,8 @@ public class NodeGraph {
             return false;
         }
         node.toggleBooleanToggleValue();
+        getNodeToggleAnimation(booleanToggleAnimations, node, node.getBooleanToggleValue())
+            .animateTo(node.getBooleanToggleValue() ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
         notifyNodeParametersChanged(node);
         return true;
     }
@@ -4209,6 +4219,40 @@ public class NodeGraph {
     private AnimatedValue getMessageScopeAnimation(Node node) {
         boolean clientSide = node != null && node.isMessageClientSide();
         return messageScopeAnimations.computeIfAbsent(node, key -> AnimatedValue.forToggle(clientSide));
+    }
+
+    private AnimatedValue getNodeToggleAnimation(Map<Node, AnimatedValue> animations, Node node, boolean enabled) {
+        return animations.computeIfAbsent(node, key -> AnimatedValue.forToggle(enabled));
+    }
+
+    private float getNodeToggleProgress(Map<Node, AnimatedValue> animations, Node node, boolean enabled) {
+        AnimatedValue animation = getNodeToggleAnimation(animations, node, enabled);
+        animation.animateTo(enabled ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
+        animation.tick();
+        return AnimationHelper.easeInOutCubic(animation.getValue());
+    }
+
+    private void renderNodeSliderToggle(DrawContext context, int toggleLeft, int toggleTop, int toggleWidth, int toggleHeight,
+                                        float progress, boolean hovered, boolean isOverSidebar) {
+        int accentColor = getSelectedNodeAccentColor();
+        int onBorder = adjustColorBrightness(accentColor, 1.12f);
+        int onBg = adjustColorBrightness(accentColor, 0.28f);
+        int toggleBorder = isOverSidebar
+            ? UITheme.BORDER_HIGHLIGHT
+            : AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, onBorder, progress);
+        int toggleBg = isOverSidebar
+            ? UITheme.BACKGROUND_SECONDARY
+            : AnimationHelper.lerpColor(UITheme.BACKGROUND_TERTIARY, onBg, progress);
+        if (hovered && !isOverSidebar) {
+            toggleBg = adjustColorBrightness(toggleBg, 1.08f);
+            toggleBorder = adjustColorBrightness(toggleBorder, 1.04f);
+        }
+        context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, toggleBg);
+        DrawContextBridge.drawBorderInLayer(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
+        int knobWidth = toggleHeight - 2;
+        int knobTravel = Math.max(0, toggleWidth - knobWidth - 2);
+        int knobLeft = toggleLeft + 1 + Math.round(knobTravel * progress);
+        context.fill(knobLeft, toggleTop + 1, knobLeft + knobWidth, toggleTop + toggleHeight - 1, UITheme.TOGGLE_KNOB);
     }
 
     private int adjustColorBrightness(int color, float factor) {
@@ -4690,16 +4734,8 @@ public class NodeGraph {
             int toggleTop = node.getAmountToggleTop() - cameraY;
             int toggleWidth = node.getAmountToggleWidth();
             int toggleHeight = node.getAmountToggleHeight();
-            int toggleBorder = amountEnabled ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
-            int toggleBg = amountEnabled ? UITheme.AMOUNT_TOGGLE_ON : UITheme.BACKGROUND_TERTIARY;
-            context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, toggleBg);
-            DrawContextBridge.drawBorderInLayer(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
-            int knobWidth = toggleHeight - 2;
-            int knobLeft = amountEnabled ? toggleLeft + toggleWidth - knobWidth - 1 : toggleLeft + 1;
-            context.fill(knobLeft, toggleTop + 1, knobLeft + knobWidth, toggleTop + toggleHeight - 1, UITheme.TOGGLE_KNOB);
-
-            // Hit area debug outline (optional visual cue)
-            // DrawContextBridge.drawBorderInLayer(context, toggleLeft - 2, toggleTop - 2, toggleWidth + 4, toggleHeight + 4, 0x22000000);
+            renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
+                getNodeToggleProgress(amountToggleAnimations, node, amountEnabled), false, isOverSidebar);
         }
 
         if (node.hasAmountSignToggle()) {
@@ -4785,13 +4821,8 @@ public class NodeGraph {
             int toggleTop = node.getRandomRoundingToggleTop() - cameraY;
             int toggleWidth = node.getRandomRoundingToggleWidth();
             int toggleHeight = node.getRandomRoundingToggleHeight();
-            int toggleBorder = enabled ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
-            int toggleBg = enabled ? UITheme.AMOUNT_TOGGLE_ON : UITheme.BACKGROUND_TERTIARY;
-            context.fill(toggleLeft, toggleTop, toggleLeft + toggleWidth, toggleTop + toggleHeight, toggleBg);
-            DrawContextBridge.drawBorderInLayer(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, toggleBorder);
-            int knobWidth = toggleHeight - 2;
-            int knobLeft = enabled ? toggleLeft + toggleWidth - knobWidth - 1 : toggleLeft + 1;
-            context.fill(knobLeft, toggleTop + 1, knobLeft + knobWidth, toggleTop + toggleHeight - 1, UITheme.TOGGLE_KNOB);
+            renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
+                getNodeToggleProgress(randomRoundingToggleAnimations, node, enabled), false, isOverSidebar);
         }
     }
 
@@ -11066,6 +11097,8 @@ public class NodeGraph {
         }
         boolean newState = !node.isAmountInputEnabled();
         node.setAmountInputEnabled(newState);
+        getNodeToggleAnimation(amountToggleAnimations, node, newState)
+            .animateTo(newState ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
         if (!newState && isEditingAmountField() && amountEditingNode == node) {
             stopAmountEditing(false);
         }
@@ -11080,6 +11113,8 @@ public class NodeGraph {
         }
         boolean newState = !node.isRandomRoundingEnabled();
         node.setRandomRoundingEnabled(newState);
+        getNodeToggleAnimation(randomRoundingToggleAnimations, node, newState)
+            .animateTo(newState ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
         if (!newState && randomRoundingDropdownOpen && randomRoundingDropdownNode == node) {
             closeRandomRoundingDropdown();
         }

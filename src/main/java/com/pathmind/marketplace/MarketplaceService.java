@@ -31,7 +31,8 @@ import java.util.concurrent.CompletableFuture;
 public final class MarketplaceService {
     public static final String PROJECT_URL = "https://gadzentglfdzhylcchmk.supabase.co";
     public static final String PUBLISHABLE_KEY = "sb_publishable_ZJbCFcG5Yh4QM9W9as4jVA_daD3fwnn";
-    public static final String BUCKET_NAME = "graphs";
+    public static final String PUBLIC_BUCKET_NAME = "graphs";
+    public static final String PRIVATE_BUCKET_NAME = "private_graphs";
     private static final String PUBLISH_PRESET_RPC = "publish_marketplace_preset";
     private static final String DELETE_PRESET_RPC = "delete_marketplace_preset";
     private static final String UPDATE_PRESET_METADATA_RPC = "update_marketplace_preset_metadata";
@@ -94,7 +95,7 @@ public final class MarketplaceService {
         return likeCounts.isEmpty() ? presets : applyLikeCounts(presets, likeCounts);
     }
 
-    public static String buildPublicGraphUrl(String filePath) {
+    public static String buildPublicGraphUrl(String bucketName, String filePath) {
         String normalizedPath = filePath == null ? "" : filePath.replace("\\", "/");
         String[] segments = normalizedPath.split("/");
         StringBuilder encodedPath = new StringBuilder();
@@ -107,22 +108,41 @@ public final class MarketplaceService {
             }
             encodedPath.append(URLEncoder.encode(segment, StandardCharsets.UTF_8));
         }
-        return PROJECT_URL + "/storage/v1/object/public/" + BUCKET_NAME + "/" + encodedPath;
+        return PROJECT_URL + "/storage/v1/object/public/" + normalizeBucketName(bucketName) + "/" + encodedPath;
     }
 
     public static CompletableFuture<Path> downloadPresetToTempFile(MarketplacePreset preset) {
+        return downloadPresetToTempFile(preset, null);
+    }
+
+    public static CompletableFuture<Path> downloadPresetToTempFile(MarketplacePreset preset, String accessToken) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String slug = preset != null && preset.getSlug() != null && !preset.getSlug().isBlank()
                     ? preset.getSlug()
                     : "marketplace-preset";
                 Path tempFile = Files.createTempFile("pathmind-" + slug + "-", ".json");
-                HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(buildPublicGraphUrl(preset.getFilePath())))
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .timeout(Duration.ofSeconds(20))
-                    .header("Accept", "application/json")
-                    .GET()
-                    .build();
+                    .header("Accept", "application/json");
+
+                if (preset != null && isPrivateBucket(preset.getStorageBucket())) {
+                    if (accessToken == null || accessToken.isBlank()) {
+                        throw new IOException("Sign in to download private presets.");
+                    }
+                    requestBuilder
+                        .uri(URI.create(PROJECT_URL + "/storage/v1/object/authenticated/"
+                            + normalizeBucketName(preset.getStorageBucket()) + "/" + encodeStoragePath(preset.getFilePath())))
+                        .header("apikey", PUBLISHABLE_KEY)
+                        .header("Authorization", "Bearer " + accessToken);
+                } else {
+                    requestBuilder.uri(URI.create(buildPublicGraphUrl(
+                        preset == null ? PUBLIC_BUCKET_NAME : preset.getStorageBucket(),
+                        preset == null ? "" : preset.getFilePath()
+                    )));
+                }
+
+                HttpRequest request = requestBuilder.GET().build();
 
                 HttpResponse<byte[]> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofByteArray());
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -138,7 +158,11 @@ public final class MarketplaceService {
     }
 
     public static CompletableFuture<NodeGraphData> fetchPresetGraphData(MarketplacePreset preset) {
-        return downloadPresetToTempFile(preset).thenApply(path -> {
+        return fetchPresetGraphData(preset, null);
+    }
+
+    public static CompletableFuture<NodeGraphData> fetchPresetGraphData(MarketplacePreset preset, String accessToken) {
+        return downloadPresetToTempFile(preset, accessToken).thenApply(path -> {
             try {
                 return NodeGraphPersistence.loadNodeGraphFromPath(path);
             } finally {
@@ -228,7 +252,7 @@ public final class MarketplaceService {
         });
     }
 
-    public static CompletableFuture<Void> deletePreset(String accessToken, String presetId, String filePath) {
+    public static CompletableFuture<Void> deletePreset(String accessToken, String presetId, String storageBucket, String filePath) {
         return CompletableFuture.runAsync(() -> {
             try {
                 if (accessToken == null || accessToken.isBlank()) {
@@ -248,7 +272,10 @@ public final class MarketplaceService {
                 String deletedFilePath = deletedPreset.getFilePath() == null || deletedPreset.getFilePath().isBlank()
                     ? filePath
                     : deletedPreset.getFilePath();
-                deleteStorageObject(accessToken, deletedFilePath);
+                String deletedBucket = deletedPreset.getStorageBucket() == null || deletedPreset.getStorageBucket().isBlank()
+                    ? storageBucket
+                    : deletedPreset.getStorageBucket();
+                deleteStorageObject(accessToken, deletedBucket, deletedFilePath);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to delete marketplace preset", e);
             }
@@ -270,15 +297,20 @@ public final class MarketplaceService {
                     throw new IOException("Preset slug is required.");
                 }
 
+                String targetBucket = request.published() ? PUBLIC_BUCKET_NAME : PRIVATE_BUCKET_NAME;
+                String previousBucket = normalizeBucketName(request.existingStorageBucket());
                 String storagePath = buildStoragePath(userId, slug, request.existingFilePath());
                 // Publishing should be retry-safe: if a previous attempt uploaded the graph before failing
                 // later in the flow, a second publish should overwrite the same owned storage object.
-                uploadPresetFile(accessToken, storagePath, request.localPresetPath(), true);
+                uploadPresetFile(accessToken, targetBucket, storagePath, request.localPresetPath(), true);
 
-                JsonObject payload = buildPublishRpcPayload(request, slug, storagePath);
+                JsonObject payload = buildPublishRpcPayload(request, slug, targetBucket, storagePath);
                 MarketplacePreset publishedPreset = postRpcPreset(PUBLISH_PRESET_RPC, payload, accessToken, "Failed to publish marketplace preset");
                 if (publishedPreset == null) {
                     throw new IOException("Marketplace publish returned no preset.");
+                }
+                if (!previousBucket.isBlank() && !previousBucket.equals(targetBucket) && request.existingFilePath() != null && !request.existingFilePath().isBlank()) {
+                    deleteStorageObject(accessToken, previousBucket, request.existingFilePath());
                 }
                 return publishedPreset;
             } catch (Exception e) {
@@ -287,26 +319,36 @@ public final class MarketplaceService {
         });
     }
 
-    public static CompletableFuture<MarketplacePreset> updatePresetMetadata(String accessToken, String presetId, PublishRequest request) {
+    public static CompletableFuture<MarketplacePreset> updatePresetMetadata(String accessToken, MarketplacePreset preset, PublishRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 if (accessToken == null || accessToken.isBlank()) {
                     throw new IOException("Marketplace auth token missing.");
                 }
-                if (presetId == null || presetId.isBlank()) {
+                if (preset == null || preset.getId() == null || preset.getId().isBlank()) {
                     throw new IOException("Preset id is missing.");
                 }
                 if (request == null) {
                     throw new IOException("Preset metadata is missing.");
                 }
 
+                String targetBucket = request.published() ? PUBLIC_BUCKET_NAME : PRIVATE_BUCKET_NAME;
+                String currentBucket = normalizeBucketName(preset.getStorageBucket());
+                String targetPath = preset.getFilePath();
+                if (!currentBucket.equals(targetBucket)) {
+                    moveStorageObject(accessToken, currentBucket, targetBucket, targetPath);
+                }
+
                 JsonObject payload = new JsonObject();
-                payload.addProperty("target_preset_id", presetId);
+                payload.addProperty("target_preset_id", preset.getId());
                 payload.addProperty("preset_name", blankToEmpty(request.name()));
                 payload.addProperty("preset_description", blankToEmpty(request.description()));
                 payload.add("preset_tags", toJsonArray(request.tags()));
                 payload.addProperty("preset_game_version", blankToEmpty(request.gameVersion()));
                 payload.addProperty("preset_pathmind_version", blankToEmpty(request.pathmindVersion()));
+                payload.addProperty("preset_published", request.published());
+                payload.addProperty("preset_storage_bucket", targetBucket);
+                payload.addProperty("preset_file_path", blankToEmpty(targetPath));
                 MarketplacePreset updatedPreset = postRpcPreset(
                     UPDATE_PRESET_METADATA_RPC,
                     payload,
@@ -315,6 +357,9 @@ public final class MarketplaceService {
                 );
                 if (updatedPreset == null) {
                     throw new IOException("Marketplace metadata update returned no preset.");
+                }
+                if (!currentBucket.equals(targetBucket)) {
+                    deleteStorageObject(accessToken, currentBucket, targetPath);
                 }
                 return updatedPreset;
             } catch (Exception e) {
@@ -326,7 +371,7 @@ public final class MarketplaceService {
     private static String buildPublishedListingsUrl() {
         return PROJECT_URL
             + "/rest/v1/marketplace_presets"
-            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,file_path,published,created_at,updated_at"
+            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at"
             + "&published=eq.true"
             + "&order=created_at.desc";
     }
@@ -334,7 +379,7 @@ public final class MarketplaceService {
     private static String buildOwnedListingsUrl(String userId) {
         return PROJECT_URL
             + "/rest/v1/marketplace_presets"
-            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,file_path,published,created_at,updated_at"
+            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at"
             + "&author_user_id=eq." + URLEncoder.encode(userId, StandardCharsets.UTF_8)
             + "&order=updated_at.desc";
     }
@@ -417,7 +462,7 @@ public final class MarketplaceService {
         return HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    private static JsonObject buildPublishRpcPayload(PublishRequest request, String slug, String storagePath) {
+    private static JsonObject buildPublishRpcPayload(PublishRequest request, String slug, String storageBucket, String storagePath) {
         JsonObject payload = new JsonObject();
         payload.addProperty("preset_slug", slug);
         payload.addProperty("preset_name", blankToEmpty(request.name()));
@@ -426,7 +471,9 @@ public final class MarketplaceService {
         payload.add("preset_tags", toJsonArray(request.tags()));
         payload.addProperty("preset_game_version", blankToEmpty(request.gameVersion()));
         payload.addProperty("preset_pathmind_version", blankToEmpty(request.pathmindVersion()));
+        payload.addProperty("preset_storage_bucket", blankToEmpty(storageBucket));
         payload.addProperty("preset_file_path", blankToEmpty(storagePath));
+        payload.addProperty("preset_published", request.published());
         return payload;
     }
 
@@ -439,6 +486,7 @@ public final class MarketplaceService {
         payload.add("tags", toJsonArray(request.tags()));
         payload.addProperty("game_version", blankToEmpty(request.gameVersion()));
         payload.addProperty("pathmind_version", blankToEmpty(request.pathmindVersion()));
+        payload.addProperty("storage_bucket", request.published() ? PUBLIC_BUCKET_NAME : PRIVATE_BUCKET_NAME);
         payload.addProperty("file_path", blankToEmpty(storagePath));
         payload.addProperty("published", true);
         if (authorUserId != null && !authorUserId.isBlank()) {
@@ -460,10 +508,10 @@ public final class MarketplaceService {
         return array;
     }
 
-    private static void uploadPresetFile(String accessToken, String storagePath, Path localPresetPath, boolean upsert)
+    private static void uploadPresetFile(String accessToken, String bucketName, String storagePath, Path localPresetPath, boolean upsert)
         throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(PROJECT_URL + "/storage/v1/object/" + BUCKET_NAME + "/" + encodeStoragePath(storagePath)))
+            .uri(URI.create(PROJECT_URL + "/storage/v1/object/" + normalizeBucketName(bucketName) + "/" + encodeStoragePath(storagePath)))
             .timeout(Duration.ofSeconds(20))
             .header("apikey", PUBLISHABLE_KEY)
             .header("Authorization", "Bearer " + accessToken)
@@ -478,13 +526,13 @@ public final class MarketplaceService {
         }
     }
 
-    private static void deleteStorageObject(String accessToken, String storagePath) {
+    private static void deleteStorageObject(String accessToken, String bucketName, String storagePath) {
         if (storagePath == null || storagePath.isBlank()) {
             return;
         }
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(PROJECT_URL + "/storage/v1/object/" + BUCKET_NAME + "/" + encodeStoragePath(storagePath)))
+                .uri(URI.create(PROJECT_URL + "/storage/v1/object/" + normalizeBucketName(bucketName) + "/" + encodeStoragePath(storagePath)))
                 .timeout(Duration.ofSeconds(20))
                 .header("apikey", PUBLISHABLE_KEY)
                 .header("Authorization", "Bearer " + accessToken)
@@ -502,6 +550,43 @@ public final class MarketplaceService {
         } catch (Exception ignored) {
             // Listing deletion is the primary user-facing operation; storage cleanup is best-effort.
         }
+    }
+
+    private static void moveStorageObject(String accessToken, String sourceBucket, String targetBucket, String storagePath)
+        throws IOException, InterruptedException {
+        String normalizedSource = normalizeBucketName(sourceBucket);
+        String normalizedTarget = normalizeBucketName(targetBucket);
+        if (storagePath == null || storagePath.isBlank() || normalizedSource.equals(normalizedTarget)) {
+            return;
+        }
+
+        byte[] bytes = downloadStorageObject(accessToken, normalizedSource, storagePath);
+        String suffix = storagePath.endsWith(".json") ? ".json" : ".tmp";
+        Path tempFile = Files.createTempFile("pathmind-marketplace-move-", suffix);
+        try {
+            Files.write(tempFile, bytes);
+            uploadPresetFile(accessToken, normalizedTarget, storagePath, tempFile, true);
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+    private static byte[] downloadStorageObject(String accessToken, String bucketName, String storagePath)
+        throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(PROJECT_URL + "/storage/v1/object/authenticated/" + normalizeBucketName(bucketName) + "/" + encodeStoragePath(storagePath)))
+            .timeout(Duration.ofSeconds(20))
+            .header("apikey", PUBLISHABLE_KEY)
+            .header("Authorization", "Bearer " + accessToken)
+            .header("Accept", "application/json")
+            .GET()
+            .build();
+
+        HttpResponse<byte[]> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Failed to download preset graph (HTTP " + response.statusCode() + ")");
+        }
+        return response.body();
     }
 
     private static IOException buildHttpException(String message, HttpResponse<String> response) {
@@ -630,6 +715,14 @@ public final class MarketplaceService {
         return normalized;
     }
 
+    private static String normalizeBucketName(String bucketName) {
+        return bucketName == null || bucketName.isBlank() ? PUBLIC_BUCKET_NAME : bucketName.trim();
+    }
+
+    private static boolean isPrivateBucket(String bucketName) {
+        return PRIVATE_BUCKET_NAME.equalsIgnoreCase(normalizeBucketName(bucketName));
+    }
+
     private static String blankToEmpty(String value) {
         return value == null ? "" : value.trim();
     }
@@ -690,6 +783,7 @@ public final class MarketplaceService {
             getNullableString(row, "pathmind_version"),
             getInt(row, "likes_count"),
             getInt(row, "downloads_count"),
+            getNullableString(row, "storage_bucket"),
             getString(row, "file_path"),
             getBoolean(row, "published"),
             getNullableString(row, "created_at"),
@@ -713,6 +807,7 @@ public final class MarketplaceService {
             preset.getPathmindVersion(),
             Math.max(0, likesCount),
             preset.getDownloadsCount(),
+            preset.getStorageBucket(),
             preset.getFilePath(),
             preset.isPublished(),
             preset.getCreatedAt(),
@@ -762,6 +857,7 @@ public final class MarketplaceService {
 
     public record PublishRequest(
         Path localPresetPath,
+        String existingStorageBucket,
         String existingFilePath,
         String slug,
         String name,
@@ -769,7 +865,8 @@ public final class MarketplaceService {
         String description,
         List<String> tags,
         String gameVersion,
-        String pathmindVersion
+        String pathmindVersion,
+        boolean published
     ) {
     }
 }

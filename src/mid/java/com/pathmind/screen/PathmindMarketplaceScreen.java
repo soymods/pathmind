@@ -17,6 +17,7 @@ import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
@@ -240,6 +241,11 @@ public class PathmindMarketplaceScreen extends Screen {
         renderTopBar(context, mouseX, mouseY, layout);
         renderGallerySection(context, mouseX, mouseY, layout);
         renderSortDropdown(context, mouseX, mouseY, layout);
+        if (popupPreset != null || presetPopupAnimation.isVisible()
+            || accountPopupOpen || accountPopupAnimation.isVisible()
+            || publishPopupOpen || publishPopupAnimation.isVisible()) {
+            DrawContextBridge.startNewRootLayer(context);
+        }
         if (popupPreset != null || presetPopupAnimation.isVisible()) {
             renderPresetPopup(context, mouseX, mouseY, layout);
         }

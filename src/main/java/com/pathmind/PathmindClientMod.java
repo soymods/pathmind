@@ -4,6 +4,7 @@ import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PathmindNavigator;
+import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
@@ -125,6 +126,7 @@ public class PathmindClientMod implements ClientModInitializer {
         LOGGER.info("Initializing Pathmind client mod");
 
         PresetManager.initialize();
+        MarketplaceAuthManager.initialize();
         activeNodeOverlay = new ActiveNodeOverlay();
         navigatorDebugOverlay = new NavigatorDebugOverlay();
         nodeErrorNotificationOverlay = NodeErrorNotificationOverlay.getInstance();

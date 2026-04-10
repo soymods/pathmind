@@ -14,9 +14,12 @@ public final class MarketplacePreset {
     private final List<String> tags;
     private final String gameVersion;
     private final String pathmindVersion;
+    private final int likesCount;
+    private final int downloadsCount;
     private final String filePath;
     private final boolean published;
     private final String createdAt;
+    private final String updatedAt;
 
     public MarketplacePreset(String id,
                              String slug,
@@ -26,9 +29,12 @@ public final class MarketplacePreset {
                              List<String> tags,
                              String gameVersion,
                              String pathmindVersion,
+                             int likesCount,
+                             int downloadsCount,
                              String filePath,
                              boolean published,
-                             String createdAt) {
+                             String createdAt,
+                             String updatedAt) {
         this.id = id;
         this.slug = slug;
         this.name = name;
@@ -37,9 +43,12 @@ public final class MarketplacePreset {
         this.tags = tags == null ? List.of() : List.copyOf(tags);
         this.gameVersion = gameVersion;
         this.pathmindVersion = pathmindVersion;
+        this.likesCount = likesCount;
+        this.downloadsCount = downloadsCount;
         this.filePath = filePath;
         this.published = published;
         this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
     }
 
     public String getId() {
@@ -74,6 +83,14 @@ public final class MarketplacePreset {
         return pathmindVersion;
     }
 
+    public int getLikesCount() {
+        return likesCount;
+    }
+
+    public int getDownloadsCount() {
+        return downloadsCount;
+    }
+
     public String getFilePath() {
         return filePath;
     }
@@ -84,5 +101,9 @@ public final class MarketplacePreset {
 
     public String getCreatedAt() {
         return createdAt;
+    }
+
+    public String getUpdatedAt() {
+        return updatedAt;
     }
 }

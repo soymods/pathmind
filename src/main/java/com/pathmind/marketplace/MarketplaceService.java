@@ -17,6 +17,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -100,12 +102,104 @@ public final class MarketplaceService {
         });
     }
 
+    public static CompletableFuture<Set<String>> fetchLikedPresetIds(String accessToken, String userId) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (accessToken == null || accessToken.isBlank() || userId == null || userId.isBlank()) {
+                return Set.of();
+            }
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(PROJECT_URL
+                        + "/rest/v1/preset_likes?select=preset_id&user_id=eq."
+                        + URLEncoder.encode(userId, StandardCharsets.UTF_8)))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("apikey", PUBLISHABLE_KEY)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+
+                HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new IOException("Liked preset request failed with HTTP " + response.statusCode());
+                }
+
+                JsonElement root = JsonParser.parseString(response.body());
+                if (!root.isJsonArray()) {
+                    return Set.of();
+                }
+                Set<String> likedPresetIds = new java.util.HashSet<>();
+                for (JsonElement element : root.getAsJsonArray()) {
+                    if (!element.isJsonObject()) {
+                        continue;
+                    }
+                    String value = getNullableString(element.getAsJsonObject(), "preset_id");
+                    if (value != null && !value.isBlank()) {
+                        likedPresetIds.add(value);
+                    }
+                }
+                return likedPresetIds;
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to fetch liked marketplace presets", e);
+            }
+        });
+    }
+
+    public static CompletableFuture<Boolean> toggleLike(String accessToken, String presetId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                JsonObject payload = new JsonObject();
+                payload.addProperty("preset_id", presetId);
+                JsonObject response = postFunctionJson("toggle-like", payload, accessToken);
+                return response.has("liked") && !response.get("liked").isJsonNull() && response.get("liked").getAsBoolean();
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to toggle marketplace like", e);
+            }
+        });
+    }
+
+    public static CompletableFuture<Void> incrementDownload(String accessToken, String presetId) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                JsonObject payload = new JsonObject();
+                payload.addProperty("preset_id", presetId);
+                postFunctionJson("increment-download", payload, accessToken);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to increment marketplace download count", e);
+            }
+        });
+    }
+
     private static String buildListingsUrl() {
         return PROJECT_URL
             + "/rest/v1/marketplace_presets"
-            + "?select=id,slug,name,author_name,description,tags,game_version,pathmind_version,file_path,published,created_at"
+            + "?select=id,slug,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,file_path,published,created_at,updated_at"
             + "&published=eq.true"
             + "&order=created_at.desc";
+    }
+
+    private static JsonObject postFunctionJson(String functionName, JsonObject payload, String accessToken)
+        throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(PROJECT_URL + "/functions/v1/" + functionName))
+            .timeout(Duration.ofSeconds(15))
+            .header("apikey", PUBLISHABLE_KEY)
+            .header("Authorization", "Bearer " + accessToken)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+            .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String body = response.body() == null ? "" : response.body().toLowerCase(Locale.ROOT);
+            if (response.statusCode() == 401 || response.statusCode() == 403 || body.contains("unauthorized")) {
+                throw new IOException("Marketplace auth expired.");
+            }
+            throw new IOException("Marketplace function " + functionName + " failed with HTTP " + response.statusCode());
+        }
+        JsonElement root = JsonParser.parseString(response.body());
+        return root != null && root.isJsonObject() ? root.getAsJsonObject() : new JsonObject();
     }
 
     private static List<MarketplacePreset> parsePresets(String json) {
@@ -130,9 +224,12 @@ public final class MarketplaceService {
                 getStringArray(row, "tags"),
                 getNullableString(row, "game_version"),
                 getNullableString(row, "pathmind_version"),
+                getInt(row, "likes_count"),
+                getInt(row, "downloads_count"),
                 getString(row, "file_path"),
                 getBoolean(row, "published"),
-                getNullableString(row, "created_at")
+                getNullableString(row, "created_at"),
+                getNullableString(row, "updated_at")
             ));
         }
         return presets;
@@ -154,6 +251,11 @@ public final class MarketplaceService {
     private static boolean getBoolean(JsonObject object, String key) {
         JsonElement element = object.get(key);
         return element != null && !element.isJsonNull() && element.getAsBoolean();
+    }
+
+    private static int getInt(JsonObject object, String key) {
+        JsonElement element = object.get(key);
+        return element != null && !element.isJsonNull() ? element.getAsInt() : 0;
     }
 
     private static List<String> getStringArray(JsonObject object, String key) {

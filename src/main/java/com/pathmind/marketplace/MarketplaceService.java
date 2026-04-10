@@ -63,6 +63,36 @@ public final class MarketplaceService {
         });
     }
 
+    public static CompletableFuture<MarketplacePreset> fetchPresetById(String accessToken, String presetId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (accessToken == null || accessToken.isBlank() || presetId == null || presetId.isBlank()) {
+                    return null;
+                }
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(PROJECT_URL
+                        + "/rest/v1/marketplace_presets?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at&id=eq."
+                        + URLEncoder.encode(presetId, StandardCharsets.UTF_8)
+                        + "&limit=1"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("apikey", PUBLISHABLE_KEY)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+
+                HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new IOException("Preset lookup failed with HTTP " + response.statusCode());
+                }
+                List<MarketplacePreset> presets = parsePresets(response.body());
+                return presets.isEmpty() ? null : presets.get(0);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to fetch marketplace preset", e);
+            }
+        });
+    }
+
     private static CompletableFuture<List<MarketplacePreset>> fetchPresets(String url, boolean hydrateLikeCounts) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -335,7 +365,10 @@ public final class MarketplaceService {
                 String targetBucket = request.published() ? PUBLIC_BUCKET_NAME : PRIVATE_BUCKET_NAME;
                 String currentBucket = normalizeBucketName(preset.getStorageBucket());
                 String targetPath = preset.getFilePath();
-                if (!currentBucket.equals(targetBucket)) {
+                boolean hasLocalPresetFile = request.localPresetPath() != null && Files.exists(request.localPresetPath());
+                if (hasLocalPresetFile) {
+                    uploadPresetFile(accessToken, targetBucket, targetPath, request.localPresetPath(), true);
+                } else if (!currentBucket.equals(targetBucket)) {
                     moveStorageObject(accessToken, currentBucket, targetBucket, targetPath);
                 }
 

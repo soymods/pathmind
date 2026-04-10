@@ -8,6 +8,7 @@ import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
+import com.pathmind.marketplace.MarketplacePreset;
 import com.pathmind.marketplace.MarketplaceRateLimitManager;
 import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
@@ -71,6 +72,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The main visual editor screen for Pathmind.
@@ -250,6 +252,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int publishPresetStatusColor = UITheme.TEXT_SECONDARY;
     private boolean publishPresetBusy = false;
     private MarketplaceAuthManager.AuthSession publishPresetSession = null;
+    private MarketplacePreset publishPresetEditingPreset = null;
     private boolean publishPresetPublic = true;
     private final ToggleSwitch publishPresetVisibilityToggle = new ToggleSwitch(true);
     private final PopupAnimationHandler renamePresetPopupAnimation = new PopupAnimationHandler();
@@ -4423,7 +4426,54 @@ public class PathmindVisualEditorScreen extends Screen {
         closeCreatePresetPopup();
         closeRenamePresetPopup();
         closeSettingsPopup();
+        nodeGraph.save();
+        PresetManager.setActivePreset(activePresetName);
         publishPresetSession = MarketplaceAuthManager.getCachedSession().orElse(null);
+        Optional<String> linkedPresetId = PresetManager.getMarketplaceLinkedPresetId(activePresetName);
+        if (publishPresetSession != null && linkedPresetId.isPresent()) {
+            publishPresetBusy = true;
+            setPublishPresetStatus("Opening published preset...", UITheme.TEXT_SECONDARY);
+            MarketplaceAuthManager.ensureValidSession()
+                .whenComplete((session, sessionThrowable) -> {
+                    if (this.client == null) {
+                        return;
+                    }
+                    this.client.execute(() -> {
+                        if (sessionThrowable != null || session == null) {
+                            publishPresetBusy = false;
+                            publishPresetSession = null;
+                            setPublishPresetStatus("Session expired. Sign in again.", UITheme.STATE_WARNING);
+                            openRawPublishPresetPopup();
+                            return;
+                        }
+                        publishPresetSession = session;
+                        MarketplaceService.fetchPresetById(session.getAccessToken(), linkedPresetId.get())
+                            .whenComplete((preset, throwable) -> {
+                                if (this.client == null) {
+                                    return;
+                                }
+                                this.client.execute(() -> {
+                                    publishPresetBusy = false;
+                                    if (throwable == null && preset != null) {
+                                        clearPublishPresetStatus();
+                                        if (this.client != null) {
+                                            this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, preset));
+                                        }
+                                        return;
+                                    }
+                                    setPublishPresetStatus("Linked preset not found. Opening publish form.", UITheme.STATE_WARNING);
+                                    openRawPublishPresetPopup();
+                                });
+                            });
+                    });
+                });
+            return;
+        }
+        openRawPublishPresetPopup();
+    }
+
+    private void openRawPublishPresetPopup() {
+        publishPresetEditingPreset = null;
         publishPresetPopupAnimation.show();
         if (publishPresetNameField != null) {
             publishPresetNameField.setText(activePresetName);
@@ -4446,9 +4496,38 @@ public class PathmindVisualEditorScreen extends Screen {
         publishPresetPublic = true;
     }
 
+    void reopenPublishPresetPopup(String presetName) {
+        nodeGraph.save();
+        PresetManager.setActivePreset(activePresetName);
+        clearPublishPresetStatus();
+        publishPresetSession = MarketplaceAuthManager.getCachedSession().orElse(null);
+        publishPresetEditingPreset = null;
+        publishPresetPopupAnimation.show();
+        if (publishPresetNameField != null) {
+            publishPresetNameField.setText(fallback(presetName, activePresetName));
+            publishPresetNameField.setVisible(true);
+            publishPresetNameField.setEditable(true);
+            publishPresetNameField.setFocused(true);
+        }
+        if (publishPresetDescriptionField != null) {
+            publishPresetDescriptionField.setText("");
+            publishPresetDescriptionField.setVisible(true);
+            publishPresetDescriptionField.setEditable(true);
+            publishPresetDescriptionField.setFocused(false);
+        }
+        if (publishPresetTagsField != null) {
+            publishPresetTagsField.setText("");
+            publishPresetTagsField.setVisible(true);
+            publishPresetTagsField.setEditable(true);
+            publishPresetTagsField.setFocused(false);
+        }
+        publishPresetPublic = true;
+    }
+
     private void closePublishPresetPopup() {
         publishPresetPopupAnimation.hide();
         publishPresetBusy = false;
+        publishPresetEditingPreset = null;
         clearPublishPresetStatus();
         if (publishPresetNameField != null) {
             publishPresetNameField.setFocused(false);
@@ -5051,7 +5130,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
-            Text.literal("Publish Preset"),
+            Text.literal(publishPresetEditingPreset == null ? "Publish Preset" : "Update Uploaded Preset"),
             popupX + scaledWidth / 2,
             popupY + 14,
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_PRIMARY)
@@ -5118,7 +5197,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
         }
         drawPopupButton(context, publishX, buttonY, buttonWidth, buttonHeight, publishHovered,
-            Text.literal(publishPresetBusy ? "Publishing..." : "Publish"), PopupButtonStyle.PRIMARY, publishPresetPopupAnimation);
+            Text.literal(publishPresetBusy ? "Working..." : (publishPresetEditingPreset == null ? "Publish" : "Update")), PopupButtonStyle.PRIMARY, publishPresetPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
@@ -5372,39 +5451,46 @@ public class PathmindVisualEditorScreen extends Screen {
 
         publishPresetBusy = true;
         setPublishPresetStatus("Publishing preset...", UITheme.TEXT_SECONDARY);
-        MarketplaceAuthManager.AuthSession session = publishPresetSession;
-        if (session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
-            publishPresetBusy = false;
-            publishPresetSession = null;
-            setPublishPresetStatus("Sign in before publishing.", UITheme.STATE_WARNING);
-            return;
-        }
-        MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumePublish(session.getUserId());
-        if (!limitCheck.permitted()) {
-            publishPresetBusy = false;
-            setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
-            return;
-        }
-        MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
-            presetPath,
-            null,
-            null,
-            sanitizePublishSlug(desiredName),
-            desiredName.trim(),
-            fallback(session.getDisplayName(), fallback(session.getEmail(), "Discord user")),
-            publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
-            parsePublishTags(publishPresetTagsField == null ? "" : publishPresetTagsField.getText()),
-            getCurrentMinecraftVersion(),
-            getModVersion(),
-            publishPresetPublic
-        );
-        MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
-            .whenComplete((preset, publishThrowable) -> {
-                if (this.client == null) {
+        MarketplaceAuthManager.ensureValidSession().whenComplete((session, sessionThrowable) -> {
+            if (this.client == null) {
+                return;
+            }
+            this.client.execute(() -> {
+                if (sessionThrowable != null || session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
+                    publishPresetBusy = false;
+                    publishPresetSession = null;
+                    setPublishPresetStatus("Session expired. Sign in again.", UITheme.STATE_WARNING);
                     return;
                 }
-                this.client.execute(() -> finishPublishPreset(publishThrowable));
+                publishPresetSession = session;
+                MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumePublish(session.getUserId());
+                if (!limitCheck.permitted()) {
+                    publishPresetBusy = false;
+                    setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
+                    return;
+                }
+                MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
+                    presetPath,
+                    null,
+                    null,
+                    sanitizePublishSlug(desiredName),
+                    desiredName.trim(),
+                    fallback(session.getDisplayName(), fallback(session.getEmail(), "Discord user")),
+                    publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
+                    parsePublishTags(publishPresetTagsField == null ? "" : publishPresetTagsField.getText()),
+                    getCurrentMinecraftVersion(),
+                    getModVersion(),
+                    publishPresetPublic
+                );
+                MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
+                    .whenComplete((preset, publishThrowable) -> {
+                        if (this.client == null) {
+                            return;
+                        }
+                        this.client.execute(() -> finishPublishPreset(preset, publishThrowable));
+                    });
             });
+        });
     }
 
     private void startPublishPresetSignIn() {
@@ -5430,7 +5516,7 @@ public class PathmindVisualEditorScreen extends Screen {
         });
     }
 
-    private void finishPublishPreset(Throwable throwable) {
+    private void finishPublishPreset(MarketplacePreset preset, Throwable throwable) {
         publishPresetBusy = false;
         if (throwable != null) {
             setPublishPresetStatus(buildPublishFailureMessage(throwable), UITheme.STATE_ERROR);
@@ -5438,11 +5524,14 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         closePublishPresetPopup();
-        if (this.client != null) {
-            if (this.client.player != null) {
-                this.client.player.sendMessage(Text.literal("Preset published. Opening Marketplace > Newest."), true);
-            }
-            this.client.setScreen(new PathmindMarketplaceScreen(this));
+        if (preset != null) {
+            PresetManager.setMarketplaceLinkedPreset(activePresetName, preset.getId());
+        }
+        if (this.client != null && this.client.player != null) {
+            this.client.player.sendMessage(Text.literal("Preset published."), true);
+        }
+        if (this.client != null && preset != null) {
+            this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, preset));
         }
     }
 

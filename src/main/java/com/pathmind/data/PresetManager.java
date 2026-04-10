@@ -8,11 +8,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -26,6 +29,7 @@ public final class PresetManager {
     private static final String PRESETS_DIRECTORY_NAME = "presets";
     private static final String ACTIVE_PRESET_FILE_NAME = "active_preset.txt";
     private static final String MARKETPLACE_SAVED_PRESETS_FILE_NAME = "marketplace_saved_presets.txt";
+    private static final String MARKETPLACE_LINKS_FILE_NAME = "marketplace_preset_links.txt";
     private static final String DEFAULT_PRESET_NAME = "Default";
     private static final String IMPORTED_PRESET_FALLBACK_NAME = "Imported Workspace";
 
@@ -220,6 +224,7 @@ public final class PresetManager {
 
         try {
             Files.delete(presetPath);
+            clearMarketplaceLinkedPreset(sanitized);
             return true;
         } catch (IOException e) {
             System.err.println("Failed to delete preset: " + e.getMessage());
@@ -270,6 +275,93 @@ public final class PresetManager {
         }
     }
 
+    public static Optional<String> getMarketplaceLinkedPresetId(String presetName) {
+        return getMarketplaceLinkRecord(presetName).map(MarketplaceLinkRecord::presetId);
+    }
+
+    public static Optional<String> getMarketplaceLinkedPresetName(String presetId) {
+        String normalizedId = presetId == null ? "" : presetId.trim();
+        if (normalizedId.isEmpty()) {
+            return Optional.empty();
+        }
+        return readMarketplaceLinkRecords().values().stream()
+            .filter(record -> normalizedId.equalsIgnoreCase(record.presetId()))
+            .map(MarketplaceLinkRecord::presetName)
+            .findFirst();
+    }
+
+    public static void setMarketplaceLinkedPreset(String presetName, String presetId) {
+        setMarketplaceLinkedPreset(presetName, presetId, computePresetContentHash(presetName).orElse(""));
+    }
+
+    public static void setMarketplaceLinkedPreset(String presetName, String presetId, String syncedHash) {
+        String sanitizedName = sanitizePresetName(presetName);
+        String normalizedId = presetId == null ? "" : presetId.trim();
+        if (sanitizedName.isEmpty() || normalizedId.isEmpty()) {
+            return;
+        }
+        Map<String, MarketplaceLinkRecord> records = new LinkedHashMap<>(readMarketplaceLinkRecords());
+        records.entrySet().removeIf(entry -> normalizedId.equalsIgnoreCase(entry.getValue().presetId()) || sanitizedName.equalsIgnoreCase(entry.getKey()));
+        records.put(sanitizedName.toLowerCase(Locale.ROOT), new MarketplaceLinkRecord(sanitizedName, normalizedId, syncedHash == null ? "" : syncedHash.trim()));
+        writeMarketplaceLinkRecords(records.values());
+    }
+
+    public static void clearMarketplaceLinkedPreset(String presetName) {
+        String sanitizedName = sanitizePresetName(presetName);
+        if (sanitizedName.isEmpty()) {
+            return;
+        }
+        Map<String, MarketplaceLinkRecord> records = new LinkedHashMap<>(readMarketplaceLinkRecords());
+        if (records.remove(sanitizedName.toLowerCase(Locale.ROOT)) != null) {
+            writeMarketplaceLinkRecords(records.values());
+        }
+    }
+
+    public static void clearMarketplaceLinkedPresetById(String presetId) {
+        String normalizedId = presetId == null ? "" : presetId.trim();
+        if (normalizedId.isEmpty()) {
+            return;
+        }
+        Map<String, MarketplaceLinkRecord> records = new LinkedHashMap<>(readMarketplaceLinkRecords());
+        boolean removed = records.entrySet().removeIf(entry -> normalizedId.equalsIgnoreCase(entry.getValue().presetId()));
+        if (removed) {
+            writeMarketplaceLinkRecords(records.values());
+        }
+    }
+
+    public static boolean hasMarketplaceLinkedPresetChanges(String presetName) {
+        Optional<MarketplaceLinkRecord> record = getMarketplaceLinkRecord(presetName);
+        if (record.isEmpty()) {
+            return false;
+        }
+        String storedHash = record.get().syncedHash();
+        Optional<String> currentHash = computePresetContentHash(presetName);
+        if (currentHash.isEmpty()) {
+            return false;
+        }
+        return !currentHash.get().equalsIgnoreCase(storedHash == null ? "" : storedHash);
+    }
+
+    public static Optional<String> computePresetContentHash(String presetName) {
+        Path presetPath = getPresetPath(presetName);
+        if (!Files.exists(presetPath)) {
+            return Optional.empty();
+        }
+        try {
+            byte[] bytes = Files.readAllBytes(presetPath);
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(bytes);
+            StringBuilder builder = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                builder.append(String.format("%02x", b));
+            }
+            return Optional.of(builder.toString());
+        } catch (Exception e) {
+            System.err.println("Failed to hash preset: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     /**
      * Rename an existing preset file.
      *
@@ -307,6 +399,7 @@ public final class PresetManager {
             if (getActivePreset().equalsIgnoreCase(sanitizedCurrent)) {
                 setActivePreset(sanitizedDesired);
             }
+            renameMarketplaceLinkedPreset(sanitizedCurrent, sanitizedDesired);
             return Optional.of(sanitizedDesired);
         } catch (IOException e) {
             System.err.println("Failed to rename preset: " + e.getMessage());
@@ -387,5 +480,80 @@ public final class PresetManager {
         // Collapse multiple spaces to a single space
         sanitized = sanitized.replaceAll("\\s+", " ");
         return sanitized.trim();
+    }
+
+    private static Optional<MarketplaceLinkRecord> getMarketplaceLinkRecord(String presetName) {
+        String sanitizedName = sanitizePresetName(presetName);
+        if (sanitizedName.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(readMarketplaceLinkRecords().get(sanitizedName.toLowerCase(Locale.ROOT)));
+    }
+
+    private static Map<String, MarketplaceLinkRecord> readMarketplaceLinkRecords() {
+        initialize();
+        Path linksFile = getBaseDirectory().resolve(MARKETPLACE_LINKS_FILE_NAME);
+        if (!Files.exists(linksFile)) {
+            return Map.of();
+        }
+        Map<String, MarketplaceLinkRecord> records = new LinkedHashMap<>();
+        try {
+            for (String line : Files.readAllLines(linksFile, StandardCharsets.UTF_8)) {
+                if (line == null || line.isBlank()) {
+                    continue;
+                }
+                String[] parts = line.split("\t", 3);
+                if (parts.length < 2) {
+                    continue;
+                }
+                String presetName = sanitizePresetName(parts[0]);
+                String presetId = parts[1].trim();
+                String syncedHash = parts.length >= 3 ? parts[2].trim() : "";
+                if (!presetName.isEmpty() && !presetId.isEmpty()) {
+                    records.put(presetName.toLowerCase(Locale.ROOT), new MarketplaceLinkRecord(presetName, presetId, syncedHash));
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to read marketplace preset links: " + e.getMessage());
+        }
+        return records;
+    }
+
+    private static void writeMarketplaceLinkRecords(Iterable<MarketplaceLinkRecord> records) {
+        Path linksFile = getBaseDirectory().resolve(MARKETPLACE_LINKS_FILE_NAME);
+        List<String> lines = new ArrayList<>();
+        for (MarketplaceLinkRecord record : records) {
+            if (record == null || record.presetName() == null || record.presetId() == null) {
+                continue;
+            }
+            lines.add(record.presetName() + "\t" + record.presetId() + "\t" + (record.syncedHash() == null ? "" : record.syncedHash()));
+        }
+        try {
+            if (lines.isEmpty()) {
+                Files.deleteIfExists(linksFile);
+            } else {
+                Files.write(linksFile, lines, StandardCharsets.UTF_8);
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to write marketplace preset links: " + e.getMessage());
+        }
+    }
+
+    private static void renameMarketplaceLinkedPreset(String currentName, String desiredName) {
+        String sanitizedCurrent = sanitizePresetName(currentName);
+        String sanitizedDesired = sanitizePresetName(desiredName);
+        if (sanitizedCurrent.isEmpty() || sanitizedDesired.isEmpty() || sanitizedCurrent.equalsIgnoreCase(sanitizedDesired)) {
+            return;
+        }
+        Map<String, MarketplaceLinkRecord> records = new LinkedHashMap<>(readMarketplaceLinkRecords());
+        MarketplaceLinkRecord record = records.remove(sanitizedCurrent.toLowerCase(Locale.ROOT));
+        if (record == null) {
+            return;
+        }
+        records.put(sanitizedDesired.toLowerCase(Locale.ROOT), new MarketplaceLinkRecord(sanitizedDesired, record.presetId(), record.syncedHash()));
+        writeMarketplaceLinkRecords(records.values());
+    }
+
+    private record MarketplaceLinkRecord(String presetName, String presetId, String syncedHash) {
     }
 }

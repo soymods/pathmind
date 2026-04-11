@@ -81,7 +81,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int MY_PRESET_FILTER_ALL_WIDTH = 34;
     private static final int MY_PRESET_FILTER_PUBLIC_WIDTH = 50;
     private static final int MY_PRESET_FILTER_PRIVATE_WIDTH = 54;
-    private static final int ACCOUNT_BUTTON_WIDTH = SORT_BUTTON_HEIGHT;
+    private static final int ACCOUNT_BUTTON_MIN_WIDTH = SORT_BUTTON_HEIGHT;
     private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
 
     private final Screen parent;
@@ -159,6 +159,9 @@ public class PathmindMarketplaceScreen extends Screen {
     private boolean confirmPopupClosing = false;
     private boolean presetPopupClosing = false;
     private boolean returnToParentAfterPresetClose = false;
+    private String viewedAuthorKey = null;
+    private String viewedAuthorName = null;
+    private Rect popupAuthorHitRect = null;
     private boolean skipMarketplaceDeleteConfirm = SettingsManager.getCurrent().skipMarketplaceDeleteConfirm != null
         && SettingsManager.getCurrent().skipMarketplaceDeleteConfirm;
     private boolean skipMarketplaceUpdateConfirm = SettingsManager.getCurrent().skipMarketplaceUpdateConfirm != null
@@ -312,13 +315,16 @@ public class PathmindMarketplaceScreen extends Screen {
         boolean backHovered = isPointInRect(mouseX, mouseY, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE);
         drawIconButton(context, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE, backHovered, false);
         drawBackArrow(context, layout.backButtonX, layout.backButtonY, backHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY);
-        boolean accountHovered = isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT);
+        int accountButtonWidth = getAccountButtonWidth();
+        boolean accountHovered = isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, accountButtonWidth, SORT_BUTTON_HEIGHT);
         renderAccountToolbarButton(context, layout.accountButtonX, layout.accountButtonY, accountHovered);
 
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, layout.topBarY + 2, UITheme.TEXT_HEADER);
         String subtitle = TextRenderUtil.trimWithEllipsis(
             this.textRenderer,
-            "Browse community presets",
+            isViewingAuthorProfile()
+                ? "Viewing " + fallback(viewedAuthorName, "Creator") + "'s public presets"
+                : "Browse community presets",
             Math.max(80, this.width - 140)
         );
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(subtitle), this.width / 2, layout.topBarY + 14, UITheme.TEXT_SECONDARY);
@@ -328,25 +334,30 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderAccountToolbarButton(DrawContext context, int x, int y, boolean hovered) {
-        drawIconButton(context, x, y, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT, hovered, authBusy);
+        int buttonWidth = getAccountButtonWidth();
+        drawIconButton(context, x, y, buttonWidth, SORT_BUTTON_HEIGHT, hovered, authBusy);
+        String accountLabel = getAccountButtonLabel();
         Identifier avatarTexture = getOrRequestAvatarTexture();
         if (avatarTexture != null && authSession != null) {
+            int labelColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
+            int maxLabelWidth = Math.max(0, buttonWidth - SORT_BUTTON_HEIGHT - 10);
+            String displayLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, accountLabel, maxLabelWidth);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(displayLabel), x + 5,
+                y + (SORT_BUTTON_HEIGHT - this.textRenderer.fontHeight) / 2, labelColor);
             GuiTextureRenderer.drawIcon(
                 context,
                 avatarTexture,
-                x + 3,
+                x + buttonWidth - SORT_BUTTON_HEIGHT + 2,
                 y + 3,
-                ACCOUNT_BUTTON_WIDTH - 6,
+                SORT_BUTTON_HEIGHT - 6,
                 0xFFFFFFFF
             );
             return;
         }
-        String initials = authBusy ? "…" : fallback(authSession == null ? null : authSession.getDisplayName(), authSession == null ? "D" : "U").trim();
-        initials = initials.isEmpty() ? "D" : initials.substring(0, 1).toUpperCase(Locale.ROOT);
         int textColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        int textX = x + (ACCOUNT_BUTTON_WIDTH - this.textRenderer.getWidth(initials)) / 2;
+        int textX = x + (buttonWidth - this.textRenderer.getWidth(accountLabel)) / 2;
         int textY = y + (SORT_BUTTON_HEIGHT - this.textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, textColor);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(accountLabel), textX, textY, textColor);
     }
 
     private void renderGallerySection(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -381,6 +392,22 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderFilterControls(DrawContext context, int mouseX, int mouseY, Layout layout) {
+        if (isViewingAuthorProfile()) {
+            int titleY = layout.searchFieldY + 2;
+            String profileTitle = TextRenderUtil.trimWithEllipsis(this.textRenderer,
+                fallback(viewedAuthorName, "Unknown Creator"), Math.max(80, layout.bodyWidth - 120));
+            context.drawTextWithShadow(this.textRenderer, Text.literal(profileTitle), layout.bodyX, titleY, UITheme.TEXT_HEADER);
+            int countY = titleY + 12;
+            String countLabel = presets.size() + " public preset" + (presets.size() == 1 ? "" : "s");
+            context.drawTextWithShadow(this.textRenderer, Text.literal(countLabel), layout.bodyX, countY, UITheme.TEXT_SECONDARY);
+
+            Rect exitProfileRect = getExitProfileRect(layout);
+            boolean exitProfileHovered = isPointInRect(mouseX, mouseY, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height);
+            drawActionButton(context, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height,
+                "Back to Market", exitProfileHovered, false);
+            return;
+        }
+
         int searchX = layout.searchFieldX;
         int searchY = layout.searchFieldY;
         boolean searchHovered = isPointInRect(mouseX, mouseY, searchX, searchY, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT);
@@ -500,9 +527,11 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, preset.getName(), textWidth)),
             textX, footerTop - 1, UITheme.TEXT_HEADER);
-        context.drawTextWithShadow(this.textRenderer,
-            Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, "by " + preset.getAuthorName(), textWidth)),
-            textX, footerTop + 10, UITheme.TEXT_SECONDARY);
+        Rect authorRect = getCardAuthorRect(rect, preset);
+        String authorLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, "by " + fallback(preset.getAuthorName(), "Unknown"), textWidth);
+        boolean authorHovered = isPointInRect(mouseX, mouseY, authorRect.x, authorRect.y, authorRect.width, authorRect.height);
+        renderAuthorLink(context, "marketplace-author-card:" + preset.getId(), authorLabel, textX, footerTop + 10, authorHovered,
+            UITheme.TEXT_SECONDARY, UITheme.TEXT_PRIMARY);
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(downloadsLine),
             statsRight - this.textRenderer.getWidth(downloadsLine), statsLineY, downloadsColor);
@@ -842,6 +871,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderPresetPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
+        popupAuthorHitRect = null;
         PopupLayout popup = getPopupLayout(layout);
         context.fill(0, 0, this.width, this.height, presetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         int[] bounds = presetPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
@@ -927,9 +957,19 @@ public class PathmindMarketplaceScreen extends Screen {
                 textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
             cursorY += 14;
         }
-        context.drawTextWithShadow(this.textRenderer,
-            Text.literal("by " + TextRenderUtil.trimWithEllipsis(this.textRenderer, fallback(popupPreset.getAuthorName(), "Unknown"), textWidth - 20)),
-            textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
+        String popupAuthorLabel = "by " + TextRenderUtil.trimWithEllipsis(this.textRenderer, fallback(popupPreset.getAuthorName(), "Unknown"), textWidth - 20);
+        popupAuthorHitRect = new Rect(textX, cursorY, this.textRenderer.getWidth(popupAuthorLabel), this.textRenderer.fontHeight + 1);
+        boolean popupAuthorHovered = isPointInRect(mouseX, mouseY, popupAuthorHitRect.x, popupAuthorHitRect.y, popupAuthorHitRect.width, popupAuthorHitRect.height);
+        renderAuthorLink(
+            context,
+            "marketplace-author-popup:" + fallback(popupPreset.getId(), "unknown"),
+            popupAuthorLabel,
+            textX,
+            cursorY,
+            popupAuthorHovered,
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY),
+            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY)
+        );
         cursorY += 14;
 
         int downloadsWidth = Math.max(54, this.textRenderer.getWidth(popupPreset.getDownloadsCount() + " downloads") + 12);
@@ -1578,6 +1618,11 @@ public class PathmindMarketplaceScreen extends Screen {
                 closePopup();
                 return true;
             }
+            if (popupAuthorHitRect != null
+                && isPointInRect(mouseX, mouseY, popupAuthorHitRect.x, popupAuthorHitRect.y, popupAuthorHitRect.width, popupAuthorHitRect.height)) {
+                openAuthorProfile(popupPreset, true);
+                return true;
+            }
             if (isPointInRect(mouseX, mouseY, popupBookmarkHit.x, popupBookmarkHit.y, popupBookmarkHit.width, popupBookmarkHit.height)) {
                 savePresetLocally(popupPreset, false);
                 return true;
@@ -1670,11 +1715,21 @@ public class PathmindMarketplaceScreen extends Screen {
             close();
             return true;
         }
-        if (!authBusy && isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+        if (!authBusy && isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, getAccountButtonWidth(), SORT_BUTTON_HEIGHT)) {
             handleAuthButton();
             return true;
         }
+        if (isViewingAuthorProfile()) {
+            Rect exitProfileRect = getExitProfileRect(layout);
+            if (isPointInRect(mouseX, mouseY, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height)) {
+                exitAuthorProfile();
+                return true;
+            }
+        }
         if (searchField != null && isPointInRect(mouseX, mouseY, layout.searchFieldX, layout.searchFieldY, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT)) {
+            if (isViewingAuthorProfile()) {
+                return true;
+            }
             searchField.setFocused(true);
             searchField.mouseClicked(mouseXDouble, mouseYDouble, button);
             return true;
@@ -1683,10 +1738,16 @@ public class PathmindMarketplaceScreen extends Screen {
             searchField.setFocused(false);
         }
         if (isPointInRect(mouseX, mouseY, layout.sortButtonX, layout.sortButtonY, SORT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+            if (isViewingAuthorProfile()) {
+                return true;
+            }
             sortDropdownOpen = !sortDropdownOpen;
             return true;
         }
         if (isPointInRect(mouseX, mouseY, layout.myPresetsButtonX, layout.myPresetsButtonY, MY_PRESETS_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+            if (isViewingAuthorProfile()) {
+                return true;
+            }
             if (authSession == null) {
                 myPresetsOnly = true;
                 handleAuthButton();
@@ -1762,6 +1823,11 @@ public class PathmindMarketplaceScreen extends Screen {
             }
             if (isPointInRect(mouseX, mouseY, bookmarkHit.x, bookmarkHit.y, bookmarkHit.width, bookmarkHit.height)) {
                 savePresetLocally(preset, false);
+                return true;
+            }
+            Rect authorHit = getCardAuthorRect(rect, preset);
+            if (isPointInRect(mouseX, mouseY, authorHit.x, authorHit.y, authorHit.width, authorHit.height)) {
+                openAuthorProfile(preset, false);
                 return true;
             }
             if (isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height)) {
@@ -3616,7 +3682,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int resultRowY = searchFieldY + SORT_BUTTON_HEIGHT + 6;
         int refreshButtonX = bodyX + bodyWidth - REFRESH_BUTTON_SIZE;
         int refreshButtonY = resultRowY;
-        int accountButtonX = this.width - OUTER_PADDING - ACCOUNT_BUTTON_WIDTH;
+        int accountButtonX = this.width - OUTER_PADDING - getAccountButtonWidth();
         int accountButtonY = topBarY + 2;
 
         return new Layout(topBarY, backButtonX, backButtonY, sectionX, sectionY, sectionWidth, sectionHeight,
@@ -3792,6 +3858,9 @@ public class PathmindMarketplaceScreen extends Screen {
             if (!sortMode.matches(this, preset)) {
                 continue;
             }
+            if (isViewingAuthorProfile() && (!preset.isPublished() || !isViewedAuthorPreset(preset))) {
+                continue;
+            }
             if (query.isEmpty() || matchesQuery(preset, query)) {
                 filtered.add(preset);
             }
@@ -3802,6 +3871,8 @@ public class PathmindMarketplaceScreen extends Screen {
         selectedIndex = presets.isEmpty() ? -1 : Math.max(0, Math.min(selectedIndex, presets.size() - 1));
         if (myPresetsOnly && authSession == null) {
             statusMessage = "Sign in to view your presets.";
+        } else if (isViewingAuthorProfile() && presets.isEmpty()) {
+            statusMessage = "No public presets from this creator matched your filters.";
         } else if (allPresets.isEmpty()) {
             statusMessage = myPresetsOnly ? "No presets in your cloud library yet." : "No published presets found.";
         } else if (presets.isEmpty()) {
@@ -3836,6 +3907,106 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private boolean containsNormalized(String value, String query) {
         return value != null && normalizeSearch(value).contains(query);
+    }
+
+    private Rect getCardAuthorRect(Rect cardRect, MarketplacePreset preset) {
+        String downloadsLine = preset.getDownloadsCount() + " dl";
+        String likesLine = preset.getLikesCount() + " like";
+        int statsBlockWidth = Math.max(this.textRenderer.getWidth(downloadsLine), this.textRenderer.getWidth(likesLine));
+        int textWidth = Math.max(32, cardRect.width - 16 - statsBlockWidth - 8);
+        int previewY = cardRect.y + 8;
+        int previewHeight = cardRect.height - 46;
+        int footerTop = previewY + previewHeight + 8;
+        int authorY = footerTop + 10;
+        int textX = cardRect.x + 8;
+        String authorLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, "by " + fallback(preset.getAuthorName(), "Unknown"), textWidth);
+        return new Rect(textX, authorY, this.textRenderer.getWidth(authorLabel), this.textRenderer.fontHeight + 1);
+    }
+
+    private void renderAuthorLink(DrawContext context, String key, String label, int x, int y, boolean hovered, int baseColor, int hoverColor) {
+        float hoverProgress = HoverAnimator.getProgress(key, hovered);
+        int textColor = AnimationHelper.lerpColor(baseColor, hoverColor, hoverProgress);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), x, y, textColor);
+        if (hoverProgress > 0.001f) {
+            int fullWidth = this.textRenderer.getWidth(label);
+            int underlineWidth = Math.round(fullWidth * hoverProgress);
+            if (underlineWidth > 0) {
+                int underlineStartX = x + (fullWidth - underlineWidth) / 2;
+                int underlineY = y + this.textRenderer.fontHeight;
+                context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, hoverColor);
+            }
+        }
+    }
+
+    private Rect getExitProfileRect(Layout layout) {
+        return new Rect(layout.bodyX + layout.bodyWidth - 92, layout.searchFieldY, 92, SORT_BUTTON_HEIGHT);
+    }
+
+    private void openAuthorProfile(MarketplacePreset preset, boolean closePopup) {
+        if (preset == null) {
+            return;
+        }
+        String authorKey = buildAuthorKey(preset);
+        if (authorKey == null) {
+            return;
+        }
+        viewedAuthorKey = authorKey;
+        viewedAuthorName = fallback(preset.getAuthorName(), "Unknown");
+        myPresetsOnly = false;
+        myPresetsFilter = MyPresetsFilter.ALL;
+        pageIndex = 0;
+        selectedIndex = -1;
+        applyFilters();
+        if (closePopup) {
+            closePopup();
+        }
+    }
+
+    private void exitAuthorProfile() {
+        viewedAuthorKey = null;
+        viewedAuthorName = null;
+        pageIndex = 0;
+        applyFilters();
+    }
+
+    private boolean isViewingAuthorProfile() {
+        return viewedAuthorKey != null && !viewedAuthorKey.isBlank();
+    }
+
+    private boolean isViewedAuthorPreset(MarketplacePreset preset) {
+        return viewedAuthorKey != null && viewedAuthorKey.equals(buildAuthorKey(preset));
+    }
+
+    private String buildAuthorKey(MarketplacePreset preset) {
+        if (preset == null) {
+            return null;
+        }
+        String userId = fallback(preset.getAuthorUserId(), "").trim();
+        if (!userId.isEmpty()) {
+            return "id:" + userId;
+        }
+        String authorName = normalizeSearch(fallback(preset.getAuthorName(), ""));
+        return authorName.isEmpty() ? null : "name:" + authorName;
+    }
+
+    private String getAccountButtonLabel() {
+        if (authBusy) {
+            return "…";
+        }
+        if (authSession == null) {
+            return "Discord";
+        }
+        String displayName = fallback(authSession.getDisplayName(), authSession.getEmail());
+        return fallback(displayName, "Discord");
+    }
+
+    private int getAccountButtonWidth() {
+        if (authSession == null) {
+            return ACCOUNT_BUTTON_MIN_WIDTH;
+        }
+        String label = getAccountButtonLabel();
+        int labelWidth = this.textRenderer == null ? 0 : this.textRenderer.getWidth(label);
+        return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, labelWidth + SORT_BUTTON_HEIGHT + 10);
     }
 
     private String normalizeSearch(String value) {

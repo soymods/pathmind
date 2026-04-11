@@ -84,7 +84,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int MY_PRESET_FILTER_ALL_WIDTH = 34;
     private static final int MY_PRESET_FILTER_PUBLIC_WIDTH = 50;
     private static final int MY_PRESET_FILTER_PRIVATE_WIDTH = 54;
-    private static final int ACCOUNT_BUTTON_WIDTH = SORT_BUTTON_HEIGHT;
+    private static final int ACCOUNT_BUTTON_MIN_WIDTH = SORT_BUTTON_HEIGHT;
     private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
 
     private final Screen parent;
@@ -318,7 +318,8 @@ public class PathmindMarketplaceScreen extends Screen {
         boolean backHovered = isPointInRect(mouseX, mouseY, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE);
         drawIconButton(context, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE, backHovered, false);
         drawBackArrow(context, layout.backButtonX, layout.backButtonY, backHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY);
-        boolean accountHovered = isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT);
+        int accountButtonWidth = getAccountButtonWidth();
+        boolean accountHovered = isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, accountButtonWidth, SORT_BUTTON_HEIGHT);
         renderAccountToolbarButton(context, layout.accountButtonX, layout.accountButtonY, accountHovered);
 
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, layout.topBarY + 2, UITheme.TEXT_HEADER);
@@ -336,25 +337,30 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderAccountToolbarButton(DrawContext context, int x, int y, boolean hovered) {
-        drawIconButton(context, x, y, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT, hovered, authBusy);
+        int buttonWidth = getAccountButtonWidth();
+        drawIconButton(context, x, y, buttonWidth, SORT_BUTTON_HEIGHT, hovered, authBusy);
+        String accountLabel = getAccountButtonLabel();
         Identifier avatarTexture = getOrRequestAvatarTexture();
         if (avatarTexture != null && authSession != null) {
+            int labelColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
+            int maxLabelWidth = Math.max(0, buttonWidth - SORT_BUTTON_HEIGHT - 10);
+            String displayLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, accountLabel, maxLabelWidth);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(displayLabel), x + 5,
+                y + (SORT_BUTTON_HEIGHT - this.textRenderer.fontHeight) / 2, labelColor);
             GuiTextureRenderer.drawIcon(
                 context,
                 avatarTexture,
-                x + 3,
+                x + buttonWidth - SORT_BUTTON_HEIGHT + 2,
                 y + 3,
-                ACCOUNT_BUTTON_WIDTH - 6,
+                SORT_BUTTON_HEIGHT - 6,
                 0xFFFFFFFF
             );
             return;
         }
-        String initials = authBusy ? "…" : fallback(authSession == null ? null : authSession.getDisplayName(), authSession == null ? "D" : "U").trim();
-        initials = initials.isEmpty() ? "D" : initials.substring(0, 1).toUpperCase(Locale.ROOT);
         int textColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        int textX = x + (ACCOUNT_BUTTON_WIDTH - this.textRenderer.getWidth(initials)) / 2;
+        int textX = x + (buttonWidth - this.textRenderer.getWidth(accountLabel)) / 2;
         int textY = y + (SORT_BUTTON_HEIGHT - this.textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, textColor);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(accountLabel), textX, textY, textColor);
     }
 
     private void renderGallerySection(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -1713,7 +1719,7 @@ public class PathmindMarketplaceScreen extends Screen {
             close();
             return true;
         }
-        if (!authBusy && isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+        if (!authBusy && isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, getAccountButtonWidth(), SORT_BUTTON_HEIGHT)) {
             handleAuthButton();
             return true;
         }
@@ -3680,7 +3686,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int resultRowY = searchFieldY + SORT_BUTTON_HEIGHT + 6;
         int refreshButtonX = bodyX + bodyWidth - REFRESH_BUTTON_SIZE;
         int refreshButtonY = resultRowY;
-        int accountButtonX = this.width - OUTER_PADDING - ACCOUNT_BUTTON_WIDTH;
+        int accountButtonX = this.width - OUTER_PADDING - getAccountButtonWidth();
         int accountButtonY = topBarY + 2;
 
         return new Layout(topBarY, backButtonX, backButtonY, sectionX, sectionY, sectionWidth, sectionHeight,
@@ -3985,6 +3991,26 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         String authorName = normalizeSearch(fallback(preset.getAuthorName(), ""));
         return authorName.isEmpty() ? null : "name:" + authorName;
+    }
+
+    private String getAccountButtonLabel() {
+        if (authBusy) {
+            return "…";
+        }
+        if (authSession == null) {
+            return "Discord";
+        }
+        String displayName = fallback(authSession.getDisplayName(), authSession.getEmail());
+        return fallback(displayName, "Discord");
+    }
+
+    private int getAccountButtonWidth() {
+        if (authSession == null) {
+            return ACCOUNT_BUTTON_MIN_WIDTH;
+        }
+        String label = getAccountButtonLabel();
+        int labelWidth = this.textRenderer == null ? 0 : this.textRenderer.getWidth(label);
+        return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, labelWidth + SORT_BUTTON_HEIGHT + 10);
     }
 
     private String normalizeSearch(String value) {

@@ -11,6 +11,7 @@ public final class MarketplacePreset {
     private final String authorUserId;
     private final String name;
     private final String authorName;
+    private final String authorAvatarUrl;
     private final String description;
     private final List<String> tags;
     private final String gameVersion;
@@ -39,11 +40,33 @@ public final class MarketplacePreset {
                              boolean published,
                              String createdAt,
                              String updatedAt) {
+        this(id, slug, authorUserId, name, authorName, null, description, tags, gameVersion, pathmindVersion, likesCount,
+            downloadsCount, storageBucket, filePath, published, createdAt, updatedAt);
+    }
+
+    public MarketplacePreset(String id,
+                             String slug,
+                             String authorUserId,
+                             String name,
+                             String authorName,
+                             String authorAvatarUrl,
+                             String description,
+                             List<String> tags,
+                             String gameVersion,
+                             String pathmindVersion,
+                             int likesCount,
+                             int downloadsCount,
+                             String storageBucket,
+                             String filePath,
+                             boolean published,
+                             String createdAt,
+                             String updatedAt) {
         this.id = id;
         this.slug = slug;
         this.authorUserId = authorUserId;
         this.name = name;
         this.authorName = authorName;
+        this.authorAvatarUrl = authorAvatarUrl;
         this.description = description;
         this.tags = tags == null ? List.of() : List.copyOf(tags);
         this.gameVersion = gameVersion;
@@ -75,6 +98,10 @@ public final class MarketplacePreset {
 
     public String getAuthorName() {
         return authorName;
+    }
+
+    public String getAuthorAvatarUrl() {
+        return authorAvatarUrl;
     }
 
     public String getDescription() {

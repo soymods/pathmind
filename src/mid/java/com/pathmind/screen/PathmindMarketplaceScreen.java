@@ -129,6 +129,10 @@ public class PathmindMarketplaceScreen extends Screen {
     private String avatarTextureUrl = null;
     private Identifier avatarTextureId = null;
     private boolean avatarLoading = false;
+    private String viewedAuthorAvatarUrl = null;
+    private String viewedAuthorAvatarTextureUrl = null;
+    private Identifier viewedAuthorAvatarTextureId = null;
+    private boolean viewedAuthorAvatarLoading = false;
     private final Map<String, PreviewGraphModel> previewGraphCache = new HashMap<>();
     private final Set<String> previewGraphLoading = new HashSet<>();
     private final Map<String, Long> likePulseEndTimes = new HashMap<>();
@@ -396,18 +400,22 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void renderFilterControls(DrawContext context, int mouseX, int mouseY, Layout layout) {
         if (isViewingAuthorProfile()) {
-            int titleY = layout.searchFieldY + 2;
-            String profileTitle = TextRenderUtil.trimWithEllipsis(this.textRenderer,
-                fallback(viewedAuthorName, "Unknown Creator"), Math.max(80, layout.bodyWidth - 120));
-            context.drawTextWithShadow(this.textRenderer, Text.literal(profileTitle), layout.bodyX, titleY, UITheme.TEXT_HEADER);
-            int countY = titleY + 12;
-            String countLabel = presets.size() + " public preset" + (presets.size() == 1 ? "" : "s");
-            context.drawTextWithShadow(this.textRenderer, Text.literal(countLabel), layout.bodyX, countY, UITheme.TEXT_SECONDARY);
-
             Rect exitProfileRect = getExitProfileRect(layout);
             boolean exitProfileHovered = isPointInRect(mouseX, mouseY, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height);
             drawActionButton(context, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height,
                 "Back to Market", exitProfileHovered, false);
+            String countLabel = presets.size() + " public preset" + (presets.size() == 1 ? "" : "s");
+            int countX = layout.bodyX + layout.bodyWidth - this.textRenderer.getWidth(countLabel);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(countLabel), countX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
+
+            int avatarSize = 26;
+            int avatarX = layout.bodyX + (layout.bodyWidth - avatarSize) / 2;
+            int avatarY = layout.searchFieldY + 20;
+            renderViewedAuthorAvatar(context, avatarX, avatarY, avatarSize);
+            String profileTitle = TextRenderUtil.trimWithEllipsis(this.textRenderer,
+                fallback(viewedAuthorName, "Unknown Creator"), Math.max(80, layout.bodyWidth - 20));
+            int titleX = layout.bodyX + (layout.bodyWidth - this.textRenderer.getWidth(profileTitle)) / 2;
+            context.drawTextWithShadow(this.textRenderer, Text.literal(profileTitle), titleX, avatarY + avatarSize + 4, UITheme.TEXT_HEADER);
             return;
         }
 
@@ -2855,6 +2863,20 @@ public class PathmindMarketplaceScreen extends Screen {
         }
     }
 
+    private void renderViewedAuthorAvatar(DrawContext context, int x, int y, int size) {
+        UIStyleHelper.drawBeveledPanel(context, x, y, size, size, UITheme.BACKGROUND_PRIMARY, getAccentColor(), UITheme.PANEL_INNER_BORDER);
+        Identifier avatarTexture = getOrRequestViewedAuthorAvatarTexture();
+        if (avatarTexture != null) {
+            GuiTextureRenderer.drawIcon(context, avatarTexture, x + 2, y + 2, size - 4, 0xFFFFFFFF);
+            return;
+        }
+        String initials = fallback(viewedAuthorName, "?").trim();
+        initials = initials.isEmpty() ? "?" : initials.substring(0, 1).toUpperCase(Locale.ROOT);
+        int textX = x + (size - this.textRenderer.getWidth(initials)) / 2;
+        int textY = y + (size - this.textRenderer.fontHeight) / 2;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, UITheme.TEXT_HEADER);
+    }
+
     private Identifier getOrRequestAvatarTexture() {
         if (authSession == null || authSession.getAvatarUrl() == null || authSession.getAvatarUrl().isBlank()) {
             return null;
@@ -2881,6 +2903,34 @@ public class PathmindMarketplaceScreen extends Screen {
             });
         });
         return avatarTextureId;
+    }
+
+    private Identifier getOrRequestViewedAuthorAvatarTexture() {
+        if (viewedAuthorAvatarUrl == null || viewedAuthorAvatarUrl.isBlank()) {
+            return null;
+        }
+        if (viewedAuthorAvatarTextureId != null && viewedAuthorAvatarUrl.equals(viewedAuthorAvatarTextureUrl)) {
+            return viewedAuthorAvatarTextureId;
+        }
+        if (viewedAuthorAvatarLoading) {
+            return viewedAuthorAvatarTextureId;
+        }
+        viewedAuthorAvatarLoading = true;
+        String avatarUrl = viewedAuthorAvatarUrl;
+        CompletableFuture.supplyAsync(() -> downloadAvatarImage(avatarUrl)).whenComplete((image, throwable) -> {
+            if (this.client == null) {
+                viewedAuthorAvatarLoading = false;
+                return;
+            }
+            this.client.execute(() -> {
+                viewedAuthorAvatarLoading = false;
+                if (throwable == null && image != null && avatarUrl.equals(viewedAuthorAvatarUrl)) {
+                    viewedAuthorAvatarTextureUrl = avatarUrl;
+                    viewedAuthorAvatarTextureId = registerAvatarTexture(avatarUrl, image);
+                }
+            });
+        });
+        return viewedAuthorAvatarTextureId;
     }
 
     private NativeImage downloadAvatarImage(String avatarUrl) {
@@ -3943,7 +3993,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Rect getExitProfileRect(Layout layout) {
-        return new Rect(layout.bodyX + layout.bodyWidth - 92, layout.searchFieldY, 92, SORT_BUTTON_HEIGHT);
+        return new Rect(layout.bodyX, layout.searchFieldY, 92, SORT_BUTTON_HEIGHT);
     }
 
     private void openAuthorProfile(MarketplacePreset preset, boolean closePopup) {
@@ -3956,6 +4006,10 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         viewedAuthorKey = authorKey;
         viewedAuthorName = fallback(preset.getAuthorName(), "Unknown");
+        viewedAuthorAvatarUrl = resolveViewedAuthorAvatarUrl(preset);
+        viewedAuthorAvatarTextureUrl = null;
+        viewedAuthorAvatarTextureId = null;
+        viewedAuthorAvatarLoading = false;
         myPresetsOnly = false;
         myPresetsFilter = MyPresetsFilter.ALL;
         pageIndex = 0;
@@ -3969,6 +4023,10 @@ public class PathmindMarketplaceScreen extends Screen {
     private void exitAuthorProfile() {
         viewedAuthorKey = null;
         viewedAuthorName = null;
+        viewedAuthorAvatarUrl = null;
+        viewedAuthorAvatarTextureUrl = null;
+        viewedAuthorAvatarTextureId = null;
+        viewedAuthorAvatarLoading = false;
         pageIndex = 0;
         applyFilters();
     }
@@ -3991,6 +4049,23 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         String authorName = normalizeSearch(fallback(preset.getAuthorName(), ""));
         return authorName.isEmpty() ? null : "name:" + authorName;
+    }
+
+    private String resolveViewedAuthorAvatarUrl(MarketplacePreset preset) {
+        if (preset == null) {
+            return null;
+        }
+        String presetAvatar = fallback(preset.getAuthorAvatarUrl(), "");
+        if (!presetAvatar.isBlank()) {
+            return presetAvatar;
+        }
+        if (authSession != null
+            && authSession.getAvatarUrl() != null
+            && preset.getAuthorUserId() != null
+            && preset.getAuthorUserId().equals(authSession.getUserId())) {
+            return authSession.getAvatarUrl();
+        }
+        return null;
     }
 
     private String getAccountButtonLabel() {
@@ -4100,6 +4175,9 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private int getSectionHeaderHeight() {
+        if (isViewingAuthorProfile()) {
+            return SECTION_HEADER_HEIGHT + 34;
+        }
         return myPresetsOnly ? SECTION_HEADER_HEIGHT + MY_PRESET_FILTER_BUTTON_HEIGHT + 8 : SECTION_HEADER_HEIGHT;
     }
 

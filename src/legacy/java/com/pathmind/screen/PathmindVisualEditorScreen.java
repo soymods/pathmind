@@ -3517,33 +3517,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered,
                                  Text label, PopupButtonStyle style, PopupAnimationHandler animation) {
-        int bgColor;
-        int borderColor;
-        switch (style) {
-            case PRIMARY:
-                bgColor = hovered
-                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.18f)
-                        : mixColor(getAccentColor(), UITheme.BORDER_SOCKET, 0.25f);
-                borderColor = getAccentColor();
-                break;
-            case ACCENT:
-                bgColor = hovered
-                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.25f)
-                        : getAccentColor();
-                borderColor = getAccentColor();
-                break;
-            default:
-                bgColor = hovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BUTTON_ACTIVE_BG;
-                borderColor = hovered ? UITheme.TEXT_TERTIARY : UITheme.BORDER_HIGHLIGHT;
-                break;
-        }
-        int adjustedBg = getPopupAnimatedColor(animation, bgColor);
-        int adjustedBorder = getPopupAnimatedColor(animation, borderColor);
-        int adjustedInnerBorder = getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER);
-        int adjustedText = getPopupAnimatedColor(
-            animation,
-            (style == PopupButtonStyle.ACCENT && hovered) ? getAccentColor() : UITheme.TEXT_PRIMARY
-        );
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapPopupButtonStyle(style), getAccentColor(), hovered, false);
+        int adjustedBg = getPopupAnimatedColor(animation, palette.backgroundColor());
+        int adjustedBorder = getPopupAnimatedColor(animation, palette.borderColor());
+        int adjustedInnerBorder = getPopupAnimatedColor(animation, palette.innerBorderColor());
+        int adjustedText = getPopupAnimatedColor(animation, palette.textColor());
         UIStyleHelper.drawBeveledPanel(context, x, y, width, height, adjustedBg, adjustedBorder, adjustedInnerBorder);
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -3552,6 +3530,14 @@ public class PathmindVisualEditorScreen extends Screen {
             y + (height - this.textRenderer.fontHeight) / 2 + 1,
             adjustedText
         );
+    }
+
+    private UIStyleHelper.TextButtonStyle mapPopupButtonStyle(PopupButtonStyle style) {
+        return switch (style) {
+            case PRIMARY -> UIStyleHelper.TextButtonStyle.PRIMARY;
+            case ACCENT -> UIStyleHelper.TextButtonStyle.ACCENT;
+            case DEFAULT -> UIStyleHelper.TextButtonStyle.DEFAULT;
+        };
     }
 
     private void drawPopupContainer(DrawContext context, int x, int y, int width, int height, PopupAnimationHandler animation) {
@@ -5173,12 +5159,13 @@ public class PathmindVisualEditorScreen extends Screen {
             mouseX = Integer.MIN_VALUE;
             mouseY = Integer.MIN_VALUE;
         }
-        int buttonY = getWorkspaceButtonY();
-        boolean marketplaceHovered = renderMarketplaceButton(context, mouseX, mouseY, buttonY);
-        boolean publishHovered = renderPublishButton(context, mouseX, mouseY, buttonY);
-        boolean importHovered = renderImportExportButton(context, mouseX, mouseY, buttonY);
-        boolean clearHovered = renderClearButton(context, mouseX, mouseY, buttonY);
-        boolean homeHovered = renderHomeButton(context, mouseX, mouseY, buttonY);
+        int workspaceButtonY = getWorkspaceButtonY();
+        int bottomButtonY = getSettingsButtonY();
+        boolean marketplaceHovered = renderMarketplaceButton(context, mouseX, mouseY, workspaceButtonY);
+        boolean publishHovered = renderPublishButton(context, mouseX, mouseY, workspaceButtonY);
+        boolean importHovered = renderImportExportButton(context, mouseX, mouseY, bottomButtonY);
+        boolean clearHovered = renderClearButton(context, mouseX, mouseY, bottomButtonY);
+        boolean homeHovered = renderHomeButton(context, mouseX, mouseY, bottomButtonY);
 
         if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
             if (publishHovered) {
@@ -6387,7 +6374,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getImportExportButtonX() {
-        return getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH + BOTTOM_BUTTON_SPACING;
+        return getSettingsButtonX() + BOTTOM_BUTTON_SIZE + BOTTOM_BUTTON_SPACING;
     }
 
     private int getSettingsButtonX() {
@@ -6401,21 +6388,21 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean isHomeButtonClicked(int mouseX, int mouseY, int button) {
         if (button != 0) return false;
         int buttonX = getHomeButtonX();
-        int buttonY = getWorkspaceButtonY();
+        int buttonY = getSettingsButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isClearButtonClicked(int mouseX, int mouseY, int button) {
         if (button != 0) return false;
         int buttonX = getClearButtonX();
-        int buttonY = getWorkspaceButtonY();
+        int buttonY = getSettingsButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isImportExportButtonClicked(int mouseX, int mouseY, int button) {
         if (button != 0) return false;
         int buttonX = getImportExportButtonX();
-        int buttonY = getWorkspaceButtonY();
+        int buttonY = getSettingsButtonY();
         return isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 

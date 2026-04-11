@@ -1751,15 +1751,15 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void drawActionButton(DrawContext context, int x, int y, int width, int height, String label,
                                   boolean hovered, boolean disabled, boolean active) {
-        int bgColor = disabled
-            ? UITheme.TOOLBAR_BG_DISABLED
-            : active ? (hovered
-                ? AnimationHelper.lerpColor(getAccentColor(), UITheme.TEXT_HEADER, 0.18f)
-                : AnimationHelper.lerpColor(getAccentColor(), UITheme.BORDER_SOCKET, 0.25f))
-            : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
-        int borderColor = disabled ? UITheme.BORDER_SUBTLE : (hovered || active) ? getAccentColor() : UITheme.BORDER_DEFAULT;
-        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
-        int textColor = disabled ? UITheme.TEXT_TERTIARY : hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY;
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(
+            active ? UIStyleHelper.TextButtonStyle.PRIMARY : UIStyleHelper.TextButtonStyle.DEFAULT,
+            getAccentColor(),
+            hovered || active,
+            disabled
+        );
+        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height,
+            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+        int textColor = palette.textColor();
         int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
         int textY = y + (height - this.textRenderer.fontHeight) / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
@@ -1767,22 +1767,26 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void drawAnimatedActionButton(DrawContext context, int x, int y, int width, int height, String label,
                                           boolean hovered, boolean disabled, PopupAnimationHandler animation) {
-        int bgColor = disabled ? UITheme.TOOLBAR_BG_DISABLED : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
-        int borderColor = disabled ? UITheme.BORDER_SUBTLE : hovered ? getAccentColor() : UITheme.BORDER_DEFAULT;
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(
+            UIStyleHelper.TextButtonStyle.DEFAULT,
+            getAccentColor(),
+            hovered,
+            disabled
+        );
         UIStyleHelper.drawToolbarButtonFrame(
             context,
             x,
             y,
             width,
             height,
-            animation.getAnimatedPopupColor(bgColor),
-            animation.getAnimatedPopupColor(borderColor),
-            animation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+            animation.getAnimatedPopupColor(palette.backgroundColor()),
+            animation.getAnimatedPopupColor(palette.borderColor()),
+            animation.getAnimatedPopupColor(palette.innerBorderColor())
         );
-        int textColor = disabled ? UITheme.TEXT_TERTIARY : hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY;
         int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
         int textY = y + (height - this.textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, animation.getAnimatedPopupColor(textColor));
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY,
+            animation.getAnimatedPopupColor(palette.textColor()));
     }
 
     private void renderSortDropdown(DrawContext context, int mouseX, int mouseY, Layout layout) {

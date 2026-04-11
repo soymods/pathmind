@@ -24,11 +24,8 @@ import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.input.CharInput;
-import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.gui.widget.TextFieldWidget;
@@ -1215,12 +1212,11 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(Click click, boolean inBounds) {
-        int mouseX = (int) click.x();
-        int mouseY = (int) click.y();
-        int button = click.button();
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        int mx = (int) mouseX;
+        int my = (int) mouseY;
         if (button != 0) {
-            return super.mouseClicked(click, inBounds);
+            return super.mouseClicked(mouseX, mouseY, button);
         }
 
         Layout layout = getLayout();
@@ -1244,20 +1240,20 @@ public class PathmindMarketplaceScreen extends Screen {
             Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
 
             boolean clickedField = false;
-            if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
+            if (publishNameField != null && isPointInRect(mx, my, fieldX, nameFieldY, fieldWidth, 18)) {
                 focusPublishField(publishNameField);
-                publishNameField.mouseClicked(click, inBounds);
+                publishNameField.mouseClicked(mouseX, mouseY, button);
                 clickedField = true;
-            } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX, descriptionFieldY, fieldWidth, 18)) {
+            } else if (publishDescriptionField != null && isPointInRect(mx, my, fieldX, descriptionFieldY, fieldWidth, 18)) {
                 focusPublishField(publishDescriptionField);
-                publishDescriptionField.mouseClicked(click, inBounds);
+                publishDescriptionField.mouseClicked(mouseX, mouseY, button);
                 clickedField = true;
-            } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
+            } else if (publishTagsField != null && isPointInRect(mx, my, fieldX, tagsFieldY, fieldWidth, 18)) {
                 focusPublishField(publishTagsField);
-                publishTagsField.mouseClicked(click, inBounds);
+                publishTagsField.mouseClicked(mouseX, mouseY, button);
                 clickedField = true;
-            } else if (isPointInRect(mouseX, mouseY, publishVisibilityToggleRect.x, publishVisibilityToggleRect.y, publishVisibilityToggleRect.width, publishVisibilityToggleRect.height)) {
-                publishVisibilityToggle.mouseClicked(mouseX, mouseY);
+            } else if (isPointInRect(mx, my, publishVisibilityToggleRect.x, publishVisibilityToggleRect.y, publishVisibilityToggleRect.width, publishVisibilityToggleRect.height)) {
+                publishVisibilityToggle.mouseClicked(mx, my);
                 publishVisibilityPublic = publishVisibilityToggle.getValue();
                 clickedField = true;
             } else {
@@ -1266,20 +1262,20 @@ public class PathmindMarketplaceScreen extends Screen {
             if (clickedField) {
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
+            if (isPointInRect(mx, my, cancelButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
                 closePublishPopup();
                 return true;
             }
             if (!publishBusy && authSession == null
-                && isPointInRect(mouseX, mouseY, authButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
+                && isPointInRect(mx, my, authButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
                 handleAuthButton();
                 return true;
             }
-            if (!publishBusy && isPointInRect(mouseX, mouseY, submitButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
+            if (!publishBusy && isPointInRect(mx, my, submitButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
                 startPublishSubmission();
                 return true;
             }
-            if (!isPointInRect(mouseX, mouseY, popupX, popupY, popupWidth, popupHeight)) {
+            if (!isPointInRect(mx, my, popupX, popupY, popupWidth, popupHeight)) {
                 closePublishPopup();
                 return true;
             }
@@ -1295,15 +1291,15 @@ public class PathmindMarketplaceScreen extends Screen {
             int closeButtonX = popupX + (accountPopup.closeButtonX - accountPopup.x);
             int signOutButtonX = popupX + (accountPopup.signOutButtonX - accountPopup.x);
             int buttonY = popupY + (accountPopup.buttonY - accountPopup.y);
-            if (isPointInRect(mouseX, mouseY, closeButtonX, buttonY, accountPopup.buttonWidth, accountPopup.buttonHeight)) {
+            if (isPointInRect(mx, my, closeButtonX, buttonY, accountPopup.buttonWidth, accountPopup.buttonHeight)) {
                 closeAccountPopup();
                 return true;
             }
-            if (!authBusy && isPointInRect(mouseX, mouseY, signOutButtonX, buttonY, accountPopup.buttonWidth, accountPopup.buttonHeight)) {
+            if (!authBusy && isPointInRect(mx, my, signOutButtonX, buttonY, accountPopup.buttonWidth, accountPopup.buttonHeight)) {
                 startSignOut();
                 return true;
             }
-            if (!isPointInRect(mouseX, mouseY, popupX, popupY, popupWidth, popupHeight)) {
+            if (!isPointInRect(mx, my, popupX, popupY, popupWidth, popupHeight)) {
                 closeAccountPopup();
                 return true;
             }
@@ -1344,20 +1340,20 @@ public class PathmindMarketplaceScreen extends Screen {
                 presetVisibilityToggle.setValue(publishVisibilityPublic);
                 presetVisibilityToggle.setPosition(fieldX + fieldWidth - presetVisibilityToggle.getWidth(), visibilityPanelTop + 8);
                 boolean clickedField = false;
-                if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
+                if (publishNameField != null && isPointInRect(mx, my, fieldX, nameFieldY, fieldWidth, 18)) {
                     focusPublishField(publishNameField);
-                    publishNameField.mouseClicked(click, inBounds);
+                    publishNameField.mouseClicked(mouseX, mouseY, button);
                     clickedField = true;
-                } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
+                } else if (publishTagsField != null && isPointInRect(mx, my, fieldX, tagsFieldY, fieldWidth, 18)) {
                     focusPublishField(publishTagsField);
-                    publishTagsField.mouseClicked(click, inBounds);
+                    publishTagsField.mouseClicked(mouseX, mouseY, button);
                     clickedField = true;
-                } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX + 8, descriptionFieldY, fieldWidth - 16, 18)) {
+                } else if (publishDescriptionField != null && isPointInRect(mx, my, fieldX + 8, descriptionFieldY, fieldWidth - 16, 18)) {
                     focusPublishField(publishDescriptionField);
-                    publishDescriptionField.mouseClicked(click, inBounds);
+                    publishDescriptionField.mouseClicked(mouseX, mouseY, button);
                     clickedField = true;
-                } else if (presetVisibilityToggle.contains(mouseX, mouseY)) {
-                    presetVisibilityToggle.mouseClicked(mouseX, mouseY);
+                } else if (presetVisibilityToggle.contains(mx, my)) {
+                    presetVisibilityToggle.mouseClicked(mx, my);
                     publishVisibilityPublic = presetVisibilityToggle.getValue();
                     clickedField = true;
                 } else {
@@ -1367,11 +1363,11 @@ public class PathmindMarketplaceScreen extends Screen {
                     return true;
                 }
             }
-            if (isPointInRect(mouseX, mouseY, popupBookmarkHit.x, popupBookmarkHit.y, popupBookmarkHit.width, popupBookmarkHit.height)) {
+            if (isPointInRect(mx, my, popupBookmarkHit.x, popupBookmarkHit.y, popupBookmarkHit.width, popupBookmarkHit.height)) {
                 savePresetLocally(popupPreset, false);
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, popupHeartHit.x, popupHeartHit.y, popupHeartHit.width, popupHeartHit.height)) {
+            if (isPointInRect(mx, my, popupHeartHit.x, popupHeartHit.y, popupHeartHit.width, popupHeartHit.height)) {
                 if (authSession == null) {
                     handleAuthButton();
                 } else {
@@ -1379,31 +1375,31 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, zoomOutHit.x, zoomOutHit.y, zoomOutHit.width, zoomOutHit.height)) {
+            if (isPointInRect(mx, my, zoomOutHit.x, zoomOutHit.y, zoomOutHit.width, zoomOutHit.height)) {
                 adjustPopupPreviewZoom(-1);
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, zoomInHit.x, zoomInHit.y, zoomInHit.width, zoomInHit.height)) {
+            if (isPointInRect(mx, my, zoomInHit.x, zoomInHit.y, zoomInHit.width, zoomInHit.height)) {
                 adjustPopupPreviewZoom(1);
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, previewX, previewY, previewWidth, previewHeight)) {
+            if (isPointInRect(mx, my, previewX, previewY, previewWidth, previewHeight)) {
                 popupPreviewDragging = true;
-                popupPreviewDragLastX = mouseX;
-                popupPreviewDragLastY = mouseY;
+                popupPreviewDragLastX = mx;
+                popupPreviewDragLastY = my;
                 return true;
             }
             if (scrollMetrics.maxScroll() > 0
-                && isPointInRect(mouseX, mouseY, scrollMetrics.trackLeft() - 3, scrollMetrics.trackTop(), scrollMetrics.trackWidth() + 6, scrollMetrics.viewportHeight())) {
+                && isPointInRect(mx, my, scrollMetrics.trackLeft() - 3, scrollMetrics.trackTop(), scrollMetrics.trackWidth() + 6, scrollMetrics.viewportHeight())) {
                 popupScrollDragging = true;
-                popupScrollDragOffset = mouseY - scrollMetrics.thumbTop();
+                popupScrollDragOffset = my - scrollMetrics.thumbTop();
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, closeButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
+            if (isPointInRect(mx, my, closeButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
                 closePopup();
                 return true;
             }
-            if (!authBusy && isPointInRect(mouseX, mouseY, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
+            if (!authBusy && isPointInRect(mx, my, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
                 if (popupPreset != null && isOwnPreset(popupPreset)) {
                     if (popupMetadataEditing) {
                         startPublishSubmission();
@@ -1420,28 +1416,28 @@ public class PathmindMarketplaceScreen extends Screen {
             if (ownPreset
                 && !deleteBusy
                 && !publishBusy
-                && isPointInRect(mouseX, mouseY, deleteButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
+                && isPointInRect(mx, my, deleteButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
                 startDeletePreset(popupPreset, true);
                 return true;
             }
-            if (!importingPreset && isPointInRect(mouseX, mouseY, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
+            if (!importingPreset && isPointInRect(mx, my, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
                 startPresetImport();
                 return true;
             }
-            if (!isPointInRect(mouseX, mouseY, popupX, popupY, popupWidth, popupHeight)) {
+            if (!isPointInRect(mx, my, popupX, popupY, popupWidth, popupHeight)) {
                 closePopup();
                 return true;
             }
             return true;
         }
         if (sortDropdownOpen) {
-            if (isPointInRect(mouseX, mouseY, layout.sortButtonX, layout.sortButtonY, SORT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+            if (isPointInRect(mx, my, layout.sortButtonX, layout.sortButtonY, SORT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
                 sortDropdownOpen = false;
                 return true;
             }
             Rect dropdownBounds = getSortDropdownBounds(layout);
-            if (isPointInRect(mouseX, mouseY, dropdownBounds.x, dropdownBounds.y, dropdownBounds.width, dropdownBounds.height)) {
-                int optionIndex = Math.max(0, Math.min(SortMode.values().length - 1, (mouseY - dropdownBounds.y) / SORT_OPTION_HEIGHT));
+            if (isPointInRect(mx, my, dropdownBounds.x, dropdownBounds.y, dropdownBounds.width, dropdownBounds.height)) {
+                int optionIndex = Math.max(0, Math.min(SortMode.values().length - 1, (my - dropdownBounds.y) / SORT_OPTION_HEIGHT));
                 sortMode = SortMode.values()[optionIndex];
                 sortDropdownOpen = false;
                 applyFilters();
@@ -1449,27 +1445,27 @@ public class PathmindMarketplaceScreen extends Screen {
             }
             sortDropdownOpen = false;
         }
-        if (isPointInRect(mouseX, mouseY, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE)) {
+        if (isPointInRect(mx, my, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE)) {
             close();
             return true;
         }
-        if (!authBusy && isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+        if (!authBusy && isPointInRect(mx, my, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
             handleAuthButton();
             return true;
         }
-        if (searchField != null && isPointInRect(mouseX, mouseY, layout.searchFieldX, layout.searchFieldY, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT)) {
+        if (searchField != null && isPointInRect(mx, my, layout.searchFieldX, layout.searchFieldY, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT)) {
             searchField.setFocused(true);
-            searchField.mouseClicked(click, inBounds);
+            searchField.mouseClicked(mouseX, mouseY, button);
             return true;
         }
         if (searchField != null) {
             searchField.setFocused(false);
         }
-        if (isPointInRect(mouseX, mouseY, layout.sortButtonX, layout.sortButtonY, SORT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+        if (isPointInRect(mx, my, layout.sortButtonX, layout.sortButtonY, SORT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
             sortDropdownOpen = !sortDropdownOpen;
             return true;
         }
-        if (isPointInRect(mouseX, mouseY, layout.myPresetsButtonX, layout.myPresetsButtonY, MY_PRESETS_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
+        if (isPointInRect(mx, my, layout.myPresetsButtonX, layout.myPresetsButtonY, MY_PRESETS_BUTTON_WIDTH, SORT_BUTTON_HEIGHT)) {
             if (authSession == null) {
                 myPresetsOnly = true;
                 handleAuthButton();
@@ -1490,33 +1486,33 @@ public class PathmindMarketplaceScreen extends Screen {
             int allX = layout.searchFieldX;
             int publicX = allX + MY_PRESET_FILTER_ALL_WIDTH + 6;
             int privateX = publicX + MY_PRESET_FILTER_PUBLIC_WIDTH + 6;
-            if (isPointInRect(mouseX, mouseY, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
+            if (isPointInRect(mx, my, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
                 myPresetsFilter = MyPresetsFilter.ALL;
                 applyFilters();
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, publicX, filterY, MY_PRESET_FILTER_PUBLIC_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
+            if (isPointInRect(mx, my, publicX, filterY, MY_PRESET_FILTER_PUBLIC_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
                 myPresetsFilter = MyPresetsFilter.PUBLIC;
                 applyFilters();
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, privateX, filterY, MY_PRESET_FILTER_PRIVATE_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
+            if (isPointInRect(mx, my, privateX, filterY, MY_PRESET_FILTER_PRIVATE_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT)) {
                 myPresetsFilter = MyPresetsFilter.PRIVATE;
                 applyFilters();
                 return true;
             }
         }
-        if (!loading && isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE)) {
+        if (!loading && isPointInRect(mx, my, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE)) {
             refreshListings();
             return true;
         }
 
         PageHitAreas pageHits = getPageHitAreas(layout);
-        if (pageHits.leftArrow() != null && isPointInRect(mouseX, mouseY, pageHits.leftArrow().x, pageHits.leftArrow().y, pageHits.leftArrow().width, pageHits.leftArrow().height)) {
+        if (pageHits.leftArrow() != null && isPointInRect(mx, my, pageHits.leftArrow().x, pageHits.leftArrow().y, pageHits.leftArrow().width, pageHits.leftArrow().height)) {
             pageIndex = Math.max(0, pageIndex - 1);
             return true;
         }
-        if (pageHits.rightArrow() != null && isPointInRect(mouseX, mouseY, pageHits.rightArrow().x, pageHits.rightArrow().y, pageHits.rightArrow().width, pageHits.rightArrow().height)) {
+        if (pageHits.rightArrow() != null && isPointInRect(mx, my, pageHits.rightArrow().x, pageHits.rightArrow().y, pageHits.rightArrow().width, pageHits.rightArrow().height)) {
             pageIndex = Math.min(getMaxPageIndex(), pageIndex + 1);
             return true;
         }
@@ -1535,19 +1531,19 @@ public class PathmindMarketplaceScreen extends Screen {
             Rect deleteHit = new Rect(previewX + previewWidth - 14, previewY + 2, 12, 12);
             Rect heartHit = new Rect(previewX + previewWidth - 14, previewY + previewHeight - 14, 12, 12);
             Rect bookmarkHit = new Rect(previewX + previewWidth - 28, previewY + previewHeight - 14, 12, 12);
-            if (isOwnPreset(preset) && isPointInRect(mouseX, mouseY, deleteHit.x, deleteHit.y, deleteHit.width, deleteHit.height)) {
+            if (isOwnPreset(preset) && isPointInRect(mx, my, deleteHit.x, deleteHit.y, deleteHit.width, deleteHit.height)) {
                 startDeletePreset(preset, false);
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, heartHit.x, heartHit.y, heartHit.width, heartHit.height)) {
+            if (isPointInRect(mx, my, heartHit.x, heartHit.y, heartHit.width, heartHit.height)) {
                 startToggleLike(preset, false);
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, bookmarkHit.x, bookmarkHit.y, bookmarkHit.width, bookmarkHit.height)) {
+            if (isPointInRect(mx, my, bookmarkHit.x, bookmarkHit.y, bookmarkHit.width, bookmarkHit.height)) {
                 savePresetLocally(preset, false);
                 return true;
             }
-            if (isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height)) {
+            if (isPointInRect(mx, my, rect.x, rect.y, rect.width, rect.height)) {
                 selectedIndex = index;
                 popupPreset = preset;
                 popupScrollOffset = 0;
@@ -1562,14 +1558,14 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
 
-        return super.mouseClicked(click, inBounds);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
-    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (popupPreviewDragging && popupPreset != null) {
-            int currentX = (int) click.x();
-            int currentY = (int) click.y();
+            int currentX = (int) mouseX;
+            int currentY = (int) mouseY;
             popupPreviewPanX += currentX - popupPreviewDragLastX;
             popupPreviewPanY += currentY - popupPreviewDragLastY;
             popupPreviewDragLastX = currentX;
@@ -1584,18 +1580,18 @@ public class PathmindMarketplaceScreen extends Screen {
             if (scrollMetrics.maxScroll() <= 0) {
                 return true;
             }
-            int desiredThumbY = (int) click.y() - popupScrollDragOffset;
+            int desiredThumbY = (int) mouseY - popupScrollDragOffset;
             int minThumbY = scrollMetrics.trackTop();
             int maxThumbY = scrollMetrics.trackTop() + Math.max(0, scrollMetrics.viewportHeight() - scrollMetrics.thumbHeight());
             int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
             popupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
             return true;
         }
-        return super.mouseDragged(click, deltaX, deltaY);
+        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
     }
 
     @Override
-    public boolean mouseReleased(Click click) {
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (popupPreviewDragging) {
             popupPreviewDragging = false;
             return true;
@@ -1604,7 +1600,7 @@ public class PathmindMarketplaceScreen extends Screen {
             popupScrollDragging = false;
             return true;
         }
-        return super.mouseReleased(click);
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
@@ -1672,9 +1668,9 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(KeyInput input) {
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (publishPopupOpen || popupMetadataEditing) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 if (publishPopupOpen) {
                     closePublishPopup();
                 } else {
@@ -1682,61 +1678,61 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 return true;
             }
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(input)) {
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(input)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(input)) {
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            if ((input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
+            if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
                 startPublishSubmission();
                 return true;
             }
             return true;
         }
         if (sortDropdownOpen) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE || input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 sortDropdownOpen = false;
                 return true;
             }
         }
         if (searchField != null && searchField.isFocused()) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 searchField.setFocused(false);
                 return true;
             }
-            if (searchField.keyPressed(input)) {
+            if (searchField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
         }
-        if (input.key() == 256) { // ESC
+        if (keyCode == 256) { // ESC
             close();
             return true;
         }
-        return super.keyPressed(input);
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
-    public boolean charTyped(CharInput input) {
+    public boolean charTyped(char chr, int modifiers) {
         if (publishPopupOpen || popupMetadataEditing) {
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(input)) {
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(chr, modifiers)) {
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(input)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(chr, modifiers)) {
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(input)) {
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(chr, modifiers)) {
                 return true;
             }
             return true;
         }
-        if (searchField != null && searchField.isFocused() && searchField.charTyped(input)) {
+        if (searchField != null && searchField.isFocused() && searchField.charTyped(chr, modifiers)) {
             return true;
         }
-        return super.charTyped(input);
+        return super.charTyped(chr, modifiers);
     }
 
     private void drawIconButton(DrawContext context, int x, int y, int width, int height, boolean hovered, boolean disabled) {
@@ -1751,15 +1747,15 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void drawActionButton(DrawContext context, int x, int y, int width, int height, String label,
                                   boolean hovered, boolean disabled, boolean active) {
-        int bgColor = disabled
-            ? UITheme.TOOLBAR_BG_DISABLED
-            : active ? (hovered
-                ? AnimationHelper.lerpColor(getAccentColor(), UITheme.TEXT_HEADER, 0.18f)
-                : AnimationHelper.lerpColor(getAccentColor(), UITheme.BORDER_SOCKET, 0.25f))
-            : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
-        int borderColor = disabled ? UITheme.BORDER_SUBTLE : (hovered || active) ? getAccentColor() : UITheme.BORDER_DEFAULT;
-        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
-        int textColor = disabled ? UITheme.TEXT_TERTIARY : hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY;
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(
+            active ? UIStyleHelper.TextButtonStyle.PRIMARY : UIStyleHelper.TextButtonStyle.DEFAULT,
+            getAccentColor(),
+            hovered || active,
+            disabled
+        );
+        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height,
+            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+        int textColor = palette.textColor();
         int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
         int textY = y + (height - this.textRenderer.fontHeight) / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
@@ -1767,22 +1763,26 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void drawAnimatedActionButton(DrawContext context, int x, int y, int width, int height, String label,
                                           boolean hovered, boolean disabled, PopupAnimationHandler animation) {
-        int bgColor = disabled ? UITheme.TOOLBAR_BG_DISABLED : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.TOOLBAR_BG;
-        int borderColor = disabled ? UITheme.BORDER_SUBTLE : hovered ? getAccentColor() : UITheme.BORDER_DEFAULT;
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(
+            UIStyleHelper.TextButtonStyle.DEFAULT,
+            getAccentColor(),
+            hovered,
+            disabled
+        );
         UIStyleHelper.drawToolbarButtonFrame(
             context,
             x,
             y,
             width,
             height,
-            animation.getAnimatedPopupColor(bgColor),
-            animation.getAnimatedPopupColor(borderColor),
-            animation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+            animation.getAnimatedPopupColor(palette.backgroundColor()),
+            animation.getAnimatedPopupColor(palette.borderColor()),
+            animation.getAnimatedPopupColor(palette.innerBorderColor())
         );
-        int textColor = disabled ? UITheme.TEXT_TERTIARY : hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY;
         int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
         int textY = y + (height - this.textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, animation.getAnimatedPopupColor(textColor));
+        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY,
+            animation.getAnimatedPopupColor(palette.textColor()));
     }
 
     private void renderSortDropdown(DrawContext context, int mouseX, int mouseY, Layout layout) {

@@ -126,26 +126,11 @@ public class StyledButton {
 
         float hoverProg = hoverProgress.getValue();
 
-        // Calculate colors
-        int bgNormal = getBackgroundColor();
-        int bgHover = getHoverColor();
-        int bgColor = AnimationHelper.lerpColor(bgNormal, bgHover, hoverProg);
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapStyle(style), accentColor, hoverProg, !enabled);
+        UIStyleHelper.drawBeveledPanel(context, x, y, width, height,
+            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
 
-        int borderNormal = getBorderColor();
-        int borderHover = UITheme.BUTTON_HOVER_OUTLINE;
-        int borderColor = AnimationHelper.lerpColor(borderNormal, borderHover, hoverProg);
-
-        // Apply disabled state
-        if (!enabled) {
-            bgColor = AnimationHelper.darken(bgColor, 0.6f);
-            borderColor = AnimationHelper.darken(borderColor, 0.6f);
-        }
-
-        int innerBorder = AnimationHelper.lerpColor(UITheme.PANEL_INNER_BORDER, UITheme.BUTTON_HOVER_OUTLINE, hoverProg * 0.4f);
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, bgColor, borderColor, innerBorder);
-
-        // Render text
-        int textColor = enabled ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
+        int textColor = palette.textColor();
         int textX = x + width / 2;
         int textY = y + (height - textRenderer.fontHeight) / 2 + 1;
         context.drawCenteredTextWithShadow(textRenderer, Text.literal(label), textX, textY, textColor);
@@ -250,17 +235,22 @@ public class StyledButton {
     public static void renderSimple(DrawContext context, TextRenderer textRenderer,
                                     int x, int y, int width, int height,
                                     String label, Style style, boolean hovered, int accentColor) {
-        int bgColor = hovered ? getStaticHoverColor(style, accentColor) : getStaticBgColor(style, accentColor);
-        int borderColor = getStaticBorderColor(style, accentColor);
-        if (hovered) {
-            borderColor = UITheme.BUTTON_HOVER_OUTLINE;
-        }
-
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapStyle(style), accentColor, hovered, false);
+        UIStyleHelper.drawBeveledPanel(context, x, y, width, height,
+            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
 
         int textX = x + width / 2;
         int textY = y + (height - textRenderer.fontHeight) / 2 + 1;
-        context.drawCenteredTextWithShadow(textRenderer, Text.literal(label), textX, textY, UITheme.TEXT_PRIMARY);
+        context.drawCenteredTextWithShadow(textRenderer, Text.literal(label), textX, textY, palette.textColor());
+    }
+
+    private static UIStyleHelper.TextButtonStyle mapStyle(Style style) {
+        return switch (style) {
+            case PRIMARY -> UIStyleHelper.TextButtonStyle.PRIMARY;
+            case ACCENT -> UIStyleHelper.TextButtonStyle.ACCENT;
+            case DANGER -> UIStyleHelper.TextButtonStyle.DANGER;
+            case DEFAULT -> UIStyleHelper.TextButtonStyle.DEFAULT;
+        };
     }
 
     private static int getStaticBgColor(Style style, int accentColor) {

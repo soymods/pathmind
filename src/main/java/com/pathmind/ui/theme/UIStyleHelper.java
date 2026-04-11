@@ -1,5 +1,6 @@
 package com.pathmind.ui.theme;
 
+import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -9,6 +10,16 @@ import net.minecraft.client.gui.DrawContext;
  * Keeps panel/button framing logic centralized and avoids hardcoded styling in screens/widgets.
  */
 public final class UIStyleHelper {
+
+    public enum TextButtonStyle {
+        DEFAULT,
+        PRIMARY,
+        ACCENT,
+        DANGER
+    }
+
+    public record TextButtonPalette(int backgroundColor, int borderColor, int innerBorderColor, int textColor) {
+    }
 
     private UIStyleHelper() {
     }
@@ -32,6 +43,61 @@ public final class UIStyleHelper {
     public static void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
                                               int backgroundColor, int outerBorderColor, int innerBorderColor) {
         drawBeveledPanel(context, x, y, width, height, backgroundColor, outerBorderColor, innerBorderColor);
+    }
+
+    public static TextButtonPalette getTextButtonPalette(TextButtonStyle style, int accentColor, boolean hovered, boolean disabled) {
+        return getTextButtonPalette(style, accentColor, hovered ? 1f : 0f, disabled);
+    }
+
+    public static TextButtonPalette getTextButtonPalette(TextButtonStyle style, int accentColor, float hoverProgress, boolean disabled) {
+        float easedHover = AnimationHelper.easeOutQuad(Math.max(0f, Math.min(1f, hoverProgress)));
+        int backgroundColor;
+        int borderColor;
+        int textColor;
+        switch (style) {
+            case PRIMARY -> {
+                backgroundColor = AnimationHelper.lerpColor(
+                    AnimationHelper.lerpColor(accentColor, UITheme.BORDER_SOCKET, 0.25f),
+                    AnimationHelper.lerpColor(accentColor, UITheme.TEXT_HEADER, 0.18f),
+                    easedHover
+                );
+                borderColor = AnimationHelper.lerpColor(accentColor, UITheme.TEXT_HEADER, easedHover * 0.2f);
+                textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, easedHover);
+            }
+            case ACCENT -> {
+                backgroundColor = AnimationHelper.lerpColor(
+                    accentColor,
+                    AnimationHelper.lerpColor(accentColor, UITheme.TEXT_HEADER, 0.25f),
+                    easedHover
+                );
+                borderColor = AnimationHelper.lerpColor(accentColor, UITheme.TEXT_HEADER, easedHover * 0.18f);
+                textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, easedHover);
+            }
+            case DANGER -> {
+                backgroundColor = AnimationHelper.lerpColor(UITheme.BUTTON_DANGER_BG, UITheme.BUTTON_DANGER_HOVER, easedHover);
+                borderColor = AnimationHelper.lerpColor(UITheme.BORDER_DANGER_MUTED, UITheme.BORDER_DANGER, easedHover);
+                textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, easedHover);
+            }
+            case DEFAULT -> {
+                backgroundColor = AnimationHelper.lerpColor(UITheme.BUTTON_ACTIVE_BG, UITheme.BORDER_HIGHLIGHT, easedHover);
+                borderColor = AnimationHelper.lerpColor(UITheme.BORDER_HIGHLIGHT, UITheme.TEXT_TERTIARY, easedHover);
+                textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, easedHover);
+            }
+            default -> {
+                backgroundColor = UITheme.BUTTON_ACTIVE_BG;
+                borderColor = UITheme.BORDER_HIGHLIGHT;
+                textColor = UITheme.TEXT_PRIMARY;
+            }
+        }
+
+        if (disabled) {
+            backgroundColor = AnimationHelper.darken(backgroundColor, 0.7f);
+            borderColor = AnimationHelper.darken(borderColor, 0.7f);
+            textColor = UITheme.TEXT_TERTIARY;
+        }
+
+        int innerBorderColor = AnimationHelper.lerpColor(UITheme.PANEL_INNER_BORDER, UITheme.BUTTON_HOVER_OUTLINE, easedHover * 0.25f);
+        return new TextButtonPalette(backgroundColor, borderColor, innerBorderColor, textColor);
     }
 
     public static void drawChevron(DrawContext context, int centerX, int centerY, boolean expanded, int color) {

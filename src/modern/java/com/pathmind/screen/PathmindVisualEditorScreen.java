@@ -3691,33 +3691,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered,
                                  Text label, PopupButtonStyle style, PopupAnimationHandler animation) {
-        int bgColor;
-        int borderColor;
-        switch (style) {
-            case PRIMARY:
-                bgColor = hovered
-                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.18f)
-                        : mixColor(getAccentColor(), UITheme.BORDER_SOCKET, 0.25f);
-                borderColor = getAccentColor();
-                break;
-            case ACCENT:
-                bgColor = hovered
-                        ? mixColor(getAccentColor(), UITheme.TEXT_HEADER, 0.25f)
-                        : getAccentColor();
-                borderColor = getAccentColor();
-                break;
-            default:
-                bgColor = hovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BUTTON_ACTIVE_BG;
-                borderColor = hovered ? UITheme.TEXT_TERTIARY : UITheme.BORDER_HIGHLIGHT;
-                break;
-        }
-        int adjustedBg = getPopupAnimatedColor(animation, bgColor);
-        int adjustedBorder = getPopupAnimatedColor(animation, borderColor);
-        int adjustedInnerBorder = getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER);
-        int adjustedText = getPopupAnimatedColor(
-            animation,
-            (style == PopupButtonStyle.ACCENT && hovered) ? getAccentColor() : UITheme.TEXT_PRIMARY
-        );
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapPopupButtonStyle(style), getAccentColor(), hovered, false);
+        int adjustedBg = getPopupAnimatedColor(animation, palette.backgroundColor());
+        int adjustedBorder = getPopupAnimatedColor(animation, palette.borderColor());
+        int adjustedInnerBorder = getPopupAnimatedColor(animation, palette.innerBorderColor());
+        int adjustedText = getPopupAnimatedColor(animation, palette.textColor());
         UIStyleHelper.drawBeveledPanel(context, x, y, width, height, adjustedBg, adjustedBorder, adjustedInnerBorder);
         context.drawCenteredTextWithShadow(
             this.textRenderer,
@@ -3726,6 +3704,14 @@ public class PathmindVisualEditorScreen extends Screen {
             y + (height - this.textRenderer.fontHeight) / 2 + 1,
             adjustedText
         );
+    }
+
+    private UIStyleHelper.TextButtonStyle mapPopupButtonStyle(PopupButtonStyle style) {
+        return switch (style) {
+            case PRIMARY -> UIStyleHelper.TextButtonStyle.PRIMARY;
+            case ACCENT -> UIStyleHelper.TextButtonStyle.ACCENT;
+            case DEFAULT -> UIStyleHelper.TextButtonStyle.DEFAULT;
+        };
     }
 
     private void drawPopupContainer(DrawContext context, int x, int y, int width, int height, PopupAnimationHandler animation) {

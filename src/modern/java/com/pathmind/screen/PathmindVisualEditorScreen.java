@@ -5857,13 +5857,34 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean renderPublishButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getPublishButtonX();
         boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
-        int background = hovered ? mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.78f)
-            : mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.62f);
-        int border = hovered ? UITheme.TEXT_EDITING_LABEL : UITheme.ACCENT_SKY;
+        float hoverProgress = getHoverProgress("workspace-publish", hovered);
+        boolean synced = isCurrentPresetPublishedAndSynced();
+        if (synced) {
+            int background = AnimationHelper.lerpColor(UITheme.TOOLBAR_BG, UITheme.TOOLBAR_BG_HOVER, hoverProgress);
+            int border = getAnimatedBorderColor("workspace-publish", hovered, UITheme.BORDER_DEFAULT, getAccentColor());
+            int iconColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getAccentColor(), hoverProgress);
+            UIStyleHelper.drawToolbarButtonFrame(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE,
+                background, border, UITheme.PANEL_INNER_BORDER);
+            drawPublishArrowIcon(context, buttonX, buttonY, iconColor);
+            return hovered;
+        }
+        int idleBackground = mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.62f);
+        int hoverBackground = mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.78f);
+        int background = AnimationHelper.lerpColor(idleBackground, hoverBackground, hoverProgress);
+        int border = AnimationHelper.lerpColor(UITheme.ACCENT_SKY, UITheme.TEXT_EDITING_LABEL, hoverProgress);
+        int iconColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, hoverProgress);
         UIStyleHelper.drawToolbarButtonFrame(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE,
             background, border, UITheme.PANEL_INNER_BORDER);
-        drawPublishArrowIcon(context, buttonX, buttonY, hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY);
+        drawPublishArrowIcon(context, buttonX, buttonY, iconColor);
         return hovered;
+    }
+
+    private boolean isCurrentPresetPublishedAndSynced() {
+        if (activePresetName == null || activePresetName.isBlank()) {
+            return false;
+        }
+        return PresetManager.getMarketplaceLinkedPresetId(activePresetName).isPresent()
+            && !PresetManager.hasMarketplaceLinkedPresetChanges(activePresetName);
     }
 
     private void drawPublishArrowIcon(DrawContext context, int buttonX, int buttonY, int color) {

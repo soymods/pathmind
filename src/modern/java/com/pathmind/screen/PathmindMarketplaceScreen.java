@@ -84,7 +84,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int MY_PRESET_FILTER_ALL_WIDTH = 34;
     private static final int MY_PRESET_FILTER_PUBLIC_WIDTH = 50;
     private static final int MY_PRESET_FILTER_PRIVATE_WIDTH = 54;
-    private static final int ACCOUNT_BUTTON_WIDTH = 88;
+    private static final int ACCOUNT_BUTTON_WIDTH = SORT_BUTTON_HEIGHT;
     private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
 
     private final Screen parent;
@@ -158,6 +158,10 @@ public class PathmindMarketplaceScreen extends Screen {
     private ConfirmAction pendingConfirmAction = null;
     private MarketplacePreset pendingConfirmPreset = null;
     private boolean pendingConfirmDeleteFromPopup = false;
+    private ConfirmAction renderConfirmAction = null;
+    private boolean confirmPopupClosing = false;
+    private boolean presetPopupClosing = false;
+    private boolean returnToParentAfterPresetClose = false;
     private boolean skipMarketplaceDeleteConfirm = SettingsManager.getCurrent().skipMarketplaceDeleteConfirm != null
         && SettingsManager.getCurrent().skipMarketplaceDeleteConfirm;
     private boolean skipMarketplaceUpdateConfirm = SettingsManager.getCurrent().skipMarketplaceUpdateConfirm != null
@@ -272,6 +276,7 @@ public class PathmindMarketplaceScreen extends Screen {
         accountPopupAnimation.tick();
         publishPopupAnimation.tick();
         confirmPopupAnimation.tick();
+        cleanupClosingPopups();
         sortDropdownAnimation.animateTo(sortDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
         sortDropdownAnimation.tick();
 
@@ -311,8 +316,7 @@ public class PathmindMarketplaceScreen extends Screen {
         drawIconButton(context, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE, backHovered, false);
         drawBackArrow(context, layout.backButtonX, layout.backButtonY, backHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY);
         boolean accountHovered = isPointInRect(mouseX, mouseY, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT);
-        drawActionButton(context, layout.accountButtonX, layout.accountButtonY, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT,
-            getAccountButtonLabel(), accountHovered, authBusy);
+        renderAccountToolbarButton(context, layout.accountButtonX, layout.accountButtonY, accountHovered);
 
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, layout.topBarY + 2, UITheme.TEXT_HEADER);
         String subtitle = TextRenderUtil.trimWithEllipsis(
@@ -324,6 +328,28 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawHorizontalLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, layout.sectionY - 1, UITheme.BORDER_SUBTLE);
 
         renderFilterControls(context, mouseX, mouseY, layout);
+    }
+
+    private void renderAccountToolbarButton(DrawContext context, int x, int y, boolean hovered) {
+        drawIconButton(context, x, y, ACCOUNT_BUTTON_WIDTH, SORT_BUTTON_HEIGHT, hovered, authBusy);
+        Identifier avatarTexture = getOrRequestAvatarTexture();
+        if (avatarTexture != null && authSession != null) {
+            GuiTextureRenderer.drawIcon(
+                context,
+                avatarTexture,
+                x + 3,
+                y + 3,
+                ACCOUNT_BUTTON_WIDTH - 6,
+                0xFFFFFFFF
+            );
+            return;
+        }
+        String initials = authBusy ? "…" : fallback(authSession == null ? null : authSession.getDisplayName(), authSession == null ? "D" : "U").trim();
+        initials = initials.isEmpty() ? "D" : initials.substring(0, 1).toUpperCase(Locale.ROOT);
+        int textColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        int textX = x + (ACCOUNT_BUTTON_WIDTH - this.textRenderer.getWidth(initials)) / 2;
+        int textY = y + (SORT_BUTTON_HEIGHT - this.textRenderer.fontHeight) / 2;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, textColor);
     }
 
     private void renderGallerySection(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -548,11 +574,12 @@ public class PathmindMarketplaceScreen extends Screen {
                     from.getSocketY(safeOutputSocket, false),
                     to.getSocketX(true),
                     to.getSocketY(safeInputSocket, true),
-                    from.getOutputSocketColor(safeOutputSocket)
+                    from.getOutputSocketColor(safeOutputSocket),
+                    true
                 );
             }
             for (Node node : previewModel.nodes()) {
-                renderPreviewNode(context, node, 0f, 0f, 1f, true);
+                renderPreviewNode(context, node, 0f, 0f, 1f, true, true);
             }
             MatrixStackBridge.pop(matrices);
             context.disableScissor();
@@ -583,18 +610,20 @@ public class PathmindMarketplaceScreen extends Screen {
                 from.getSocketY(safeOutputSocket, false),
                 to.getSocketX(true),
                 to.getSocketY(safeInputSocket, true),
-                from.getOutputSocketColor(safeOutputSocket)
+                from.getOutputSocketColor(safeOutputSocket),
+                false
             );
         }
 
         for (Node node : previewModel.nodes()) {
-            renderPreviewNode(context, node, 0f, 0f, 1f, true);
+            renderPreviewNode(context, node, 0f, 0f, 1f, true, false);
         }
         MatrixStackBridge.pop(matrices);
         context.disableScissor();
     }
 
-    private void drawPreviewConnection(DrawContext context, int startX, int startY, int endX, int endY, int color) {
+    private void drawPreviewConnection(DrawContext context, int startX, int startY, int endX, int endY, int color, boolean popup) {
+        int resolvedColor = popup ? presetPopupAnimation.getAnimatedPopupColor(color) : color;
         int steps = Math.max(8, Math.max(Math.abs(endX - startX), Math.abs(endY - startY)) / 8);
         float controlOffset = Math.max(18f, Math.abs(endX - startX) * 0.33f);
         for (int i = 0; i <= steps; i++) {
@@ -616,11 +645,11 @@ public class PathmindMarketplaceScreen extends Screen {
                 + 3f * invT * invT * t * p1y
                 + 3f * invT * t * t * p2y
                 + t * t * t * p3y);
-            context.fill(x, y, x + 2, y + 2, color);
+            context.fill(x, y, x + 2, y + 2, resolvedColor);
         }
     }
 
-    private void renderPreviewNode(DrawContext context, Node node, float offsetX, float offsetY, float scale, boolean interactive) {
+    private void renderPreviewNode(DrawContext context, Node node, float offsetX, float offsetY, float scale, boolean interactive, boolean popup) {
         if (node == null) {
             return;
         }
@@ -631,23 +660,29 @@ public class PathmindMarketplaceScreen extends Screen {
         int color = node.getType() != null ? node.getType().getColor() : UITheme.BORDER_DEFAULT;
         int borderColor = node.isStopControlNode() ? 0xFFE35B5B : color;
         int backgroundColor = interactive ? UITheme.BACKGROUND_SECONDARY : AnimationHelper.darken(UITheme.BACKGROUND_SECONDARY, 0.94f);
+        int resolvedBackground = popup ? presetPopupAnimation.getAnimatedPopupColor(backgroundColor) : backgroundColor;
+        int resolvedBorder = popup ? presetPopupAnimation.getAnimatedPopupColor(borderColor) : borderColor;
+        int resolvedInnerBorder = popup ? presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER) : UITheme.PANEL_INNER_BORDER;
         UIStyleHelper.drawBeveledPanel(
             context,
             nodeX,
             nodeY,
             nodeWidth,
             nodeHeight,
-            backgroundColor,
-            borderColor,
-            UITheme.PANEL_INNER_BORDER
+            resolvedBackground,
+            resolvedBorder,
+            resolvedInnerBorder
         );
         boolean compactNode = node.usesMinimalNodePresentation() || node.isSensorNode() || node.isParameterNode();
         int headerHeight = compactNode ? Math.max(10, Math.round(14f * scale)) : Math.max(12, Math.round(18f * scale));
-        context.fill(nodeX + 1, nodeY + 1, nodeX + nodeWidth - 1, nodeY + headerHeight, color & UITheme.NODE_HEADER_ALPHA_MASK);
+        int headerColor = color & UITheme.NODE_HEADER_ALPHA_MASK;
+        context.fill(nodeX + 1, nodeY + 1, nodeX + nodeWidth - 1, nodeY + headerHeight,
+            popup ? presetPopupAnimation.getAnimatedPopupColor(headerColor) : headerColor);
 
         if (scale > 0.12f) {
             String label = TextRenderUtil.trimWithEllipsis(this.textRenderer, node.getDisplayName().getString(), Math.max(20, nodeWidth - 8));
-            context.drawTextWithShadow(this.textRenderer, Text.literal(label), nodeX + 4, nodeY + 3, UITheme.TEXT_HEADER);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(label), nodeX + 4, nodeY + 3,
+                popup ? presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER) : UITheme.TEXT_HEADER);
         }
 
         if (interactive && scale > 0.18f && !compactNode) {
@@ -660,26 +695,28 @@ public class PathmindMarketplaceScreen extends Screen {
                     Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, line, Math.max(22, nodeWidth - 8))),
                     nodeX + 4,
                     textY,
-                    UITheme.TEXT_SECONDARY);
+                    popup ? presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY) : UITheme.TEXT_SECONDARY);
                 textY += 10;
             }
         }
-        renderNodeSockets(context, node, offsetX, offsetY, scale);
+        renderNodeSockets(context, node, offsetX, offsetY, scale, popup);
     }
 
-    private void renderNodeSockets(DrawContext context, Node node, float offsetX, float offsetY, float scale) {
+    private void renderNodeSockets(DrawContext context, Node node, float offsetX, float offsetY, float scale, boolean popup) {
         int socketSize = Math.max(2, Math.round(4f * scale));
         int halfSocket = Math.max(1, socketSize / 2);
         for (int socketIndex = 0; socketIndex < node.getInputSocketCount(); socketIndex++) {
             int socketX = Math.round(offsetX + node.getSocketX(true) * scale);
             int socketY = Math.round(offsetY + node.getSocketY(socketIndex, true) * scale);
-            context.fill(socketX - halfSocket, socketY - halfSocket, socketX + halfSocket + 1, socketY + halfSocket + 1, UITheme.TEXT_TERTIARY);
+            int inputColor = popup ? presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY) : UITheme.TEXT_TERTIARY;
+            context.fill(socketX - halfSocket, socketY - halfSocket, socketX + halfSocket + 1, socketY + halfSocket + 1, inputColor);
         }
         for (int socketIndex = 0; socketIndex < node.getOutputSocketCount(); socketIndex++) {
             int socketX = Math.round(offsetX + node.getSocketX(false) * scale);
             int socketY = Math.round(offsetY + node.getSocketY(socketIndex, false) * scale);
             int socketColor = node.getOutputSocketColor(socketIndex);
-            context.fill(socketX - halfSocket, socketY - halfSocket, socketX + halfSocket + 1, socketY + halfSocket + 1, socketColor);
+            int outputColor = popup ? presetPopupAnimation.getAnimatedPopupColor(socketColor) : socketColor;
+            context.fill(socketX - halfSocket, socketY - halfSocket, socketX + halfSocket + 1, socketY + halfSocket + 1, outputColor);
         }
     }
 
@@ -1208,7 +1245,8 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderConfirmPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
-        if (pendingConfirmAction == null) {
+        ConfirmAction confirmAction = pendingConfirmAction != null ? pendingConfirmAction : renderConfirmAction;
+        if (confirmAction == null) {
             return;
         }
         ConfirmPopupLayout popup = getConfirmPopupLayout(layout);
@@ -1233,11 +1271,11 @@ public class PathmindMarketplaceScreen extends Screen {
             confirmPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
 
-        String title = pendingConfirmAction == ConfirmAction.DELETE ? "Delete Uploaded Preset" : "Update Uploaded Preset";
-        String lineOne = pendingConfirmAction == ConfirmAction.DELETE
+        String title = confirmAction == ConfirmAction.DELETE ? "Delete Uploaded Preset" : "Update Uploaded Preset";
+        String lineOne = confirmAction == ConfirmAction.DELETE
             ? "Delete this uploaded preset from Pathmind Marketplace?"
             : "Overwrite the uploaded preset with your current local graph?";
-        String lineTwo = pendingConfirmAction == ConfirmAction.DELETE
+        String lineTwo = confirmAction == ConfirmAction.DELETE
             ? "This removes the cloud copy and cannot be undone."
             : "This replaces the current uploaded version for all future downloads.";
 
@@ -1248,7 +1286,7 @@ public class PathmindMarketplaceScreen extends Screen {
         drawWrappedValue(context, popupX + 20, popupY + 72, popupWidth - 40, lineTwo,
             confirmPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
-        boolean skipConfirm = pendingConfirmAction == ConfirmAction.DELETE ? skipMarketplaceDeleteConfirm : skipMarketplaceUpdateConfirm;
+        boolean skipConfirm = confirmAction == ConfirmAction.DELETE ? skipMarketplaceDeleteConfirm : skipMarketplaceUpdateConfirm;
         int checkboxX = popupX + 20;
         int checkboxY = popupY + 102;
         boolean checkboxHovered = isPointInRect(mouseX, mouseY, checkboxX - 2, checkboxY - 2, 14, 14);
@@ -1276,7 +1314,7 @@ public class PathmindMarketplaceScreen extends Screen {
         drawAnimatedActionButton(context, cancelButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             "Cancel", cancelHovered, false, confirmPopupAnimation);
         drawAnimatedActionButton(context, confirmButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            pendingConfirmAction == ConfirmAction.DELETE ? "Delete" : "Update",
+            confirmAction == ConfirmAction.DELETE ? "Delete" : "Update",
             confirmHovered, false, confirmPopupAnimation);
         context.disableScissor();
     }
@@ -1353,7 +1391,10 @@ public class PathmindMarketplaceScreen extends Screen {
             close();
             return true;
         }
-        if (pendingConfirmAction != null) {
+        if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
+            if (pendingConfirmAction == null) {
+                return true;
+            }
             ConfirmPopupLayout confirmPopup = getConfirmPopupLayout(layout);
             int[] bounds = confirmPopupAnimation.getScaledPopupBounds(this.width, this.height, confirmPopup.width, confirmPopup.height);
             int popupX = bounds[0];
@@ -1472,7 +1513,10 @@ public class PathmindMarketplaceScreen extends Screen {
             }
             return true;
         }
-        if (popupPreset != null) {
+        if (popupPreset != null || presetPopupAnimation.isVisible()) {
+            if (popupPreset == null || presetPopupClosing) {
+                return true;
+            }
             PopupLayout popup = getPopupLayout(layout);
             int[] bounds = presetPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
             int popupX = bounds[0];
@@ -1744,6 +1788,9 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+        if (presetPopupClosing) {
+            return true;
+        }
         if (popupPreviewDragging && popupPreset != null) {
             int currentX = (int) click.x();
             int currentY = (int) click.y();
@@ -1787,7 +1834,10 @@ public class PathmindMarketplaceScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         Layout layout = getLayout();
-        if (popupPreset != null) {
+        if (popupPreset != null || presetPopupAnimation.isVisible()) {
+            if (popupPreset == null || presetPopupClosing) {
+                return true;
+            }
             PopupLayout popup = getPopupLayout(layout);
             int[] bounds = presetPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
             Rect previewRect = getPopupPreviewRect(bounds[0], bounds[1], bounds[2], bounds[3], popupScrollOffset);
@@ -1830,7 +1880,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public void close() {
-        if (pendingConfirmAction != null) {
+        if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
             closeConfirmPopup();
             return;
         }
@@ -1842,7 +1892,7 @@ public class PathmindMarketplaceScreen extends Screen {
             closeAccountPopup();
             return;
         }
-        if (popupPreset != null) {
+        if (popupPreset != null || presetPopupAnimation.isVisible()) {
             closePopup();
             return;
         }
@@ -1854,11 +1904,17 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyInput input) {
-        if (pendingConfirmAction != null) {
+        if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
+            if (pendingConfirmAction == null) {
+                return true;
+            }
             if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
                 closeConfirmPopup();
                 return true;
             }
+            return true;
+        }
+        if (presetPopupClosing) {
             return true;
         }
         if (publishPopupOpen || popupMetadataEditing) {
@@ -2164,24 +2220,16 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void closePopup() {
-        if (!importingPreset) {
-            endPopupMetadataEdit(false);
-            popupPreset = null;
-            popupScrollOffset = 0;
-            popupScrollDragging = false;
-            popupScrollDragOffset = 0;
-            popupPreviewDragging = false;
-            popupPreviewPanX = 0f;
-            popupPreviewPanY = 0f;
-            popupPreviewZoom = 1f;
-            if (editorPopupMode) {
-                if (this.client != null) {
-                    this.client.setScreen(parent);
-                }
-            } else {
-                presetPopupAnimation.hide();
-            }
+        if (importingPreset || popupPreset == null || presetPopupClosing) {
+            return;
         }
+        endPopupMetadataEdit(false);
+        popupScrollDragging = false;
+        popupScrollDragOffset = 0;
+        popupPreviewDragging = false;
+        presetPopupClosing = true;
+        returnToParentAfterPresetClose = editorPopupMode;
+        presetPopupAnimation.hide();
     }
 
     private void openConfirmPopup(ConfirmAction action, MarketplacePreset preset, boolean deleteFromPopup) {
@@ -2199,6 +2247,8 @@ public class PathmindMarketplaceScreen extends Screen {
         pendingConfirmAction = action;
         pendingConfirmPreset = preset;
         pendingConfirmDeleteFromPopup = deleteFromPopup;
+        renderConfirmAction = action;
+        confirmPopupClosing = false;
         confirmPopupAnimation.show();
     }
 
@@ -2206,6 +2256,7 @@ public class PathmindMarketplaceScreen extends Screen {
         pendingConfirmAction = null;
         pendingConfirmPreset = null;
         pendingConfirmDeleteFromPopup = false;
+        confirmPopupClosing = true;
         confirmPopupAnimation.hide();
     }
 
@@ -2593,10 +2644,35 @@ public class PathmindMarketplaceScreen extends Screen {
         popupMetadataEditing = false;
         editingPreset = null;
         publishSourcePresetName = "";
+        presetPopupClosing = false;
+        returnToParentAfterPresetClose = false;
         popupStatusMessage = fallback(statusMessage, "");
         popupStatusColor = statusColor;
         requestPreviewGraph(popupPreset);
         presetPopupAnimation.show();
+    }
+
+    private void cleanupClosingPopups() {
+        if (confirmPopupClosing && confirmPopupAnimation.isFullyHidden()) {
+            renderConfirmAction = null;
+            confirmPopupClosing = false;
+        }
+        if (presetPopupClosing && presetPopupAnimation.isFullyHidden()) {
+            popupPreset = null;
+            popupScrollOffset = 0;
+            popupScrollDragging = false;
+            popupScrollDragOffset = 0;
+            popupPreviewDragging = false;
+            popupPreviewPanX = 0f;
+            popupPreviewPanY = 0f;
+            popupPreviewZoom = 1f;
+            presetPopupClosing = false;
+            boolean returnToParent = returnToParentAfterPresetClose;
+            returnToParentAfterPresetClose = false;
+            if (returnToParent && this.client != null) {
+                this.client.setScreen(parent);
+            }
+        }
     }
 
     private void openEditMetadataPopup(MarketplacePreset preset) {
@@ -3153,20 +3229,6 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private boolean isPresetLiked(MarketplacePreset preset) {
         return preset != null && preset.getId() != null && likedPresetIds.contains(preset.getId());
-    }
-
-    private String getAccountButtonLabel() {
-        if (authBusy) {
-            return "Working...";
-        }
-        if (authSession == null) {
-            return "Sign In";
-        }
-        return TextRenderUtil.trimWithEllipsis(
-            this.textRenderer,
-            fallback(authSession.getDisplayName(), "Signed In"),
-            ACCOUNT_BUTTON_WIDTH - 12
-        );
     }
 
     private String getPopupAuthButtonLabel() {

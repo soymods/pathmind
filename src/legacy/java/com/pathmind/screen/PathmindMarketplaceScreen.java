@@ -153,6 +153,12 @@ public class PathmindMarketplaceScreen extends Screen {
     private final ToggleSwitch publishVisibilityToggle = new ToggleSwitch(true);
     private final ToggleSwitch presetVisibilityToggle = new ToggleSwitch(true);
     private ConfirmAction pendingConfirmAction = null;
+    private MarketplacePreset pendingConfirmPreset = null;
+    private boolean pendingConfirmDeleteFromPopup = false;
+    private boolean skipMarketplaceDeleteConfirm = SettingsManager.getCurrent().skipMarketplaceDeleteConfirm != null
+        && SettingsManager.getCurrent().skipMarketplaceDeleteConfirm;
+    private boolean skipMarketplaceUpdateConfirm = SettingsManager.getCurrent().skipMarketplaceUpdateConfirm != null
+        && SettingsManager.getCurrent().skipMarketplaceUpdateConfirm;
 
     public PathmindMarketplaceScreen(Screen parent) {
         this(parent, false, null, null);
@@ -1239,6 +1245,26 @@ public class PathmindMarketplaceScreen extends Screen {
         drawWrappedValue(context, popupX + 20, popupY + 72, popupWidth - 40, lineTwo,
             confirmPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
+        boolean skipConfirm = pendingConfirmAction == ConfirmAction.DELETE ? skipMarketplaceDeleteConfirm : skipMarketplaceUpdateConfirm;
+        int checkboxX = popupX + 20;
+        int checkboxY = popupY + 102;
+        boolean checkboxHovered = isPointInRect(mouseX, mouseY, checkboxX - 2, checkboxY - 2, 14, 14);
+        context.fill(checkboxX, checkboxY, checkboxX + 10, checkboxY + 10,
+            confirmPopupAnimation.getAnimatedPopupColor(UITheme.RENAME_INPUT_BG));
+        DrawContextBridge.drawBorder(context, checkboxX, checkboxY, 10, 10,
+            confirmPopupAnimation.getAnimatedPopupColor(checkboxHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT));
+        if (skipConfirm) {
+            int checkColor = confirmPopupAnimation.getAnimatedPopupColor(getAccentColor());
+            context.fill(checkboxX + 2, checkboxY + 5, checkboxX + 3, checkboxY + 7, checkColor);
+            context.fill(checkboxX + 3, checkboxY + 6, checkboxX + 4, checkboxY + 8, checkColor);
+            context.fill(checkboxX + 4, checkboxY + 6, checkboxX + 5, checkboxY + 7, checkColor);
+            context.fill(checkboxX + 5, checkboxY + 5, checkboxX + 6, checkboxY + 6, checkColor);
+            context.fill(checkboxX + 6, checkboxY + 4, checkboxX + 7, checkboxY + 5, checkColor);
+            context.fill(checkboxX + 7, checkboxY + 3, checkboxX + 8, checkboxY + 4, checkColor);
+        }
+        context.drawTextWithShadow(this.textRenderer, Text.literal("Don't show again"),
+            checkboxX + 18, checkboxY + 1, confirmPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
+
         int cancelButtonX = popupX + (popup.cancelButtonX - popup.x);
         int confirmButtonX = popupX + (popup.confirmButtonX - popup.x);
         int buttonY = popupY + (popup.buttonY - popup.y);
@@ -1333,8 +1359,18 @@ public class PathmindMarketplaceScreen extends Screen {
             int cancelButtonX = popupX + (confirmPopup.cancelButtonX - confirmPopup.x);
             int confirmButtonX = popupX + (confirmPopup.confirmButtonX - confirmPopup.x);
             int buttonY = popupY + (confirmPopup.buttonY - confirmPopup.y);
+            int checkboxX = popupX + 20;
+            int checkboxY = popupY + 102;
             if (!isPointInRect(mouseX, mouseY, popupX, popupY, popupWidth, popupHeight)) {
                 closeConfirmPopup();
+                return true;
+            }
+            if (isPointInRect(mouseX, mouseY, checkboxX - 2, checkboxY - 2, 14, 14)) {
+                if (pendingConfirmAction == ConfirmAction.DELETE) {
+                    setSkipMarketplaceDeleteConfirm(!skipMarketplaceDeleteConfirm);
+                } else if (pendingConfirmAction == ConfirmAction.UPDATE) {
+                    setSkipMarketplaceUpdateConfirm(!skipMarketplaceUpdateConfirm);
+                }
                 return true;
             }
             if (isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, confirmPopup.buttonWidth, confirmPopup.buttonHeight)) {
@@ -1536,7 +1572,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     popupStatusMessage = "No local changes to upload.";
                     popupStatusColor = UITheme.TEXT_SECONDARY;
                 } else if (!publishBusy && !deleteBusy && !importingPreset) {
-                    openConfirmPopup(ConfirmAction.UPDATE);
+                    openConfirmPopup(ConfirmAction.UPDATE, popupPreset, true);
                 }
                 return true;
             }
@@ -1558,7 +1594,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 && !deleteBusy
                 && !publishBusy
                 && isPointInRect(mouseX, mouseY, deleteButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
-                openConfirmPopup(ConfirmAction.DELETE);
+                openConfirmPopup(ConfirmAction.DELETE, popupPreset, true);
                 return true;
             }
             if (!importingPreset && isPointInRect(mouseX, mouseY, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
@@ -1673,7 +1709,7 @@ public class PathmindMarketplaceScreen extends Screen {
             Rect heartHit = new Rect(previewX + previewWidth - 14, previewY + previewHeight - 14, 12, 12);
             Rect bookmarkHit = new Rect(previewX + previewWidth - 28, previewY + previewHeight - 14, 12, 12);
             if (isOwnPreset(preset) && isPointInRect(mouseX, mouseY, deleteHit.x, deleteHit.y, deleteHit.width, deleteHit.height)) {
-                startDeletePreset(preset, false);
+                openConfirmPopup(ConfirmAction.DELETE, preset, false);
                 return true;
             }
             if (isPointInRect(mouseX, mouseY, heartHit.x, heartHit.y, heartHit.width, heartHit.height)) {
@@ -2144,30 +2180,58 @@ public class PathmindMarketplaceScreen extends Screen {
         }
     }
 
-    private void openConfirmPopup(ConfirmAction action) {
+    private void openConfirmPopup(ConfirmAction action, MarketplacePreset preset, boolean deleteFromPopup) {
         if (action == null) {
             return;
         }
+        if (action == ConfirmAction.DELETE && skipMarketplaceDeleteConfirm && preset != null) {
+            startDeletePreset(preset, deleteFromPopup);
+            return;
+        }
+        if (action == ConfirmAction.UPDATE && skipMarketplaceUpdateConfirm) {
+            startUpdateFromLinkedLocalPreset();
+            return;
+        }
         pendingConfirmAction = action;
+        pendingConfirmPreset = preset;
+        pendingConfirmDeleteFromPopup = deleteFromPopup;
         confirmPopupAnimation.show();
     }
 
     private void closeConfirmPopup() {
         pendingConfirmAction = null;
+        pendingConfirmPreset = null;
+        pendingConfirmDeleteFromPopup = false;
         confirmPopupAnimation.hide();
     }
 
     private void confirmPendingAction() {
         ConfirmAction action = pendingConfirmAction;
+        MarketplacePreset confirmPreset = pendingConfirmPreset;
+        boolean deleteFromPopup = pendingConfirmDeleteFromPopup;
         closeConfirmPopup();
-        if (action == null || popupPreset == null) {
+        if (action == null) {
             return;
         }
         if (action == ConfirmAction.UPDATE) {
             startUpdateFromLinkedLocalPreset();
-        } else if (action == ConfirmAction.DELETE) {
-            startDeletePreset(popupPreset, true);
+        } else if (action == ConfirmAction.DELETE && confirmPreset != null) {
+            startDeletePreset(confirmPreset, deleteFromPopup);
         }
+    }
+
+    private void setSkipMarketplaceDeleteConfirm(boolean skip) {
+        skipMarketplaceDeleteConfirm = skip;
+        SettingsManager.Settings settings = SettingsManager.getCurrent();
+        settings.skipMarketplaceDeleteConfirm = skip;
+        SettingsManager.save(settings);
+    }
+
+    private void setSkipMarketplaceUpdateConfirm(boolean skip) {
+        skipMarketplaceUpdateConfirm = skip;
+        SettingsManager.Settings settings = SettingsManager.getCurrent();
+        settings.skipMarketplaceUpdateConfirm = skip;
+        SettingsManager.save(settings);
     }
 
     private void startPresetImport() {
@@ -3515,7 +3579,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private ConfirmPopupLayout getConfirmPopupLayout(Layout layout) {
         int width = Math.min(336, this.width - 40);
-        int height = 144;
+        int height = 164;
         int x = (this.width - width) / 2;
         int y = (this.height - height) / 2;
         int buttonWidth = 88;

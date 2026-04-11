@@ -407,7 +407,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
             int avatarSize = 26;
             int avatarX = layout.bodyX + (layout.bodyWidth - avatarSize) / 2;
-            int avatarY = layout.searchFieldY + 20;
+            int avatarY = layout.searchFieldY;
             renderViewedAuthorAvatar(context, avatarX, avatarY, avatarSize);
             String profileTitle = TextRenderUtil.trimWithEllipsis(this.textRenderer,
                 fallback(viewedAuthorName, "Unknown Creator"), Math.max(80, layout.bodyWidth - 20));
@@ -4172,7 +4172,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private int getSectionHeaderHeight() {
         if (isViewingAuthorProfile()) {
-            return SECTION_HEADER_HEIGHT + 34;
+            return SECTION_HEADER_HEIGHT;
         }
         return myPresetsOnly ? SECTION_HEADER_HEIGHT + MY_PRESET_FILTER_BUTTON_HEIGHT + 8 : SECTION_HEADER_HEIGHT;
     }

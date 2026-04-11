@@ -7,6 +7,8 @@ import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.marketplace.MarketplaceAuthManager;
+import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
@@ -1146,11 +1148,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
             if (isPublishButtonClicked((int) mouseX, (int) mouseY, button)) {
-                if (this.client != null) {
-                    nodeGraph.save();
-                    PresetManager.setActivePreset(activePresetName);
-                    this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
-                }
+                openPublishPresetFlow();
                 return true;
             }
         }
@@ -5152,6 +5150,53 @@ public class PathmindVisualEditorScreen extends Screen {
         refreshMissingUiUtilsPopup();
         nodeGraph.restoreSessionViewportState();
         updateImportExportPathFromPreset();
+    }
+
+    private void openPublishPresetFlow() {
+        if (this.client == null) {
+            return;
+        }
+        nodeGraph.save();
+        PresetManager.setActivePreset(activePresetName);
+        Optional<String> linkedPresetId = PresetManager.getMarketplaceLinkedPresetId(activePresetName);
+        MarketplaceAuthManager.AuthSession cachedSession = MarketplaceAuthManager.getCachedSession().orElse(null);
+        if (cachedSession != null && linkedPresetId.isPresent()) {
+            MarketplaceAuthManager.ensureValidSession().whenComplete((session, sessionThrowable) -> {
+                if (this.client == null) {
+                    return;
+                }
+                this.client.execute(() -> {
+                    if (sessionThrowable != null || session == null) {
+                        this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
+                        return;
+                    }
+                    MarketplaceService.fetchPresetById(session.getAccessToken(), linkedPresetId.get())
+                        .whenComplete((preset, throwable) -> {
+                            if (this.client == null) {
+                                return;
+                            }
+                            this.client.execute(() -> {
+                                if (throwable == null && preset != null) {
+                                    this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, preset));
+                                } else {
+                                    this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
+                                }
+                            });
+                        });
+                });
+            });
+            return;
+        }
+        this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
+    }
+
+    void reopenPublishPresetPopup(String presetName) {
+        if (this.client == null) {
+            return;
+        }
+        nodeGraph.save();
+        PresetManager.setActivePreset(activePresetName);
+        this.client.setScreen(new PathmindMarketplaceScreen(this, true, presetName));
     }
 
     private void renderWorkspaceButtons(DrawContext context, int mouseX, int mouseY) {

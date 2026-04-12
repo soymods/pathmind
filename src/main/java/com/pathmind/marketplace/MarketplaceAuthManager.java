@@ -24,7 +24,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +49,7 @@ public final class MarketplaceAuthManager {
         .connectTimeout(Duration.ofSeconds(10))
         .build();
     private static final Object LOCK = new Object();
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private static volatile AuthSession cachedSession;
     private static volatile PendingLogin pendingLogin;
@@ -97,11 +100,12 @@ public final class MarketplaceAuthManager {
             if (existing != null) {
                 return existing.future;
             }
-            PendingLogin login = new PendingLogin();
+            String state = generateState();
+            PendingLogin login = new PendingLogin(state);
             pendingLogin = login;
             try {
                 ensureCallbackServer();
-                Util.getOperatingSystem().open(buildDiscordAuthorizeUrl());
+                Util.getOperatingSystem().open(buildDiscordAuthorizeUrl(state));
             } catch (Exception e) {
                 pendingLogin = null;
                 login.future.completeExceptionally(e);
@@ -240,6 +244,11 @@ public final class MarketplaceAuthManager {
                 throw new IllegalStateException("No sign-in request is waiting for a callback.");
             }
 
+            String receivedState = params.get("state");
+            if (login.state != null && !login.state.equals(receivedState)) {
+                throw new IllegalStateException("OAuth state mismatch. This sign-in request may have been tampered with.");
+            }
+
             if (params.containsKey("error_description")) {
                 throw new IllegalStateException(params.get("error_description"));
             }
@@ -256,6 +265,7 @@ public final class MarketplaceAuthManager {
             saveSession(withProfile);
             pendingLogin = null;
             login.future.complete(withProfile);
+            shutdownCallbackServer();
         } catch (Exception e) {
             status = 400;
             response = "{\"ok\":false}";
@@ -321,12 +331,31 @@ public final class MarketplaceAuthManager {
         }
     }
 
-    private static String buildDiscordAuthorizeUrl() {
+    private static String buildDiscordAuthorizeUrl(String state) {
         return MarketplaceService.PROJECT_URL
             + "/auth/v1/authorize?provider=discord"
             + "&redirect_to=" + URLEncoder.encode(CALLBACK_URL, StandardCharsets.UTF_8)
             + "&scopes=" + URLEncoder.encode("identify email", StandardCharsets.UTF_8)
-            + "&apikey=" + URLEncoder.encode(MarketplaceService.PUBLISHABLE_KEY, StandardCharsets.UTF_8);
+            + "&apikey=" + URLEncoder.encode(MarketplaceService.PUBLISHABLE_KEY, StandardCharsets.UTF_8)
+            + "&state=" + URLEncoder.encode(state, StandardCharsets.UTF_8);
+    }
+
+    private static String generateState() {
+        byte[] bytes = new byte[24];
+        SECURE_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static void shutdownCallbackServer() {
+        HttpServer serverToStop;
+        synchronized (LOCK) {
+            serverToStop = callbackServer;
+            callbackServer = null;
+        }
+        if (serverToStop != null) {
+            HttpServer finalServer = serverToStop;
+            CompletableFuture.runAsync(() -> finalServer.stop(1));
+        }
     }
 
     private static void syncMarketplaceAuthorProfile(AuthSession session) {
@@ -499,7 +528,12 @@ public final class MarketplaceAuthManager {
     }
 
     private static final class PendingLogin {
+        private final String state;
         private final CompletableFuture<AuthSession> future = new CompletableFuture<>();
+
+        private PendingLogin(String state) {
+            this.state = state;
+        }
     }
 
     private static final class UserProfile {

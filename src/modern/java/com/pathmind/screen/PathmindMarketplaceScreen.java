@@ -112,6 +112,9 @@ public class PathmindMarketplaceScreen extends Screen {
     private int popupScrollOffset = 0;
     private boolean popupScrollDragging = false;
     private int popupScrollDragOffset = 0;
+    private int galleryScrollOffset = 0;
+    private boolean galleryScrollDragging = false;
+    private int galleryScrollDragOffset = 0;
     private final PopupAnimationHandler presetPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler accountPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler publishPopupAnimation = new PopupAnimationHandler();
@@ -266,6 +269,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     presets = List.of();
                     selectedIndex = -1;
                     pageIndex = 0;
+                    galleryScrollOffset = 0;
                     statusMessage = myPresetsOnly ? "Failed to load your presets." : "Failed to load marketplace presets.";
                     return;
                 }
@@ -392,20 +396,26 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
 
+        ScrollbarHelper.Metrics galleryMetrics = null;
         if (isAuthorDirectoryMode()) {
             renderAuthorDirectory(context, mouseX, mouseY, layout);
         } else {
-            int cardsPerPage = getCardsPerPage(layout);
-            int startIndex = pageIndex * cardsPerPage;
-            int endIndex = Math.min(presets.size(), startIndex + cardsPerPage);
-            int visibleCount = Math.max(0, endIndex - startIndex);
-            for (int index = startIndex; index < endIndex; index++) {
-                Rect rect = getCardRect(layout, index - startIndex, visibleCount);
+            galleryMetrics = getGalleryScrollMetrics(layout);
+            galleryScrollOffset = ScrollbarHelper.clampScroll(galleryScrollOffset, galleryMetrics.maxScroll());
+            for (int index = 0; index < presets.size(); index++) {
+                Rect rect = getCardRect(layout, index, galleryScrollOffset);
+                if (rect.y + rect.height < bodyY || rect.y > bodyY + bodyHeight) {
+                    continue;
+                }
                 renderPresetCard(context, mouseX, mouseY, rect, presets.get(index), index == selectedIndex);
             }
         }
 
         context.disableScissor();
+        if (galleryMetrics != null) {
+            ScrollbarHelper.renderCutoffDividers(context, layout.bodyX, layout.bodyX + layout.bodyWidth - 1, bodyY, bodyY + bodyHeight, galleryScrollOffset, galleryMetrics.maxScroll(), UITheme.BORDER_SUBTLE);
+            ScrollbarHelper.renderSettingsStyle(context, galleryMetrics, UITheme.BACKGROUND_SIDEBAR, UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT);
+        }
         renderFooter(context, mouseX, mouseY, layout);
     }
 
@@ -1881,12 +1891,33 @@ public class PathmindMarketplaceScreen extends Screen {
 
         PageHitAreas pageHits = getPageHitAreas(layout);
         if (pageHits.leftArrow() != null && isPointInRect(mouseX, mouseY, pageHits.leftArrow().x, pageHits.leftArrow().y, pageHits.leftArrow().width, pageHits.leftArrow().height)) {
-            pageIndex = Math.max(0, pageIndex - 1);
+            if (!isAuthorDirectoryMode()) {
+                int headerHeight = getSectionHeaderHeight();
+                int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
+                galleryScrollOffset = ScrollbarHelper.clampScroll(galleryScrollOffset - bodyHeight, getGalleryScrollMetrics(layout).maxScroll());
+            } else {
+                pageIndex = Math.max(0, pageIndex - 1);
+            }
             return true;
         }
         if (pageHits.rightArrow() != null && isPointInRect(mouseX, mouseY, pageHits.rightArrow().x, pageHits.rightArrow().y, pageHits.rightArrow().width, pageHits.rightArrow().height)) {
-            pageIndex = Math.min(getMaxPageIndex(), pageIndex + 1);
+            if (!isAuthorDirectoryMode()) {
+                int headerHeight = getSectionHeaderHeight();
+                int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
+                galleryScrollOffset = ScrollbarHelper.clampScroll(galleryScrollOffset + bodyHeight, getGalleryScrollMetrics(layout).maxScroll());
+            } else {
+                pageIndex = Math.min(getMaxPageIndex(), pageIndex + 1);
+            }
             return true;
+        }
+
+        if (!isAuthorDirectoryMode() && !loading) {
+            ScrollbarHelper.Metrics galleryMetrics = getGalleryScrollMetrics(layout);
+            if (galleryMetrics.maxScroll() > 0 && isPointInRect(mouseX, mouseY, galleryMetrics.trackLeft(), galleryMetrics.thumbTop(), galleryMetrics.trackWidth(), galleryMetrics.thumbHeight())) {
+                galleryScrollDragging = true;
+                galleryScrollDragOffset = mouseY - galleryMetrics.thumbTop();
+                return true;
+            }
         }
 
         if (isAuthorDirectoryMode()) {
@@ -1903,12 +1934,12 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
             }
         } else {
-            int cardsPerPage = getCardsPerPage(layout);
-            int startIndex = pageIndex * cardsPerPage;
-            int endIndex = Math.min(presets.size(), startIndex + cardsPerPage);
-            int visibleCount = Math.max(0, endIndex - startIndex);
-            for (int index = startIndex; index < endIndex; index++) {
-                Rect rect = getCardRect(layout, index - startIndex, visibleCount);
+            int headerHeight = getSectionHeaderHeight();
+            int viewportTop = layout.sectionY + headerHeight;
+            int viewportBottom = viewportTop + layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
+            for (int index = 0; index < presets.size(); index++) {
+                Rect rect = getCardRect(layout, index, galleryScrollOffset);
+                if (rect.y + rect.height < viewportTop || rect.y > viewportBottom) continue;
                 MarketplacePreset preset = presets.get(index);
                 int previewX = rect.x + 8;
                 int previewY = rect.y + 8;
@@ -1982,6 +2013,19 @@ public class PathmindMarketplaceScreen extends Screen {
             popupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
             return true;
         }
+        if (galleryScrollDragging) {
+            Layout layout = getLayout();
+            ScrollbarHelper.Metrics galleryMetrics = getGalleryScrollMetrics(layout);
+            if (galleryMetrics.maxScroll() <= 0) {
+                return true;
+            }
+            int desiredThumbY = (int) click.y() - galleryScrollDragOffset;
+            int minThumbY = galleryMetrics.trackTop();
+            int maxThumbY = galleryMetrics.trackTop() + Math.max(0, galleryMetrics.viewportHeight() - galleryMetrics.thumbHeight());
+            int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
+            galleryScrollOffset = ScrollbarHelper.scrollFromThumb(galleryMetrics, clampedThumbY);
+            return true;
+        }
         return super.mouseDragged(click, deltaX, deltaY);
     }
 
@@ -1993,6 +2037,10 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         if (popupScrollDragging) {
             popupScrollDragging = false;
+            return true;
+        }
+        if (galleryScrollDragging) {
+            galleryScrollDragging = false;
             return true;
         }
         return super.mouseReleased(click);
@@ -2033,14 +2081,23 @@ public class PathmindMarketplaceScreen extends Screen {
             return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
         }
 
-        int maxPage = getMaxPageIndex();
-        if (verticalAmount < 0 && pageIndex < maxPage) {
-            pageIndex++;
-            return true;
-        }
-        if (verticalAmount > 0 && pageIndex > 0) {
-            pageIndex--;
-            return true;
+        if (!isAuthorDirectoryMode()) {
+            ScrollbarHelper.Metrics galleryMetrics = getGalleryScrollMetrics(layout);
+            int nextOffset = ScrollbarHelper.applyWheel(galleryScrollOffset, verticalAmount, 18, galleryMetrics.maxScroll());
+            if (nextOffset != galleryScrollOffset) {
+                galleryScrollOffset = nextOffset;
+                return true;
+            }
+        } else {
+            int maxPage = getMaxPageIndex();
+            if (verticalAmount < 0 && pageIndex < maxPage) {
+                pageIndex++;
+                return true;
+            }
+            if (verticalAmount > 0 && pageIndex > 0) {
+                pageIndex--;
+                return true;
+            }
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
@@ -2349,6 +2406,17 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentHeightTotal = measurePopupContentHeight(Math.max(32, popupWidth - 24));
         int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
         return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, popupScrollOffset, 20);
+    }
+
+    private ScrollbarHelper.Metrics getGalleryScrollMetrics(Layout layout) {
+        int headerHeight = getSectionHeaderHeight();
+        int bodyY = layout.sectionY + headerHeight;
+        int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
+        int columns = getGridColumns();
+        int totalRows = (int) Math.ceil((double) presets.size() / Math.max(1, columns));
+        int totalContentHeight = totalRows * (CARD_SIZE + CARD_GAP);
+        int maxScroll = Math.max(0, totalContentHeight - bodyHeight);
+        return ScrollbarHelper.metrics(layout.bodyX + layout.bodyWidth - 6, bodyY, 4, bodyHeight, maxScroll, galleryScrollOffset, 20);
     }
 
     private List<String> wrapText(String text, int maxWidth, int maxLines) {
@@ -3945,19 +4013,17 @@ public class PathmindMarketplaceScreen extends Screen {
         return new PublishPopupLayout(x, y, width, height, cancelButtonX, authButtonX, submitButtonX, buttonY, buttonWidth, buttonHeight);
     }
 
-    private Rect getCardRect(Layout layout, int pageOffset, int visibleCount) {
+    private Rect getCardRect(Layout layout, int absoluteIndex, int scrollOffset) {
         int columns = getGridColumns();
         int bodyY = layout.sectionY + getSectionHeaderHeight() + 2;
         int availableWidth = layout.bodyWidth;
         int cardWidth = Math.min(CARD_MAX_WIDTH, (availableWidth - (columns - 1) * CARD_GAP) / columns);
-        int column = pageOffset % columns;
-        int row = pageOffset / columns;
-        int itemsBeforeRow = row * columns;
-        int itemsInRow = Math.max(1, Math.min(columns, visibleCount - itemsBeforeRow));
+        int column = absoluteIndex % columns;
+        int row = absoluteIndex / columns;
         int startX = layout.bodyX;
         return new Rect(
             startX + column * (cardWidth + CARD_GAP),
-            bodyY + row * (CARD_SIZE + CARD_GAP),
+            bodyY + row * (CARD_SIZE + CARD_GAP) - scrollOffset,
             cardWidth,
             CARD_SIZE
         );
@@ -4224,6 +4290,7 @@ public class PathmindMarketplaceScreen extends Screen {
         myPresetsOnly = false;
         myPresetsFilter = MyPresetsFilter.ALL;
         pageIndex = 0;
+        galleryScrollOffset = 0;
         selectedIndex = -1;
         applyFilters();
         if (closePopup) {
@@ -4239,6 +4306,7 @@ public class PathmindMarketplaceScreen extends Screen {
         viewedAuthorAvatarTextureId = null;
         viewedAuthorAvatarLoading = false;
         pageIndex = 0;
+        galleryScrollOffset = 0;
         applyFilters();
     }
 

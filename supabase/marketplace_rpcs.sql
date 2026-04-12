@@ -49,7 +49,9 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-    recent_publish_count integer;
+    user_preset_count integer;
+    last_publish_at timestamptz;
+    publishes_last_minute integer;
     inserted_row public.marketplace_presets;
     normalized_tags text[];
 begin
@@ -74,13 +76,34 @@ begin
     end if;
 
     select count(*)
-    into recent_publish_count
+    into user_preset_count
+    from public.marketplace_presets
+    where author_user_id = auth.uid();
+
+    if user_preset_count >= 32 then
+        raise exception 'You have reached the maximum of 32 presets. Delete one to publish another.'
+            using errcode = 'P0001';
+    end if;
+
+    -- At least 10s since last publish (max(created_at) avoids edge cases with count-based windows).
+    select max(created_at)
+    into last_publish_at
+    from public.marketplace_publish_events
+    where user_id = auth.uid();
+
+    if last_publish_at is not null and last_publish_at > now() - interval '10 seconds' then
+        raise exception 'Publish rate limit exceeded. Wait at least 10 seconds between publishes.'
+            using errcode = 'P0001';
+    end if;
+
+    select count(*)
+    into publishes_last_minute
     from public.marketplace_publish_events
     where user_id = auth.uid()
-      and created_at >= now() - interval '10 minutes';
+      and created_at >= now() - interval '1 minute';
 
-    if recent_publish_count >= 5 then
-        raise exception 'Publish rate limit exceeded. Try again in a few minutes.'
+    if publishes_last_minute >= 6 then
+        raise exception 'Publish rate limit exceeded. You can publish at most 6 times per minute.'
             using errcode = 'P0001';
     end if;
 
@@ -333,7 +356,7 @@ begin
     from public.marketplace_download_events
     where user_id = auth.uid()
       and preset_id = target_preset_id
-      and created_at >= now() - interval '60 seconds';
+      and created_at >= now() - interval '2500 milliseconds';
 
     if recent_download_count = 0 then
         insert into public.marketplace_download_events (user_id, preset_id)

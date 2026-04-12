@@ -65,7 +65,8 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int SECTION_BODY_PADDING = 12;
     private static final int FOOTER_HEIGHT = 14;
     private static final int CARD_GAP = 8;
-    private static final int CARD_MIN_WIDTH = 120;
+    private static final int PRESET_GRID_COLUMNS = 4;
+    private static final int PRESET_GRID_ROWS = 8;
     private static final int CARD_MAX_WIDTH = 140;
     private static final int CARD_SIZE = 128;
     private static final int BACK_BUTTON_SIZE = 18;
@@ -152,7 +153,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private TextFieldWidget publishNameField;
     private TextFieldWidget publishDescriptionField;
     private TextFieldWidget publishTagsField;
-    private SortMode sortMode = SortMode.NEWEST;
+    private SortMode sortMode = SortMode.TRENDING;
     private boolean sortDropdownOpen = false;
     private String publishSourcePresetName = "";
     private MarketplacePreset editingPreset = null;
@@ -2909,6 +2910,17 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private String extractThrowableMessage(Throwable throwable, String fallbackMessage) {
+        if (throwable == null) {
+            return fallbackMessage;
+        }
+        Throwable leaf = throwable;
+        while (leaf.getCause() != null && leaf.getCause() != leaf) {
+            leaf = leaf.getCause();
+        }
+        String deepest = leaf.getMessage();
+        if (deepest != null && !deepest.isBlank()) {
+            return deepest;
+        }
         Throwable current = throwable;
         while (current != null) {
             String message = current.getMessage();
@@ -3139,7 +3151,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 authSession = session;
                 if (editingPreset == null) {
-                    MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumePublish(session.getUserId());
+                    MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.validatePublish(session.getUserId());
                     if (!limitCheck.permitted()) {
                         publishBusy = false;
                         authBusy = false;
@@ -3169,6 +3181,9 @@ public class PathmindMarketplaceScreen extends Screen {
         if (throwable != null) {
             setActiveSubmissionStatus(extractThrowableMessage(throwable, wasEditing ? "Metadata update failed." : "Publish failed."), UITheme.STATE_ERROR);
             return;
+        }
+        if (!wasEditing && preset != null && authSession != null && authSession.getUserId() != null && !authSession.getUserId().isBlank()) {
+            MarketplaceRateLimitManager.recordSuccessfulPublish(authSession.getUserId());
         }
         if (preset != null) {
             upsertPreset(preset);
@@ -3927,7 +3942,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Rect getCardRect(Layout layout, int pageOffset, int visibleCount) {
-        int columns = getGridColumns(layout);
+        int columns = getGridColumns();
         int bodyY = layout.sectionY + getSectionHeaderHeight() + 2;
         int availableWidth = layout.bodyWidth;
         int cardWidth = Math.min(CARD_MAX_WIDTH, (availableWidth - (columns - 1) * CARD_GAP) / columns);
@@ -3944,18 +3959,12 @@ public class PathmindMarketplaceScreen extends Screen {
         );
     }
 
-    private int getGridColumns(Layout layout) {
-        int columns = Math.max(1, (layout.bodyWidth + CARD_GAP) / (CARD_MIN_WIDTH + CARD_GAP));
-        return Math.max(1, columns);
-    }
-
-    private int getGridRows(Layout layout) {
-        int availableHeight = layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT - 8;
-        return Math.max(1, (availableHeight + CARD_GAP) / (CARD_SIZE + CARD_GAP));
+    private int getGridColumns() {
+        return PRESET_GRID_COLUMNS;
     }
 
     private int getCardsPerPage(Layout layout) {
-        return Math.max(1, getGridColumns(layout) * getGridRows(layout));
+        return PRESET_GRID_COLUMNS * PRESET_GRID_ROWS;
     }
 
     private int getAuthorEntriesPerPage(Layout layout) {

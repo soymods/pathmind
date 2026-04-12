@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -18,37 +19,66 @@ import java.util.Map;
  * Lightweight client-side guardrails for common marketplace spam paths.
  * This is not a substitute for backend enforcement, but it blocks accidental
  * rapid-fire actions from normal clients and persists across restarts.
+ * <p>
+ * Publish limits are recorded only after a successful publish so failed attempts
+ * (validation, duplicate name, network errors) do not consume quota.
  */
 public final class MarketplaceRateLimitManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path STATE_PATH = PresetManager.getBaseDirectory().resolve("marketplace_rate_limits.json");
     private static final Object LOCK = new Object();
 
-    private static final long PUBLISH_WINDOW_MS = 10L * 60L * 1000L;
-    private static final int MAX_PUBLISHES_PER_WINDOW = 5;
+    private static final long PUBLISH_WINDOW_MS = 60L * 1000L;
+    private static final int MAX_PUBLISHES_PER_WINDOW = 6;
+    private static final long MIN_PUBLISH_GAP_MS = 10L * 1000L;
     private static final long LIKE_COOLDOWN_MS = 2500L;
-    private static final long DOWNLOAD_COUNT_COOLDOWN_MS = 60L * 1000L;
+    private static final long DOWNLOAD_COUNT_COOLDOWN_MS = 2500L;
 
     private static RateLimitState cachedState;
 
     private MarketplaceRateLimitManager() {
     }
 
-    public static LimitCheck tryConsumePublish(String userId) {
+    /**
+     * Checks publish limits without recording an attempt. Call {@link #recordSuccessfulPublish}
+     * after the server confirms a new preset was published.
+     */
+    public static LimitCheck validatePublish(String userId) {
         synchronized (LOCK) {
             long now = System.currentTimeMillis();
             RateLimitState state = loadState();
             String key = normalizeKey(userId, "anonymous");
             List<Long> publishTimes = state.publishTimesByUser.computeIfAbsent(key, ignored -> new ArrayList<>());
             publishTimes.removeIf(timestamp -> now - timestamp >= PUBLISH_WINDOW_MS);
-            if (publishTimes.size() >= MAX_PUBLISHES_PER_WINDOW) {
-                long retryAfterMs = Math.max(1000L, PUBLISH_WINDOW_MS - (now - publishTimes.get(0)));
-                saveState(state);
-                return LimitCheck.deny("Publish limit reached. Try again in " + formatDuration(retryAfterMs) + ".");
+            if (!publishTimes.isEmpty()) {
+                long lastPublish = Collections.max(publishTimes);
+                if (now - lastPublish < MIN_PUBLISH_GAP_MS) {
+                    long retryAfterMs = Math.max(1000L, MIN_PUBLISH_GAP_MS - (now - lastPublish));
+                    return LimitCheck.deny("Wait " + formatDuration(retryAfterMs) + " before publishing again (10 seconds between publishes).");
+                }
             }
+            if (publishTimes.size() >= MAX_PUBLISHES_PER_WINDOW) {
+                long oldest = Collections.min(publishTimes);
+                long retryAfterMs = Math.max(1000L, PUBLISH_WINDOW_MS - (now - oldest));
+                return LimitCheck.deny("Publish limit reached. At most 6 per minute — try again in " + formatDuration(retryAfterMs) + ".");
+            }
+            return LimitCheck.permit();
+        }
+    }
+
+    /** Records one successful new publish for client-side rate tracking. */
+    public static void recordSuccessfulPublish(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return;
+        }
+        synchronized (LOCK) {
+            long now = System.currentTimeMillis();
+            RateLimitState state = loadState();
+            String key = normalizeKey(userId, "anonymous");
+            List<Long> publishTimes = state.publishTimesByUser.computeIfAbsent(key, ignored -> new ArrayList<>());
+            publishTimes.removeIf(timestamp -> now - timestamp >= PUBLISH_WINDOW_MS);
             publishTimes.add(now);
             saveState(state);
-            return LimitCheck.permit();
         }
     }
 

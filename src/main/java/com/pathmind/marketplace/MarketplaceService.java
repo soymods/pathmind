@@ -340,7 +340,7 @@ public final class MarketplaceService {
                 // later in the flow, a second publish should overwrite the same owned storage object.
                 uploadPresetFile(accessToken, targetBucket, storagePath, request.localPresetPath(), true);
 
-                JsonObject payload = buildPublishRpcPayload(request, slug, targetBucket, storagePath);
+                JsonObject payload = buildPublishRpcPayload(request, slug, storagePath);
                 MarketplacePreset publishedPreset = postRpcPreset(PUBLISH_PRESET_RPC, payload, accessToken, "Failed to publish marketplace preset");
                 if (publishedPreset == null) {
                     throw new IOException("Marketplace publish returned no preset.");
@@ -503,7 +503,7 @@ public final class MarketplaceService {
         return HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    private static JsonObject buildPublishRpcPayload(PublishRequest request, String slug, String storageBucket, String storagePath) {
+    private static JsonObject buildPublishRpcPayload(PublishRequest request, String slug, String storagePath) {
         JsonObject payload = new JsonObject();
         payload.addProperty("preset_slug", slug);
         payload.addProperty("preset_name", blankToEmpty(request.name()));
@@ -512,7 +512,6 @@ public final class MarketplaceService {
         payload.add("preset_tags", toJsonArray(request.tags()));
         payload.addProperty("preset_game_version", blankToEmpty(request.gameVersion()));
         payload.addProperty("preset_pathmind_version", blankToEmpty(request.pathmindVersion()));
-        payload.addProperty("preset_storage_bucket", blankToEmpty(storageBucket));
         payload.addProperty("preset_file_path", blankToEmpty(storagePath));
         payload.addProperty("preset_published", request.published());
         return payload;
@@ -656,11 +655,52 @@ public final class MarketplaceService {
         return new IOException(message + " (HTTP " + response.statusCode() + ")");
     }
 
+    /**
+     * PostgREST often splits Postgres text across {@code message}, {@code details}, etc.
+     * Concatenate for substring checks so specific rate-limit wording is not missed.
+     */
+    private static String postgrestErrorHaystack(String body) {
+        if (body == null) {
+            return "";
+        }
+        String trimmed = body.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        try {
+            JsonElement root = JsonParser.parseString(trimmed);
+            if (!root.isJsonObject()) {
+                return trimmed;
+            }
+            JsonObject object = root.getAsJsonObject();
+            StringBuilder sb = new StringBuilder(trimmed);
+            for (String key : new String[] {"message", "error", "details", "hint", "description"}) {
+                if ("error".equals(key) && object.has("error") && object.get("error").isJsonObject()) {
+                    JsonObject nested = object.getAsJsonObject("error");
+                    for (String nk : new String[] {"message", "details", "hint"}) {
+                        String nv = getNullableString(nested, nk);
+                        if (nv != null && !nv.isBlank()) {
+                            sb.append(' ').append(nv);
+                        }
+                    }
+                    continue;
+                }
+                String value = getNullableString(object, key);
+                if (value != null && !value.isBlank()) {
+                    sb.append(' ').append(value);
+                }
+            }
+            return sb.toString();
+        } catch (Exception ignored) {
+            return trimmed;
+        }
+    }
+
     private static String mapFriendlyMarketplaceError(String operationMessage, String body) {
         if (body == null || body.isBlank()) {
             return null;
         }
-        String normalized = body.toLowerCase(Locale.ROOT);
+        String normalized = postgrestErrorHaystack(body).toLowerCase(Locale.ROOT);
         boolean publishOperation = operationMessage != null && operationMessage.toLowerCase(Locale.ROOT).contains("publish");
         boolean updateOperation = operationMessage != null && operationMessage.toLowerCase(Locale.ROOT).contains("update");
 
@@ -678,8 +718,14 @@ public final class MarketplaceService {
         if (normalized.contains("marketplace_presets_description_len")) {
             return "Description is too long.";
         }
-        if (normalized.contains("publish rate limit exceeded")) {
-            return "You have published too many presets recently. Try again in a few minutes.";
+        if (normalized.contains("maximum of 32 presets")) {
+            return "You have reached the maximum of 32 presets. Delete one to publish another.";
+        }
+        if (normalized.contains("at most 6 times per minute")) {
+            return "You can publish at most 6 times per minute. Try again shortly.";
+        }
+        if (normalized.contains("10 seconds between publishes") || normalized.contains("between publishes")) {
+            return "Wait at least 10 seconds between publishes.";
         }
         if (normalized.contains("like rate limit exceeded")) {
             return "You're clicking like too quickly. Try again in a moment.";
@@ -709,12 +755,23 @@ public final class MarketplaceService {
             }
             JsonObject object = root.getAsJsonObject();
             String message = getNullableString(object, "message");
+            String details = getNullableString(object, "details");
+            String hint = getNullableString(object, "hint");
             if (message != null && !message.isBlank()) {
+                if (details != null && !details.isBlank() && !message.contains(details)) {
+                    return message + " " + details;
+                }
+                if (hint != null && !hint.isBlank() && !message.contains(hint)) {
+                    return message + " " + hint;
+                }
                 return message;
             }
             String error = getNullableString(object, "error");
             if (error != null && !error.isBlank()) {
                 return error;
+            }
+            if (details != null && !details.isBlank()) {
+                return details;
             }
             return null;
         } catch (Exception ignored) {

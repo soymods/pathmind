@@ -5449,7 +5449,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     return;
                 }
                 publishPresetSession = session;
-                MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.tryConsumePublish(session.getUserId());
+                MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.validatePublish(session.getUserId());
                 if (!limitCheck.permitted()) {
                     publishPresetBusy = false;
                     setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
@@ -5507,6 +5507,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (throwable != null) {
             setPublishPresetStatus(buildPublishFailureMessage(throwable), UITheme.STATE_ERROR);
             return;
+        }
+        if (preset != null && publishPresetSession != null && publishPresetSession.getUserId() != null && !publishPresetSession.getUserId().isBlank()) {
+            MarketplaceRateLimitManager.recordSuccessfulPublish(publishPresetSession.getUserId());
         }
 
         closePublishPresetPopup();

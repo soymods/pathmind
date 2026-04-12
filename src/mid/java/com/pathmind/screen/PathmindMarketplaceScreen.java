@@ -526,7 +526,11 @@ public class PathmindMarketplaceScreen extends Screen {
             UITheme.BORDER_SUBTLE,
             UITheme.PANEL_INNER_BORDER
         );
-        renderGraphPreviewSurface(context, previewX, previewY, previewWidth, previewHeight, preset, true, false, 0f, 0f);
+        if (presetPopupAnimation.isVisible()) {
+            drawGraphPreview(context, previewX, previewY, previewWidth, previewHeight, false);
+        } else {
+            renderGraphPreviewSurface(context, previewX, previewY, previewWidth, previewHeight, preset, true, false, 0f, 0f);
+        }
 
         int deleteX = previewX + previewWidth - 14;
         int deleteY = previewY + 2;
@@ -628,36 +632,27 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, UITheme.TEXT_HEADER);
     }
 
-    private void drawGraphPreview(DrawContext context, int x, int y, int width, int height) {
-        int gridColor = 0x203D3D3D;
+    private void drawGraphPreview(DrawContext context, int x, int y, int width, int height, boolean popup) {
+        int gridColor = popup ? presetPopupAnimation.getAnimatedPopupColor(0x203D3D3D) : 0x203D3D3D;
         for (int lineX = x + 12; lineX < x + width - 8; lineX += 18) {
             context.drawVerticalLine(lineX, y + 6, y + height - 7, gridColor);
         }
         for (int lineY = y + 10; lineY < y + height - 8; lineY += 14) {
             context.drawHorizontalLine(x + 6, x + width - 7, lineY, gridColor);
         }
-
-        int nodeColor = UITheme.BACKGROUND_SECTION;
-        int nodeBorder = UITheme.BORDER_DEFAULT;
-        drawMiniNode(context, x + 14, y + 14, 46, 16, nodeColor, nodeBorder);
-        drawMiniNode(context, x + width / 2 - 24, y + height / 2 - 10, 48, 16, nodeColor, nodeBorder);
-        drawMiniNode(context, x + width - 62, y + height - 30, 40, 14, nodeColor, nodeBorder);
-
-        context.drawHorizontalLine(x + 60, x + width / 2 - 26, y + 22, getAccentColor());
-        context.drawHorizontalLine(x + width / 2 + 24, x + width - 62, y + height / 2, getAccentColor());
     }
 
     private void renderGraphPreviewSurface(DrawContext context, int x, int y, int width, int height,
                                            MarketplacePreset preset, boolean interactive, boolean usePopupViewportState, float panX, float panY) {
+        boolean popupInteractive = interactive && usePopupViewportState;
         PreviewGraphModel previewModel = getCachedPreviewGraph(preset);
         if (previewModel == null || previewModel.nodes().isEmpty()) {
             requestPreviewGraph(preset);
-            drawGraphPreview(context, x, y, width, height);
+            drawGraphPreview(context, x, y, width, height, popupInteractive);
             return;
         }
 
         GraphBounds bounds = GraphBounds.of(previewModel.nodes());
-        boolean popupInteractive = interactive && usePopupViewportState;
         float horizontalPadding = popupInteractive ? 22f : 16f;
         float verticalPadding = popupInteractive ? 20f : 14f;
         float scaleX = bounds.width() <= 0 ? 1f : Math.max(0.01f, (width - horizontalPadding) / bounds.width());
@@ -893,10 +888,6 @@ public class PathmindMarketplaceScreen extends Screen {
             ? List.of()
             : List.copyOf(graphData.getConnections());
         return new PreviewGraphModel(List.copyOf(rebuiltNodes), connections, nodeLookup);
-    }
-
-    private void drawMiniNode(DrawContext context, int x, int y, int width, int height, int backgroundColor, int borderColor) {
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, backgroundColor, borderColor, UITheme.PANEL_INNER_BORDER);
     }
 
     private void drawGalleryBackdrop(DrawContext context, int x, int y, int width, int height) {

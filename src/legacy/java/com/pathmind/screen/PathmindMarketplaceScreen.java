@@ -528,11 +528,7 @@ public class PathmindMarketplaceScreen extends Screen {
             UITheme.BORDER_SUBTLE,
             UITheme.PANEL_INNER_BORDER
         );
-        if (presetPopupAnimation.isVisible()) {
-            drawGraphPreview(context, previewX, previewY, previewWidth, previewHeight, false);
-        } else {
-            renderGraphPreviewSurface(context, previewX, previewY, previewWidth, previewHeight, preset, true, false, 0f, 0f);
-        }
+        renderGraphPreviewSurface(context, previewX, previewY, previewWidth, previewHeight, preset, true, false, 0f, 0f);
 
         int deleteX = previewX + previewWidth - 14;
         int deleteY = previewY + 2;

@@ -190,6 +190,7 @@ public final class MarketplaceAuthManager {
         }
         AuthSession merged = refreshed.mergeProfile(session.userId, session.email, session.displayName, session.avatarUrl, session.provider);
         AuthSession withProfile = fetchUserProfile(merged.accessToken).map(merged::withProfile).orElse(merged);
+        syncMarketplaceAuthorProfile(withProfile);
         saveSession(withProfile);
         return withProfile;
     }
@@ -251,6 +252,7 @@ public final class MarketplaceAuthManager {
                 throw new IllegalStateException("Supabase did not return a marketplace session.");
             }
             AuthSession withProfile = fetchUserProfile(session.accessToken).map(session::withProfile).orElse(session);
+            syncMarketplaceAuthorProfile(withProfile);
             saveSession(withProfile);
             pendingLogin = null;
             login.future.complete(withProfile);
@@ -325,6 +327,28 @@ public final class MarketplaceAuthManager {
             + "&redirect_to=" + URLEncoder.encode(CALLBACK_URL, StandardCharsets.UTF_8)
             + "&scopes=" + URLEncoder.encode("identify email", StandardCharsets.UTF_8)
             + "&apikey=" + URLEncoder.encode(MarketplaceService.PUBLISHABLE_KEY, StandardCharsets.UTF_8);
+    }
+
+    private static void syncMarketplaceAuthorProfile(AuthSession session) {
+        if (session == null || session.accessToken == null || session.accessToken.isBlank()) {
+            return;
+        }
+        try {
+            JsonObject payload = new JsonObject();
+            payload.addProperty("p_display_name", firstNonBlank(session.displayName, session.email, "Discord user"));
+            payload.addProperty("p_avatar_url", firstNonBlank(session.avatarUrl, ""));
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(MarketplaceService.PROJECT_URL + "/rest/v1/rpc/sync_marketplace_author_profile"))
+                .timeout(Duration.ofSeconds(15))
+                .header("apikey", MarketplaceService.PUBLISHABLE_KEY)
+                .header("Authorization", "Bearer " + session.accessToken)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                .build();
+            HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.discarding());
+        } catch (Exception ignored) {
+        }
     }
 
     private static Map<String, String> parseMergedParams(String href) {

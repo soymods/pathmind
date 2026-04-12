@@ -123,6 +123,7 @@ public final class MarketplaceService {
             throw new IOException("Marketplace request failed with HTTP " + response.statusCode());
         }
         List<MarketplacePreset> presets = parsePresets(response.body());
+        presets = enrichPresetsWithAuthorProfiles(presets);
         if (!hydrateLikeCounts || presets.isEmpty()) {
             return presets;
         }
@@ -802,6 +803,85 @@ public final class MarketplaceService {
         return presets;
     }
 
+    private static List<MarketplacePreset> enrichPresetsWithAuthorProfiles(List<MarketplacePreset> presets) {
+        if (presets == null || presets.isEmpty()) {
+            return List.of();
+        }
+        try {
+            Set<String> userIds = new java.util.LinkedHashSet<>();
+            for (MarketplacePreset preset : presets) {
+                if (preset != null && preset.getAuthorUserId() != null && !preset.getAuthorUserId().isBlank()) {
+                    userIds.add(preset.getAuthorUserId().trim());
+                }
+            }
+            if (userIds.isEmpty()) {
+                return presets;
+            }
+            Map<String, AuthorProfileSummary> profiles = fetchAuthorProfiles(userIds);
+            if (profiles.isEmpty()) {
+                return presets;
+            }
+            List<MarketplacePreset> updated = new ArrayList<>(presets.size());
+            for (MarketplacePreset preset : presets) {
+                if (preset == null) {
+                    continue;
+                }
+                AuthorProfileSummary profile = profiles.get(preset.getAuthorUserId());
+                if (profile == null) {
+                    updated.add(preset);
+                    continue;
+                }
+                updated.add(withAuthorProfile(preset, profile));
+            }
+            return List.copyOf(updated);
+        } catch (Exception ignored) {
+            return presets;
+        }
+    }
+
+    private static Map<String, AuthorProfileSummary> fetchAuthorProfiles(Set<String> userIds) throws IOException, InterruptedException {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        String joinedIds = String.join(",", userIds);
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(PROJECT_URL
+                + "/rest/v1/marketplace_author_profiles?select=user_id,display_name,avatar_url&user_id=in.("
+                + joinedIds
+                + ")"))
+            .timeout(Duration.ofSeconds(15))
+            .header("apikey", PUBLISHABLE_KEY)
+            .header("Authorization", "Bearer " + PUBLISHABLE_KEY)
+            .header("Accept", "application/json")
+            .GET()
+            .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            return Map.of();
+        }
+        JsonElement root = JsonParser.parseString(response.body());
+        if (!root.isJsonArray()) {
+            return Map.of();
+        }
+        Map<String, AuthorProfileSummary> profiles = new HashMap<>();
+        for (JsonElement element : root.getAsJsonArray()) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject row = element.getAsJsonObject();
+            String userId = getNullableString(row, "user_id");
+            if (userId == null || userId.isBlank()) {
+                continue;
+            }
+            profiles.put(userId, new AuthorProfileSummary(
+                getNullableString(row, "display_name"),
+                getNullableString(row, "avatar_url")
+            ));
+        }
+        return profiles;
+    }
+
     private static List<MarketplacePreset> applyLikeCounts(List<MarketplacePreset> presets, Map<String, Integer> likeCounts) {
         List<MarketplacePreset> updated = new ArrayList<>(presets.size());
         for (MarketplacePreset preset : presets) {
@@ -848,6 +928,37 @@ public final class MarketplaceService {
             preset.getGameVersion(),
             preset.getPathmindVersion(),
             Math.max(0, likesCount),
+            preset.getDownloadsCount(),
+            preset.getStorageBucket(),
+            preset.getFilePath(),
+            preset.isPublished(),
+            preset.getCreatedAt(),
+            preset.getUpdatedAt()
+        );
+    }
+
+    private static MarketplacePreset withAuthorProfile(MarketplacePreset preset, AuthorProfileSummary profile) {
+        if (preset == null || profile == null) {
+            return preset;
+        }
+        String authorName = profile.displayName != null && !profile.displayName.isBlank()
+            ? profile.displayName
+            : preset.getAuthorName();
+        String authorAvatarUrl = profile.avatarUrl != null && !profile.avatarUrl.isBlank()
+            ? profile.avatarUrl
+            : preset.getAuthorAvatarUrl();
+        return new MarketplacePreset(
+            preset.getId(),
+            preset.getSlug(),
+            preset.getAuthorUserId(),
+            preset.getName(),
+            authorName,
+            authorAvatarUrl,
+            preset.getDescription(),
+            preset.getTags(),
+            preset.getGameVersion(),
+            preset.getPathmindVersion(),
+            preset.getLikesCount(),
             preset.getDownloadsCount(),
             preset.getStorageBucket(),
             preset.getFilePath(),
@@ -924,5 +1035,8 @@ public final class MarketplaceService {
         ListingMode(String orderClause) {
             this.orderClause = orderClause;
         }
+    }
+
+    private record AuthorProfileSummary(String displayName, String avatarUrl) {
     }
 }

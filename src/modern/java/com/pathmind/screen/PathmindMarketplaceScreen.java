@@ -372,6 +372,11 @@ public class PathmindMarketplaceScreen extends Screen {
             );
             return;
         }
+        if (authSession == null && !authBusy) {
+            int iconColor = hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
+            drawAccountProfileIcon(context, x + (buttonWidth - 12) / 2, y + (SORT_BUTTON_HEIGHT - 12) / 2, iconColor);
+            return;
+        }
         int textColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
         int textX = x + (buttonWidth - this.textRenderer.getWidth(accountLabel)) / 2;
         int textY = y + (SORT_BUTTON_HEIGHT - this.textRenderer.fontHeight) / 2;
@@ -3761,6 +3766,18 @@ public class PathmindMarketplaceScreen extends Screen {
         context.fill(x + 3, y + 10, x + 7, y + 11, color);
         context.fill(x + 4, y + 4, x + 5, y + 9, UITheme.BACKGROUND_PRIMARY);
         context.fill(x + 5, y + 4, x + 6, y + 9, UITheme.BACKGROUND_PRIMARY);
+    }
+
+    private void drawAccountProfileIcon(DrawContext context, int x, int y, int color) {
+        context.fill(x + 4, y + 1, x + 8, y + 2, color);
+        context.fill(x + 3, y + 2, x + 9, y + 4, color);
+        context.fill(x + 2, y + 4, x + 10, y + 6, color);
+        context.fill(x + 3, y + 6, x + 9, y + 7, color);
+        context.fill(x + 4, y + 7, x + 8, y + 8, color);
+
+        context.fill(x + 4, y + 8, x + 8, y + 9, color);
+        context.fill(x + 2, y + 9, x + 10, y + 10, color);
+        context.fill(x + 1, y + 10, x + 11, y + 11, color);
     }
 
     private void drawAnimatedDeleteIcon(DrawContext context, int x, int y, MarketplacePreset preset, boolean popup, boolean hovered) {

@@ -24,6 +24,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
@@ -100,12 +101,12 @@ public final class MarketplaceAuthManager {
             if (existing != null) {
                 return existing.future;
             }
-            String state = generateState();
-            PendingLogin login = new PendingLogin(state);
+            String codeVerifier = generateCodeVerifier();
+            PendingLogin login = new PendingLogin(codeVerifier);
             pendingLogin = login;
             try {
                 ensureCallbackServer();
-                Util.getOperatingSystem().open(buildDiscordAuthorizeUrl(state));
+                Util.getOperatingSystem().open(buildDiscordAuthorizeUrl(codeVerifier));
             } catch (Exception e) {
                 pendingLogin = null;
                 login.future.completeExceptionally(e);
@@ -235,18 +236,14 @@ public final class MarketplaceAuthManager {
 
         PendingLogin login = pendingLogin;
         int status = 200;
-        String response = "{\"ok\":true}";
+        JsonObject responsePayload = new JsonObject();
+        responsePayload.addProperty("ok", true);
         try {
             JsonObject payload = JsonParser.parseString(body).getAsJsonObject();
             String href = getJsonString(payload, "href");
             Map<String, String> params = parseMergedParams(href);
             if (login == null) {
                 throw new IllegalStateException("No sign-in request is waiting for a callback.");
-            }
-
-            String receivedState = params.get("state");
-            if (login.state != null && !login.state.equals(receivedState)) {
-                throw new IllegalStateException("OAuth state mismatch. This sign-in request may have been tampered with.");
             }
 
             if (params.containsKey("error_description")) {
@@ -258,6 +255,12 @@ public final class MarketplaceAuthManager {
 
             AuthSession session = parseSessionParams(params);
             if (session == null) {
+                String authCode = firstNonBlank(params.get("code"));
+                if (authCode != null) {
+                    session = exchangeAuthCodeForSession(authCode, login.codeVerifier);
+                }
+            }
+            if (session == null) {
                 throw new IllegalStateException("Supabase did not return a marketplace session.");
             }
             AuthSession withProfile = fetchUserProfile(session.accessToken).map(session::withProfile).orElse(session);
@@ -268,13 +271,16 @@ public final class MarketplaceAuthManager {
             shutdownCallbackServer();
         } catch (Exception e) {
             status = 400;
-            response = "{\"ok\":false}";
+            responsePayload = new JsonObject();
+            responsePayload.addProperty("ok", false);
+            responsePayload.addProperty("error", firstNonBlank(e.getMessage(), "Pathmind could not finish the Discord login flow."));
             if (login != null) {
                 pendingLogin = null;
                 login.future.completeExceptionally(e);
             }
         }
 
+        String response = GSON.toJson(responsePayload);
         byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(status, responseBytes.length);
@@ -331,19 +337,53 @@ public final class MarketplaceAuthManager {
         }
     }
 
-    private static String buildDiscordAuthorizeUrl(String state) {
+    private static AuthSession exchangeAuthCodeForSession(String authCode, String codeVerifier) throws IOException, InterruptedException {
+        if (authCode == null || authCode.isBlank() || codeVerifier == null || codeVerifier.isBlank()) {
+            return null;
+        }
+
+        JsonObject payload = new JsonObject();
+        payload.addProperty("auth_code", authCode);
+        payload.addProperty("code_verifier", codeVerifier);
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(MarketplaceService.PROJECT_URL + "/auth/v1/token?grant_type=pkce"))
+            .timeout(Duration.ofSeconds(15))
+            .header("Content-Type", "application/json")
+            .header("apikey", MarketplaceService.PUBLISHABLE_KEY)
+            .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+            .build();
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Supabase token exchange failed with HTTP " + response.statusCode() + ".");
+        }
+        return parseSessionResponse(response.body());
+    }
+
+    private static String buildDiscordAuthorizeUrl(String codeVerifier) {
+        String codeChallenge = buildCodeChallenge(codeVerifier);
         return MarketplaceService.PROJECT_URL
             + "/auth/v1/authorize?provider=discord"
             + "&redirect_to=" + URLEncoder.encode(CALLBACK_URL, StandardCharsets.UTF_8)
             + "&scopes=" + URLEncoder.encode("identify email", StandardCharsets.UTF_8)
             + "&apikey=" + URLEncoder.encode(MarketplaceService.PUBLISHABLE_KEY, StandardCharsets.UTF_8)
-            + "&state=" + URLEncoder.encode(state, StandardCharsets.UTF_8);
+            + "&code_challenge=" + URLEncoder.encode(codeChallenge, StandardCharsets.UTF_8)
+            + "&code_challenge_method=S256";
     }
 
-    private static String generateState() {
-        byte[] bytes = new byte[24];
+    private static String generateCodeVerifier() {
+        byte[] bytes = new byte[32];
         SECURE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static String buildCodeChallenge(String codeVerifier) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(codeVerifier.getBytes(StandardCharsets.US_ASCII));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to prepare marketplace sign-in challenge.", e);
+        }
     }
 
     private static void shutdownCallbackServer() {
@@ -528,11 +568,11 @@ public final class MarketplaceAuthManager {
     }
 
     private static final class PendingLogin {
-        private final String state;
+        private final String codeVerifier;
         private final CompletableFuture<AuthSession> future = new CompletableFuture<>();
 
-        private PendingLogin(String state) {
-            this.state = state;
+        private PendingLogin(String codeVerifier) {
+            this.codeVerifier = codeVerifier;
         }
     }
 
@@ -879,7 +919,10 @@ public final class MarketplaceAuthManager {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ href: window.location.href })
             }).then(async (response) => {
-              if (!response.ok) throw new Error('Auth callback was rejected.');
+              const payload = await response.json().catch(() => ({ ok: response.ok }));
+              if (!response.ok || payload?.ok === false) {
+                throw new Error(payload?.error || 'Auth callback was rejected.');
+              }
               title.textContent = 'Sign-in complete';
               title.className = 'ok';
               body.textContent = 'You can close this browser tab and return to Pathmind.';

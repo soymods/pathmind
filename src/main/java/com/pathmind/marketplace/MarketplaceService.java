@@ -71,7 +71,7 @@ public final class MarketplaceService {
                 }
                 HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(PROJECT_URL
-                        + "/rest/v1/marketplace_presets?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at&id=eq."
+                        + "/rest/v1/marketplace_presets?select=id,slug,author_user_id,name,author_name,author_avatar_url,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at&id=eq."
                         + URLEncoder.encode(presetId, StandardCharsets.UTF_8)
                         + "&limit=1"))
                     .timeout(Duration.ofSeconds(15))
@@ -404,7 +404,7 @@ public final class MarketplaceService {
     private static String buildPublishedListingsUrl() {
         return PROJECT_URL
             + "/rest/v1/marketplace_presets"
-            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at"
+            + "?select=id,slug,author_user_id,name,author_name,author_avatar_url,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at"
             + "&published=eq.true"
             + "&order=created_at.desc";
     }
@@ -412,7 +412,7 @@ public final class MarketplaceService {
     private static String buildOwnedListingsUrl(String userId) {
         return PROJECT_URL
             + "/rest/v1/marketplace_presets"
-            + "?select=id,slug,author_user_id,name,author_name,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at"
+            + "?select=id,slug,author_user_id,name,author_name,author_avatar_url,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at"
             + "&author_user_id=eq." + URLEncoder.encode(userId, StandardCharsets.UTF_8)
             + "&order=updated_at.desc";
     }

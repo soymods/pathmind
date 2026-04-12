@@ -3454,6 +3454,7 @@ public class PathmindMarketplaceScreen extends Screen {
             preset.getAuthorUserId(),
             preset.getName(),
             preset.getAuthorName(),
+            preset.getAuthorAvatarUrl(),
             preset.getDescription(),
             preset.getTags(),
             preset.getGameVersion(),
@@ -3899,6 +3900,9 @@ public class PathmindMarketplaceScreen extends Screen {
         String query = searchField == null ? "" : normalizeSearch(searchField.getText());
         List<MarketplacePreset> filtered = new ArrayList<>();
         for (MarketplacePreset preset : allPresets) {
+            if (!myPresetsOnly && !preset.isPublished()) {
+                continue;
+            }
             if (myPresetsOnly && !isOwnPreset(preset)) {
                 continue;
             }

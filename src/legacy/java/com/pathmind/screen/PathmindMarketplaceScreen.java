@@ -45,6 +45,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -81,6 +82,8 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int MY_PRESET_FILTER_ALL_WIDTH = 34;
     private static final int MY_PRESET_FILTER_PUBLIC_WIDTH = 50;
     private static final int MY_PRESET_FILTER_PRIVATE_WIDTH = 54;
+    private static final int AUTHOR_ROW_HEIGHT = 42;
+    private static final int AUTHOR_ROW_GAP = 8;
     private static final int ACCOUNT_BUTTON_MIN_WIDTH = SORT_BUTTON_HEIGHT;
     private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
 
@@ -92,6 +95,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private List<MarketplacePreset> allPresets = List.of();
     private List<MarketplacePreset> presets = List.of();
+    private List<AuthorSummary> authorResults = List.of();
     private int selectedIndex = -1;
     private int pageIndex = 0;
     private boolean loading = false;
@@ -130,6 +134,8 @@ public class PathmindMarketplaceScreen extends Screen {
     private String viewedAuthorAvatarTextureUrl = null;
     private Identifier viewedAuthorAvatarTextureId = null;
     private boolean viewedAuthorAvatarLoading = false;
+    private final Map<String, Identifier> authorDirectoryAvatarTextures = new HashMap<>();
+    private final Set<String> authorDirectoryAvatarLoading = new HashSet<>();
     private final Map<String, PreviewGraphModel> previewGraphCache = new HashMap<>();
     private final Set<String> previewGraphLoading = new HashSet<>();
     private final Map<String, Long> likePulseEndTimes = new HashMap<>();
@@ -244,7 +250,7 @@ public class PathmindMarketplaceScreen extends Screen {
         statusMessage = myPresetsOnly ? "Loading your presets..." : "Loading published presets...";
         CompletableFuture<List<MarketplacePreset>> request = myPresetsOnly && authSession != null
             ? MarketplaceService.fetchOwnedPresets(authSession.getAccessToken(), authSession.getUserId())
-            : MarketplaceService.fetchPublishedPresets();
+            : MarketplaceService.fetchPublishedPresets(sortMode.toListingMode());
         request.whenComplete((results, throwable) -> {
             if (this.client == null) {
                 return;
@@ -372,7 +378,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int scissorTop = Math.max(layout.sectionY, bodyY - 6);
         context.enableScissor(layout.bodyX, scissorTop, layout.bodyX + layout.bodyWidth, bodyY + bodyHeight);
 
-        if (loading || presets.isEmpty()) {
+        if (loading || getCurrentResultCount() == 0) {
             String message = loading ? "Fetching latest listings..." : fallback(statusMessage, "Nothing to show yet.");
             int messageColor = loading ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(message),
@@ -382,13 +388,17 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
 
-        int cardsPerPage = getCardsPerPage(layout);
-        int startIndex = pageIndex * cardsPerPage;
-        int endIndex = Math.min(presets.size(), startIndex + cardsPerPage);
-        int visibleCount = Math.max(0, endIndex - startIndex);
-        for (int index = startIndex; index < endIndex; index++) {
-            Rect rect = getCardRect(layout, index - startIndex, visibleCount);
-            renderPresetCard(context, mouseX, mouseY, rect, presets.get(index), index == selectedIndex);
+        if (isAuthorDirectoryMode()) {
+            renderAuthorDirectory(context, mouseX, mouseY, layout);
+        } else {
+            int cardsPerPage = getCardsPerPage(layout);
+            int startIndex = pageIndex * cardsPerPage;
+            int endIndex = Math.min(presets.size(), startIndex + cardsPerPage);
+            int visibleCount = Math.max(0, endIndex - startIndex);
+            for (int index = startIndex; index < endIndex; index++) {
+                Rect rect = getCardRect(layout, index - startIndex, visibleCount);
+                renderPresetCard(context, mouseX, mouseY, rect, presets.get(index), index == selectedIndex);
+            }
         }
 
         context.disableScissor();
@@ -464,9 +474,12 @@ public class PathmindMarketplaceScreen extends Screen {
 
         int resultRowY = myPresetsOnly ? layout.searchFieldY + SORT_BUTTON_HEIGHT + 6 : layout.resultRowY;
 
+        int resultCount = getCurrentResultCount();
         String resultLabel = loading
             ? "Loading..."
-            : presets.size() + " result" + (presets.size() == 1 ? "" : "s");
+            : isAuthorDirectoryMode()
+                ? resultCount + " author" + (resultCount == 1 ? "" : "s")
+                : resultCount + " result" + (resultCount == 1 ? "" : "s");
         int resultWidth = this.textRenderer.getWidth(resultLabel);
         int resultX = Math.max(layout.searchFieldX, layout.refreshButtonX - resultWidth - 6);
         context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, resultRowY + 5, UITheme.TEXT_SECONDARY);
@@ -520,7 +533,6 @@ public class PathmindMarketplaceScreen extends Screen {
         if (!preset.isPublished()) {
             drawPrivateEyeIcon(context, previewX + 6, previewY + 6, UITheme.STATE_WARNING);
         }
-
         int textX = rect.x + 8;
         String downloadsLine = preset.getDownloadsCount() + " dl";
         String likesLine = preset.getLikesCount() + " like";
@@ -546,6 +558,60 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(likesLine),
             statsRight - this.textRenderer.getWidth(likesLine), statsSecondLineY, likesColor);
+    }
+
+    private void renderAuthorDirectory(DrawContext context, int mouseX, int mouseY, Layout layout) {
+        int entriesPerPage = getAuthorEntriesPerPage(layout);
+        int startIndex = pageIndex * entriesPerPage;
+        int endIndex = Math.min(authorResults.size(), startIndex + entriesPerPage);
+        for (int index = startIndex; index < endIndex; index++) {
+            Rect rect = getAuthorRowRect(layout, index - startIndex);
+            renderAuthorRow(context, mouseX, mouseY, rect, authorResults.get(index), index == selectedIndex);
+        }
+    }
+
+    private void renderAuthorRow(DrawContext context, int mouseX, int mouseY, Rect rect, AuthorSummary author, boolean selected) {
+        boolean hovered = isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height);
+        float hoverProgress = HoverAnimator.getProgress("marketplace-author-row:" + author.key(), hovered);
+        int bgColor = hoverProgress > 0.001f
+            ? AnimationHelper.lerpColor(UITheme.BACKGROUND_TERTIARY, UITheme.TOOLBAR_BG_HOVER, hoverProgress * 0.45f)
+            : UITheme.BACKGROUND_TERTIARY;
+        int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), Math.max(hoverProgress, selected ? 0.55f : 0f));
+        UIStyleHelper.drawBeveledPanel(context, rect.x, rect.y, rect.width, rect.height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
+
+        int avatarSize = 26;
+        int avatarX = rect.x + 8;
+        int avatarY = rect.y + (rect.height - avatarSize) / 2;
+        renderAuthorDirectoryAvatar(context, avatarX, avatarY, avatarSize, author);
+
+        int textX = avatarX + avatarSize + 8;
+        int statsWidth = Math.max(
+            this.textRenderer.getWidth(author.presetCount() + " presets"),
+            Math.max(this.textRenderer.getWidth(author.totalDownloads() + " dl"), this.textRenderer.getWidth(author.totalLikes() + " likes"))
+        );
+        int textWidth = Math.max(48, rect.width - (textX - rect.x) - statsWidth - 16);
+        String authorName = TextRenderUtil.trimWithEllipsis(this.textRenderer, author.displayName(), textWidth);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(authorName), textX, rect.y + 8, UITheme.TEXT_HEADER);
+        String secondary = author.presetCount() + " public preset" + (author.presetCount() == 1 ? "" : "s");
+        context.drawTextWithShadow(this.textRenderer, Text.literal(secondary), textX, rect.y + 20, UITheme.TEXT_SECONDARY);
+
+        int statsX = rect.x + rect.width - statsWidth - 8;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(author.totalDownloads() + " dl"), statsX, rect.y + 8, UITheme.STATE_SUCCESS);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(author.totalLikes() + " likes"), statsX, rect.y + 20, 0xFFE05454);
+    }
+
+    private void renderAuthorDirectoryAvatar(DrawContext context, int x, int y, int size, AuthorSummary author) {
+        UIStyleHelper.drawBeveledPanel(context, x, y, size, size, UITheme.BACKGROUND_PRIMARY, getAccentColor(), UITheme.PANEL_INNER_BORDER);
+        Identifier avatarTexture = getOrRequestAuthorDirectoryAvatarTexture(author);
+        if (avatarTexture != null) {
+            GuiTextureRenderer.drawIcon(context, avatarTexture, x + 2, y + 2, size - 4, 0xFFFFFFFF);
+            return;
+        }
+        String initials = fallback(author.displayName(), "?").trim();
+        initials = initials.isEmpty() ? "?" : initials.substring(0, 1).toUpperCase(Locale.ROOT);
+        int textX = x + (size - this.textRenderer.getWidth(initials)) / 2;
+        int textY = y + (size - this.textRenderer.fontHeight) / 2;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, UITheme.TEXT_HEADER);
     }
 
     private void drawGraphPreview(DrawContext context, int x, int y, int width, int height) {
@@ -985,6 +1051,17 @@ public class PathmindMarketplaceScreen extends Screen {
         drawPopupStatPill(context, textX, cursorY, downloadsWidth, "Downloads", Integer.toString(popupPreset.getDownloadsCount()));
         drawPopupStatPill(context, textX + downloadsWidth + 6, cursorY, likesWidth, "Likes", Integer.toString(popupPreset.getLikesCount()));
         cursorY += 24;
+        CompatibilityStatus compatibility = getCompatibilityStatus(popupPreset);
+        int badgeY = cursorY;
+        int badgeX = textX;
+        badgeX += drawStatusBadge(context, badgeX, badgeY, popupPreset.isPublished() ? "Public" : "Private",
+            popupPreset.isPublished() ? getAccentColor() : UITheme.STATE_WARNING, true) + 6;
+        badgeX += drawStatusBadge(context, badgeX, badgeY, compatibility.isFullyCompatible() ? "Compatible" : "Version Check",
+            compatibility.summaryColor(), true) + 6;
+        if (isPresetSavedLocally(popupPreset)) {
+            drawStatusBadge(context, badgeX, badgeY, "Saved", 0xFFE2B93B, true);
+        }
+        cursorY += 22;
 
         if (popupMetadataEditing) {
             cursorY = drawPopupEditableField(context, mouseX, mouseY, textX, cursorY, textWidth, "Tags", publishTagsField) + 1;
@@ -1048,7 +1125,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY), 5);
         }
 
-        CompatibilityStatus compatibility = getCompatibilityStatus(popupPreset);
+        CompatibilityStatus compatibilityStatus = getCompatibilityStatus(popupPreset);
         int compatibilityHeight = 30;
         UIStyleHelper.drawBeveledPanel(
             context,
@@ -1063,9 +1140,9 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer, Text.literal("Compatibility"), textX + 8, cursorY + 14,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
         context.drawTextWithShadow(this.textRenderer, Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer,
-                compatibility.minecraftLine() + "  •  " + compatibility.pathmindLine(), textWidth - 16)),
+                compatibilityStatus.minecraftLine() + "  •  " + compatibilityStatus.pathmindLine(), textWidth - 16)),
             textX + 8, cursorY + 24,
-            presetPopupAnimation.getAnimatedPopupColor(compatibility.minecraftColor()));
+            presetPopupAnimation.getAnimatedPopupColor(compatibilityStatus.minecraftColor()));
         cursorY += compatibilityHeight + 18;
 
         String sharedLine = "Published " + formatTimestamp(popupPreset.getCreatedAt()) + "  •  Updated " + formatTimestamp(popupPreset.getUpdatedAt());
@@ -1807,49 +1884,64 @@ public class PathmindMarketplaceScreen extends Screen {
             return true;
         }
 
-        int cardsPerPage = getCardsPerPage(layout);
-        int startIndex = pageIndex * cardsPerPage;
-        int endIndex = Math.min(presets.size(), startIndex + cardsPerPage);
-        int visibleCount = Math.max(0, endIndex - startIndex);
-        for (int index = startIndex; index < endIndex; index++) {
-            Rect rect = getCardRect(layout, index - startIndex, visibleCount);
-            MarketplacePreset preset = presets.get(index);
-            int previewX = rect.x + 8;
-            int previewY = rect.y + 8;
-            int previewWidth = rect.width - 16;
-            int previewHeight = rect.height - 46;
-            Rect deleteHit = new Rect(previewX + previewWidth - 14, previewY + 2, 12, 12);
-            Rect heartHit = new Rect(previewX + previewWidth - 14, previewY + previewHeight - 14, 12, 12);
-            Rect bookmarkHit = new Rect(previewX + previewWidth - 28, previewY + previewHeight - 14, 12, 12);
-            if (isOwnPreset(preset) && isPointInRect(mouseX, mouseY, deleteHit.x, deleteHit.y, deleteHit.width, deleteHit.height)) {
-                openConfirmPopup(ConfirmAction.DELETE, preset, false);
-                return true;
+        if (isAuthorDirectoryMode()) {
+            int entriesPerPage = getAuthorEntriesPerPage(layout);
+            int startIndex = pageIndex * entriesPerPage;
+            int endIndex = Math.min(authorResults.size(), startIndex + entriesPerPage);
+            for (int index = startIndex; index < endIndex; index++) {
+                Rect rect = getAuthorRowRect(layout, index - startIndex);
+                AuthorSummary author = authorResults.get(index);
+                if (isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height)) {
+                    selectedIndex = index;
+                    openAuthorProfile(author.representativePreset(), false);
+                    return true;
+                }
             }
-            if (isPointInRect(mouseX, mouseY, heartHit.x, heartHit.y, heartHit.width, heartHit.height)) {
-                startToggleLike(preset, false);
-                return true;
-            }
-            if (isPointInRect(mouseX, mouseY, bookmarkHit.x, bookmarkHit.y, bookmarkHit.width, bookmarkHit.height)) {
-                savePresetLocally(preset, false);
-                return true;
-            }
-            Rect authorHit = getCardAuthorRect(rect, preset);
-            if (isPointInRect(mouseX, mouseY, authorHit.x, authorHit.y, authorHit.width, authorHit.height)) {
-                openAuthorProfile(preset, false);
-                return true;
-            }
-            if (isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height)) {
-                selectedIndex = index;
-                popupPreset = preset;
-                popupScrollOffset = 0;
-                popupPreviewPanX = 0f;
-                popupPreviewPanY = 0f;
-                popupPreviewZoom = 1f;
-                popupStatusMessage = "";
-                popupStatusColor = UITheme.TEXT_SECONDARY;
-                requestPreviewGraph(popupPreset);
-                presetPopupAnimation.show();
-                return true;
+        } else {
+            int cardsPerPage = getCardsPerPage(layout);
+            int startIndex = pageIndex * cardsPerPage;
+            int endIndex = Math.min(presets.size(), startIndex + cardsPerPage);
+            int visibleCount = Math.max(0, endIndex - startIndex);
+            for (int index = startIndex; index < endIndex; index++) {
+                Rect rect = getCardRect(layout, index - startIndex, visibleCount);
+                MarketplacePreset preset = presets.get(index);
+                int previewX = rect.x + 8;
+                int previewY = rect.y + 8;
+                int previewWidth = rect.width - 16;
+                int previewHeight = rect.height - 46;
+                Rect deleteHit = new Rect(previewX + previewWidth - 14, previewY + 2, 12, 12);
+                Rect heartHit = new Rect(previewX + previewWidth - 14, previewY + previewHeight - 14, 12, 12);
+                Rect bookmarkHit = new Rect(previewX + previewWidth - 28, previewY + previewHeight - 14, 12, 12);
+                if (isOwnPreset(preset) && isPointInRect(mouseX, mouseY, deleteHit.x, deleteHit.y, deleteHit.width, deleteHit.height)) {
+                    openConfirmPopup(ConfirmAction.DELETE, preset, false);
+                    return true;
+                }
+                if (isPointInRect(mouseX, mouseY, heartHit.x, heartHit.y, heartHit.width, heartHit.height)) {
+                    startToggleLike(preset, false);
+                    return true;
+                }
+                if (isPointInRect(mouseX, mouseY, bookmarkHit.x, bookmarkHit.y, bookmarkHit.width, bookmarkHit.height)) {
+                    savePresetLocally(preset, false);
+                    return true;
+                }
+                Rect authorHit = getCardAuthorRect(rect, preset);
+                if (isPointInRect(mouseX, mouseY, authorHit.x, authorHit.y, authorHit.width, authorHit.height)) {
+                    openAuthorProfile(preset, false);
+                    return true;
+                }
+                if (isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height)) {
+                    selectedIndex = index;
+                    popupPreset = preset;
+                    popupScrollOffset = 0;
+                    popupPreviewPanX = 0f;
+                    popupPreviewPanY = 0f;
+                    popupPreviewZoom = 1f;
+                    popupStatusMessage = "";
+                    popupStatusColor = UITheme.TEXT_SECONDARY;
+                    requestPreviewGraph(popupPreset);
+                    presetPopupAnimation.show();
+                    return true;
+                }
             }
         }
 
@@ -2929,6 +3021,34 @@ public class PathmindMarketplaceScreen extends Screen {
         return viewedAuthorAvatarTextureId;
     }
 
+    private Identifier getOrRequestAuthorDirectoryAvatarTexture(AuthorSummary author) {
+        if (author == null || author.avatarUrl() == null || author.avatarUrl().isBlank()) {
+            return null;
+        }
+        Identifier existing = authorDirectoryAvatarTextures.get(author.avatarUrl());
+        if (existing != null) {
+            return existing;
+        }
+        if (authorDirectoryAvatarLoading.contains(author.avatarUrl())) {
+            return null;
+        }
+        authorDirectoryAvatarLoading.add(author.avatarUrl());
+        String avatarUrl = author.avatarUrl();
+        CompletableFuture.supplyAsync(() -> downloadAvatarImage(avatarUrl)).whenComplete((image, throwable) -> {
+            if (this.client == null) {
+                authorDirectoryAvatarLoading.remove(avatarUrl);
+                return;
+            }
+            this.client.execute(() -> {
+                authorDirectoryAvatarLoading.remove(avatarUrl);
+                if (throwable == null && image != null) {
+                    authorDirectoryAvatarTextures.put(avatarUrl, registerAvatarTexture(avatarUrl, image));
+                }
+            });
+        });
+        return null;
+    }
+
     private NativeImage downloadAvatarImage(String avatarUrl) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
@@ -3838,10 +3958,24 @@ public class PathmindMarketplaceScreen extends Screen {
         return Math.max(1, getGridColumns(layout) * getGridRows(layout));
     }
 
+    private int getAuthorEntriesPerPage(Layout layout) {
+        int availableHeight = layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT - 8;
+        return Math.max(1, (availableHeight + AUTHOR_ROW_GAP) / (AUTHOR_ROW_HEIGHT + AUTHOR_ROW_GAP));
+    }
+
+    private int getEntriesPerPage(Layout layout) {
+        return isAuthorDirectoryMode() ? getAuthorEntriesPerPage(layout) : getCardsPerPage(layout);
+    }
+
+    private int getCurrentResultCount() {
+        return isAuthorDirectoryMode() ? authorResults.size() : presets.size();
+    }
+
     private int getMaxPageIndex() {
         Layout layout = getLayout();
-        int cardsPerPage = getCardsPerPage(layout);
-        return Math.max(0, (presets.size() - 1) / cardsPerPage);
+        int entriesPerPage = getEntriesPerPage(layout);
+        int resultCount = getCurrentResultCount();
+        return Math.max(0, (resultCount - 1) / entriesPerPage);
     }
 
     private int getPageLabelWidth(int pageNumber) {
@@ -3853,6 +3987,16 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private Rect getSortDropdownBounds(Layout layout) {
         return new Rect(layout.sortButtonX, layout.sortButtonY + SORT_BUTTON_HEIGHT, SORT_BUTTON_WIDTH, SortMode.values().length * SORT_OPTION_HEIGHT);
+    }
+
+    private Rect getAuthorRowRect(Layout layout, int pageOffset) {
+        int bodyY = layout.sectionY + getSectionHeaderHeight() + 2;
+        return new Rect(
+            layout.bodyX,
+            bodyY + pageOffset * (AUTHOR_ROW_HEIGHT + AUTHOR_ROW_GAP),
+            layout.bodyWidth,
+            AUTHOR_ROW_HEIGHT
+        );
     }
 
     private PageHitAreas getPageHitAreas(Layout layout) {
@@ -3915,16 +4059,23 @@ public class PathmindMarketplaceScreen extends Screen {
             if (isViewingAuthorProfile() && (!preset.isPublished() || !isViewedAuthorPreset(preset))) {
                 continue;
             }
-            if (query.isEmpty() || matchesQuery(preset, query)) {
+            boolean matches = isAuthorDirectoryMode()
+                ? query.isEmpty() || containsNormalized(preset.getAuthorName(), query)
+                : query.isEmpty() || matchesQuery(preset, query);
+            if (matches) {
                 filtered.add(preset);
             }
         }
         filtered.sort(sortMode.comparator);
         presets = List.copyOf(filtered);
+        authorResults = buildAuthorResults(filtered);
         pageIndex = Math.max(0, Math.min(pageIndex, getMaxPageIndex()));
-        selectedIndex = presets.isEmpty() ? -1 : Math.max(0, Math.min(selectedIndex, presets.size() - 1));
+        int currentCount = getCurrentResultCount();
+        selectedIndex = currentCount == 0 ? -1 : Math.max(0, Math.min(selectedIndex, currentCount - 1));
         if (myPresetsOnly && authSession == null) {
             statusMessage = "Sign in to view your presets.";
+        } else if (isAuthorDirectoryMode() && authorResults.isEmpty()) {
+            statusMessage = query.isEmpty() ? "No authors with public presets found." : "No authors match your search.";
         } else if (isViewingAuthorProfile() && presets.isEmpty()) {
             statusMessage = "No public presets from this creator matched your filters.";
         } else if (allPresets.isEmpty()) {
@@ -3940,8 +4091,55 @@ public class PathmindMarketplaceScreen extends Screen {
                 statusMessage = sortMode == SortMode.SAVED ? "No saved presets match your search." : "No presets match your search.";
             }
         } else {
-            statusMessage = "Loaded " + presets.size() + " preset" + (presets.size() == 1 ? "" : "s") + ".";
+            if (isAuthorDirectoryMode()) {
+                statusMessage = "Loaded " + authorResults.size() + " author" + (authorResults.size() == 1 ? "" : "s") + ".";
+            } else {
+                statusMessage = "Loaded " + presets.size() + " preset" + (presets.size() == 1 ? "" : "s") + ".";
+            }
         }
+    }
+
+    private List<AuthorSummary> buildAuthorResults(List<MarketplacePreset> filtered) {
+        if (filtered == null || filtered.isEmpty()) {
+            return List.of();
+        }
+        Map<String, AuthorAccumulator> authors = new LinkedHashMap<>();
+        for (MarketplacePreset preset : filtered) {
+            if (preset == null || !preset.isPublished()) {
+                continue;
+            }
+            String key = buildAuthorKey(preset);
+            if (key == null || key.isBlank()) {
+                continue;
+            }
+            AuthorAccumulator accumulator = authors.computeIfAbsent(key, ignored -> new AuthorAccumulator(
+                key,
+                fallback(preset.getAuthorName(), "Unknown"),
+                fallback(preset.getAuthorAvatarUrl(), ""),
+                preset
+            ));
+            accumulator.presetCount++;
+            accumulator.totalLikes += Math.max(0, preset.getLikesCount());
+            accumulator.totalDownloads += Math.max(0, preset.getDownloadsCount());
+            if ((accumulator.avatarUrl == null || accumulator.avatarUrl.isBlank())
+                && preset.getAuthorAvatarUrl() != null && !preset.getAuthorAvatarUrl().isBlank()) {
+                accumulator.avatarUrl = preset.getAuthorAvatarUrl();
+            }
+        }
+        List<AuthorSummary> summaries = new ArrayList<>(authors.size());
+        for (AuthorAccumulator accumulator : authors.values()) {
+            summaries.add(new AuthorSummary(
+                accumulator.key,
+                accumulator.displayName,
+                accumulator.avatarUrl,
+                accumulator.presetCount,
+                accumulator.totalLikes,
+                accumulator.totalDownloads,
+                accumulator.representativePreset
+            ));
+        }
+        summaries.sort(Comparator.comparing((AuthorSummary author) -> normalizeSearch(author.displayName())));
+        return List.copyOf(summaries);
     }
 
     private boolean matchesQuery(MarketplacePreset preset, String query) {
@@ -4051,6 +4249,10 @@ public class PathmindMarketplaceScreen extends Screen {
         return authorName.isEmpty() ? null : "name:" + authorName;
     }
 
+    private boolean isAuthorDirectoryMode() {
+        return !myPresetsOnly && !isViewingAuthorProfile() && sortMode == SortMode.AUTHOR;
+    }
+
     private String resolveViewedAuthorAvatarUrl(MarketplacePreset preset) {
         if (preset == null) {
             return null;
@@ -4138,8 +4340,29 @@ public class PathmindMarketplaceScreen extends Screen {
             minecraftLine,
             minecraftCompatible ? getAccentColor() : UITheme.STATE_WARNING,
             pathmindLine,
-            pathmindCompatible ? getAccentColor() : UITheme.STATE_WARNING
+            pathmindCompatible ? getAccentColor() : UITheme.STATE_WARNING,
+            minecraftCompatible && pathmindCompatible
         );
+    }
+
+    private int drawStatusBadge(DrawContext context, int x, int y, String label, int accentColor, boolean popup) {
+        String text = fallback(label, "");
+        int width = Math.max(26, this.textRenderer.getWidth(text) + 10);
+        int height = 12;
+        int background = popup
+            ? presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION)
+            : UITheme.BACKGROUND_SECTION;
+        int border = popup
+            ? presetPopupAnimation.getAnimatedPopupColor(accentColor)
+            : accentColor;
+        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, background, border, popup
+            ? presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+            : UITheme.PANEL_INNER_BORDER);
+        int textColor = popup
+            ? presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY)
+            : UITheme.TEXT_PRIMARY;
+        context.drawTextWithShadow(this.textRenderer, Text.literal(text), x + 5, y + 2, textColor);
+        return width;
     }
 
     private boolean isAnyVersion(String value) {
@@ -4270,8 +4493,16 @@ public class PathmindMarketplaceScreen extends Screen {
         String minecraftLine,
         int minecraftColor,
         String pathmindLine,
-        int pathmindColor
+        int pathmindColor,
+        boolean fullyCompatible
     ) {
+        private int summaryColor() {
+            return fullyCompatible ? UITheme.STATE_SUCCESS : UITheme.STATE_WARNING;
+        }
+
+        private boolean isFullyCompatible() {
+            return fullyCompatible;
+        }
     }
 
     private record GraphBounds(float minX, float minY, float maxX, float maxY) {
@@ -4310,7 +4541,39 @@ public class PathmindMarketplaceScreen extends Screen {
     ) {
     }
 
+    private record AuthorSummary(
+        String key,
+        String displayName,
+        String avatarUrl,
+        int presetCount,
+        int totalLikes,
+        int totalDownloads,
+        MarketplacePreset representativePreset
+    ) {
+    }
+
+    private static final class AuthorAccumulator {
+        private final String key;
+        private final String displayName;
+        private String avatarUrl;
+        private final MarketplacePreset representativePreset;
+        private int presetCount;
+        private int totalLikes;
+        private int totalDownloads;
+
+        private AuthorAccumulator(String key, String displayName, String avatarUrl, MarketplacePreset representativePreset) {
+            this.key = key;
+            this.displayName = displayName;
+            this.avatarUrl = avatarUrl;
+            this.representativePreset = representativePreset;
+        }
+    }
+
     private enum SortMode {
+        TRENDING("Trending", Comparator
+            .comparingInt(MarketplacePreset::getDownloadsCount).reversed()
+            .thenComparing(Comparator.comparingInt(MarketplacePreset::getLikesCount).reversed())
+            .thenComparing(Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed())),
         SAVED("Saved", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getName(), "").toLowerCase(Locale.ROOT))),
         NEWEST("Newest", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getCreatedAt(), "")).reversed()),
         UPDATED("Updated", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed()),
@@ -4332,6 +4595,16 @@ public class PathmindMarketplaceScreen extends Screen {
                 return screen.isPresetSavedLocally(preset);
             }
             return true;
+        }
+
+        private MarketplaceService.ListingMode toListingMode() {
+            return switch (this) {
+                case TRENDING -> MarketplaceService.ListingMode.TRENDING;
+                case UPDATED -> MarketplaceService.ListingMode.UPDATED;
+                case DOWNLOADS -> MarketplaceService.ListingMode.DOWNLOADS;
+                case LIKES -> MarketplaceService.ListingMode.LIKES;
+                default -> MarketplaceService.ListingMode.NEWEST;
+            };
         }
 
         private static String fallbackStatic(String value, String fallback) {

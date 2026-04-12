@@ -38,6 +38,7 @@ public final class MarketplaceService {
     private static final String UPDATE_PRESET_METADATA_RPC = "update_marketplace_preset_metadata";
     private static final String TOGGLE_PRESET_LIKE_RPC = "toggle_marketplace_preset_like";
     private static final String INCREMENT_DOWNLOAD_RPC = "increment_preset_downloads";
+    private static final int DEFAULT_PUBLISHED_FETCH_LIMIT = 200;
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(10))
@@ -47,7 +48,11 @@ public final class MarketplaceService {
     }
 
     public static CompletableFuture<List<MarketplacePreset>> fetchPublishedPresets() {
-        return fetchPresets(buildPublishedListingsUrl(), false);
+        return fetchPublishedPresets(ListingMode.NEWEST);
+    }
+
+    public static CompletableFuture<List<MarketplacePreset>> fetchPublishedPresets(ListingMode listingMode) {
+        return fetchPresets(buildPublishedListingsUrl(listingMode), false);
     }
 
     public static CompletableFuture<List<MarketplacePreset>> fetchOwnedPresets(String accessToken, String userId) {
@@ -401,12 +406,14 @@ public final class MarketplaceService {
         });
     }
 
-    private static String buildPublishedListingsUrl() {
+    private static String buildPublishedListingsUrl(ListingMode listingMode) {
+        ListingMode mode = listingMode == null ? ListingMode.NEWEST : listingMode;
         return PROJECT_URL
             + "/rest/v1/marketplace_presets"
             + "?select=id,slug,author_user_id,name,author_name,author_avatar_url,description,tags,game_version,pathmind_version,likes_count,downloads_count,storage_bucket,file_path,published,created_at,updated_at"
             + "&published=eq.true"
-            + "&order=created_at.desc";
+            + mode.orderClause
+            + "&limit=" + DEFAULT_PUBLISHED_FETCH_LIMIT;
     }
 
     private static String buildOwnedListingsUrl(String userId) {
@@ -903,5 +910,19 @@ public final class MarketplaceService {
         String pathmindVersion,
         boolean published
     ) {
+    }
+
+    public enum ListingMode {
+        NEWEST("&order=created_at.desc"),
+        UPDATED("&order=updated_at.desc"),
+        DOWNLOADS("&order=downloads_count.desc&order=updated_at.desc"),
+        LIKES("&order=likes_count.desc&order=updated_at.desc"),
+        TRENDING("&order=downloads_count.desc&order=likes_count.desc&order=updated_at.desc");
+
+        private final String orderClause;
+
+        ListingMode(String orderClause) {
+            this.orderClause = orderClause;
+        }
     }
 }

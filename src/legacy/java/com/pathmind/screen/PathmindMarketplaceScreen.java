@@ -196,8 +196,7 @@ public class PathmindMarketplaceScreen extends Screen {
         this.preferredPublishPresetName = preferredPublishPresetName;
         this.initialPopupPreset = initialPopupPreset;
         this.editorPopupMode = parent instanceof PathmindVisualEditorScreen
-            && initialPopupPreset != null
-            && !openPublishOnInit;
+            && (openPublishOnInit || initialPopupPreset != null);
     }
 
     @Override
@@ -1595,7 +1594,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 return true;
             }
             if (isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
-                closePublishPopup();
+                closePublishPopup(editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible());
                 return true;
             }
             if (!publishBusy && authSession == null
@@ -1608,7 +1607,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 return true;
             }
             if (!isPointInRect(mouseX, mouseY, popupX, popupY, popupWidth, popupHeight)) {
-                closePublishPopup();
+                closePublishPopup(editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible());
                 return true;
             }
             return true;
@@ -2097,7 +2096,7 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         if (publishPopupOpen) {
-            closePublishPopup();
+            closePublishPopup(editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible());
             return;
         }
         if (accountPopupOpen) {
@@ -2132,7 +2131,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (publishPopupOpen || popupMetadataEditing) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 if (publishPopupOpen) {
-                    closePublishPopup();
+                    closePublishPopup(editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible());
                 } else {
                     endPopupMetadataEdit(false);
                 }
@@ -2937,6 +2936,10 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void closePublishPopup() {
+        closePublishPopup(false);
+    }
+
+    private void closePublishPopup(boolean returnToParent) {
         publishPopupOpen = false;
         publishBusy = false;
         editingPreset = null;
@@ -2945,6 +2948,9 @@ public class PathmindMarketplaceScreen extends Screen {
         publishStatusColor = UITheme.TEXT_SECONDARY;
         focusPublishField(null);
         publishPopupAnimation.hide();
+        if (returnToParent && this.client != null) {
+            this.client.setScreen(parent);
+        }
     }
 
     private void focusPublishField(TextFieldWidget target) {

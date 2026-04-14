@@ -20112,15 +20112,7 @@ public class Node {
     private Optional<Boolean> evaluateOperatorComparison() {
         Node left = getAttachedParameter(0);
         Node right = getAttachedParameter(1);
-        if (left == null || right == null) {
-            return Optional.empty();
-        }
-        boolean leftIsVariable = left.getType() == NodeType.VARIABLE;
-        boolean rightIsVariable = right.getType() == NodeType.VARIABLE;
-        if (leftIsVariable || rightIsVariable) {
-            return compareVariableNodes(left, right);
-        }
-        return compareParameterNodes(left, right);
+        return compareComparisonOperands(left, right);
     }
 
     private Optional<Boolean> evaluateOperatorOrdering(boolean greater) {
@@ -20146,6 +20138,62 @@ public class Node {
     private Optional<Boolean> evaluateOperatorBooleanOperand() {
         Node operand = getAttachedParameter(0);
         return resolveBooleanOperandWithVariables(operand, 0);
+    }
+
+    private Optional<Boolean> compareComparisonOperands(Node left, Node right) {
+        if (left == null || right == null) {
+            return Optional.empty();
+        }
+        if (isComparisonGroupOperator(left)) {
+            return compareGroupOperand(left, right);
+        }
+        if (isComparisonGroupOperator(right)) {
+            return compareGroupOperand(right, left);
+        }
+        boolean leftIsVariable = left.getType() == NodeType.VARIABLE;
+        boolean rightIsVariable = right.getType() == NodeType.VARIABLE;
+        if (leftIsVariable || rightIsVariable) {
+            return compareVariableNodes(left, right);
+        }
+        return compareParameterNodes(left, right);
+    }
+
+    private Optional<Boolean> compareGroupOperand(Node groupNode, Node comparisonNode) {
+        if (!isComparisonGroupOperator(groupNode) || comparisonNode == null) {
+            return Optional.empty();
+        }
+        boolean requireAllMatches = groupNode.getType() == NodeType.OPERATOR_BOOLEAN_AND;
+        boolean sawComparableOption = false;
+        for (int slotIndex = 0; slotIndex < groupNode.getParameterSlotCount(); slotIndex++) {
+            Node option = groupNode.getAttachedParameter(slotIndex);
+            if (option == null) {
+                continue;
+            }
+            Optional<Boolean> comparison = compareComparisonOperands(option, comparisonNode);
+            if (comparison.isEmpty()) {
+                continue;
+            }
+            sawComparableOption = true;
+            if (requireAllMatches) {
+                if (!comparison.get()) {
+                    return Optional.of(false);
+                }
+            } else if (comparison.get()) {
+                return Optional.of(true);
+            }
+        }
+        if (!sawComparableOption) {
+            return Optional.empty();
+        }
+        return Optional.of(requireAllMatches);
+    }
+
+    private boolean isComparisonGroupOperator(Node node) {
+        if (node == null) {
+            return false;
+        }
+        return node.getType() == NodeType.OPERATOR_BOOLEAN_OR
+            || node.getType() == NodeType.OPERATOR_BOOLEAN_AND;
     }
 
     private Optional<Boolean> resolveBooleanOperandWithVariables(Node operand, int slotIndex) {

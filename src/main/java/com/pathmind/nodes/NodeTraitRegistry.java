@@ -175,8 +175,8 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.OPERATOR_GREATER, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.OPERATOR_LESS, EnumSet.of(NodeValueTrait.NUMBER));
         accepted.put(NodeType.OPERATOR_BOOLEAN_NOT, EnumSet.of(NodeValueTrait.BOOLEAN));
-        accepted.put(NodeType.OPERATOR_BOOLEAN_OR, EnumSet.of(NodeValueTrait.BOOLEAN));
-        accepted.put(NodeType.OPERATOR_BOOLEAN_AND, EnumSet.of(NodeValueTrait.BOOLEAN));
+        accepted.put(NodeType.OPERATOR_BOOLEAN_OR, EnumSet.of(NodeValueTrait.ANY));
+        accepted.put(NodeType.OPERATOR_BOOLEAN_AND, EnumSet.of(NodeValueTrait.ANY));
         accepted.put(NodeType.OPERATOR_BOOLEAN_XOR, EnumSet.of(NodeValueTrait.BOOLEAN));
 
         accepted.put(NodeType.SENSOR_POSITION_OF, EnumSet.of(

@@ -96,4 +96,45 @@ class NodeGraphPersistenceTest {
         assertEquals(1, restoredTemplate.getTemplateGraphData().getNodes().size());
         assertEquals(connections.size(), restoredConnections.size());
     }
+
+    @Test
+    void saveAndLoadRoundTripPreservesCoordinateOrOperatorAttachments() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 10, 20);
+        Node leftCoordinate = coordinateNode(10, 64, 10);
+        Node or = new Node(NodeType.OPERATOR_BOOLEAN_OR, 60, 20);
+        Node firstCoordinate = coordinateNode(0, 64, 0);
+        Node secondCoordinate = coordinateNode(10, 64, 10);
+
+        assertTrue(or.attachParameter(firstCoordinate, 0));
+        assertTrue(or.attachParameter(secondCoordinate, 1));
+        assertTrue(equals.attachParameter(leftCoordinate, 0));
+        assertTrue(equals.attachParameter(or, 1));
+
+        List<Node> nodes = List.of(equals, leftCoordinate, or, firstCoordinate, secondCoordinate);
+        Path savePath = tempDir.resolve("coordinate-or-graph.json");
+        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(nodes, List.of(), savePath));
+
+        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
+        assertNotNull(loaded);
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(loaded);
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredEquals = byId.get(equals.getId());
+        Node restoredOr = byId.get(or.getId());
+        assertNotNull(restoredEquals);
+        assertNotNull(restoredOr);
+        assertEquals(NodeType.PARAM_COORDINATE, restoredEquals.getAttachedParameter(0).getType());
+        assertEquals(NodeType.OPERATOR_BOOLEAN_OR, restoredEquals.getAttachedParameter(1).getType());
+        assertEquals(NodeType.PARAM_COORDINATE, restoredOr.getAttachedParameter(0).getType());
+        assertEquals(NodeType.PARAM_COORDINATE, restoredOr.getAttachedParameter(1).getType());
+    }
+
+    private Node coordinateNode(int x, int y, int z) {
+        Node coordinate = new Node(NodeType.PARAM_COORDINATE, 0, 0);
+        coordinate.getParameter("X").setStringValue(Integer.toString(x));
+        coordinate.getParameter("Y").setStringValue(Integer.toString(y));
+        coordinate.getParameter("Z").setStringValue(Integer.toString(z));
+        return coordinate;
+    }
 }

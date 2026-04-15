@@ -196,7 +196,9 @@ public final class PresetManager {
 
         try {
             ensureDirectoryExists(getPresetsDirectory());
-            Files.copy(sourcePath, targetPath);
+            if (!NodeGraphPersistence.normalizeNodeGraphToPath(sourcePath, targetPath)) {
+                Files.copy(sourcePath, targetPath);
+            }
             return Optional.of(candidateName);
         } catch (IOException e) {
             System.err.println("Failed to import preset from file: " + e.getMessage());

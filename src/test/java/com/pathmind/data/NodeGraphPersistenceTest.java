@@ -6,6 +6,7 @@ import com.pathmind.nodes.NodeType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -128,6 +130,136 @@ class NodeGraphPersistenceTest {
         assertEquals(NodeType.OPERATOR_BOOLEAN_OR, restoredEquals.getAttachedParameter(1).getType());
         assertEquals(NodeType.PARAM_COORDINATE, restoredOr.getAttachedParameter(0).getType());
         assertEquals(NodeType.PARAM_COORDINATE, restoredOr.getAttachedParameter(1).getType());
+    }
+
+    @Test
+    void convertToNodesRecoversLegacyNestedAttachmentsFromSavedLayout() {
+        Node controlWaitUntil = new Node(NodeType.CONTROL_WAIT_UNTIL, 40, 30);
+        Node sensor = new Node(NodeType.SENSOR_IS_DAYTIME, 0, 0);
+        assertTrue(controlWaitUntil.attachSensor(sensor));
+
+        Node repeat = new Node(NodeType.CONTROL_REPEAT, 120, 50);
+        Node message = new Node(NodeType.MESSAGE, 0, 0);
+        assertTrue(repeat.attachActionNode(message));
+
+        Node wait = new Node(NodeType.WAIT, 200, 60);
+        Node duration = new Node(NodeType.PARAM_DURATION, 0, 0);
+        duration.getParameter("Duration").setStringValue("3");
+        assertTrue(wait.attachParameter(duration, 0));
+
+        Path savePath = tempDir.resolve("legacy-layout-graph.json");
+        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(
+            List.of(controlWaitUntil, sensor, repeat, message, wait, duration),
+            List.of(),
+            savePath
+        ));
+
+        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
+        assertNotNull(loaded);
+
+        for (NodeGraphData.NodeData nodeData : loaded.getNodes()) {
+            nodeData.setAttachedSensorId(null);
+            nodeData.setParentControlId(null);
+            nodeData.setAttachedActionId(null);
+            nodeData.setParentActionControlId(null);
+            nodeData.setAttachedParameterId(null);
+            nodeData.setParentParameterHostId(null);
+            nodeData.setParameterAttachments(List.of());
+        }
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(loaded);
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredControl = byId.get(controlWaitUntil.getId());
+        Node restoredSensor = byId.get(sensor.getId());
+        Node restoredRepeat = byId.get(repeat.getId());
+        Node restoredMessage = byId.get(message.getId());
+        Node restoredWait = byId.get(wait.getId());
+        Node restoredDuration = byId.get(duration.getId());
+
+        assertNotNull(restoredControl);
+        assertNotNull(restoredSensor);
+        assertNotNull(restoredRepeat);
+        assertNotNull(restoredMessage);
+        assertNotNull(restoredWait);
+        assertNotNull(restoredDuration);
+
+        assertEquals(restoredControl, restoredSensor.getParentControl());
+        assertEquals(restoredSensor, restoredControl.getAttachedSensor());
+        assertEquals(restoredRepeat, restoredMessage.getParentActionControl());
+        assertEquals(restoredMessage, restoredRepeat.getAttachedActionNode());
+        assertEquals(restoredWait, restoredDuration.getParentParameterHost());
+        assertEquals(restoredDuration, restoredWait.getAttachedParameter(0));
+    }
+
+    @Test
+    void normalizeNodeGraphToPathPreservesKnownNodesFromMixedVersionPreset() throws Exception {
+        Path sourcePath = tempDir.resolve("mixed-version.json");
+        Files.writeString(sourcePath, """
+            {
+              "nodes": [
+                {
+                  "id": "start",
+                  "type": "START",
+                  "x": 0,
+                  "y": 0,
+                  "parameters": [],
+                  "parameterAttachments": [],
+                  "startNodeNumber": 1
+                },
+                {
+                  "id": "future",
+                  "type": "FUTURE_NODE_TYPE",
+                  "x": 40,
+                  "y": 0,
+                  "parameters": [],
+                  "parameterAttachments": []
+                },
+                {
+                  "id": "legacyBoolean",
+                  "type": "PARAM_BOOLEAN",
+                  "x": 80,
+                  "y": 0,
+                  "parameters": [
+                    {
+                      "name": "Toggle",
+                      "value": "false",
+                      "type": "BOOLEAN",
+                      "userEdited": true
+                    }
+                  ],
+                  "booleanToggleValue": false,
+                  "parameterAttachments": []
+                }
+              ],
+              "connections": [
+                {
+                  "outputNodeId": "start",
+                  "inputNodeId": "future",
+                  "outputSocket": 0,
+                  "inputSocket": 0
+                }
+              ]
+            }
+            """);
+
+        Path normalizedPath = tempDir.resolve("normalized.json");
+        assertTrue(NodeGraphPersistence.normalizeNodeGraphToPath(sourcePath, normalizedPath));
+
+        NodeGraphData normalized = NodeGraphPersistence.loadNodeGraphFromPath(normalizedPath);
+        assertNotNull(normalized);
+        assertEquals(2, normalized.getNodes().size());
+        assertFalse(normalized.getNodes().stream().anyMatch(node -> node.getType() == null));
+        assertEquals(0, normalized.getConnections().size());
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(normalized);
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+        Node restoredBoolean = byId.get("legacyBoolean");
+        assertNotNull(restoredBoolean);
+        assertNotNull(restoredBoolean.getParameter("Mode"));
+        assertNotNull(restoredBoolean.getParameter("Variable"));
+        assertEquals("false", restoredBoolean.getParameter("Toggle").getStringValue());
+        assertEquals(false, restoredBoolean.getBooleanToggleValue());
     }
 
     private Node coordinateNode(int x, int y, int z) {

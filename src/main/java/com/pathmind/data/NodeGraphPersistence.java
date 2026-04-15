@@ -106,6 +106,93 @@ public class NodeGraphPersistence {
         }
     }
 
+    public static boolean normalizeNodeGraphToPath(Path sourcePath, Path targetPath) {
+        if (sourcePath == null || targetPath == null) {
+            return false;
+        }
+        NodeGraphData data = loadNodeGraphFromPath(sourcePath);
+        if (data == null) {
+            return false;
+        }
+        List<Node> nodes = convertToNodes(data);
+        Map<String, Node> nodeMap = new HashMap<>();
+        for (Node node : nodes) {
+            if (node != null) {
+                nodeMap.put(node.getId(), node);
+            }
+        }
+        List<NodeConnection> connections = convertToConnections(data, nodeMap);
+        return saveNodeGraphToPath(nodes, connections, targetPath);
+    }
+
+    public static ParameterType parseParameterType(String rawType) {
+        if (rawType == null || rawType.isBlank()) {
+            return null;
+        }
+        try {
+            return ParameterType.valueOf(rawType);
+        } catch (IllegalArgumentException e) {
+            System.err.println("Unknown parameter type: " + rawType + ", skipping...");
+            return null;
+        }
+    }
+
+    public static void restoreParameters(Node node, List<NodeGraphData.ParameterData> parameterData) {
+        if (node == null) {
+            return;
+        }
+
+        Map<String, String> savedValues = new HashMap<>();
+        Map<String, Boolean> savedEdited = new HashMap<>();
+        Map<String, ParameterType> savedTypes = new HashMap<>();
+        if (parameterData != null) {
+            for (NodeGraphData.ParameterData paramData : parameterData) {
+                if (paramData == null || paramData.getName() == null || paramData.getName().isBlank()) {
+                    continue;
+                }
+                savedValues.put(paramData.getName(), paramData.getValue());
+                if (paramData.getUserEdited() != null) {
+                    savedEdited.put(paramData.getName(), paramData.getUserEdited());
+                }
+                ParameterType parsedType = parseParameterType(paramData.getType());
+                if (parsedType != null) {
+                    savedTypes.put(paramData.getName(), parsedType);
+                }
+            }
+        }
+
+        if (savedValues.isEmpty()) {
+            return;
+        }
+
+        for (NodeParameter param : node.getParameters()) {
+            String savedValue = savedValues.get(param.getName());
+            if (savedValue != null) {
+                param.setStringValue(savedValue);
+            }
+            Boolean edited = savedEdited.get(param.getName());
+            if (edited != null) {
+                param.setUserEdited(edited);
+            }
+        }
+
+        for (Map.Entry<String, String> entry : savedValues.entrySet()) {
+            if (node.getParameter(entry.getKey()) != null) {
+                continue;
+            }
+            ParameterType paramType = savedTypes.get(entry.getKey());
+            if (paramType == null) {
+                continue;
+            }
+            NodeParameter param = new NodeParameter(entry.getKey(), paramType, entry.getValue());
+            Boolean edited = savedEdited.get(entry.getKey());
+            if (edited != null) {
+                param.setUserEdited(edited);
+            }
+            node.getParameters().add(param);
+        }
+    }
+
     /**
      * Convert loaded data back to Node objects
      */
@@ -115,6 +202,10 @@ public class NodeGraphPersistence {
 
         // Create nodes
         for (NodeGraphData.NodeData nodeData : data.getNodes()) {
+            if (nodeData == null || nodeData.getType() == null) {
+                System.err.println("Skipping unsupported node entry during conversion.");
+                continue;
+            }
             Node node = new Node(nodeData.getType(), nodeData.getX(), nodeData.getY());
 
             // Set the same ID using reflection
@@ -126,36 +217,12 @@ public class NodeGraphPersistence {
                 System.err.println("Failed to set node ID: " + e.getMessage());
             }
 
-            // Save parameter values before setting mode (which will reinitialize parameters)
-            Map<String, String> savedParamValues = new HashMap<>();
-            Map<String, Boolean> savedParamEdited = new HashMap<>();
-            if (nodeData.getParameters() != null) {
-                for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
-                    savedParamValues.put(paramData.getName(), paramData.getValue());
-                    if (paramData.getUserEdited() != null) {
-                        savedParamEdited.put(paramData.getName(), paramData.getUserEdited());
-                    }
-                }
-            }
-
             // Set the mode if it exists (this will reinitialize parameters)
             if (nodeData.getMode() != null) {
                 node.setMode(nodeData.getMode());
             }
 
-            // Restore saved parameter values (overwrite the default parameters with saved ones)
-            if (!savedParamValues.isEmpty()) {
-                for (NodeParameter param : node.getParameters()) {
-                    String savedValue = savedParamValues.get(param.getName());
-                    if (savedValue != null) {
-                        param.setStringValue(savedValue);
-                    }
-                    Boolean edited = savedParamEdited.get(param.getName());
-                    if (edited != null) {
-                        param.setUserEdited(edited);
-                    }
-                }
-            }
+            restoreParameters(node, nodeData.getParameters());
             if (node.hasBooleanToggle()) {
                 Boolean storedToggle = nodeData.getBooleanToggleValue();
                 if (storedToggle != null) {
@@ -280,6 +347,8 @@ public class NodeGraphPersistence {
             }
         }
 
+        recoverMissingNestedAttachments(nodes);
+
         java.util.Set<Integer> usedStartNumbers = new java.util.HashSet<>();
         int maxStartNumber = 0;
         for (Node node : nodes) {
@@ -305,6 +374,159 @@ public class NodeGraphPersistence {
         }
 
         return nodes;
+    }
+
+    public static void recoverMissingNestedAttachments(List<Node> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return;
+        }
+        recoverMissingSensorAttachments(nodes);
+        recoverMissingActionAttachments(nodes);
+        recoverMissingParameterAttachments(nodes);
+    }
+
+    private static void recoverMissingSensorAttachments(List<Node> nodes) {
+        for (Node child : nodes) {
+            if (child == null || !child.isSensorNode() || child.isAttachedToControl()
+                || child.isAttachedToActionControl() || child.getParentParameterHost() != null) {
+                continue;
+            }
+            Node bestHost = findBestSensorHost(nodes, child);
+            if (bestHost != null) {
+                bestHost.attachSensor(child);
+            }
+        }
+    }
+
+    private static void recoverMissingActionAttachments(List<Node> nodes) {
+        for (Node child : nodes) {
+            if (child == null || child.isSensorNode() || child.isAttachedToActionControl()
+                || child.isAttachedToControl() || child.getParentParameterHost() != null) {
+                continue;
+            }
+            Node bestHost = findBestActionHost(nodes, child);
+            if (bestHost != null) {
+                bestHost.attachActionNode(child);
+            }
+        }
+    }
+
+    private static void recoverMissingParameterAttachments(List<Node> nodes) {
+        for (Node child : nodes) {
+            if (child == null || child.getParentParameterHost() != null
+                || child.isAttachedToControl() || child.isAttachedToActionControl()
+                || (!child.isParameterNode() && !child.isSensorNode())) {
+                continue;
+            }
+            ParameterAttachmentCandidate best = findBestParameterHost(nodes, child);
+            if (best != null) {
+                best.host.attachParameter(child, best.slotIndex);
+            }
+        }
+    }
+
+    private static Node findBestSensorHost(List<Node> nodes, Node child) {
+        Node bestHost = null;
+        double bestScore = Double.MAX_VALUE;
+        int anchorX = child.getX() + Math.min(4, Math.max(0, child.getWidth() - 1));
+        int anchorY = child.getY() + Math.min(4, Math.max(0, child.getHeight() - 1));
+        for (Node host : nodes) {
+            if (host == null || host == child || !host.hasSensorSlot() || host.getAttachedSensor() != null) {
+                continue;
+            }
+            if (!host.isPointInsideSensorSlot(anchorX, anchorY)) {
+                continue;
+            }
+            double score = squaredDistanceToSlotCenter(
+                anchorX,
+                anchorY,
+                host.getSensorSlotLeft(),
+                host.getSensorSlotTop(),
+                host.getSensorSlotWidth(),
+                host.getSensorSlotHeight()
+            );
+            if (score < bestScore) {
+                bestScore = score;
+                bestHost = host;
+            }
+        }
+        return bestHost;
+    }
+
+    private static Node findBestActionHost(List<Node> nodes, Node child) {
+        Node bestHost = null;
+        double bestScore = Double.MAX_VALUE;
+        int anchorX = child.getX() + Math.min(4, Math.max(0, child.getWidth() - 1));
+        int anchorY = child.getY() + Math.min(4, Math.max(0, child.getHeight() - 1));
+        for (Node host : nodes) {
+            if (host == null || host == child || !host.hasActionSlot() || host.getAttachedActionNode() != null
+                || !host.canAcceptActionNode(child)) {
+                continue;
+            }
+            if (!host.isPointInsideActionSlot(anchorX, anchorY)) {
+                continue;
+            }
+            double score = squaredDistanceToSlotCenter(
+                anchorX,
+                anchorY,
+                host.getActionSlotLeft(),
+                host.getActionSlotTop(),
+                host.getActionSlotWidth(),
+                host.getActionSlotHeight()
+            );
+            if (score < bestScore) {
+                bestScore = score;
+                bestHost = host;
+            }
+        }
+        return bestHost;
+    }
+
+    private static ParameterAttachmentCandidate findBestParameterHost(List<Node> nodes, Node child) {
+        ParameterAttachmentCandidate best = null;
+        double bestScore = Double.MAX_VALUE;
+        int anchorX = child.getX() + Math.min(4, Math.max(0, child.getWidth() - 1));
+        int anchorY = child.getY() + Math.min(4, Math.max(0, child.getHeight() - 1));
+        for (Node host : nodes) {
+            if (host == null || host == child || !host.hasParameterSlot()) {
+                continue;
+            }
+            int slotCount = host.getParameterSlotCount();
+            for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+                if (host.getAttachedParameter(slotIndex) != null || !host.canAcceptParameterNode(child, slotIndex)) {
+                    continue;
+                }
+                int slotLeft = host.getParameterSlotLeft(slotIndex);
+                int slotTop = host.getParameterSlotTop(slotIndex);
+                int slotWidth = host.getParameterSlotWidth(slotIndex);
+                int slotHeight = host.getParameterSlotHeight(slotIndex);
+                if (!isPointInsideRect(anchorX, anchorY, slotLeft, slotTop, slotWidth, slotHeight)) {
+                    continue;
+                }
+                double score = squaredDistanceToSlotCenter(anchorX, anchorY, slotLeft, slotTop, slotWidth, slotHeight);
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = new ParameterAttachmentCandidate(host, slotIndex);
+                }
+            }
+        }
+        return best;
+    }
+
+    private static boolean isPointInsideRect(int pointX, int pointY, int left, int top, int width, int height) {
+        return pointX >= left && pointX <= left + width
+            && pointY >= top && pointY <= top + height;
+    }
+
+    private static double squaredDistanceToSlotCenter(int pointX, int pointY, int left, int top, int width, int height) {
+        double centerX = left + (width / 2.0);
+        double centerY = top + (height / 2.0);
+        double dx = pointX - centerX;
+        double dy = pointY - centerY;
+        return dx * dx + dy * dy;
+    }
+
+    private record ParameterAttachmentCandidate(Node host, int slotIndex) {
     }
 
     /**

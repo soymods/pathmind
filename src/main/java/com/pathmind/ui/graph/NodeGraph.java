@@ -12933,6 +12933,10 @@ public class NodeGraph {
         // Load nodes and create node map for connections
         java.util.Map<String, Node> nodeMap = new java.util.HashMap<>();
         for (NodeGraphData.NodeData nodeData : data.getNodes()) {
+            if (nodeData == null || nodeData.getType() == null) {
+                System.err.println("Skipping unsupported node entry while loading graph.");
+                continue;
+            }
             Node node = new Node(nodeData.getType(), nodeData.getX(), nodeData.getY());
 
             // Set the same ID using reflection
@@ -12949,18 +12953,7 @@ public class NodeGraph {
                 node.setMode(nodeData.getMode());
             }
 
-            // Restore parameters (overwrite the default parameters with saved ones)
-            node.getParameters().clear();
-            if (nodeData.getParameters() != null) {
-                for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
-                    ParameterType paramType = ParameterType.valueOf(paramData.getType());
-                    NodeParameter param = new NodeParameter(paramData.getName(), paramType, paramData.getValue());
-                    if (paramData.getUserEdited() != null) {
-                        param.setUserEdited(paramData.getUserEdited());
-                    }
-                    node.getParameters().add(param);
-                }
-            }
+            NodeGraphPersistence.restoreParameters(node, nodeData.getParameters());
             if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -13087,6 +13080,8 @@ public class NodeGraph {
                 }
             }
         }
+
+        NodeGraphPersistence.recoverMissingNestedAttachments(nodes);
 
         // Load connections
         for (NodeGraphData.ConnectionData connData : data.getConnections()) {

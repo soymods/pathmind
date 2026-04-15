@@ -1731,6 +1731,10 @@ public class ExecutionManager {
         List<Node> nodes = new ArrayList<>();
 
         for (NodeGraphData.NodeData nodeData : graphData.getNodes()) {
+            if (nodeData == null || nodeData.getType() == null) {
+                LOGGER.warn("Skipping unsupported node entry during replay graph load");
+                continue;
+            }
             Node node = new Node(nodeData.getType(), nodeData.getX(), nodeData.getY());
 
             try {
@@ -1745,17 +1749,7 @@ public class ExecutionManager {
                 node.setMode(nodeData.getMode());
             }
 
-            node.getParameters().clear();
-            if (nodeData.getParameters() != null) {
-                for (NodeGraphData.ParameterData paramData : nodeData.getParameters()) {
-                    ParameterType paramType = ParameterType.valueOf(paramData.getType());
-                    NodeParameter param = new NodeParameter(paramData.getName(), paramType, paramData.getValue());
-                    if (paramData.getUserEdited() != null) {
-                        param.setUserEdited(paramData.getUserEdited());
-                    }
-                    node.getParameters().add(param);
-                }
-            }
+            NodeGraphPersistence.restoreParameters(node, nodeData.getParameters());
             node.recalculateDimensions();
 
             nodes.add(node);
@@ -1838,6 +1832,8 @@ public class ExecutionManager {
                 }
             }
         }
+
+        NodeGraphPersistence.recoverMissingNestedAttachments(nodes);
 
         List<NodeConnection> connections = new ArrayList<>();
         if (graphData.getConnections() != null) {

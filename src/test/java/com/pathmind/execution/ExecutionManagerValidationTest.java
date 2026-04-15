@@ -100,6 +100,79 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void booleanParameterVariableModeResolvesBooleanAndNumericRuntimeVariables() {
+        Node booleanVariable = new Node(NodeType.PARAM_BOOLEAN, 0, 0);
+        booleanVariable.setBooleanModeLiteral(false);
+        booleanVariable.getParameter("Variable").setStringValue("flag_numeric");
+
+        Node literalFalse = new Node(NodeType.PARAM_BOOLEAN, 0, 0);
+        literalFalse.getParameter("Toggle").setStringValue("false");
+
+        Node or = new Node(NodeType.OPERATOR_BOOLEAN_OR, 0, 0);
+        assertTrue(or.attachParameter(booleanVariable, 0));
+        assertTrue(or.attachParameter(literalFalse, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "flag_numeric",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, Map.of("Amount", "1", "amount", "1"))
+        );
+        assertTrue(or.evaluateSensor());
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "flag_numeric",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_BOOLEAN, Map.of("Toggle", "false", "toggle", "false"))
+        );
+        assertTrue(!or.evaluateSensor());
+    }
+
+    @Test
+    void equalsResolvesVariableAgainstInlineVariableBackedAmount() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("lhs_compare");
+
+        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        amount.getParameter("Amount").setStringValue("~rhs_compare");
+
+        assertTrue(equals.attachParameter(variable, 0));
+        assertTrue(equals.attachParameter(amount, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "lhs_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, Map.of("Amount", "5", "amount", "5"))
+        );
+        manager.setRuntimeVariableForAnyActiveChain(
+            "rhs_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, Map.of("Amount", "5", "amount", "5"))
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void equalsResolvesVariableAgainstVariable() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node left = new Node(NodeType.VARIABLE, 0, 0);
+        left.getParameter("Variable").setStringValue("left_compare");
+        Node right = new Node(NodeType.VARIABLE, 0, 0);
+        right.getParameter("Variable").setStringValue("right_compare");
+
+        assertTrue(equals.attachParameter(left, 0));
+        assertTrue(equals.attachParameter(right, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "left_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, Map.of("Amount", "42", "amount", "42"))
+        );
+        manager.setRuntimeVariableForAnyActiveChain(
+            "right_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, Map.of("Amount", "42", "amount", "42"))
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
     void joinAllBarrierWaitsForBothInputsAndResets() throws Exception {
         Node start = new Node(NodeType.START, 0, 0);
         Node joinAll = new Node(NodeType.CONTROL_JOIN_ALL, 100, 0);

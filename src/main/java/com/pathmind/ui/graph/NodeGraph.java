@@ -3419,6 +3419,11 @@ public class NodeGraph {
                         paramY += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
                     }
 
+                    if (isCombinedBooleanNode(node)) {
+                        renderBooleanModeTabs(context, textRenderer, node, isOverSidebar, paramY, mouseX, mouseY);
+                        paramY += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
+                    }
+
                     for (int i = 0; i < parameters.size(); i++) {
                         NodeParameter param = parameters.get(i);
                         String displayLabel = node.getParameterLabel(param);
@@ -3560,6 +3565,12 @@ public class NodeGraph {
                         if (!editingThis && isMouseButtonParam) {
                             value = formatMouseButtonValue(value);
                         }
+                        if (!editingThis && isBooleanLiteralParameter(node, i) && value.isEmpty()) {
+                            value = "True";
+                        }
+                        if (!editingThis && isBooleanLiteralParameter(node, i) && !value.isEmpty()) {
+                            value = Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase(Locale.ROOT);
+                        }
                         if (!editingThis && isBlockFaceParameter(node, i) && !value.isEmpty()) {
                             value = Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase(Locale.ROOT);
                         }
@@ -3585,6 +3596,16 @@ public class NodeGraph {
                                 value = "Any";
                             }
                             valueColor = UITheme.TEXT_TERTIARY;
+                        }
+                        boolean booleanLiteralDropdown = isBooleanLiteralParameter(node, i);
+                        boolean booleanLiteralOpen = booleanLiteralDropdown
+                            && parameterDropdownOpen
+                            && parameterDropdownNode == node
+                            && parameterDropdownIndex == i;
+                        String arrow = booleanLiteralDropdown ? (booleanLiteralOpen ? "v" : "^") : "";
+                        int arrowWidth = booleanLiteralDropdown ? textRenderer.getWidth(arrow) : 0;
+                        if (booleanLiteralDropdown) {
+                            maxValueWidth = Math.max(0, maxValueWidth - arrowWidth - 8);
                         }
                         String displayValue = editingThis
                             ? value
@@ -3627,6 +3648,11 @@ public class NodeGraph {
                             paramRenderData.draw(context, textRenderer, valueStartX, valueY);
                         } else {
                             drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, valueY, valueColor);
+                        }
+
+                        if (booleanLiteralDropdown) {
+                            int arrowX = fieldRight - arrowWidth - 4;
+                            drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, valueY, valueColor);
                         }
 
                         if (editingThis && parameterCaretVisible) {
@@ -3731,7 +3757,19 @@ public class NodeGraph {
         return node != null && node.getType() == NodeType.PARAM_DIRECTION;
     }
 
+    private boolean isCombinedBooleanNode(Node node) {
+        return node != null && node.getType() == NodeType.PARAM_BOOLEAN;
+    }
+
     private int getDirectionModeTabTop(Node node) {
+        int top = node.getY() + 18;
+        if (node != null && node.supportsModeSelection()) {
+            top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
+        }
+        return top;
+    }
+
+    private int getBooleanModeTabTop(Node node) {
         int top = node.getY() + 18;
         if (node != null && node.supportsModeSelection()) {
             top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
@@ -3745,6 +3783,9 @@ public class NodeGraph {
             top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
         }
         if (isCombinedDirectionNode(node)) {
+            top += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
+        }
+        if (isCombinedBooleanNode(node)) {
             top += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
         }
         return top;
@@ -3851,6 +3892,67 @@ public class NodeGraph {
         int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
         drawNodeText(context, textRenderer, Text.literal("Exact"), exactLabelX, labelY, exactMode ? activeText : inactiveText);
         drawNodeText(context, textRenderer, Text.literal("Cardinal"), cardinalLabelX, labelY, exactMode ? inactiveText : activeText);
+    }
+
+    private void renderBooleanModeTabs(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                       int fieldTop, int mouseX, int mouseY) {
+        if (!isCombinedBooleanNode(node)) {
+            return;
+        }
+        int fieldLeft = getParameterFieldLeft(node) - cameraX;
+        int fieldWidth = getParameterFieldWidth(node);
+        int fieldHeight = DIRECTION_MODE_TAB_HEIGHT;
+        int splitX = fieldLeft + fieldWidth / 2;
+        int accentColor = getSelectedNodeAccentColor();
+        int inactiveBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int inactiveBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int activeBackground = isOverSidebar ? adjustColorBrightness(accentColor, 0.72f) : adjustColorBrightness(accentColor, 0.84f);
+        int activeText = UITheme.TEXT_EDITING;
+        int inactiveText = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        boolean literalMode = node.isBooleanModeLiteral();
+
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int worldLeft = getParameterFieldLeft(node);
+        int worldTop = fieldTop + cameraY;
+        int halfWidth = Math.max(1, fieldWidth / 2);
+        boolean hoverLiteral = !isOverSidebar
+            && worldMouseX >= worldLeft
+            && worldMouseX < worldLeft + halfWidth
+            && worldMouseY >= worldTop
+            && worldMouseY <= worldTop + fieldHeight;
+        boolean hoverVariable = !isOverSidebar
+            && worldMouseX >= worldLeft + halfWidth
+            && worldMouseX <= worldLeft + fieldWidth
+            && worldMouseY >= worldTop
+            && worldMouseY <= worldTop + fieldHeight;
+
+        int literalLeft = fieldLeft;
+        int literalWidth = Math.max(1, halfWidth);
+        int variableLeft = splitX;
+        int variableWidth = Math.max(1, fieldLeft + fieldWidth - splitX);
+
+        int literalBackground = literalMode ? activeBackground : inactiveBackground;
+        int variableBackground = literalMode ? inactiveBackground : activeBackground;
+        int literalBorder = literalMode ? accentColor : inactiveBorder;
+        int variableBorder = literalMode ? inactiveBorder : accentColor;
+        if (hoverLiteral && !literalMode) {
+            literalBackground = UITheme.BACKGROUND_TERTIARY;
+        }
+        if (hoverVariable && literalMode) {
+            variableBackground = UITheme.BACKGROUND_TERTIARY;
+        }
+
+        context.fill(literalLeft, fieldTop, literalLeft + literalWidth, fieldTop + fieldHeight, literalBackground);
+        DrawContextBridge.drawBorderInLayer(context, literalLeft, fieldTop, literalWidth, fieldHeight, literalBorder);
+        context.fill(variableLeft, fieldTop, variableLeft + variableWidth, fieldTop + fieldHeight, variableBackground);
+        DrawContextBridge.drawBorderInLayer(context, variableLeft, fieldTop, variableWidth, fieldHeight, variableBorder);
+
+        int literalLabelX = literalLeft + Math.max(0, (literalWidth - textRenderer.getWidth("Literal")) / 2);
+        int variableLabelX = variableLeft + Math.max(0, (variableWidth - textRenderer.getWidth("Variable")) / 2);
+        int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal("Literal"), literalLabelX, labelY, literalMode ? activeText : inactiveText);
+        drawNodeText(context, textRenderer, Text.literal("Variable"), variableLabelX, labelY, literalMode ? inactiveText : activeText);
     }
 
     private String getParameterLabelText(Node node, NodeParameter parameter, TextRenderer textRenderer, int maxWidth) {
@@ -3970,6 +4072,9 @@ public class NodeGraph {
     }
 
     private void renderBooleanToggleButton(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        if (node == null || node.getType() == NodeType.PARAM_BOOLEAN) {
+            return;
+        }
         int buttonLeft = node.getBooleanToggleLeft() - cameraX;
         int buttonTop = node.getBooleanToggleTop() - cameraY;
         int buttonWidth = node.getBooleanToggleWidth();
@@ -4125,7 +4230,7 @@ public class NodeGraph {
     }
 
     private boolean isPointInsideBooleanToggle(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasBooleanToggle()) {
+        if (node == null || !node.hasBooleanToggle() || node.getType() == NodeType.PARAM_BOOLEAN) {
             return false;
         }
         int worldMouseX = screenToWorldX(mouseX);
@@ -4146,6 +4251,33 @@ public class NodeGraph {
         getNodeToggleAnimation(booleanToggleAnimations, node, node.getBooleanToggleValue())
             .animateTo(node.getBooleanToggleValue() ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
         notifyNodeParametersChanged(node);
+        return true;
+    }
+
+    public boolean handleBooleanModeTabClick(Node ignoredNode, int screenX, int screenY) {
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        Node node = findBooleanModeNodeAt(worldX, worldY);
+        if (!isCombinedBooleanNode(node)) {
+            return false;
+        }
+        int fieldLeft = getParameterFieldLeft(node);
+        int fieldTop = getBooleanModeTabTop(node);
+        int fieldWidth = getParameterFieldWidth(node);
+        if (worldX < fieldLeft || worldX > fieldLeft + fieldWidth
+            || worldY < fieldTop || worldY > fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
+            return false;
+        }
+
+        boolean literalMode = worldX < fieldLeft + fieldWidth / 2;
+        if (isEditingParameterField()) {
+            stopParameterEditing(true);
+        }
+        if (node.isBooleanModeLiteral() != literalMode) {
+            node.setBooleanModeLiteral(literalMode);
+            node.recalculateDimensions();
+            notifyNodeParametersChanged(node);
+        }
         return true;
     }
 
@@ -8124,6 +8256,7 @@ public class NodeGraph {
                 || isGuiParameter(parameterEditingNode, parameter)
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isBlockFaceParam = isBlockFaceParameter(parameterEditingNode, parameterEditingIndex);
+            boolean isBooleanLiteralParam = isBooleanLiteralParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
             boolean isTradeInlineParam = isTradeInlineParameter(parameterEditingNode, parameter);
@@ -8194,6 +8327,26 @@ public class NodeGraph {
                 } else {
                     parameter.setStringValueFromUser(trimmed.toLowerCase(Locale.ROOT));
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), trimmed.toLowerCase(Locale.ROOT));
+                }
+            } else if (isBooleanLiteralParam) {
+                String trimmed = value.trim();
+                if (trimmed.isEmpty() || "true".equalsIgnoreCase(trimmed)) {
+                    appliedValue = "true";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else if ("1".equals(trimmed)) {
+                    appliedValue = "true";
+                    parameter.setStringValueFromUser(appliedValue);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else if ("0".equals(trimmed)) {
+                    appliedValue = "false";
+                    parameter.setStringValueFromUser(appliedValue);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    String normalized = trimmed.toLowerCase(Locale.ROOT);
+                    parameter.setStringValueFromUser(normalized);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), normalized);
                 }
             } else if (isAnyLikeParam || isBlockItemParam) {
                 String trimmed = value.trim();
@@ -8364,6 +8517,20 @@ public class NodeGraph {
             return false;
         }
         return "Direction".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isBooleanLiteralParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.PARAM_BOOLEAN || !node.isBooleanModeLiteral()) {
+            return false;
+        }
+        if (index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null) {
+            return false;
+        }
+        return "Toggle".equalsIgnoreCase(param.getName());
     }
 
     private boolean isBlockFaceParameter(Node node, int index) {
@@ -9857,6 +10024,12 @@ public class NodeGraph {
             result.add(new ParameterDropdownOption("Down", "down"));
             return filterDropdownOptions(result, lowered);
         }
+        if (isBooleanLiteralParameter(node, index)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("True", "true"));
+            result.add(new ParameterDropdownOption("False", "false"));
+            return filterDropdownOptions(result, lowered);
+        }
         if (isBlockFaceParameter(node, index)) {
             List<ParameterDropdownOption> result = new ArrayList<>();
             result.add(new ParameterDropdownOption("North", "north"));
@@ -10043,6 +10216,7 @@ public class NodeGraph {
             && !isGuiParameter(node, null)
             && !isMouseButtonParameter(node, null)
             && !isDirectionParameter(node, index)
+            && !isBooleanLiteralParameter(node, index)
             && !isBlockFaceParameter(node, index)
             && !isFabricEventSensorParameter(node, index)) {
             closeParameterDropdown();
@@ -10115,11 +10289,27 @@ public class NodeGraph {
     }
 
     private boolean applyParameterDropdownSelection(int optionIndex) {
-        if (!isEditingParameterField() || !parameterDropdownOpen || parameterDropdownOptions.isEmpty()) {
+        if (!parameterDropdownOpen || parameterDropdownOptions.isEmpty()) {
             return false;
         }
         if (optionIndex < 0 || optionIndex >= parameterDropdownOptions.size()) {
             return false;
+        }
+        if (!isEditingParameterField()) {
+            if (parameterDropdownNode == null || !isBooleanLiteralParameter(parameterDropdownNode, parameterDropdownIndex)) {
+                return false;
+            }
+            ParameterDropdownOption option = parameterDropdownOptions.get(optionIndex);
+            NodeParameter parameter = parameterDropdownNode.getParameters().get(parameterDropdownIndex);
+            if (parameter == null || option == null) {
+                return false;
+            }
+            parameter.setStringValueFromUser(option.value());
+            parameterDropdownNode.setParameterValueAndPropagate(parameter.getName(), option.value());
+            parameterDropdownNode.recalculateDimensions();
+            notifyNodeParametersChanged(parameterDropdownNode);
+            closeParameterDropdown();
+            return true;
         }
         ParameterDropdownOption option = parameterDropdownOptions.get(optionIndex);
         ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
@@ -10130,7 +10320,9 @@ public class NodeGraph {
             && (segment.trimmedSegment == null || segment.trimmedSegment.trim().isEmpty());
         boolean keepDirectionDefaultPlaceholder = isDirectionParameter(parameterEditingNode, parameterEditingIndex)
             && "north".equalsIgnoreCase(option.value());
-        String replacement = (keepMouseButtonDefaultPlaceholder || keepDirectionDefaultPlaceholder)
+        boolean keepBooleanDefaultPlaceholder = isBooleanLiteralParameter(parameterEditingNode, parameterEditingIndex)
+            && "true".equalsIgnoreCase(option.value());
+        String replacement = (keepMouseButtonDefaultPlaceholder || keepDirectionDefaultPlaceholder || keepBooleanDefaultPlaceholder)
             ? ""
             : segment.leadingWhitespace + option.value();
         parameterEditBuffer = prefix + replacement + suffix;
@@ -10150,6 +10342,30 @@ public class NodeGraph {
 
     private int getParameterDropdownListTop() {
         return parameterDropdownFieldY + parameterDropdownFieldHeight;
+    }
+
+    private void openBooleanLiteralDropdown(Node node, int index) {
+        if (node == null || !isBooleanLiteralParameter(node, index)) {
+            return;
+        }
+        closeModeDropdown();
+        closeSchematicDropdown();
+        closeRunPresetDropdown();
+        closeRandomRoundingDropdown();
+        closeAmountSignDropdown();
+        stopParameterEditing(false);
+        parameterDropdownNode = node;
+        parameterDropdownIndex = index;
+        parameterDropdownFieldX = getParameterFieldLeft(node) - cameraX;
+        parameterDropdownFieldY = getInlineParameterFieldTop(node, index) - cameraY;
+        parameterDropdownFieldWidth = getParameterFieldWidth(node);
+        parameterDropdownFieldHeight = getParameterFieldHeight();
+        parameterDropdownQuery = "";
+        parameterDropdownScrollOffset = 0;
+        parameterDropdownHoverIndex = -1;
+        parameterDropdownOptions.clear();
+        parameterDropdownOptions.addAll(getParameterDropdownOptions(node, index, ""));
+        parameterDropdownOpen = true;
     }
 
     private int getDropdownWidth() {
@@ -10242,6 +10458,11 @@ public class NodeGraph {
         int fieldTop = parameterDropdownFieldY;
         if (x >= fieldLeft && x <= fieldLeft + parameterDropdownFieldWidth
             && y >= fieldTop && y <= fieldTop + parameterDropdownFieldHeight) {
+            if (!isEditingParameterField()
+                && parameterDropdownNode != null
+                && isBooleanLiteralParameter(parameterDropdownNode, parameterDropdownIndex)) {
+                closeParameterDropdown();
+            }
             return true;
         }
         if (isEditingParameterField()) {
@@ -11392,6 +11613,77 @@ public class NodeGraph {
         return -1;
     }
 
+    private int getInlineParameterFieldTop(Node node, int index) {
+        if (node == null || index < 0) {
+            return 0;
+        }
+        int fieldTop = getInlineParameterFieldsTop(node);
+        List<NodeParameter> parameters = node.getParameters();
+        for (int i = 0; i < parameters.size(); i++) {
+            NodeParameter parameter = parameters.get(i);
+            if (parameter == null || node.getParameterLabel(parameter).isEmpty()) {
+                continue;
+            }
+            if (i == index) {
+                return fieldTop;
+            }
+            fieldTop += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
+        }
+        return fieldTop;
+    }
+
+    public boolean handleBooleanLiteralDropdownClick(Node node, int mouseX, int mouseY) {
+        if (parameterDropdownOpen && !isEditingParameterField()
+            && parameterDropdownNode != null
+            && isBooleanLiteralParameter(parameterDropdownNode, parameterDropdownIndex)) {
+            if (isPointInsideBooleanLiteralField(parameterDropdownNode, parameterDropdownIndex, mouseX, mouseY)) {
+                closeParameterDropdown();
+                return true;
+            }
+        }
+        if (node == null) {
+            int worldX = screenToWorldX(mouseX);
+            int worldY = screenToWorldY(mouseY);
+            for (int i = nodes.size() - 1; i >= 0; i--) {
+                Node candidate = nodes.get(i);
+                if (candidate == null) {
+                    continue;
+                }
+                int index = getParameterFieldIndexAt(candidate, mouseX, mouseY);
+                if (isBooleanLiteralParameter(candidate, index)) {
+                    node = candidate;
+                    break;
+                }
+                if (candidate.getX() > worldX || candidate.getY() > worldY) {
+                    continue;
+                }
+            }
+            if (node == null) {
+                return false;
+            }
+        }
+        int index = getParameterFieldIndexAt(node, mouseX, mouseY);
+        if (!isBooleanLiteralParameter(node, index)) {
+            return false;
+        }
+        openBooleanLiteralDropdown(node, index);
+        return true;
+    }
+
+    private boolean isPointInsideBooleanLiteralField(Node node, int index, int screenX, int screenY) {
+        if (!isBooleanLiteralParameter(node, index)) {
+            return false;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int fieldLeft = getParameterFieldLeft(node);
+        int fieldTop = getInlineParameterFieldTop(node, index);
+        int fieldWidth = getParameterFieldWidth(node);
+        int fieldHeight = getParameterFieldHeight();
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
     public boolean handleDirectionModeTabClick(Node ignoredNode, int screenX, int screenY) {
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
@@ -11427,6 +11719,23 @@ public class NodeGraph {
             }
             int fieldLeft = getParameterFieldLeft(candidate);
             int fieldTop = getDirectionModeTabTop(candidate);
+            int fieldWidth = getParameterFieldWidth(candidate);
+            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private Node findBooleanModeNodeAt(int worldX, int worldY) {
+        for (int i = nodes.size() - 1; i >= 0; i--) {
+            Node candidate = nodes.get(i);
+            if (!isCombinedBooleanNode(candidate)) {
+                continue;
+            }
+            int fieldLeft = getParameterFieldLeft(candidate);
+            int fieldTop = getBooleanModeTabTop(candidate);
             int fieldWidth = getParameterFieldWidth(candidate);
             if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
                 && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {

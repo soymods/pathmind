@@ -1203,6 +1203,9 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
+        if (button == 0 && nodeGraph.handleBooleanLiteralDropdownClick(null, (int) mouseX, (int) mouseY)) {
+            return true;
+        }
         if (nodeGraph.handleParameterDropdownClick(mouseX, mouseY)) {
             return true;
         }
@@ -1432,12 +1435,22 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleBooleanModeTabClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
                 if (nodeGraph.handleModeFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleMessageScopeToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
+                if (nodeGraph.handleBooleanLiteralDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     return true;
                 }

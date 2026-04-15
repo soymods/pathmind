@@ -147,6 +147,8 @@ public class Node {
     private static final int MAX_PARAMETER_LABEL_LENGTH = 20;
     private static final String DIRECTION_MODE_EXACT = "exact";
     private static final String DIRECTION_MODE_CARDINAL = "cardinal";
+    private static final String BOOLEAN_MODE_LITERAL = "literal";
+    private static final String BOOLEAN_MODE_VARIABLE = "variable";
     private static final String RECIPE_CACHE_FILE_NAME = "recipe_cache.json";
     private static final int RECIPE_CACHE_VERSION = 1;
     private static final int RECIPE_WARMUP_RECIPE_BATCH_SIZE = 8;
@@ -1072,11 +1074,8 @@ public class Node {
     private int getSlotAreaStartY() {
         int top = y + HEADER_HEIGHT;
         if (isParameterNode()) {
-            if ((hasParameters() || supportsModeSelection()) && type != NodeType.PARAM_BOOLEAN) {
-                int lineCount = parameters.size();
-                if (supportsModeSelection()) {
-                    lineCount++;
-                }
+            int lineCount = getVisibleParameterLineCount();
+            if (lineCount > 0) {
                 top += PARAM_PADDING_TOP + lineCount * PARAM_LINE_HEIGHT + PARAM_PADDING_BOTTOM;
                 if (hasPopupEditButton()) {
                     top += getPopupEditButtonDisplayHeight();
@@ -3138,7 +3137,9 @@ public class Node {
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "1.0"));
                 break;
             case PARAM_BOOLEAN:
+                parameters.add(new NodeParameter("Mode", ParameterType.STRING, BOOLEAN_MODE_LITERAL));
                 parameters.add(new NodeParameter("Toggle", ParameterType.BOOLEAN, "true"));
+                parameters.add(new NodeParameter("Variable", ParameterType.STRING, ""));
                 break;
             case PARAM_HAND:
                 parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
@@ -3295,6 +3296,9 @@ public class Node {
             return "";
         }
         String name = parameter.getName();
+        if (type == NodeType.PARAM_BOOLEAN && "Toggle".equalsIgnoreCase(name)) {
+            return "Value";
+        }
         if (type == NodeType.USE && "UseDurationSeconds".equalsIgnoreCase(name)) {
             return "Hold Duration";
         }
@@ -3386,6 +3390,56 @@ public class Node {
     }
 
     private void ensureDirectionParameter(String name, ParameterType parameterType, String defaultValue, int targetIndex) {
+        if (getParameter(name) != null) {
+            return;
+        }
+        NodeParameter parameter = new NodeParameter(name, parameterType, defaultValue);
+        int insertIndex = Math.max(0, Math.min(targetIndex, parameters.size()));
+        parameters.add(insertIndex, parameter);
+    }
+
+    public boolean isBooleanModeLiteral() {
+        if (type != NodeType.PARAM_BOOLEAN) {
+            return false;
+        }
+        ensureBooleanParameters();
+        NodeParameter modeParameter = getParameter("Mode");
+        String rawMode = modeParameter != null ? modeParameter.getStringValue() : null;
+        if (rawMode != null && !rawMode.trim().isEmpty()) {
+            return !BOOLEAN_MODE_VARIABLE.equalsIgnoreCase(rawMode.trim());
+        }
+        NodeParameter variableParameter = getParameter("Variable");
+        String variableValue = variableParameter != null ? variableParameter.getStringValue() : null;
+        return variableValue == null || variableValue.trim().isEmpty();
+    }
+
+    public boolean isBooleanModeVariable() {
+        return type == NodeType.PARAM_BOOLEAN && !isBooleanModeLiteral();
+    }
+
+    public void setBooleanModeLiteral(boolean literalMode) {
+        if (type != NodeType.PARAM_BOOLEAN) {
+            return;
+        }
+        ensureBooleanParameters();
+        String modeValue = literalMode ? BOOLEAN_MODE_LITERAL : BOOLEAN_MODE_VARIABLE;
+        setParameterValueAndPropagate("Mode", modeValue);
+        NodeParameter modeParameter = getParameter("Mode");
+        if (modeParameter != null) {
+            modeParameter.setUserEdited(true);
+        }
+    }
+
+    private void ensureBooleanParameters() {
+        if (type != NodeType.PARAM_BOOLEAN) {
+            return;
+        }
+        ensureBooleanParameter("Mode", ParameterType.STRING, BOOLEAN_MODE_LITERAL, 0);
+        ensureBooleanParameter("Toggle", ParameterType.BOOLEAN, "true", 1);
+        ensureBooleanParameter("Variable", ParameterType.STRING, "", 2);
+    }
+
+    private void ensureBooleanParameter(String name, ParameterType parameterType, String defaultValue, int targetIndex) {
         if (getParameter(name) != null) {
             return;
         }
@@ -3496,6 +3550,20 @@ public class Node {
                 return "";
             }
         }
+        if (type == NodeType.PARAM_BOOLEAN) {
+            ensureBooleanParameters();
+            String parameterName = parameter.getName();
+            boolean literalMode = isBooleanModeLiteral();
+            if ("Mode".equalsIgnoreCase(parameterName)) {
+                return "";
+            }
+            if ("Toggle".equalsIgnoreCase(parameterName) && !literalMode) {
+                return "";
+            }
+            if ("Variable".equalsIgnoreCase(parameterName) && literalMode) {
+                return "";
+            }
+        }
         if (isRandomRoundingParameter(parameter)) {
             return "";
         }
@@ -3530,9 +3598,6 @@ public class Node {
             }
         }
         String name = getParameterDisplayName(parameter);
-        if (type == NodeType.PARAM_BOOLEAN && "Toggle".equalsIgnoreCase(name)) {
-            return "";
-        }
         String text = name + ": " + parameter.getDisplayValue();
         if (text.length() <= MAX_PARAMETER_LABEL_LENGTH) {
             return text;
@@ -3542,10 +3607,21 @@ public class Node {
     }
 
     private int getVisibleParameterLineCount() {
-        if (type == NodeType.PARAM_BOOLEAN) {
-            return 0;
-        }
         if (type == NodeType.PARAM_DIRECTION) {
+            int count = 1;
+            for (NodeParameter param : parameters) {
+                if (param == null) {
+                    continue;
+                }
+                String label = getParameterLabel(param);
+                if (label != null && !label.isEmpty()) {
+                    count++;
+                }
+            }
+            return count;
+        }
+        if (type == NodeType.PARAM_BOOLEAN) {
+            ensureBooleanParameters();
             int count = 1;
             for (NodeParameter param : parameters) {
                 if (param == null) {
@@ -3947,7 +4023,18 @@ public class Node {
                 break;
             }
             case PARAM_BOOLEAN: {
-                String toggle = values.get("Toggle");
+                ensureBooleanParameters();
+                String modeValue = isBooleanModeLiteral() ? BOOLEAN_MODE_LITERAL : BOOLEAN_MODE_VARIABLE;
+                values.put("Mode", modeValue);
+                values.put(normalizeParameterKey("Mode"), modeValue);
+                NodeParameter variableParameter = getParameter("Variable");
+                if (variableParameter != null) {
+                    String variableValue = variableParameter.getStringValue();
+                    values.put("Variable", variableValue);
+                    values.put(normalizeParameterKey("Variable"), variableValue);
+                }
+                Optional<Boolean> resolvedToggle = resolveBooleanNodeValue(this);
+                String toggle = resolvedToggle.map(String::valueOf).orElseGet(() -> values.get("Toggle"));
                 if (toggle == null) {
                     toggle = values.get(normalizeParameterKey("Toggle"));
                 }
@@ -3956,6 +4043,8 @@ public class Node {
                     values.put(normalizeParameterKey("Active"), toggle);
                     values.put("Enabled", toggle);
                     values.put(normalizeParameterKey("Enabled"), toggle);
+                    values.put("Toggle", toggle);
+                    values.put(normalizeParameterKey("Toggle"), toggle);
                 }
                 break;
             }
@@ -4127,7 +4216,6 @@ public class Node {
 
     public boolean hasBooleanToggle() {
         switch (type) {
-            case PARAM_BOOLEAN:
             case SENSOR_IS_SWIMMING:
             case SENSOR_IS_IN_LAVA:
             case SENSOR_IS_UNDERWATER:
@@ -4143,21 +4231,14 @@ public class Node {
 
     public boolean getBooleanToggleValue() {
         if (type == NodeType.PARAM_BOOLEAN) {
-            NodeParameter parameter = getParameter("Toggle");
-            if (parameter == null) {
-                return true;
-            }
-            String rawValue = parameter.getStringValue();
-            if (rawValue == null || rawValue.isEmpty()) {
-                rawValue = parameter.getDefaultValue();
-            }
-            return Boolean.parseBoolean(rawValue);
+            return resolveBooleanNodeValue(this).orElse(true);
         }
         return booleanToggleValue;
     }
 
     public void setBooleanToggleValue(boolean value) {
         if (type == NodeType.PARAM_BOOLEAN) {
+            ensureBooleanParameters();
             NodeParameter parameter = getParameter("Toggle");
             if (parameter != null) {
                 parameter.setStringValueFromUser(String.valueOf(value));
@@ -4180,9 +4261,6 @@ public class Node {
     }
 
     public int getBooleanToggleTop() {
-        if (type == NodeType.PARAM_BOOLEAN) {
-            return y + HEADER_HEIGHT + getParameterDisplayHeight() + BOOLEAN_TOGGLE_TOP_MARGIN;
-        }
         return y + HEADER_HEIGHT + BOOLEAN_TOGGLE_TOP_MARGIN;
     }
 
@@ -4771,6 +4849,9 @@ public class Node {
                 computedWidth = Math.max(computedWidth, requiredFieldWidth + 10);
             }
         }
+        if (type == NodeType.PARAM_BOOLEAN) {
+            computedWidth = Math.max(computedWidth, 132);
+        }
         if (hasParameterSlot()) {
             int parameterContentWidth = PARAMETER_SLOT_MIN_CONTENT_WIDTH;
             if (!attachedParameters.isEmpty()) {
@@ -4909,8 +4990,6 @@ public class Node {
                 }
             } else if (hasSlots) {
                 contentHeight += SLOT_AREA_PADDING_TOP;
-            } else if (type == NodeType.PARAM_BOOLEAN) {
-                contentHeight += getBooleanToggleAreaHeight();
             } else {
                 contentHeight += BODY_PADDING_NO_PARAMS;
             }
@@ -5049,9 +5128,6 @@ public class Node {
      */
     public int getParameterDisplayHeight() {
         if (!hasParameters() && !supportsModeSelection()) {
-            return 0;
-        }
-        if (type == NodeType.PARAM_BOOLEAN) {
             return 0;
         }
         int parameterLineCount = getVisibleParameterLineCount();
@@ -6503,11 +6579,15 @@ public class Node {
     }
 
     private static boolean parseNodeBoolean(Node node, String name, boolean defaultValue) {
+        if (node != null && node.getType() == NodeType.VARIABLE) {
+            Node resolved = node.resolveVariableValueNode(node, 0, null);
+            return node.resolveBooleanFromNode(resolved).orElse(defaultValue);
+        }
         String value = getParameterString(node, name);
-        if (value == null || value.isEmpty()) {
+        if (value == null || value.isEmpty() || node == null) {
             return defaultValue;
         }
-        return Boolean.parseBoolean(value.trim());
+        return node.resolveBooleanValueFromRaw(value, false).orElse(defaultValue);
     }
 
     private static Float parseNodeFloat(Node node, String name) {
@@ -18814,11 +18894,84 @@ public class Node {
         if (param == null) {
             return defaultValue;
         }
-        String value = resolveRuntimeVariablesInText(param.getStringValue());
-        if (value == null) {
-            return defaultValue;
+        return resolveBooleanValueFromRaw(param.getStringValue(), false).orElse(defaultValue);
+    }
+
+    private Optional<Boolean> resolveBooleanValueFromRaw(String rawValue, boolean allowBareVariableName) {
+        if (rawValue == null) {
+            return Optional.empty();
         }
-        return Boolean.parseBoolean(value);
+        String trimmedRaw = rawValue.trim();
+        if (trimmedRaw.isEmpty()) {
+            return Optional.empty();
+        }
+
+        String resolvedValue = resolveRuntimeVariablesInText(trimmedRaw);
+        Optional<Boolean> parsedResolved = parseFlexibleBoolean(resolvedValue);
+        if (parsedResolved.isPresent()) {
+            return parsedResolved;
+        }
+
+        if (!allowBareVariableName) {
+            return Optional.empty();
+        }
+
+        String variableName = trimmedRaw.startsWith("~") ? trimmedRaw.substring(1).trim() : trimmedRaw;
+        if (variableName.isEmpty()) {
+            return Optional.empty();
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = getOwningStartNode();
+        if (startNode == null && getParentControl() != null) {
+            startNode = getParentControl().getOwningStartNode();
+        }
+        ExecutionManager.RuntimeVariable variable = resolveRuntimeVariableForName(manager, startNode, variableName);
+        return parseRuntimeVariableBoolean(variable);
+    }
+
+    private Optional<Boolean> parseRuntimeVariableBoolean(ExecutionManager.RuntimeVariable variable) {
+        if (variable == null) {
+            return Optional.empty();
+        }
+        if (variable.getType() == NodeType.PARAM_BOOLEAN) {
+            return parseFlexibleBoolean(getRuntimeValue(variable.getValues(), "toggle"));
+        }
+        return parseFlexibleBoolean(formatRuntimeVariableValue(variable));
+    }
+
+    private Optional<Boolean> resolveBooleanNodeValue(Node node) {
+        if (node == null || node.getType() != NodeType.PARAM_BOOLEAN) {
+            return Optional.empty();
+        }
+        node.ensureBooleanParameters();
+        if (node.isBooleanModeVariable()) {
+            NodeParameter variableParameter = node.getParameter("Variable");
+            String variableValue = variableParameter != null ? variableParameter.getStringValue() : null;
+            return node.resolveBooleanValueFromRaw(variableValue, true);
+        }
+        NodeParameter toggleParameter = node.getParameter("Toggle");
+        String value = toggleParameter != null ? toggleParameter.getStringValue() : null;
+        if ((value == null || value.trim().isEmpty()) && toggleParameter != null) {
+            value = toggleParameter.getDefaultValue();
+        }
+        return node.resolveBooleanValueFromRaw(value, false);
+    }
+
+    private static Optional<Boolean> parseFlexibleBoolean(String value) {
+        if (value == null) {
+            return Optional.empty();
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            return Optional.empty();
+        }
+        if ("true".equals(normalized) || "1".equals(normalized)) {
+            return Optional.of(true);
+        }
+        if ("false".equals(normalized) || "0".equals(normalized)) {
+            return Optional.of(false);
+        }
+        return Optional.empty();
     }
 
     private static double parseDoubleOrDefault(String value, double defaultValue) {
@@ -20150,10 +20303,14 @@ public class Node {
         if (isComparisonGroupOperator(right)) {
             return compareGroupOperand(right, left);
         }
-        boolean leftIsVariable = left.getType() == NodeType.VARIABLE;
-        boolean rightIsVariable = right.getType() == NodeType.VARIABLE;
-        if (leftIsVariable || rightIsVariable) {
-            return compareVariableNodes(left, right);
+        if (left.getType() == NodeType.VARIABLE) {
+            left = resolveVariableValueNode(left, 0, null);
+        }
+        if (right.getType() == NodeType.VARIABLE) {
+            right = resolveVariableValueNode(right, 1, null);
+        }
+        if (left == null || right == null) {
+            return Optional.empty();
         }
         return compareParameterNodes(left, right);
     }
@@ -20218,18 +20375,18 @@ public class Node {
             return Optional.empty();
         }
         if (node.getType() == NodeType.PARAM_BOOLEAN) {
+            node.ensureBooleanParameters();
+            if (node.isBooleanModeVariable()) {
+                NodeParameter variableParameter = node.getParameter("Variable");
+                String variableValue = variableParameter != null ? variableParameter.getStringValue() : null;
+                return node.resolveBooleanValueFromRaw(variableValue, true);
+            }
             NodeParameter parameter = node.getParameter("Toggle");
-            if (parameter == null) {
-                return Optional.empty();
+            String value = parameter != null ? parameter.getStringValue() : null;
+            if ((value == null || value.trim().isEmpty()) && parameter != null) {
+                value = parameter.getDefaultValue();
             }
-            if (parameter.getType() == ParameterType.BOOLEAN) {
-                return Optional.of(parameter.getBoolValue());
-            }
-            String value = parameter.getStringValue();
-            if (value == null) {
-                return Optional.empty();
-            }
-            return Optional.of(Boolean.parseBoolean(value.trim()));
+            return node.resolveBooleanValueFromRaw(value, false);
         }
         return Optional.empty();
     }
@@ -20303,6 +20460,14 @@ public class Node {
         if (left == null || right == null) {
             return Optional.empty();
         }
+        Optional<Boolean> leftBoolean = resolveComparableBoolean(left);
+        Optional<Boolean> rightBoolean = resolveComparableBoolean(right);
+        if (leftBoolean.isPresent() && rightBoolean.isPresent()) {
+            return Optional.of(leftBoolean.get().equals(rightBoolean.get()));
+        }
+        if (leftBoolean.isPresent() || rightBoolean.isPresent()) {
+            return Optional.empty();
+        }
         Optional<Double> leftNumber = resolveComparableNumber(left);
         Optional<Double> rightNumber = resolveComparableNumber(right);
         if (leftNumber.isPresent() && rightNumber.isPresent()) {
@@ -20339,6 +20504,20 @@ public class Node {
             return entityComparison;
         }
         return Optional.of(leftValues.equals(rightValues));
+    }
+
+    private Optional<Boolean> resolveComparableBoolean(Node node) {
+        if (node == null) {
+            return Optional.empty();
+        }
+        if (node.getType() == NodeType.LIST_ITEM) {
+            Node resolved = resolveListItemValueNode(node, null, false, null);
+            return resolved != null ? resolveComparableBoolean(resolved) : Optional.empty();
+        }
+        if (node.isSensorNode() && NodeTraitRegistry.isBooleanSensor(node.getType())) {
+            return Optional.of(node.evaluateSensor());
+        }
+        return resolveBooleanFromNode(node);
     }
 
     private Optional<Boolean> compareEmptyTargetedBlockValues(Node left, Map<String, String> leftValues,

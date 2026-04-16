@@ -384,7 +384,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int bodyY = layout.sectionY + headerHeight;
         int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
         drawGalleryBackdrop(context, layout.bodyX, layout.sectionY, layout.bodyWidth, layout.sectionHeight - FOOTER_HEIGHT);
-        int scissorTop = Math.max(layout.sectionY, bodyY - 6);
+        int scissorTop = bodyY;
         context.enableScissor(layout.bodyX, scissorTop, layout.bodyX + layout.bodyWidth, bodyY + bodyHeight);
 
         if (loading || getCurrentResultCount() == 0) {

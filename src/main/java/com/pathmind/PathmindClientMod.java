@@ -15,6 +15,7 @@ import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.FabricEventTracker;
+import com.pathmind.util.UseItemCallbackCompat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientBlockEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
@@ -44,10 +45,6 @@ import net.minecraft.util.math.BlockPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.Proxy;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
@@ -322,7 +319,7 @@ public class PathmindClientMod implements ClientModInitializer {
             fireFabricEvent(EVT_PLAYER_USE_ENTITY);
             return ActionResult.PASS;
         });
-        registerUseItemCallbackCompat();
+        UseItemCallbackCompat.register(this::fireFabricEvent, EVT_PLAYER_USE_ITEM);
     }
 
     private void fireFabricEvent(String eventName) {
@@ -330,62 +327,6 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
         FabricEventTracker.record(eventName);
-    }
-
-    private void registerUseItemCallbackCompat() {
-        try {
-            InvocationHandler handler = (proxy, method, args) -> {
-                if (method.getDeclaringClass() == Object.class) {
-                    return switch (method.getName()) {
-                        case "toString" -> "PathmindUseItemCallbackCompat";
-                        case "hashCode" -> System.identityHashCode(proxy);
-                        case "equals" -> proxy == args[0];
-                        default -> null;
-                    };
-                }
-
-                fireFabricEvent(EVT_PLAYER_USE_ITEM);
-                Class<?> returnType = method.getReturnType();
-                if (returnType == void.class) {
-                    return null;
-                }
-                if (returnType == ActionResult.class) {
-                    return ActionResult.PASS;
-                }
-                if ("net.minecraft.util.TypedActionResult".equals(returnType.getName())) {
-                    Object stack = null;
-                    if (args != null && args.length >= 3 && args[0] != null && args[2] != null) {
-                        try {
-                            Method getStackInHand = args[0].getClass().getMethod("getStackInHand", args[2].getClass());
-                            stack = getStackInHand.invoke(args[0], args[2]);
-                        } catch (ReflectiveOperationException ignored) {
-                        }
-                    }
-                    for (Method candidate : returnType.getMethods()) {
-                        if (!Modifier.isStatic(candidate.getModifiers())) {
-                            continue;
-                        }
-                        if (!"pass".equals(candidate.getName()) || candidate.getParameterCount() != 1) {
-                            continue;
-                        }
-                        try {
-                            return candidate.invoke(null, stack);
-                        } catch (ReflectiveOperationException ignored) {
-                        }
-                    }
-                }
-                return ActionResult.PASS;
-            };
-
-            UseItemCallback callback = (UseItemCallback) Proxy.newProxyInstance(
-                UseItemCallback.class.getClassLoader(),
-                new Class<?>[]{UseItemCallback.class},
-                handler
-            );
-            UseItemCallback.EVENT.register(callback);
-        } catch (RuntimeException e) {
-            LOGGER.warn("Pathmind: failed to register use-item callback compatibility bridge", e);
-        }
     }
 
     private void handleClientShutdown(String reason) {

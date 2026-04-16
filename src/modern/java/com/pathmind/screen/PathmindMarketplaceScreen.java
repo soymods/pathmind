@@ -878,6 +878,14 @@ public class PathmindMarketplaceScreen extends Screen {
         });
     }
 
+    private void invalidatePreviewGraph(MarketplacePreset preset) {
+        if (preset == null || preset.getId() == null) {
+            return;
+        }
+        previewGraphCache.remove(preset.getId());
+        previewGraphLoading.remove(preset.getId());
+    }
+
     private PreviewGraphModel buildPreviewGraphModel(NodeGraphData graphData) {
         List<Node> rebuiltNodes = NodeGraphPersistence.convertToNodes(graphData);
         Map<String, Node> nodeLookup = new HashMap<>();
@@ -3256,7 +3264,9 @@ public class PathmindMarketplaceScreen extends Screen {
             MarketplaceRateLimitManager.recordSuccessfulPublish(authSession.getUserId());
         }
         if (preset != null) {
+            invalidatePreviewGraph(preset);
             upsertPreset(preset);
+            requestPreviewGraph(preset);
         } else {
             refreshListings();
         }
@@ -3514,8 +3524,10 @@ public class PathmindMarketplaceScreen extends Screen {
                         return;
                     }
                     PresetManager.setMarketplaceLinkedPreset(localPresetName.get(), updatedPreset.getId());
+                    invalidatePreviewGraph(updatedPreset);
                     upsertPreset(updatedPreset);
                     popupPreset = updatedPreset;
+                    requestPreviewGraph(updatedPreset);
                     popupStatusMessage = "Preset updated from local changes.";
                     popupStatusColor = getAccentColor();
                     applyFilters();

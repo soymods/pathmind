@@ -201,6 +201,9 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean nodeSearchOpen = false;
     private int nodeSearchFieldX = 0;
     private int nodeSearchFieldY = 0;
+    private int nodeSearchWorldX = 0;
+    private int nodeSearchWorldY = 0;
+    private float nodeSearchScale = 1.0f;
     private final List<NodeSearchResult> nodeSearchResults = new ArrayList<>();
     private int nodeSearchHoverIndex = -1;
 
@@ -1176,7 +1179,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (nodeSearchOpen) {
             if (button == 0 && nodeSearchField != null && isPointInNodeSearchField((int) mouseX, (int) mouseY)) {
-                nodeSearchField.mouseClicked(click, inBounds);
+                nodeSearchField.setFocused(true);
                 return true;
             }
             if (button == 0) {
@@ -4293,6 +4296,9 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeSearchFieldX = MathHelper.clamp(anchorX, minX, Math.max(minX, maxX));
         nodeSearchFieldY = MathHelper.clamp(anchorY, TITLE_BAR_HEIGHT + 8,
             Math.max(TITLE_BAR_HEIGHT + 8, this.height - NODE_SEARCH_FIELD_HEIGHT - 8));
+        nodeSearchWorldX = nodeGraph.screenToWorldX(nodeSearchFieldX);
+        nodeSearchWorldY = nodeGraph.screenToWorldY(nodeSearchFieldY);
+        nodeSearchScale = Math.max(0.05f, nodeGraph.getZoomScale());
         nodeSearchOpen = true;
         if (nodeSearchField != null) {
             nodeSearchField.setX(nodeSearchFieldX);
@@ -4333,6 +4339,15 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
 
+        updateNodeSearchLayout();
+        int transformedMouseX = toNodeSearchSpaceX(mouseX);
+        int transformedMouseY = toNodeSearchSpaceY(mouseY);
+        var matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translate(matrices, nodeSearchFieldX, nodeSearchFieldY);
+        MatrixStackBridge.scale(matrices, nodeSearchScale, nodeSearchScale);
+        MatrixStackBridge.translate(matrices, -nodeSearchFieldX, -nodeSearchFieldY);
+
         context.fill(nodeSearchFieldX, nodeSearchFieldY, nodeSearchFieldX + NODE_SEARCH_FIELD_WIDTH,
             nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT, UITheme.BACKGROUND_SECONDARY);
         DrawContextBridge.drawBorder(context, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH,
@@ -4343,9 +4358,10 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeSearchField.setPosition(nodeSearchFieldX + 20, nodeSearchFieldY + 6);
         nodeSearchField.setWidth(NODE_SEARCH_FIELD_WIDTH - 26);
         nodeSearchField.setHeight(NODE_SEARCH_FIELD_HEIGHT);
-        nodeSearchField.render(context, mouseX, mouseY, delta);
+        nodeSearchField.render(context, transformedMouseX, transformedMouseY, delta);
 
-        renderNodeSearchDropdown(context, mouseX, mouseY);
+        renderNodeSearchDropdown(context, transformedMouseX, transformedMouseY);
+        MatrixStackBridge.pop(matrices);
     }
 
     private void refreshNodeSearchResults(String query) {
@@ -4484,12 +4500,16 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean isPointInNodeSearchField(int mouseX, int mouseY) {
-        return isPointInRect(mouseX, mouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT);
+        int transformedMouseX = toNodeSearchSpaceX(mouseX);
+        int transformedMouseY = toNodeSearchSpaceY(mouseY);
+        return isPointInRect(transformedMouseX, transformedMouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT);
     }
 
     private boolean isPointInNodeSearchBounds(int mouseX, int mouseY) {
+        int transformedMouseX = toNodeSearchSpaceX(mouseX);
+        int transformedMouseY = toNodeSearchSpaceY(mouseY);
         int totalHeight = NODE_SEARCH_FIELD_HEIGHT + getNodeSearchDropdownHeight() + (nodeSearchResults.isEmpty() ? 0 : NODE_SEARCH_DROPDOWN_TOP_GAP);
-        return isPointInRect(mouseX, mouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, totalHeight);
+        return isPointInRect(transformedMouseX, transformedMouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, totalHeight);
     }
 
     private int getNodeSearchDropdownHeight() {
@@ -4500,14 +4520,42 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeSearchResults.isEmpty()) {
             return -1;
         }
+        int transformedMouseX = toNodeSearchSpaceX(mouseX);
+        int transformedMouseY = toNodeSearchSpaceY(mouseY);
         int listX = nodeSearchFieldX;
         int listY = nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT + NODE_SEARCH_DROPDOWN_TOP_GAP;
         int listHeight = getNodeSearchDropdownHeight();
-        if (!isPointInRect(mouseX, mouseY, listX, listY, NODE_SEARCH_FIELD_WIDTH, listHeight)) {
+        if (!isPointInRect(transformedMouseX, transformedMouseY, listX, listY, NODE_SEARCH_FIELD_WIDTH, listHeight)) {
             return -1;
         }
-        int index = (mouseY - listY) / NODE_SEARCH_RESULT_HEIGHT;
+        int index = (transformedMouseY - listY) / NODE_SEARCH_RESULT_HEIGHT;
         return index >= 0 && index < nodeSearchResults.size() ? index : -1;
+    }
+
+    private void updateNodeSearchLayout() {
+        nodeSearchScale = Math.max(0.05f, nodeGraph.getZoomScale());
+        int minX = sidebar.getWidth() + 8;
+        int minY = TITLE_BAR_HEIGHT + 8;
+        int scaledWidth = Math.max(1, Math.round(NODE_SEARCH_FIELD_WIDTH * nodeSearchScale));
+        int scaledHeight = Math.max(1, Math.round(NODE_SEARCH_FIELD_HEIGHT * nodeSearchScale));
+        int maxX = Math.max(minX, this.width - scaledWidth - 8);
+        int maxY = Math.max(minY, this.height - scaledHeight - 8);
+        nodeSearchFieldX = MathHelper.clamp(nodeGraph.worldToScreenX(nodeSearchWorldX), minX, maxX);
+        nodeSearchFieldY = MathHelper.clamp(nodeGraph.worldToScreenY(nodeSearchWorldY), minY, maxY);
+    }
+
+    private int toNodeSearchSpaceX(int mouseX) {
+        if (nodeSearchScale == 0.0f) {
+            return mouseX;
+        }
+        return Math.round(nodeSearchFieldX + (mouseX - nodeSearchFieldX) / nodeSearchScale);
+    }
+
+    private int toNodeSearchSpaceY(int mouseY) {
+        if (nodeSearchScale == 0.0f) {
+            return mouseY;
+        }
+        return Math.round(nodeSearchFieldY + (mouseY - nodeSearchFieldY) / nodeSearchScale);
     }
 
     private NodeSearchResult getSelectedNodeSearchResult() {

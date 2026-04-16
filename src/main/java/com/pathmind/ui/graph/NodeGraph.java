@@ -2994,7 +2994,7 @@ public class NodeGraph {
             for (int i = 0; i < node.getInputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && hoveredSocketIsInput);
                 boolean isActive = isSocketActive(node, i, true);
-                int socketColor = isHovered ? UITheme.ACCENT_DEFAULT : node.getType().getColor(); // Light blue when hovered
+                int socketColor = isHovered ? getSelectedNodeAccentColor() : node.getType().getColor();
                 if (!isActive && !isHovered) {
                     socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
                 }
@@ -3008,7 +3008,7 @@ public class NodeGraph {
             for (int i = 0; i < node.getOutputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && !hoveredSocketIsInput);
                 boolean isActive = isSocketActive(node, i, false);
-                int socketColor = isHovered ? UITheme.ACCENT_DEFAULT : node.getOutputSocketColor(i);
+                int socketColor = isHovered ? getSelectedNodeAccentColor() : node.getOutputSocketColor(i);
                 if (!isActive && !isHovered) {
                     socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
                 }
@@ -3096,7 +3096,7 @@ public class NodeGraph {
             } else {
                 display = value;
             }
-            int eventNameVariableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+            int eventNameVariableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
             Set<String> eventNameVariableNames = collectRuntimeVariableNames(node);
             InlineVariableRender eventNameRenderData = null;
             boolean highlightPlainEventName = false;
@@ -3191,7 +3191,7 @@ public class NodeGraph {
             int inputBackground = isOverSidebar ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_INPUT;
             int inputBorder = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_INPUT_BORDER, 0.8f) : UITheme.BORDER_SUBTLE;
             if (editingThis) {
-                inputBorder = UITheme.ACCENT_DEFAULT;
+                inputBorder = getSelectedNodeAccentColor();
             }
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
@@ -3610,7 +3610,7 @@ public class NodeGraph {
                         String displayValue = editingThis
                             ? value
                             : trimTextToWidth(value, textRenderer, maxValueWidth);
-                        int paramVariableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+                        int paramVariableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
                         Set<String> paramVariableNames = collectRuntimeVariableNames(node);
                         InlineVariableRender paramRenderData = null;
                         if (!paramVariableNames.isEmpty() && value != null && value.indexOf('~') >= 0) {
@@ -4127,7 +4127,7 @@ public class NodeGraph {
         int borderColor = node.hasAttachedSensor() ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT;
         if (sensorDropTarget == node) {
             backgroundColor = UITheme.DROP_HIGHLIGHT_BLUE;
-            borderColor = UITheme.ACCENT_DEFAULT;
+            borderColor = getSelectedNodeAccentColor();
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
@@ -4136,7 +4136,7 @@ public class NodeGraph {
         if (useLogicSlotTitle) {
             String titleDisplay = trimTextToWidth(getLogicSensorSlotTitle(node), textRenderer, slotWidth - 4);
             int titleY = slotY - textRenderer.fontHeight - 2;
-            int titleColor = sensorDropTarget == node ? UITheme.ACCENT_DEFAULT : (isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY);
+            int titleColor = sensorDropTarget == node ? getSelectedNodeAccentColor() : (isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY);
             drawNodeText(context, textRenderer, Text.literal(titleDisplay), slotX + 2, titleY, titleColor);
         }
 
@@ -4149,7 +4149,7 @@ public class NodeGraph {
             int textWidth = textRenderer.getWidth(display);
             int textX = slotX + Math.max(4, (slotWidth - textWidth) / 2);
             int textY = slotY + (slotHeight - textRenderer.fontHeight) / 2;
-            int textColor = sensorDropTarget == node ? UITheme.ACCENT_DEFAULT : UITheme.TEXT_TERTIARY;
+            int textColor = sensorDropTarget == node ? getSelectedNodeAccentColor() : UITheme.TEXT_TERTIARY;
             drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
         }
     }
@@ -4442,7 +4442,7 @@ public class NodeGraph {
         int borderColor = occupied ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT;
         if (isDropTarget) {
             backgroundColor = UITheme.DROP_HIGHLIGHT_BLUE;
-            borderColor = UITheme.ACCENT_DEFAULT;
+            borderColor = getSelectedNodeAccentColor();
         }
 
         context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
@@ -4457,7 +4457,7 @@ public class NodeGraph {
 
         if (!occupied && isDropTarget) {
             // Provide a minimal visual cue when dragging to an empty slot without adding text.
-            DrawContextBridge.drawBorderInLayer(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, UITheme.ACCENT_DEFAULT);
+            DrawContextBridge.drawBorderInLayer(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, getSelectedNodeAccentColor());
         }
 
         if (node.usesMinimalNodePresentation()
@@ -4621,7 +4621,7 @@ public class NodeGraph {
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int activeFieldBorder = getSelectedNodeAccentColor();
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = UITheme.TEXT_EDITING;
 
@@ -4673,7 +4673,7 @@ public class NodeGraph {
             String display = editingAxis
                 ? value
                 : trimTextToWidth(value, textRenderer, fieldWidth - 6);
-            int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+            int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
             Set<String> coordVariableNames = collectRuntimeVariableNames(node);
             InlineVariableRender coordRenderData = null;
             if (!coordVariableNames.isEmpty() && value.indexOf('~') >= 0) {
@@ -4730,7 +4730,7 @@ public class NodeGraph {
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int activeFieldBorder = getSelectedNodeAccentColor();
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = UITheme.TEXT_EDITING;
         boolean amountEnabled = node.isAmountInputEnabled();
@@ -4811,7 +4811,7 @@ public class NodeGraph {
             }
             valueColor = UITheme.TEXT_TERTIARY;
         }
-        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+            int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
         Set<String> amountVariableNames = collectRuntimeVariableNames(node);
         InlineVariableRender amountRenderData = null;
         if (amountEnabled && !showPlaceholder && !amountVariableNames.isEmpty() && value != null && value.indexOf('~') >= 0) {
@@ -4886,7 +4886,7 @@ public class NodeGraph {
                 signFillColor = UITheme.BACKGROUND_SECONDARY;
                 signTextColor = UITheme.TEXT_TERTIARY;
             } else {
-                signBorderColor = open ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_DEFAULT;
+                signBorderColor = open ? getSelectedNodeAccentColor() : UITheme.BORDER_DEFAULT;
                 signFillColor = open ? UITheme.NODE_INPUT_BG_ACTIVE : UITheme.BACKGROUND_TERTIARY;
                 signTextColor = UITheme.TEXT_PRIMARY;
             }
@@ -4911,7 +4911,7 @@ public class NodeGraph {
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int activeFieldBorder = getSelectedNodeAccentColor();
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
 
         boolean enabled = node.isRandomRoundingEnabled();
@@ -5052,10 +5052,10 @@ public class NodeGraph {
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int activeFieldBorder = getSelectedNodeAccentColor();
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = UITheme.TEXT_EDITING;
-        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+        int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
 
         boolean editing = isEditingMessageField() && messageEditingNode == node;
         if (editing) {
@@ -5721,7 +5721,7 @@ public class NodeGraph {
 
         // Add button
         int addFill = addHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
-        int addBorder = addHovered ? UITheme.ACCENT_DEFAULT : baseBorder;
+        int addBorder = addHovered ? getSelectedNodeAccentColor() : baseBorder;
         context.fill(addLeft, top, addLeft + size, top + size, addFill);
         DrawContextBridge.drawBorderInLayer(context, addLeft, top, size, size, addBorder);
         int addTextX = addLeft + (size - textRenderer.getWidth("+")) / 2;
@@ -5835,7 +5835,7 @@ public class NodeGraph {
         int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
         if (buttonHovered) {
             buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
-            buttonBorder = UITheme.ACCENT_DEFAULT;
+            buttonBorder = getSelectedNodeAccentColor();
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
@@ -5884,7 +5884,7 @@ public class NodeGraph {
         int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
         if (buttonHovered) {
             buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
-            buttonBorder = UITheme.ACCENT_DEFAULT;
+            buttonBorder = getSelectedNodeAccentColor();
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
@@ -6310,7 +6310,7 @@ public class NodeGraph {
             fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
             activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
             fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-            activeFieldBorder = UITheme.ACCENT_DEFAULT;
+            activeFieldBorder = getSelectedNodeAccentColor();
             textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
             activeTextColor = UITheme.TEXT_PRIMARY;
             caretColor = UITheme.TEXT_PRIMARY;
@@ -6365,7 +6365,7 @@ public class NodeGraph {
         display = editing
             ? display
             : trimTextToWidth(display, textRenderer, fieldWidth - reservedRightPadding);
-        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+        int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
         Set<String> stopTargetVariableNames = collectRuntimeVariableNames(node);
         InlineVariableRender stopTargetRenderData = null;
         if (!stopTargetVariableNames.isEmpty() && value.indexOf('~') >= 0) {
@@ -6496,7 +6496,7 @@ public class NodeGraph {
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
-        int activeFieldBorder = UITheme.ACCENT_DEFAULT;
+        int activeFieldBorder = getSelectedNodeAccentColor();
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_LABEL;
         int activeTextColor = UITheme.TEXT_LABEL;
         int caretColor = UITheme.TEXT_LABEL;
@@ -6543,7 +6543,7 @@ public class NodeGraph {
         display = editing
             ? display
             : trimTextToWidth(display, textRenderer, fieldWidth - 6);
-        int variableHighlightColor = isOverSidebar ? toGrayscale(UITheme.ACCENT_AMBER, 0.85f) : UITheme.ACCENT_AMBER;
+        int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
         Set<String> variableFieldVariableNames = collectRuntimeVariableNames(node);
         InlineVariableRender variableFieldRenderData = null;
         if (!variableFieldVariableNames.isEmpty() && value.indexOf('~') >= 0) {
@@ -12367,7 +12367,7 @@ public class NodeGraph {
 
                 if (onlyDragged) {
                     // Highlight the target socket above nodes while dragging.
-                    renderSocket(context, targetX, targetY, hoveredSocketIsInput, UITheme.ACCENT_DEFAULT); // Light blue highlight
+                    renderSocket(context, targetX, targetY, hoveredSocketIsInput, getSelectedNodeAccentColor());
                 }
             }
 

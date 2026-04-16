@@ -1436,6 +1436,12 @@ public class Node {
         if (type == NodeType.SENSOR_ITEM_IN_SLOT) {
             return true;
         }
+        if (type == NodeType.SENSOR_HEALTH_BELOW) {
+            return true;
+        }
+        if (type == NodeType.SENSOR_HUNGER_BELOW) {
+            return true;
+        }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return true;
         }
@@ -1545,6 +1551,12 @@ public class Node {
         }
         if (type == NodeType.SENSOR_CHAT_MESSAGE) {
             return "Seconds";
+        }
+        if (type == NodeType.SENSOR_HEALTH_BELOW) {
+            return "Health";
+        }
+        if (type == NodeType.SENSOR_HUNGER_BELOW) {
+            return "Hunger";
         }
         if (type == NodeType.WAIT) {
             NodeMode waitMode = mode != null ? mode : NodeMode.WAIT_SECONDS;

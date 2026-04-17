@@ -110,6 +110,9 @@ public class PathmindMarketplaceScreen extends Screen {
     private int popupScrollOffset = 0;
     private boolean popupScrollDragging = false;
     private int popupScrollDragOffset = 0;
+    private int publishPopupScrollOffset = 0;
+    private boolean publishPopupScrollDragging = false;
+    private int publishPopupScrollDragOffset = 0;
     private int galleryScrollOffset = 0;
     private boolean galleryScrollDragging = false;
     private int galleryScrollDragOffset = 0;
@@ -337,6 +340,7 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         } finally {
             if (popupLayerVisible) {
+                DrawContextBridge.flush(context);
                 MatrixStackBridge.pop(popupMatrices);
             }
         }
@@ -988,6 +992,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (popupWidth <= 0 || popupHeight <= 0 || popupPreset == null) {
             return;
         }
+        boolean renderPopupContent = !presetPopupClosing;
         context.enableScissor(popupX, popupY, popupX + popupWidth, popupY + popupHeight);
         UIStyleHelper.drawBeveledPanel(
             context,
@@ -999,6 +1004,11 @@ public class PathmindMarketplaceScreen extends Screen {
             presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
             presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
+
+        if (!renderPopupContent) {
+            disableScissorSafely(context);
+            return;
+        }
 
         context.drawTextWithShadow(this.textRenderer, Text.literal("Preset Details"), popupX + 12, popupY + 10,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
@@ -1259,6 +1269,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (popupWidth <= 0 || popupHeight <= 0 || authSession == null) {
             return;
         }
+        boolean renderPopupContent = accountPopupOpen;
         context.enableScissor(popupX, popupY, popupX + popupWidth, popupY + popupHeight);
 
         UIStyleHelper.drawBeveledPanel(
@@ -1271,6 +1282,11 @@ public class PathmindMarketplaceScreen extends Screen {
             accountPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
             accountPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
+
+        if (!renderPopupContent) {
+            disableScissorSafely(context);
+            return;
+        }
 
         context.drawTextWithShadow(this.textRenderer, Text.literal("Account"), popupX + 12, popupY + 10,
             accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
@@ -1338,32 +1354,40 @@ public class PathmindMarketplaceScreen extends Screen {
 
         int contentX = popupX + 12;
         int contentWidth = popupWidth - 24;
-        int sourceY = popupY + 40;
+        int contentTop = popupY + 40;
+        int contentBottom = popupY + popupHeight - 52;
+        int contentHeight = Math.max(24, contentBottom - contentTop);
+        int contentHeightTotal = measurePublishPopupContentHeight(contentWidth, !publishStatusMessage.isEmpty());
+        int maxPublishPopupScroll = Math.max(0, contentHeightTotal - contentHeight);
+        publishPopupScrollOffset = Math.max(0, Math.min(publishPopupScrollOffset, maxPublishPopupScroll));
+        int contentY = contentTop - publishPopupScrollOffset;
+        context.enableScissor(popupX + 8, contentTop, popupX + popupWidth - 8, contentBottom);
+
         String sourceLine = editingPreset == null
             ? "Source preset: " + fallback(publishSourcePresetName, "Unknown")
             : "Editing listing by " + fallback(editingPreset.getAuthorName(), "Unknown");
-        drawWrappedValue(context, contentX, sourceY, contentWidth,
+        drawWrappedValue(context, contentX, contentY, contentWidth,
             sourceLine,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
 
         int fieldWidth = popupWidth - 24;
         int fieldHeight = 18;
         int labelGap = 11;
-        int nameLabelY = popupY + 53;
-        int descriptionLabelY = popupY + 92;
-        int tagsLabelY = popupY + 131;
+        int nameLabelY = contentY + 13;
+        int descriptionLabelY = nameLabelY + 39;
+        int tagsLabelY = descriptionLabelY + 39;
         drawPublishField(context, mouseX, mouseY, contentX, nameLabelY, fieldWidth, fieldHeight, "Name", publishNameField, labelGap);
         drawPublishField(context, mouseX, mouseY, contentX, descriptionLabelY, fieldWidth, fieldHeight, "Description", publishDescriptionField, labelGap);
         drawPublishField(context, mouseX, mouseY, contentX, tagsLabelY, fieldWidth, fieldHeight, "Tags", publishTagsField, labelGap);
 
         String tagsHint = "Comma-separated tags. Slug updates automatically from the name.";
-        drawWrappedValue(context, contentX, popupY + 166, contentWidth, tagsHint,
+        drawWrappedValue(context, contentX, contentY + 126, contentWidth, tagsHint,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
-        int visibilityLabelY = popupY + 189;
+        int visibilityLabelY = contentY + 149;
         context.drawTextWithShadow(this.textRenderer, Text.literal("Visibility"), contentX, visibilityLabelY,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        Rect publishToggle = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
+        Rect publishToggle = getPublishPopupVisibilityToggleRect(popupX, popupWidth, visibilityLabelY);
         publishVisibilityToggle.setValue(publishVisibilityPublic);
         publishVisibilityToggle.setPosition(publishToggle.x, publishToggle.y);
         publishVisibilityToggle.render(context, mouseX, mouseY, publishPopupAnimation.getPopupAlpha());
@@ -1372,6 +1396,18 @@ public class PathmindMarketplaceScreen extends Screen {
             : "Private cloud preset. Only visible in My Presets.";
         drawWrappedValue(context, contentX + 78, visibilityLabelY + 2, contentWidth - 78, visibilityHint,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
+        disableScissorSafely(context);
+
+        ScrollbarHelper.renderCutoffDividers(
+            context,
+            popupX + 8,
+            popupX + popupWidth - 9,
+            contentTop,
+            contentBottom,
+            publishPopupScrollOffset,
+            maxPublishPopupScroll,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE)
+        );
 
         if (!publishStatusMessage.isEmpty()) {
             context.drawTextWithShadow(this.textRenderer,
@@ -1395,6 +1431,15 @@ public class PathmindMarketplaceScreen extends Screen {
         drawAnimatedActionButton(context, submitButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             publishBusy ? "Working..." : (editingPreset == null ? "Publish" : "Save"),
             submitHovered, publishBusy, publishPopupAnimation);
+        if (maxPublishPopupScroll > 0) {
+            ScrollbarHelper.renderSettingsStyle(
+                context,
+                getPublishPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight),
+                publishPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SIDEBAR),
+                publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
+                publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT)
+            );
+        }
         disableScissorSafely(context);
     }
 
@@ -1498,8 +1543,8 @@ public class PathmindMarketplaceScreen extends Screen {
         return fieldY + height;
     }
 
-    private Rect getPublishPopupVisibilityToggleRect(int popupX, int popupY, int popupWidth) {
-        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, popupY + 188,
+    private Rect getPublishPopupVisibilityToggleRect(int popupX, int popupWidth, int visibilityLabelY) {
+        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, visibilityLabelY - 2,
             publishVisibilityToggle.getWidth(), publishVisibilityToggle.getHeight());
     }
 
@@ -1588,6 +1633,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int popupY = bounds[1];
             int popupWidth = bounds[2];
             int popupHeight = bounds[3];
+            ScrollbarHelper.Metrics publishScrollMetrics = getPublishPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight);
             int cancelButtonX = popupX + (publishPopup.cancelButtonX - publishPopup.x);
             int authButtonX = popupX + (publishPopup.authButtonX - publishPopup.x);
             int submitButtonX = popupX + (publishPopup.submitButtonX - publishPopup.x);
@@ -1595,10 +1641,12 @@ public class PathmindMarketplaceScreen extends Screen {
 
             int fieldX = popupX + 12;
             int fieldWidth = popupWidth - 24;
-            int nameFieldY = popupY + 64;
+            int contentY = popupY + 40 - publishPopupScrollOffset;
+            int nameFieldY = contentY + 24;
             int descriptionFieldY = nameFieldY + 39;
             int tagsFieldY = descriptionFieldY + 39;
-            Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
+            int visibilityLabelY = contentY + 149;
+            Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupWidth, visibilityLabelY);
 
             boolean clickedField = false;
             if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
@@ -1621,6 +1669,13 @@ public class PathmindMarketplaceScreen extends Screen {
                 focusPublishField(null);
             }
             if (clickedField) {
+                return true;
+            }
+            if (publishScrollMetrics.maxScroll() > 0
+                && isPointInRect(mouseX, mouseY, publishScrollMetrics.trackLeft() - 3, publishScrollMetrics.trackTop(),
+                    publishScrollMetrics.trackWidth() + 6, publishScrollMetrics.viewportHeight())) {
+                publishPopupScrollDragging = true;
+                publishPopupScrollDragOffset = mouseY - publishScrollMetrics.thumbTop();
                 return true;
             }
             if (isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
@@ -2006,6 +2061,21 @@ public class PathmindMarketplaceScreen extends Screen {
         if (presetPopupClosing) {
             return true;
         }
+        if (publishPopupScrollDragging && publishPopupOpen) {
+            Layout layout = getLayout();
+            PublishPopupLayout popup = getPublishPopupLayout(layout);
+            int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+            ScrollbarHelper.Metrics scrollMetrics = getPublishPopupScrollMetrics(bounds[0], bounds[1], bounds[2], bounds[3]);
+            if (scrollMetrics.maxScroll() <= 0) {
+                return true;
+            }
+            int desiredThumbY = (int) mouseYDouble - publishPopupScrollDragOffset;
+            int minThumbY = scrollMetrics.trackTop();
+            int maxThumbY = scrollMetrics.trackTop() + Math.max(0, scrollMetrics.viewportHeight() - scrollMetrics.thumbHeight());
+            int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
+            publishPopupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
+            return true;
+        }
         if (popupPreviewDragging && popupPreset != null) {
             int currentX = (int) mouseXDouble;
             int currentY = (int) mouseYDouble;
@@ -2052,6 +2122,10 @@ public class PathmindMarketplaceScreen extends Screen {
             popupPreviewDragging = false;
             return true;
         }
+        if (publishPopupScrollDragging) {
+            publishPopupScrollDragging = false;
+            return true;
+        }
         if (popupScrollDragging) {
             popupScrollDragging = false;
             return true;
@@ -2066,6 +2140,20 @@ public class PathmindMarketplaceScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         Layout layout = getLayout();
+        if (publishPopupOpen) {
+            PublishPopupLayout popup = getPublishPopupLayout(layout);
+            int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+            ScrollbarHelper.Metrics scrollMetrics = getPublishPopupScrollMetrics(bounds[0], bounds[1], bounds[2], bounds[3]);
+            if (scrollMetrics.maxScroll() > 0
+                && isPointInRect((int) mouseX, (int) mouseY, bounds[0] + 8, scrollMetrics.trackTop(), bounds[2] - 16, scrollMetrics.viewportHeight())) {
+                int nextOffset = ScrollbarHelper.applyWheel(publishPopupScrollOffset, verticalAmount, 18, scrollMetrics.maxScroll());
+                if (nextOffset != publishPopupScrollOffset) {
+                    publishPopupScrollOffset = nextOffset;
+                    return true;
+                }
+            }
+            return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        }
         if (popupPreset != null || presetPopupAnimation.isVisible()) {
             if (popupPreset == null || presetPopupClosing) {
                 return true;
@@ -2416,6 +2504,14 @@ public class PathmindMarketplaceScreen extends Screen {
         return height;
     }
 
+    private int measurePublishPopupContentHeight(int textWidth, boolean includeStatusMessage) {
+        int height = 202;
+        if (includeStatusMessage) {
+            height += 16;
+        }
+        return height;
+    }
+
     private ScrollbarHelper.Metrics getPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight) {
         int contentTop = popupY + 40;
         int contentBottom = popupY + popupHeight - 48;
@@ -2423,6 +2519,15 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentHeightTotal = measurePopupContentHeight(Math.max(32, popupWidth - 24));
         int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
         return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, popupScrollOffset, 20);
+    }
+
+    private ScrollbarHelper.Metrics getPublishPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight) {
+        int contentTop = popupY + 40;
+        int contentBottom = popupY + popupHeight - 52;
+        int contentHeight = Math.max(24, contentBottom - contentTop);
+        int contentHeightTotal = measurePublishPopupContentHeight(Math.max(32, popupWidth - 24), !publishStatusMessage.isEmpty());
+        int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
+        return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, publishPopupScrollOffset, 20);
     }
 
     private ScrollbarHelper.Metrics getGalleryScrollMetrics(Layout layout) {
@@ -2900,6 +3005,9 @@ public class PathmindMarketplaceScreen extends Screen {
         publishSourcePresetName = fallback(presetName, PresetManager.getActivePreset());
         publishStatusMessage = "";
         publishStatusColor = UITheme.TEXT_SECONDARY;
+        publishPopupScrollOffset = 0;
+        publishPopupScrollDragging = false;
+        publishPopupScrollDragOffset = 0;
         if (publishNameField != null) {
             publishNameField.setText(publishSourcePresetName);
         }
@@ -3008,6 +3116,9 @@ public class PathmindMarketplaceScreen extends Screen {
         publishSourcePresetName = "";
         publishStatusMessage = "";
         publishStatusColor = UITheme.TEXT_SECONDARY;
+        publishPopupScrollOffset = 0;
+        publishPopupScrollDragging = false;
+        publishPopupScrollDragOffset = 0;
         focusPublishField(null);
         publishPopupAnimation.hide();
         if (returnToParent && this.client != null) {

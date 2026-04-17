@@ -644,6 +644,7 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         } finally {
             if (popupDepthPushed) {
+                DrawContextBridge.flush(context);
                 MatrixStackBridge.pop(popupMatrices);
             }
         }

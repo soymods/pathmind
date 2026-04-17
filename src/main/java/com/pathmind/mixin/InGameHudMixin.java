@@ -42,4 +42,13 @@ public class InGameHudMixin {
         }
         PathmindClientMod.renderHudOverlays(context, client);
     }
+
+    @Inject(method = "renderHeldItemTooltip", at = @At("TAIL"))
+    private void pathmind$renderHudNotificationsAboveItems(DrawContext context, CallbackInfo ci) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.currentScreen != null && PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
+            return;
+        }
+        PathmindClientMod.renderHudNotifications(context, client);
+    }
 }

@@ -233,9 +233,30 @@ public class PathmindClientMod implements ClientModInitializer {
             if (navigatorDebugOverlay != null) {
                 navigatorDebugOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
             }
-            if (nodeErrorNotificationOverlay != null) {
-                nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
-            }
+        } finally {
+            MatrixStackBridge.pop(matrices);
+        }
+    }
+
+    public static void renderHudNotifications(DrawContext drawContext, MinecraftClient client) {
+        if (client == null || client.player == null || client.textRenderer == null || nodeErrorNotificationOverlay == null) {
+            return;
+        }
+
+        boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays == null
+            || SettingsManager.getCurrent().showHudOverlays;
+        if (!showHudOverlays) {
+            return;
+        }
+
+        int scaledWidth = client.getWindow().getScaledWidth();
+        int scaledHeight = client.getWindow().getScaledHeight();
+        DrawContextBridge.startNewRootLayer(drawContext);
+        Object matrices = drawContext.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translateZ(matrices, 500.0f);
+        try {
+            nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
         } finally {
             MatrixStackBridge.pop(matrices);
         }

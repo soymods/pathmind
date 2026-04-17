@@ -619,6 +619,7 @@ public class Sidebar {
                 UITheme.BORDER_SUBTLE
             );
             renderCategoryScrollbar(context, totalWidth, contentTop, contentBottom);
+            DrawContextBridge.flush(context);
             context.disableScissor();
         }
 

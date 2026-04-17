@@ -578,59 +578,74 @@ public class PathmindVisualEditorScreen extends Screen {
             DrawContextBridge.startNewRootLayer(context);
         }
 
-        // Render parameter overlay if visible
-        if (parameterOverlay != null && parameterOverlay.isVisible()) {
-            parameterOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
+        Object popupMatrices = context.getMatrices();
+        boolean popupDepthPushed = isPopupObscuringWorkspace();
+        if (popupDepthPushed) {
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 450.0f);
         }
+        try {
+            if (!isScreenPopupVisible()) {
+                setOverlayCutoutForNodeOverlay();
+            }
+            renderPopupScrimOverlay(context);
+            if (isPopupObscuringWorkspace()) {
+                DrawContextBridge.startNewRootLayer(context);
+            }
 
-        // Render book text editor overlay if visible
-        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
-            bookTextEditorOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
-        }
+            // Render parameter overlay if visible
+            if (parameterOverlay != null && parameterOverlay.isVisible()) {
+                parameterOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
+            }
 
-        if (clearPopupAnimation.isVisible()) {
-            renderClearConfirmationPopup(context, mouseX, mouseY);
-        }
+            // Render book text editor overlay if visible
+            if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+                bookTextEditorOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
+            }
 
-        if (importExportPopupAnimation.isVisible()) {
-            renderImportExportPopup(context, mouseX, mouseY, delta);
-        }
+            if (clearPopupAnimation.isVisible()) {
+                renderClearConfirmationPopup(context, mouseX, mouseY);
+            }
 
-        if (createPresetPopupAnimation.isVisible()) {
-            renderCreatePresetPopup(context, mouseX, mouseY, delta);
-        }
+            if (importExportPopupAnimation.isVisible()) {
+                renderImportExportPopup(context, mouseX, mouseY, delta);
+            }
 
-        if (renamePresetPopupAnimation.isVisible()) {
-            renderRenamePresetPopup(context, mouseX, mouseY, delta);
-        }
+            if (createPresetPopupAnimation.isVisible()) {
+                renderCreatePresetPopup(context, mouseX, mouseY, delta);
+            }
 
-        if (presetDeletePopupAnimation.isVisible()) {
-            renderPresetDeletePopup(context, mouseX, mouseY);
-        }
+            if (renamePresetPopupAnimation.isVisible()) {
+                renderRenamePresetPopup(context, mouseX, mouseY, delta);
+            }
 
-        if (infoPopupAnimation.isVisible()) {
-            renderInfoPopup(context, mouseX, mouseY);
-        }
-        if (missingBaritonePopupAnimation.isVisible()) {
-            renderMissingBaritonePopup(context, mouseX, mouseY);
-        }
-        if (missingUiUtilsPopupAnimation.isVisible()) {
-            renderMissingUiUtilsPopup(context, mouseX, mouseY);
-        }
-        if (settingsPopupAnimation.isVisible()) {
-            renderSettingsPopup(context, mouseX, mouseY);
-        }
+            if (presetDeletePopupAnimation.isVisible()) {
+                renderPresetDeletePopup(context, mouseX, mouseY);
+            }
 
-        if (!isScreenPopupVisible()) {
-            setOverlayCutoutForNodeOverlay();
-        }
+            if (infoPopupAnimation.isVisible()) {
+                renderInfoPopup(context, mouseX, mouseY);
+            }
+            if (missingBaritonePopupAnimation.isVisible()) {
+                renderMissingBaritonePopup(context, mouseX, mouseY);
+            }
+            if (missingUiUtilsPopupAnimation.isVisible()) {
+                renderMissingUiUtilsPopup(context, mouseX, mouseY);
+            }
+            if (settingsPopupAnimation.isVisible()) {
+                renderSettingsPopup(context, mouseX, mouseY);
+            }
 
-        renderPopupScrimOverlay(context);
-
-        // Render language dropdown options on top of scrim overlay
-        if (settingsPopupAnimation.isVisible()) {
-            RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
-            drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
+            // Render language dropdown options on top of scrim overlay
+            if (settingsPopupAnimation.isVisible()) {
+                RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
+                drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
+                RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+            }
+        } finally {
+            if (popupDepthPushed) {
+                MatrixStackBridge.pop(popupMatrices);
+            }
         }
 
         // Render context menu on top of everything
@@ -3320,6 +3335,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void disablePopupScissor(DrawContext context, boolean enabled) {
         if (enabled) {
+            DrawContextBridge.flush(context);
+            DrawContextBridge.flush(context);
             context.disableScissor();
         }
     }
@@ -4060,6 +4077,8 @@ public class PathmindVisualEditorScreen extends Screen {
             UITheme.BORDER_DEFAULT
         );
 
+        DrawContextBridge.flush(context);
+        DrawContextBridge.flush(context);
         context.disableScissor();
     }
 
@@ -5518,6 +5537,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 UITheme.TEXT_SECONDARY
             );
         }
+        DrawContextBridge.flush(context);
+        DrawContextBridge.flush(context);
         context.disableScissor();
     }
 
@@ -5831,6 +5852,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonHeight = 20;
         int buttonX = popupX + scaledWidth - buttonWidth - 20;
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
+        DrawContextBridge.flush(context);
+        DrawContextBridge.flush(context);
         context.disableScissor();
         renderSettingsPopupScrollbar(context, popupX, popupY, scaledWidth, scaledHeight, maxScroll);
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
@@ -6385,6 +6408,8 @@ public class PathmindVisualEditorScreen extends Screen {
                     listX + listWidth - statusWidth - 6, rowY + 6, statusColor);
             }
         }
+        DrawContextBridge.flush(context);
+        DrawContextBridge.flush(context);
         context.disableScissor();
     }
 
@@ -6991,6 +7016,8 @@ public class PathmindVisualEditorScreen extends Screen {
             context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
         }
 
+        DrawContextBridge.flush(context);
+        DrawContextBridge.flush(context);
         context.disableScissor();
         MatrixStackBridge.pop(matrices);
     }

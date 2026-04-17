@@ -7,6 +7,7 @@ import net.minecraft.client.gui.DrawContext;
  */
 public final class DrawContextBridge {
     private static final java.lang.reflect.Method CREATE_NEW_ROOT_LAYER = resolveNoArgMethod("createNewRootLayer");
+    private static final java.lang.reflect.Method FLUSH_DRAW = resolveNoArgMethod("draw");
     private static final Object GUI_OVERLAY_LAYER = resolveGuiOverlayLayer();
     private static final java.lang.reflect.Method FILL_LAYER = resolveFillLayerMethod();
 
@@ -49,11 +50,25 @@ public final class DrawContextBridge {
     }
 
     public static void startNewRootLayer(DrawContext context) {
-        if (context == null || CREATE_NEW_ROOT_LAYER == null) {
+        if (context == null) {
+            return;
+        }
+        if (CREATE_NEW_ROOT_LAYER != null) {
+            try {
+                CREATE_NEW_ROOT_LAYER.invoke(context);
+                return;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+        }
+        flush(context);
+    }
+
+    public static void flush(DrawContext context) {
+        if (context == null || FLUSH_DRAW == null) {
             return;
         }
         try {
-            CREATE_NEW_ROOT_LAYER.invoke(context);
+            FLUSH_DRAW.invoke(context);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
         }
     }

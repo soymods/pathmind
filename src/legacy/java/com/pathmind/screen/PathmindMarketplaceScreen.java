@@ -313,17 +313,32 @@ public class PathmindMarketplaceScreen extends Screen {
             || pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
             DrawContextBridge.startNewRootLayer(context);
         }
-        if (popupPreset != null || presetPopupAnimation.isVisible()) {
-            renderPresetPopup(context, popupMouseX, popupMouseY, layout);
+        boolean popupLayerVisible = popupPreset != null || presetPopupAnimation.isVisible()
+            || accountPopupOpen || accountPopupAnimation.isVisible()
+            || publishPopupOpen || publishPopupAnimation.isVisible()
+            || pendingConfirmAction != null || confirmPopupAnimation.isVisible();
+        Object popupMatrices = context.getMatrices();
+        if (popupLayerVisible) {
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 450.0f);
         }
-        if (accountPopupOpen || accountPopupAnimation.isVisible()) {
-            renderAccountPopup(context, popupMouseX, popupMouseY, layout);
-        }
-        if (publishPopupOpen || publishPopupAnimation.isVisible()) {
-            renderPublishPopup(context, popupMouseX, popupMouseY, layout);
-        }
-        if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
-            renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
+        try {
+            if (popupPreset != null || presetPopupAnimation.isVisible()) {
+                renderPresetPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (accountPopupOpen || accountPopupAnimation.isVisible()) {
+                renderAccountPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (publishPopupOpen || publishPopupAnimation.isVisible()) {
+                renderPublishPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
+                renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
+            }
+        } finally {
+            if (popupLayerVisible) {
+                MatrixStackBridge.pop(popupMatrices);
+            }
         }
     }
 
@@ -347,6 +362,11 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawHorizontalLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, layout.sectionY - 1, UITheme.BORDER_SUBTLE);
 
         renderFilterControls(context, mouseX, mouseY, layout);
+    }
+
+    private void disableScissorSafely(DrawContext context) {
+        DrawContextBridge.flush(context);
+        context.disableScissor();
     }
 
     private void renderAccountToolbarButton(DrawContext context, int x, int y, boolean hovered) {
@@ -394,7 +414,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int messageColor = loading ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(message),
                 layout.bodyX + layout.bodyWidth / 2, bodyY + bodyHeight / 2, messageColor);
-            context.disableScissor();
+            disableScissorSafely(context);
             renderFooter(context, mouseX, mouseY, layout);
             return;
         }
@@ -414,7 +434,7 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
 
-        context.disableScissor();
+        disableScissorSafely(context);
         if (galleryMetrics != null) {
             ScrollbarHelper.renderCutoffDividers(context, layout.bodyX, layout.bodyX + layout.bodyWidth - 1, bodyY, bodyY + bodyHeight, galleryScrollOffset, galleryMetrics.maxScroll(), UITheme.BORDER_SUBTLE);
             ScrollbarHelper.renderSettingsStyle(context, galleryMetrics, UITheme.BACKGROUND_SIDEBAR, UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT);
@@ -690,7 +710,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 renderPreviewNode(context, node, 0f, 0f, 1f, true, true);
             }
             MatrixStackBridge.pop(matrices);
-            context.disableScissor();
+            disableScissorSafely(context);
             return;
         }
         float viewScale = Math.max(0.08f, Math.min(0.6f, fitScale));
@@ -727,7 +747,7 @@ public class PathmindMarketplaceScreen extends Screen {
             renderPreviewNode(context, node, 0f, 0f, 1f, true, false);
         }
         MatrixStackBridge.pop(matrices);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private void drawPreviewConnection(DrawContext context, int startX, int startY, int endX, int endY, int color, boolean popup) {
@@ -1166,7 +1186,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 "Sign in with Discord to like presets and count imports.",
                 presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
         }
-        context.disableScissor();
+        disableScissorSafely(context);
 
         ScrollbarHelper.renderCutoffDividers(
             context,
@@ -1225,7 +1245,7 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         drawAnimatedActionButton(context, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             importingPreset ? "Downloading..." : "Download", downloadHovered, importingPreset || deleteBusy, presetPopupAnimation);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private void renderAccountPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -1284,7 +1304,7 @@ public class PathmindMarketplaceScreen extends Screen {
             "Close", closeHovered, false, accountPopupAnimation);
         drawAnimatedActionButton(context, signOutButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             "Sign Out", signOutHovered, authBusy, accountPopupAnimation);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private void renderPublishPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -1375,7 +1395,7 @@ public class PathmindMarketplaceScreen extends Screen {
         drawAnimatedActionButton(context, submitButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             publishBusy ? "Working..." : (editingPreset == null ? "Publish" : "Save"),
             submitHovered, publishBusy, publishPopupAnimation);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private void renderConfirmPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -1450,7 +1470,7 @@ public class PathmindMarketplaceScreen extends Screen {
         drawAnimatedActionButton(context, confirmButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             confirmAction == ConfirmAction.DELETE ? "Delete" : "Update",
             confirmHovered, false, confirmPopupAnimation);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private int drawPublishField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height,
@@ -2320,7 +2340,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int textColor = modes[i] == sortMode ? getAccentColor() : UITheme.TEXT_PRIMARY;
             context.drawTextWithShadow(this.textRenderer, Text.literal(modes[i].label), dropdownBounds.x + 8, optionY + 5, textColor);
         }
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private int drawWrappedValue(DrawContext context, int x, int y, int width, String value, int color, int maxLines) {

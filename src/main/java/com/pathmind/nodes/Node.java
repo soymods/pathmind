@@ -5494,10 +5494,6 @@ public class Node {
             runtimeVariable = manager.getRuntimeVariableFromAnyActiveChain(variableName.trim());
         }
         if (runtimeVariable == null) {
-            System.out.println("[Pathmind DEBUG] resolveVariableValueNode miss name=" + variableName.trim()
-                + " hostNode=" + getId()
-                + " hostType=" + getType()
-                + " owningStart=" + (startNode != null ? startNode.getId() : "null"));
             sendVariableError("Variable \"" + variableName.trim() + "\" is not set.", future);
             return null;
         }
@@ -7595,10 +7591,6 @@ public class Node {
         Node slot1 = getAttachedParameter(1);
         Node variableNode = slot0;
         Node valueNode = slot1;
-        System.out.println("[Pathmind DEBUG] SET_VARIABLE begin node=" + getId()
-            + " varNode=" + (variableNode != null ? variableNode.getType() : "null")
-            + " valueNode=" + (valueNode != null ? valueNode.getType() : "null"));
-
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (variableNode == null || variableNode.getType() != NodeType.VARIABLE
             || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
@@ -7623,10 +7615,6 @@ public class Node {
         if (startNode == null && getParentControl() != null) {
             startNode = getParentControl().getOwningStartNode();
         }
-        System.out.println("[Pathmind DEBUG] SET_VARIABLE owningStart="
-            + (startNode != null ? startNode.getId() : "null")
-            + " name=" + variableName);
-
         NodeType valueType = valueNode.getType();
         Map<String, String> values;
         if (valueNode.isSensorNode() && NodeTraitRegistry.isBooleanSensor(valueType)) {
@@ -7664,9 +7652,6 @@ public class Node {
         } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
             Node parameterNodeA = valueNode.getAttachedParameter(0);
             Node parameterNodeB = valueNode.getAttachedParameter(1);
-            System.out.println("[Pathmind DEBUG] SET_VARIABLE distance paramA="
-                + (parameterNodeA != null ? parameterNodeA.getType() : "null")
-                + " paramB=" + (parameterNodeB != null ? parameterNodeB.getType() : "null"));
             if (parameterNodeA == null || parameterNodeB == null) {
                 if (client != null) {
                     sendNodeErrorMessage(client, "Distance Between requires two parameters (coordinate, entity, user, block, or item).");
@@ -7694,8 +7679,6 @@ public class Node {
             }
             Optional<Vec3d> resolvedA = valueNode.resolveDistanceBetweenTarget(parameterNodeA);
             Optional<Vec3d> resolvedB = valueNode.resolveDistanceBetweenTarget(parameterNodeB);
-            System.out.println("[Pathmind DEBUG] SET_VARIABLE distance resolvedA=" + resolvedA.isPresent()
-                + " resolvedB=" + resolvedB.isPresent());
             if (resolvedA.isEmpty() || resolvedB.isEmpty()) {
                 if (client != null) {
                     sendNodeErrorMessage(client, "Distance Between could not resolve one or both targets.");
@@ -7705,7 +7688,6 @@ public class Node {
                 return;
             }
             double distance = Math.sqrt(resolvedA.get().squaredDistanceTo(resolvedB.get()));
-            System.out.println("[Pathmind DEBUG] SET_VARIABLE distance value=" + distance);
             values = new HashMap<>();
             values.put("Distance", Double.toString(distance));
             valueType = NodeType.PARAM_DISTANCE;
@@ -7721,8 +7703,6 @@ public class Node {
         if (!stored) {
             manager.setRuntimeVariableForAnyActiveChain(variableName.trim(), value);
         }
-        System.out.println("[Pathmind DEBUG] SET_VARIABLE stored name=" + variableName.trim()
-            + " type=" + valueType + " keys=" + values.keySet());
         future.complete(null);
     }
 
@@ -17505,16 +17485,7 @@ public class Node {
         boolean distanceDrivenByParameter = slotOneParameter != null
             && (slotOneParameter.getType() == NodeType.PARAM_DISTANCE
                 || slotOneParameter.getType() == NodeType.SENSOR_DISTANCE_BETWEEN);
-        System.out.println("[Pathmind DEBUG] WALK begin node=" + getId()
-            + " slot1=" + (slotOneParameter != null ? slotOneParameter.getType() : "null")
-            + " distance=" + distance
-            + " duration=" + durationSeconds
-            + " useDistance=" + useDistance
-            + " durationEdited=" + durationExplicitlyEdited
-            + " distanceDrivenByParameter=" + distanceDrivenByParameter);
-
         if (!useDistance && durationSeconds <= 0.0) {
-            System.out.println("[Pathmind DEBUG] WALK complete immediate (no distance and non-positive duration)");
             future.complete(null);
             return;
         }
@@ -17583,14 +17554,8 @@ public class Node {
                                 break;
                             }
                         }
-                        System.out.println("[Pathmind DEBUG] WALK complete distance mode reason=" + stopReason
-                            + " targetDistance=" + distance
-                            + " maxDurationMs=" + maxDurationMs);
-                    } else {
-                        System.out.println("[Pathmind DEBUG] WALK complete distance mode startPos=null");
                     }
                 } else {
-                    System.out.println("[Pathmind DEBUG] WALK complete duration mode durationSeconds=" + durationSeconds);
                     long durationMs = (long) (durationSeconds * 1000);
                     long startTime = System.currentTimeMillis();
                     while (System.currentTimeMillis() - startTime < durationMs) {

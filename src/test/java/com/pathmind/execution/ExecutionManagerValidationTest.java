@@ -345,6 +345,39 @@ class ExecutionManagerValidationTest {
         assertEquals(2, activeChains.size());
     }
 
+    @Test
+    void missingSecondaryOutputDoesNotFallBackToPrimaryOutput() throws Exception {
+        Node ifElse = new Node(NodeType.CONTROL_IF_ELSE, 0, 0);
+        Node forever = new Node(NodeType.CONTROL_FOREVER, 100, 0);
+        Node wait = new Node(NodeType.WAIT, 200, 0);
+        wait.getParameter("Duration").setStringValue("5.0");
+        assertTrue(forever.attachActionNode(wait));
+
+        Field activeConnectionsField = ExecutionManager.class.getDeclaredField("activeConnections");
+        activeConnectionsField.setAccessible(true);
+        activeConnectionsField.set(manager, new java.util.ArrayList<>(List.of(
+            new NodeConnection(ifElse, forever, 0, 0)
+        )));
+
+        Class<?> controllerClass = Arrays.stream(ExecutionManager.class.getDeclaredClasses())
+            .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
+            .findFirst()
+            .orElseThrow();
+        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
+        constructor.setAccessible(true);
+        Object controller = constructor.newInstance(ifElse, 1);
+
+        Method continueFromOutputSocket = ExecutionManager.class.getDeclaredMethod(
+            "continueFromOutputSocket", Node.class, controllerClass, int.class, Node.class, int.class);
+        continueFromOutputSocket.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        CompletableFuture<Void> future = (CompletableFuture<Void>) continueFromOutputSocket.invoke(
+            manager, ifElse, controller, 1, null, 1);
+
+        assertTrue(future.isDone());
+    }
+
     private void setCachedSettingsForTests() throws Exception {
         SettingsManager.Settings settings = new SettingsManager.Settings();
         settings.nodeDelayMs = 0;

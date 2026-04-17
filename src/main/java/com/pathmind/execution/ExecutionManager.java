@@ -1533,9 +1533,6 @@ public class ExecutionManager {
     private CompletableFuture<Void> continueFromOutputSocket(Node currentNode, ChainController controller, int executionId,
                                                              Node repeatUntilGuard, int outputSocket) {
         NodeConnection nextConnection = getNextConnectedConnection(currentNode, activeConnections, outputSocket);
-        if (nextConnection == null && outputSocket > 0) {
-            nextConnection = getNextConnectedConnection(currentNode, activeConnections, 0);
-        }
         if (nextConnection == null) {
             return CompletableFuture.completedFuture(null);
         }

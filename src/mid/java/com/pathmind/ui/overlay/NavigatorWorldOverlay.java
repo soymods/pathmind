@@ -1,9 +1,11 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.PathmindNavigator;
+import com.pathmind.util.CameraCompatibilityBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.render.BufferBuilderStorage;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -37,7 +39,7 @@ public final class NavigatorWorldOverlay {
     private NavigatorWorldOverlay() {
     }
 
-    public static void render(Matrix4f positionMatrix) {
+    public static void render(Matrix4f positionMatrix, Camera camera) {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientPlayerEntity player = client != null ? client.player : null;
         if (client == null || player == null || positionMatrix == null) {
@@ -66,16 +68,22 @@ public final class NavigatorWorldOverlay {
 
         MatrixStack matrices = new MatrixStack();
         matrices.loadIdentity();
-        matrices.multiplyPositionMatrix(positionMatrix);
+        Vec3d cameraPos = CameraCompatibilityBridge.getPos(camera);
+        if (cameraPos == null && client.gameRenderer != null) {
+            cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
+        }
+        if (cameraPos == null) {
+            cameraPos = new Vec3d(player.getX(), player.getY(), player.getZ());
+        }
 
         try {
             beginOverlayPass();
-            renderCandidatePaths(matrices, consumers, player, snapshot.candidatePaths());
-            renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.visitedPathIndex());
-            renderBreakTargets(matrices, consumers, snapshot.breakTargets());
-            renderPlaceTargets(matrices, consumers, snapshot.placeTargets());
-            renderPath(matrices, consumers, player, snapshot.path(), goalPos);
-            renderGoal(matrices, consumers, goalPos);
+            renderCandidatePaths(matrices, consumers, player, snapshot.candidatePaths(), cameraPos);
+            renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.visitedPathIndex(), cameraPos);
+            renderBreakTargets(matrices, consumers, snapshot.breakTargets(), cameraPos);
+            renderPlaceTargets(matrices, consumers, snapshot.placeTargets(), cameraPos);
+            renderPath(matrices, consumers, player, snapshot.path(), goalPos, cameraPos);
+            renderGoal(matrices, consumers, goalPos, cameraPos);
         } catch (Throwable ignored) {
             // Never fail the world renderer because of overlay drawing.
         } finally {
@@ -88,7 +96,8 @@ public final class NavigatorWorldOverlay {
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
         ClientPlayerEntity player,
-        List<List<BlockPos>> candidatePaths
+        List<List<BlockPos>> candidatePaths,
+        Vec3d cameraPos
     ) {
         if (candidatePaths == null || candidatePaths.size() <= 1) {
             return;
@@ -102,9 +111,9 @@ public final class NavigatorWorldOverlay {
             }
 
             List<Vec3d> points = new ArrayList<>(candidate.size() + 1);
-            points.add(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()));
+            points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraPos));
             for (BlockPos node : candidate) {
-                points.add(pathPoint(node));
+                points.add(cameraRelative(pathPoint(node), cameraPos));
             }
             renderDashedSegments(matrices, consumers, points, phase, CANDIDATE_PATH_COLOR, CANDIDATE_THICKNESS);
         }
@@ -115,20 +124,21 @@ public final class NavigatorWorldOverlay {
         VertexConsumerProvider.Immediate consumers,
         ClientPlayerEntity player,
         List<BlockPos> path,
-        BlockPos goalPos
+        BlockPos goalPos,
+        Vec3d cameraPos
     ) {
         if (player == null || goalPos == null) {
             return;
         }
 
         List<Vec3d> points = new ArrayList<>((path == null ? 0 : path.size()) + 2);
-        points.add(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()));
+        points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraPos));
         if (path != null) {
             for (BlockPos node : path) {
-                points.add(pathPoint(node));
+                points.add(cameraRelative(pathPoint(node), cameraPos));
             }
         }
-        Vec3d goalPoint = pathPoint(goalPos);
+        Vec3d goalPoint = cameraRelative(pathPoint(goalPos), cameraPos);
         if (points.isEmpty() || !sameRenderPoint(points.get(points.size() - 1), goalPoint)) {
             points.add(goalPoint);
         }
@@ -186,15 +196,16 @@ public final class NavigatorWorldOverlay {
     private static void renderGoal(
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
-        BlockPos goalPos
+        BlockPos goalPos,
+        Vec3d cameraPos
     ) {
         Box goalMarker = new Box(
-            goalPos.getX() + GOAL_INSET,
-            goalPos.getY(),
-            goalPos.getZ() + GOAL_INSET,
-            goalPos.getX() + 1.0D - GOAL_INSET,
-            goalPos.getY() + 2.0D,
-            goalPos.getZ() + 1.0D - GOAL_INSET
+            goalPos.getX() + GOAL_INSET - cameraPos.x,
+            goalPos.getY() - cameraPos.y,
+            goalPos.getZ() + GOAL_INSET - cameraPos.z,
+            goalPos.getX() + 1.0D - GOAL_INSET - cameraPos.x,
+            goalPos.getY() + 2.0D - cameraPos.y,
+            goalPos.getZ() + 1.0D - GOAL_INSET - cameraPos.z
         );
         renderFilledPrism(matrices, consumers, goalMarker, withAlpha(GOAL_COLOR, 0.26F));
         DebugRenderer.drawBox(matrices, consumers, goalMarker, red(GOAL_COLOR), green(GOAL_COLOR), blue(GOAL_COLOR), 0.95F);
@@ -204,7 +215,8 @@ public final class NavigatorWorldOverlay {
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
         List<BlockPos> path,
-        int pathIndex
+        int pathIndex,
+        Vec3d cameraPos
     ) {
         if (path == null || path.size() < 2) {
             return;
@@ -214,7 +226,7 @@ public final class NavigatorWorldOverlay {
             if (step == null) {
                 continue;
             }
-            Box marker = Box.of(pathPoint(step), 0.34D, 0.34D, 0.34D);
+            Box marker = Box.of(cameraRelative(pathPoint(step), cameraPos), 0.34D, 0.34D, 0.34D);
             int color = i < Math.max(0, pathIndex) ? VISITED_STEP_COLOR : STEP_COLOR;
             renderBoxOutline(matrices, consumers, marker, color);
         }
@@ -223,7 +235,8 @@ public final class NavigatorWorldOverlay {
     private static void renderBreakTargets(
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
-        List<BlockPos> breakTargets
+        List<BlockPos> breakTargets,
+        Vec3d cameraPos
     ) {
         if (breakTargets == null || breakTargets.isEmpty()) {
             return;
@@ -233,12 +246,12 @@ public final class NavigatorWorldOverlay {
                 continue;
             }
             Box marker = new Box(
-                breakTarget.getX() + 0.02D,
-                breakTarget.getY() + 0.02D,
-                breakTarget.getZ() + 0.02D,
-                breakTarget.getX() + 0.98D,
-                breakTarget.getY() + 0.98D,
-                breakTarget.getZ() + 0.98D
+                breakTarget.getX() + 0.02D - cameraPos.x,
+                breakTarget.getY() + 0.02D - cameraPos.y,
+                breakTarget.getZ() + 0.02D - cameraPos.z,
+                breakTarget.getX() + 0.98D - cameraPos.x,
+                breakTarget.getY() + 0.98D - cameraPos.y,
+                breakTarget.getZ() + 0.98D - cameraPos.z
             );
             renderBoxOutline(matrices, consumers, marker, BREAK_COLOR);
         }
@@ -247,7 +260,8 @@ public final class NavigatorWorldOverlay {
     private static void renderPlaceTargets(
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
-        List<BlockPos> placeTargets
+        List<BlockPos> placeTargets,
+        Vec3d cameraPos
     ) {
         if (placeTargets == null || placeTargets.isEmpty()) {
             return;
@@ -257,12 +271,12 @@ public final class NavigatorWorldOverlay {
                 continue;
             }
             Box marker = new Box(
-                placeTarget.getX() + 0.02D,
-                placeTarget.getY() + 0.02D,
-                placeTarget.getZ() + 0.02D,
-                placeTarget.getX() + 0.98D,
-                placeTarget.getY() + 0.98D,
-                placeTarget.getZ() + 0.98D
+                placeTarget.getX() + 0.02D - cameraPos.x,
+                placeTarget.getY() + 0.02D - cameraPos.y,
+                placeTarget.getZ() + 0.02D - cameraPos.z,
+                placeTarget.getX() + 0.98D - cameraPos.x,
+                placeTarget.getY() + 0.98D - cameraPos.y,
+                placeTarget.getZ() + 0.98D - cameraPos.z
             );
             renderBoxOutline(matrices, consumers, marker, PLACE_COLOR);
         }
@@ -313,6 +327,13 @@ public final class NavigatorWorldOverlay {
 
     private static Vec3d pathPoint(BlockPos pos) {
         return new Vec3d(pos.getX() + 0.5D, pos.getY() + 0.18D, pos.getZ() + 0.5D);
+    }
+
+    private static Vec3d cameraRelative(Vec3d point, Vec3d cameraPos) {
+        if (cameraPos == null) {
+            return point;
+        }
+        return new Vec3d(point.x - cameraPos.x, point.y - cameraPos.y, point.z - cameraPos.z);
     }
 
     private static boolean sameRenderPoint(Vec3d a, Vec3d b) {

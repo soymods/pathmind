@@ -36,6 +36,6 @@ public class NavigatorWorldRendererMixin {
         boolean tick,
         CallbackInfo ci
     ) {
-        NavigatorWorldOverlay.render(positionMatrix);
+        NavigatorWorldOverlay.render(positionMatrix, camera);
     }
 }

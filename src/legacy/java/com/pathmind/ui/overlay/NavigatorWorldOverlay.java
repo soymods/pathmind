@@ -2,8 +2,10 @@ package com.pathmind.ui.overlay;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.pathmind.execution.PathmindNavigator;
+import com.pathmind.util.CameraCompatibilityBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.BufferBuilderStorage;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
@@ -36,7 +38,7 @@ public final class NavigatorWorldOverlay {
     private NavigatorWorldOverlay() {
     }
 
-    public static void render(Matrix4f positionMatrix) {
+    public static void render(Matrix4f positionMatrix, Camera camera) {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientPlayerEntity player = client != null ? client.player : null;
         if (client == null || player == null || positionMatrix == null) {
@@ -52,9 +54,13 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
-        Vec3d cameraPos = client.gameRenderer != null && client.gameRenderer.getCamera() != null
-            ? client.gameRenderer.getCamera().getPos()
-            : player.getPos();
+        Vec3d cameraPos = CameraCompatibilityBridge.getPos(camera);
+        if (cameraPos == null && client.gameRenderer != null) {
+            cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
+        }
+        if (cameraPos == null) {
+            cameraPos = new Vec3d(player.getX(), player.getY(), player.getZ());
+        }
 
         MatrixStack matrices = new MatrixStack();
         matrices.loadIdentity();

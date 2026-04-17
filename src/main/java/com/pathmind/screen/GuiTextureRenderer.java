@@ -1,6 +1,7 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindMod;
+import com.pathmind.util.RenderStateBridge;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -50,7 +51,13 @@ final class GuiTextureRenderer {
     }
 
     private static RendererBackend detectBackend() {
-        RendererBackend backend = LegacyBackend.tryCreate();
+        RendererBackend backend = DirectBackend.tryCreate();
+        if (backend != null) {
+            PathmindMod.LOGGER.debug("Using direct DrawContext GUI renderer.");
+            return backend;
+        }
+
+        backend = LegacyBackend.tryCreate();
         if (backend != null) {
             PathmindMod.LOGGER.debug("Using legacy RenderLayer GUI renderer.");
             return backend;
@@ -81,6 +88,104 @@ final class GuiTextureRenderer {
 
         RendererBackend NO_OP = (context, texture, x, y, size, color) -> {
         };
+    }
+
+    private static final class DirectBackend implements RendererBackend {
+        private final Method drawGuiTextureMethod;
+        private final Method drawTextureMethod;
+
+        private DirectBackend(Method drawGuiTextureMethod, Method drawTextureMethod) {
+            this.drawGuiTextureMethod = drawGuiTextureMethod;
+            this.drawTextureMethod = drawTextureMethod;
+        }
+
+        static RendererBackend tryCreate() {
+            Method drawGuiTextureMethod = findDrawGuiTextureMethod();
+            Method drawTextureMethod = findDrawTextureMethod();
+            if (drawGuiTextureMethod == null && drawTextureMethod == null) {
+                return null;
+            }
+            return new DirectBackend(drawGuiTextureMethod, drawTextureMethod);
+        }
+
+        private static Method findDrawGuiTextureMethod() {
+            for (Method method : DrawContext.class.getMethods()) {
+                if (!"drawGuiTexture".equals(method.getName())) {
+                    continue;
+                }
+                Class<?>[] parameters = method.getParameterTypes();
+                if (parameters.length != 5) {
+                    continue;
+                }
+                if (!Identifier.class.isAssignableFrom(parameters[0])) {
+                    continue;
+                }
+                boolean allInts = true;
+                for (int index = 1; index < parameters.length; index++) {
+                    if (parameters[index] != int.class) {
+                        allInts = false;
+                        break;
+                    }
+                }
+                if (!allInts) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        private static Method findDrawTextureMethod() {
+            for (Method method : DrawContext.class.getMethods()) {
+                if (!"drawTexture".equals(method.getName())) {
+                    continue;
+                }
+                Class<?>[] parameters = method.getParameterTypes();
+                if (parameters.length != 9) {
+                    continue;
+                }
+                if (!Identifier.class.isAssignableFrom(parameters[0])) {
+                    continue;
+                }
+                if (parameters[1] != int.class || parameters[2] != int.class) {
+                    continue;
+                }
+                if (parameters[3] != float.class || parameters[4] != float.class) {
+                    continue;
+                }
+                if (parameters[5] != int.class || parameters[6] != int.class || parameters[7] != int.class || parameters[8] != int.class) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        @Override
+        public void draw(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+            float alpha = ((color >>> 24) & 0xFF) / 255.0f;
+            float red = ((color >>> 16) & 0xFF) / 255.0f;
+            float green = ((color >>> 8) & 0xFF) / 255.0f;
+            float blue = (color & 0xFF) / 255.0f;
+            RenderStateBridge.setShaderColor(red, green, blue, alpha);
+            try {
+                if (drawTextureMethod != null) {
+                    drawTextureMethod.invoke(context, texture, x, y, 0.0f, 0.0f, size, size, size, size);
+                    return;
+                }
+                if (drawGuiTextureMethod != null) {
+                    drawGuiTextureMethod.invoke(context, texture, x, y, size, size);
+                    return;
+                }
+                throw new IllegalStateException("No direct DrawContext texture method available");
+            } catch (IllegalAccessException | InvocationTargetException exception) {
+                throw new RuntimeException("Direct DrawContext backend failed", exception);
+            } finally {
+                RenderStateBridge.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+            }
+        }
     }
 
     private static final class PipelineBackend implements RendererBackend {

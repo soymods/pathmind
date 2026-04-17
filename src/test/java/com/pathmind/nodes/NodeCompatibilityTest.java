@@ -55,6 +55,33 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void positionOfAcceptsTargetedEntitySensor() {
+        Node positionOf = new Node(NodeType.SENSOR_POSITION_OF, 0, 0);
+        Node targetedEntity = new Node(NodeType.SENSOR_TARGETED_ENTITY, 0, 0);
+
+        assertTrue(positionOf.canAcceptParameterNode(targetedEntity, 0));
+        assertTrue(positionOf.attachParameter(targetedEntity, 0));
+    }
+
+    @Test
+    void distanceBetweenAcceptsTargetedBlockSensor() {
+        Node sensor = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
+        Node targetedBlock = new Node(NodeType.SENSOR_TARGETED_BLOCK, 0, 0);
+
+        assertTrue(sensor.canAcceptParameterNode(targetedBlock, 0));
+        assertTrue(sensor.attachParameter(targetedBlock, 0));
+    }
+
+    @Test
+    void slotItemCountAcceptsCurrentHandSensor() {
+        Node sensor = new Node(NodeType.SENSOR_SLOT_ITEM_COUNT, 0, 0);
+        Node currentHand = new Node(NodeType.SENSOR_CURRENT_HAND, 0, 0);
+
+        assertTrue(sensor.canAcceptParameterNode(currentHand, 0));
+        assertTrue(sensor.attachParameter(currentHand, 0));
+    }
+
+    @Test
     void lookAcceptsAmountParameter() {
         Node look = new Node(NodeType.LOOK, 0, 0);
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);

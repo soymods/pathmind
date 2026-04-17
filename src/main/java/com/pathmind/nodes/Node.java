@@ -5558,6 +5558,31 @@ public class Node {
             }
             return Optional.empty();
         }
+        if (parameterNode != null && parameterNode.getType() == NodeType.SENSOR_TARGETED_ENTITY) {
+            Optional<Entity> resolved = getTargetedEntity();
+            if (resolved.isEmpty()) {
+                return Optional.empty();
+            }
+            Entity entity = resolved.get();
+            if (data != null) {
+                Identifier id = Registries.ENTITY_TYPE.getId(entity.getType());
+                data.targetEntity = entity;
+                data.targetEntityId = id != null ? id.toString() : null;
+                data.targetBlockPos = entity.getBlockPos();
+            }
+            Vec3d pos = EntityCompatibilityBridge.getPos(entity);
+            return pos != null ? Optional.of(pos) : Optional.of(Vec3d.ofCenter(entity.getBlockPos()));
+        }
+        if (parameterNode != null && parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK) {
+            Optional<BlockPos> resolved = getTargetedBlockPos();
+            if (resolved.isEmpty()) {
+                return Optional.empty();
+            }
+            if (data != null) {
+                data.targetBlockPos = resolved.get();
+            }
+            return Optional.of(Vec3d.ofCenter(resolved.get()));
+        }
         if (data != null && data.targetVector != null) {
             return Optional.of(data.targetVector);
         }
@@ -18889,10 +18914,16 @@ public class Node {
             return null;
         }
         NodeParameter parameter = node.getParameter(name);
-        if (parameter == null) {
-            return null;
+        String value = parameter != null ? parameter.getStringValue() : null;
+        if (value == null) {
+            Map<String, String> exported = node.exportParameterValues();
+            if (exported != null && !exported.isEmpty()) {
+                value = exported.get(name);
+                if (value == null) {
+                    value = exported.get(normalizeParameterKey(name));
+                }
+            }
         }
-        String value = parameter.getStringValue();
         if (value == null) {
             return null;
         }
@@ -19663,6 +19694,18 @@ public class Node {
             return Optional.empty();
         }
         return Optional.ofNullable(client.world.getBlockState(pos));
+    }
+
+    private Optional<BlockPos> getTargetedBlockPos() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return Optional.empty();
+        }
+        HitResult hit = client.crosshairTarget;
+        if (!(hit instanceof BlockHitResult blockHit) || hit.getType() != HitResult.Type.BLOCK) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(blockHit.getBlockPos());
     }
 
     private Optional<Entity> getTargetedEntity() {
@@ -20951,7 +20994,7 @@ public class Node {
     }
 
     private Optional<Integer> resolveInventorySlotCount(Node slotNode) {
-        if (slotNode == null || slotNode.getType() != NodeType.PARAM_INVENTORY_SLOT) {
+        if (slotNode == null || !providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
             return Optional.empty();
         }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();

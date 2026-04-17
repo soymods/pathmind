@@ -7629,7 +7629,7 @@ public class Node {
 
         NodeType valueType = valueNode.getType();
         Map<String, String> values;
-        if (valueNode.isSensorNode()) {
+        if (valueNode.isSensorNode() && NodeTraitRegistry.isBooleanSensor(valueType)) {
             boolean sensorResult = valueNode.evaluateSensor();
             values = new HashMap<>();
             values.put("Toggle", Boolean.toString(sensorResult));
@@ -20513,7 +20513,7 @@ public class Node {
         if (operand == null) {
             return Optional.empty();
         }
-        if (operand.isSensorNode()) {
+        if (operand.isSensorNode() && NodeTraitRegistry.isBooleanSensor(operand.getType())) {
             return Optional.of(operand.evaluateSensor());
         }
         if (operand.getType() == NodeType.VARIABLE) {

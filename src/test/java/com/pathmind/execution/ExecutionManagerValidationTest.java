@@ -227,6 +227,42 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void setVariableStoresResolvedDistanceSensorValue() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
+        setVariable.setOwningStartNode(start);
+
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("stored_distance");
+        Node distance = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
+        Node first = new Node(NodeType.PARAM_COORDINATE, 0, 0);
+        first.getParameter("X").setStringValue("0");
+        first.getParameter("Y").setStringValue("64");
+        first.getParameter("Z").setStringValue("0");
+        Node second = new Node(NodeType.PARAM_COORDINATE, 0, 0);
+        second.getParameter("X").setStringValue("3");
+        second.getParameter("Y").setStringValue("64");
+        second.getParameter("Z").setStringValue("4");
+
+        assertTrue(distance.attachParameter(first, 0));
+        assertTrue(distance.attachParameter(second, 1));
+        assertTrue(setVariable.attachParameter(variable, 0));
+        assertTrue(setVariable.attachParameter(distance, 1));
+
+        Method executeSetVariable = Node.class.getDeclaredMethod("executeSetVariableCommand", CompletableFuture.class);
+        executeSetVariable.setAccessible(true);
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        executeSetVariable.invoke(setVariable, future);
+        future.get(1, TimeUnit.SECONDS);
+
+        ExecutionManager.RuntimeVariable stored = manager.getRuntimeVariable(start, "stored_distance");
+        assertNotNull(stored);
+        assertEquals(NodeType.PARAM_DISTANCE, stored.getType());
+        assertEquals("5.0", stored.getValues().get("Distance"));
+    }
+
+    @Test
     void joinAllBarrierWaitsForBothInputsAndResets() throws Exception {
         Node start = new Node(NodeType.START, 0, 0);
         Node joinAll = new Node(NodeType.CONTROL_JOIN_ALL, 100, 0);

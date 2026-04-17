@@ -18930,7 +18930,7 @@ public class Node {
     }
 
     private static boolean isInlineMathOperator(char c) {
-        return c == '+' || c == '-' || c == '*' || c == '/';
+        return c == '+' || c == '-' || c == '*' || c == '/' || c == '^';
     }
 
     private String getBlockParameterValue(Node node) {
@@ -19159,20 +19159,20 @@ public class Node {
         }
 
         private Double parseTerm() {
-            Double value = parseFactor();
+            Double value = parsePower();
             if (value == null) {
                 return null;
             }
             while (true) {
                 skipWhitespace();
                 if (consume('*')) {
-                    Double rhs = parseFactor();
+                    Double rhs = parsePower();
                     if (rhs == null) {
                         return null;
                     }
                     value *= rhs;
                 } else if (consume('/')) {
-                    Double rhs = parseFactor();
+                    Double rhs = parsePower();
                     if (rhs == null || rhs == 0.0D) {
                         return null;
                     }
@@ -19181,6 +19181,22 @@ public class Node {
                     return value;
                 }
             }
+        }
+
+        private Double parsePower() {
+            Double base = parseFactor();
+            if (base == null) {
+                return null;
+            }
+            skipWhitespace();
+            if (!consume('^')) {
+                return base;
+            }
+            Double exponent = parsePower();
+            if (exponent == null) {
+                return null;
+            }
+            return Math.pow(base, exponent);
         }
 
         private Double parseFactor() {

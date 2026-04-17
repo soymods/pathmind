@@ -5311,7 +5311,7 @@ public class NodeGraph {
     }
 
     private boolean isInlineArithmeticOperator(char character) {
-        return character == '+' || character == '-' || character == '*' || character == '/';
+        return character == '+' || character == '-' || character == '*' || character == '/' || character == '^';
     }
 
     private void appendStyledPlainSegments(String text, int baseColor, int operatorColor,
@@ -5558,7 +5558,7 @@ public class NodeGraph {
         }
 
         private boolean parseTerm() {
-            if (!parseFactor()) {
+            if (!parsePower()) {
                 return false;
             }
             while (true) {
@@ -5567,10 +5567,22 @@ public class NodeGraph {
                     return true;
                 }
                 skipWhitespace();
-                if (!parseFactor()) {
+                if (!parsePower()) {
                     return false;
                 }
             }
+        }
+
+        private boolean parsePower() {
+            if (!parseFactor()) {
+                return false;
+            }
+            skipWhitespace();
+            if (!consume('^')) {
+                return true;
+            }
+            skipWhitespace();
+            return parsePower();
         }
 
         private boolean parseFactor() {
@@ -5688,7 +5700,7 @@ public class NodeGraph {
         }
 
         private boolean isOperator(char character) {
-            return character == '+' || character == '-' || character == '*' || character == '/';
+            return character == '+' || character == '-' || character == '*' || character == '/' || character == '^';
         }
     }
 

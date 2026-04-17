@@ -62,6 +62,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_DISTANCE_BETWEEN,
         NodeType.SENSOR_ITEM_IN_INVENTORY,
         NodeType.SENSOR_ITEM_IN_SLOT,
+        NodeType.SENSOR_SLOT_ITEM_COUNT,
         NodeType.SENSOR_CHAT_MESSAGE
     );
 
@@ -344,6 +345,7 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.PRESS_KEY, 1);
         slotCounts.put(NodeType.SENSOR_CHAT_MESSAGE, 2);
         slotCounts.put(NodeType.SENSOR_ITEM_IN_SLOT, 2);
+        slotCounts.put(NodeType.SENSOR_SLOT_ITEM_COUNT, 1);
         slotCounts.put(NodeType.SENSOR_DISTANCE_BETWEEN, 2);
         slotCounts.put(NodeType.PARAM_BLOCK_FACE, 1);
         PARAMETER_SLOT_COUNTS = slotCounts;
@@ -368,6 +370,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.PRESS_KEY, new String[]{"Button"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
         slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Slot"});
+        slotLabels.put(NodeType.SENSOR_SLOT_ITEM_COUNT, new String[]{"Slot"});
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_DISTANCE_BETWEEN, new String[]{"Target A", "Target B"});
         slotLabels.put(NodeType.SENSOR_VILLAGER_TRADE, new String[]{"Villager Trade"});

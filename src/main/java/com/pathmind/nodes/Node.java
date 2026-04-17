@@ -688,7 +688,8 @@ public class Node {
             && type != NodeType.OPERATOR_MOD
             && type != NodeType.PARAM_DURATION
             && type != NodeType.SENSOR_POSITION_OF
-            && type != NodeType.SENSOR_DISTANCE_BETWEEN;
+            && type != NodeType.SENSOR_DISTANCE_BETWEEN
+            && type != NodeType.SENSOR_SLOT_ITEM_COUNT;
     }
 
     public static boolean isSensorType(NodeType nodeType) {
@@ -721,7 +722,8 @@ public class Node {
             && type != NodeType.OPERATOR_MOD
             && type != NodeType.PARAM_BLOCK_FACE
             && type != NodeType.SENSOR_POSITION_OF
-            && type != NodeType.SENSOR_DISTANCE_BETWEEN) {
+            && type != NodeType.SENSOR_DISTANCE_BETWEEN
+            && type != NodeType.SENSOR_SLOT_ITEM_COUNT) {
             return false;
         }
         return true;

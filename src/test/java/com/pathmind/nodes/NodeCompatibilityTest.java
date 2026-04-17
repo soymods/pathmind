@@ -25,6 +25,16 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void slotItemCountSensorAcceptsInventorySlotParameter() {
+        Node sensor = new Node(NodeType.SENSOR_SLOT_ITEM_COUNT, 0, 0);
+        Node slot = new Node(NodeType.PARAM_INVENTORY_SLOT, 0, 0);
+
+        assertTrue(sensor.hasParameterSlot());
+        assertTrue(sensor.canAcceptParameterNode(slot, 0));
+        assertTrue(sensor.attachParameter(slot, 0));
+    }
+
+    @Test
     void lookAcceptsAmountParameter() {
         Node look = new Node(NodeType.LOOK, 0, 0);
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);

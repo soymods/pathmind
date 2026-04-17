@@ -3585,10 +3585,7 @@ public class NodeGraph {
                             showPlayerPlaceholder = showPlaceholder;
                         }
                         if (isMessageParam) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty()
-                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
-                            showMessagePlaceholder = showPlaceholder;
+                            showMessagePlaceholder = false;
                         }
                         if (isSeedParam) {
                             boolean showPlaceholder = editingThis
@@ -8356,8 +8353,7 @@ public class NodeGraph {
         if (parameter != null) {
             boolean isPlayerParam = isPlayerParameter(parameterEditingNode, parameter);
             boolean isDirectionParam = isDirectionParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isAnyLikeParam = isMessageParameter(parameterEditingNode, parameter)
-                || isSeedParameter(parameterEditingNode, parameter)
+            boolean isAnyLikeParam = isSeedParameter(parameterEditingNode, parameter)
                 || isGuiParameter(parameterEditingNode, parameter)
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isBlockFaceParam = isBlockFaceParameter(parameterEditingNode, parameterEditingIndex);

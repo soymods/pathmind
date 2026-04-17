@@ -1202,7 +1202,7 @@ public class NodeParameterOverlay {
             return "User";
         }
         if (node.getType() == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
-            return "Message";
+            return "Text";
         }
         if (node.getType() == NodeType.PARAM_VILLAGER_TRADE
             && ("Item".equalsIgnoreCase(name) || "Trade".equalsIgnoreCase(name))) {

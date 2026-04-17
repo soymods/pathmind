@@ -3,6 +3,7 @@ package com.pathmind.nodes;
 import net.minecraft.text.Text;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -3139,7 +3140,7 @@ public class Node {
                 parameters.add(new NodeParameter("Player", ParameterType.STRING, "Self"));
                 break;
             case PARAM_MESSAGE:
-                parameters.add(new NodeParameter("Text", ParameterType.STRING, "Any"));
+                parameters.add(new NodeParameter("Text", ParameterType.STRING, ""));
                 break;
             case PARAM_WAYPOINT:
                 parameters.add(new NodeParameter("Waypoint", ParameterType.STRING, "home"));
@@ -3328,7 +3329,7 @@ public class Node {
             return "Hold Duration";
         }
         if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
-            return "Message";
+            return "Text";
         }
         if (type == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
             return "User";
@@ -14188,7 +14189,19 @@ public class Node {
             output.append(current);
             index++;
         }
-        return output.toString();
+        String resolved = output.toString();
+        Double evaluated = evaluateNumericExpression(resolved);
+        if (evaluated != null) {
+            return formatEvaluatedNumericText(evaluated);
+        }
+        return resolved;
+    }
+
+    private static String formatEvaluatedNumericText(double value) {
+        if (!Double.isFinite(value)) {
+            return Double.toString(value);
+        }
+        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
     }
 
     private RuntimeVariableInlineMatch findInlineRuntimeVariableReference(String raw, int tildeIndex,

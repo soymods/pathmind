@@ -668,7 +668,7 @@ public class PathmindMarketplaceScreen extends Screen {
             float viewScale = Math.max(0.18f, Math.min(1f, fitScale)) * popupPreviewZoom;
             float offsetX = x + width / 2f - (bounds.minX() + bounds.width() / 2f) * viewScale + panX;
             float offsetY = y + height / 2f - (bounds.minY() + bounds.height() / 2f) * viewScale + panY;
-            context.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);
+            context.enableScissor(x, y, x + width, y + height);
             Object matrices = context.getMatrices();
             MatrixStackBridge.push(matrices);
             MatrixStackBridge.translate(matrices, offsetX, offsetY);

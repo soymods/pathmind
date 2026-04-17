@@ -287,6 +287,11 @@ final class GuiTextureRenderer {
 
         @Override
         public void draw(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+            boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
+                || (drawTextureMethod != null && !supportsTint);
+            if (needsShaderTint) {
+                applyShaderColor(color);
+            }
             try {
                 if (drawGuiTextureMethod != null && !texture.getPath().startsWith("textures/")) {
                     drawGuiTextureMethod.invoke(context, createGuiTextureParameters(pipelineInstance, texture, x, y, size, guiTextureSupportsTint, color));
@@ -299,6 +304,10 @@ final class GuiTextureRenderer {
                 drawTextureMethod.invoke(context, parameters);
             } catch (IllegalAccessException | InvocationTargetException exception) {
                 throw new RuntimeException("RenderPipeline backend failed", exception);
+            } finally {
+                if (needsShaderTint) {
+                    resetShaderColor();
+                }
             }
         }
     }
@@ -401,6 +410,11 @@ final class GuiTextureRenderer {
 
         @Override
         public void draw(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+            boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
+                || (drawTextureMethod != null && !supportsTint);
+            if (needsShaderTint) {
+                applyShaderColor(color);
+            }
             try {
                 if (drawGuiTextureMethod != null && !texture.getPath().startsWith("textures/")) {
                     drawGuiTextureMethod.invoke(context, createGuiTextureParameters(renderLayerFactory, texture, x, y, size, guiTextureSupportsTint, color));
@@ -413,8 +427,24 @@ final class GuiTextureRenderer {
                 drawTextureMethod.invoke(context, parameters);
             } catch (IllegalAccessException | InvocationTargetException exception) {
                 throw new RuntimeException("Legacy RenderLayer backend failed", exception);
+            } finally {
+                if (needsShaderTint) {
+                    resetShaderColor();
+                }
             }
         }
+    }
+
+    private static void applyShaderColor(int color) {
+        float alpha = ((color >>> 24) & 0xFF) / 255.0f;
+        float red = ((color >>> 16) & 0xFF) / 255.0f;
+        float green = ((color >>> 8) & 0xFF) / 255.0f;
+        float blue = (color & 0xFF) / 255.0f;
+        RenderStateBridge.setShaderColor(red, green, blue, alpha);
+    }
+
+    private static void resetShaderColor() {
+        RenderStateBridge.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private static boolean matchesCommonParameters(Class<?>[] parameters, Class<?> firstParameterType) {

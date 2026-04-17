@@ -36,6 +36,7 @@ public final class MarketplaceService {
     private static final String PUBLISH_PRESET_RPC = "publish_marketplace_preset";
     private static final String DELETE_PRESET_RPC = "delete_marketplace_preset";
     private static final String UPDATE_PRESET_METADATA_RPC = "update_marketplace_preset_metadata";
+    private static final String LIST_MANAGEABLE_PRESETS_RPC = "list_manageable_marketplace_presets";
     private static final String TOGGLE_PRESET_LIKE_RPC = "toggle_marketplace_preset_like";
     private static final String INCREMENT_DOWNLOAD_RPC = "increment_preset_downloads";
     private static final int DEFAULT_PUBLISHED_FETCH_LIMIT = 200;
@@ -64,6 +65,64 @@ public final class MarketplaceService {
                 return fetchPresets(buildOwnedListingsUrl(userId), accessToken, false);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to fetch owned marketplace presets", e);
+            }
+        });
+    }
+
+    public static CompletableFuture<List<MarketplacePreset>> fetchManageablePresets(String accessToken) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (accessToken == null || accessToken.isBlank()) {
+                    return List.of();
+                }
+                JsonObject payload = new JsonObject();
+                return postRpcPresets(
+                    LIST_MANAGEABLE_PRESETS_RPC,
+                    payload,
+                    accessToken,
+                    "Failed to fetch manageable marketplace presets"
+                );
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to fetch manageable marketplace presets", e);
+            }
+        });
+    }
+
+    public static CompletableFuture<Boolean> fetchMarketplaceModeratorStatus(String accessToken, String userId) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (accessToken == null || accessToken.isBlank() || userId == null || userId.isBlank()) {
+                return false;
+            }
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(PROJECT_URL
+                        + "/rest/v1/marketplace_roles?select=role&user_id=eq."
+                        + URLEncoder.encode(userId, StandardCharsets.UTF_8)
+                        + "&limit=1"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("apikey", PUBLISHABLE_KEY)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+
+                HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new IOException("Marketplace role request failed with HTTP " + response.statusCode());
+                }
+
+                JsonElement root = JsonParser.parseString(response.body());
+                if (!root.isJsonArray() || root.getAsJsonArray().isEmpty()) {
+                    return false;
+                }
+                JsonElement first = root.getAsJsonArray().get(0);
+                if (!first.isJsonObject()) {
+                    return false;
+                }
+                String role = getNullableString(first.getAsJsonObject(), "role");
+                return role != null && ("moderator".equalsIgnoreCase(role) || "admin".equalsIgnoreCase(role));
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to fetch marketplace moderator status", e);
             }
         });
     }
@@ -489,6 +548,15 @@ public final class MarketplaceService {
         return parseSinglePreset(response.body());
     }
 
+    private static List<MarketplacePreset> postRpcPresets(String functionName, JsonObject payload, String accessToken, String errorMessage)
+        throws IOException, InterruptedException {
+        HttpResponse<String> response = sendRpcRequest(functionName, payload, accessToken, Duration.ofSeconds(20));
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw buildHttpException(errorMessage, response);
+        }
+        return enrichPresetsWithAuthorProfiles(parsePresets(response.body()));
+    }
+
     private static HttpResponse<String> sendRpcRequest(String functionName, JsonObject payload, String accessToken, Duration timeout)
         throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
@@ -512,6 +580,7 @@ public final class MarketplaceService {
         payload.add("preset_tags", toJsonArray(request.tags()));
         payload.addProperty("preset_game_version", blankToEmpty(request.gameVersion()));
         payload.addProperty("preset_pathmind_version", blankToEmpty(request.pathmindVersion()));
+        payload.addProperty("preset_storage_bucket", request.published() ? PUBLIC_BUCKET_NAME : PRIVATE_BUCKET_NAME);
         payload.addProperty("preset_file_path", blankToEmpty(storagePath));
         payload.addProperty("preset_published", request.published());
         return payload;
@@ -735,8 +804,8 @@ public final class MarketplaceService {
         }
         if (normalized.contains("not found or not owned by current user")) {
             return updateOperation
-                ? "You can only edit presets you published."
-                : "You can only delete presets you published.";
+                ? "You can only edit presets you published or moderate."
+                : "You can only delete presets you published or moderate.";
         }
         if (publishOperation && normalized.contains("preset file path is required")) {
             return "Preset file upload failed.";

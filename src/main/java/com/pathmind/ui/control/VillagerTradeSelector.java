@@ -1109,7 +1109,7 @@ public class VillagerTradeSelector {
         int dropdownHeight = layout.height;
         int animatedHeight = Math.max(1, (int) (dropdownHeight * animProgress));
 
-        context.enableScissor(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + animatedHeight);
+        context.enableScissor(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + animatedHeight + 1);
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
         context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));

@@ -129,6 +129,8 @@ import com.pathmind.util.InputCompatibilityBridge;
  */
 public class Node {
     private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
+    private static final Method DO_ATTACK_METHOD = resolveDoAttackMethod();
+    private static final Method SYNC_SELECTED_SLOT_METHOD = resolveSyncSelectedSlotMethod();
     private static final Gson LIST_ENTRY_GSON = new Gson();
     private static final String LIST_ENTRY_SERIALIZED_PREFIX = "pm_list:";
     public static final int NO_OUTPUT = -1;
@@ -15471,18 +15473,37 @@ public class Node {
 
         ExecutionManager manager = ExecutionManager.getInstance();
         int started = 0;
+        List<CompletableFuture<Void>> nestedFutures = new ArrayList<>();
         for (Node startNode : presetStarts) {
-            if (manager.executeExternalBranch(startNode, nodes, connections, presetName)) {
+            if (type == NodeType.CUSTOM_NODE || type == NodeType.TEMPLATE) {
+                CompletableFuture<Void> nestedFuture = manager.executeExternalBranchAndWait(startNode, nodes, connections, presetName);
+                if (nestedFuture != null) {
+                    started++;
+                    nestedFutures.add(nestedFuture);
+                }
+            } else if (manager.executeExternalBranch(startNode, nodes, connections, presetName)) {
                 started++;
             }
         }
 
         if (started == 0) {
             System.out.println("Run Preset node did not start any chains for preset \"" + presetName + "\".");
+            future.complete(null);
+        } else if (type == NodeType.CUSTOM_NODE || type == NodeType.TEMPLATE) {
+            System.out.println("Custom node started " + started + " chain(s) for preset \"" + presetName + "\".");
+            CompletableFuture.allOf(nestedFutures.toArray(new CompletableFuture[0]))
+                .whenComplete((ignored, throwable) -> {
+                    if (throwable != null) {
+                        future.completeExceptionally(throwable);
+                    } else {
+                        future.complete(null);
+                    }
+                });
+            return;
         } else {
             System.out.println("Run Preset node started " + started + " chain(s) for preset \"" + presetName + "\".");
+            future.complete(null);
         }
-        future.complete(null);
     }
 
     private void executeStopAllNode(CompletableFuture<Void> future) {
@@ -15671,7 +15692,7 @@ public class Node {
         }
 
         PlayerInventoryBridge.setSelectedSlot(client.player.getInventory(), slot);
-        client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
+        syncSelectedHotbarSlot(client);
         future.complete(null);
     }
     
@@ -16698,9 +16719,7 @@ public class Node {
         } catch (IllegalStateException ignored) {
             // Fall back to the packet-only update when inventory accessors are unavailable.
         }
-        if (client.player.networkHandler != null) {
-            client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(targetSlot));
-        }
+        syncSelectedHotbarSlot(client);
         return true;
     }
 
@@ -18481,6 +18500,8 @@ public class Node {
                         long durationMs = (long) Math.ceil(durationSeconds * 1000.0);
                         long deadline = System.currentTimeMillis() + durationMs;
                         runOnClientThread(client, () -> {
+                            syncSelectedHotbarSlot(client);
+                            performMainHandAttack(client);
                             if (client.options != null && client.options.attackKey != null) {
                                 client.options.attackKey.setPressed(true);
                             }
@@ -18518,15 +18539,14 @@ public class Node {
                 } else {
                     for (int i = 0; i < legacyCount; i++) {
                         runOnClientThread(client, () -> {
-                            if (hand == Hand.MAIN_HAND && client.interactionManager != null) {
-                                HitResult target = client.crosshairTarget;
-                                if (target instanceof EntityHitResult entityHit) {
-                                    client.interactionManager.attackEntity(client.player, entityHit.getEntity());
+                            if (hand == Hand.MAIN_HAND) {
+                                syncSelectedHotbarSlot(client);
+                                performMainHandAttack(client);
+                            } else {
+                                client.player.swingHand(hand);
+                                if (client.player.networkHandler != null) {
+                                    client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
                                 }
-                            }
-                            client.player.swingHand(hand);
-                            if (client.player.networkHandler != null) {
-                                client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
                             }
                         });
 
@@ -18553,6 +18573,73 @@ public class Node {
                 }
             }
         }, "Pathmind-Swing").start();
+    }
+
+    private static Method resolveDoAttackMethod() {
+        try {
+            return net.minecraft.client.MinecraftClient.class.getMethod("doAttack");
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveSyncSelectedSlotMethod() {
+        try {
+            return net.minecraft.client.network.ClientPlayerInteractionManager.class.getMethod("syncSelectedSlot");
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static void syncSelectedHotbarSlot(MinecraftClient client) {
+        if (client == null) {
+            return;
+        }
+        if (client.player != null && client.player.networkHandler != null) {
+            try {
+                int selectedSlot = PlayerInventoryBridge.getSelectedSlot(client.player.getInventory());
+                if (selectedSlot >= 0) {
+                    client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(selectedSlot));
+                }
+            } catch (IllegalStateException ignored) {
+                // Fall back to interaction-manager sync below.
+            }
+        }
+        if (client.interactionManager == null || SYNC_SELECTED_SLOT_METHOD == null) {
+            return;
+        }
+        try {
+            SYNC_SELECTED_SLOT_METHOD.invoke(client.interactionManager);
+        } catch (ReflectiveOperationException ignored) {
+            // Older mappings may not expose slot sync by name.
+        }
+    }
+
+    private static void performMainHandAttack(MinecraftClient client) {
+        if (client == null || client.player == null) {
+            return;
+        }
+        InputUtil.Key attackKey = InputUtil.Type.MOUSE.createFromCode(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+        KeyBinding.onKeyPressed(attackKey);
+        try {
+            if (DO_ATTACK_METHOD != null) {
+                DO_ATTACK_METHOD.invoke(client);
+                return;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Fall back to the direct attack logic below.
+        }
+        if (client.interactionManager != null) {
+            HitResult target = client.crosshairTarget;
+            if (target instanceof EntityHitResult entityHit) {
+                client.interactionManager.attackEntity(client.player, entityHit.getEntity());
+                return;
+            }
+        }
+        client.player.swingHand(Hand.MAIN_HAND);
+        if (client.player.networkHandler != null) {
+            client.player.networkHandler.sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+        }
     }
     
     private void executeEquipArmorCommand(CompletableFuture<Void> future) {

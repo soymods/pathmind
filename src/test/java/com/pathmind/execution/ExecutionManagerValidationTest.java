@@ -2,6 +2,7 @@ package com.pathmind.execution;
 
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
+import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeType;
@@ -15,11 +16,18 @@ import java.util.Arrays;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Constructor;
+import java.nio.file.Files;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExecutionManagerValidationTest {
+    private static final String CUSTOM_NODE_FOREVER_PRESET = "ExecutionManagerCustomNodeForever";
 
     private ExecutionManager manager;
 
@@ -33,6 +41,10 @@ class ExecutionManagerValidationTest {
     @AfterEach
     void tearDown() {
         manager.requestStopAll();
+        try {
+            Files.deleteIfExists(PresetManager.getPresetPath(CUSTOM_NODE_FOREVER_PRESET));
+        } catch (Exception ignored) {
+        }
     }
 
     @Test
@@ -194,6 +206,143 @@ class ExecutionManagerValidationTest {
         assertTrue((boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 1));
         assertTrue(!(boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 1));
         assertTrue((boolean) markJoinAllArrival.invoke(manager, joinAll, controller, 0));
+    }
+
+    @Test
+    void branchLaunchClonesUseUniqueRuntimeIdsForForeverLoops() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node forever = new Node(NodeType.CONTROL_FOREVER, 120, 0);
+        Node message = new Node(NodeType.MESSAGE, 220, 0);
+        assertTrue(forever.attachActionNode(message));
+        NodeConnection connection = new NodeConnection(start, forever, 0, 0);
+
+        Method buildBranchData = ExecutionManager.class.getDeclaredMethod(
+            "buildBranchData", Node.class, List.class, List.class);
+        buildBranchData.setAccessible(true);
+        Object branchData = buildBranchData.invoke(manager, start, List.of(start, forever, message), List.of(connection));
+        assertNotNull(branchData);
+
+        Method createBranchLaunchData = ExecutionManager.class.getDeclaredMethod(
+            "createBranchLaunchData", branchData.getClass(), int.class);
+        createBranchLaunchData.setAccessible(true);
+        Object launchData = createBranchLaunchData.invoke(manager, branchData, 1);
+        assertNotNull(launchData);
+
+        Field branchDataField = launchData.getClass().getDeclaredField("branchData");
+        branchDataField.setAccessible(true);
+        Object clonedBranchData = branchDataField.get(launchData);
+        assertNotNull(clonedBranchData);
+
+        Field nodesField = clonedBranchData.getClass().getDeclaredField("nodes");
+        nodesField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<Node> clonedNodes = (List<Node>) nodesField.get(clonedBranchData);
+
+        Node clonedStart = clonedNodes.stream()
+            .filter(node -> node.getType() == NodeType.START)
+            .findFirst()
+            .orElseThrow();
+        Node clonedForever = clonedNodes.stream()
+            .filter(node -> node.getType() == NodeType.CONTROL_FOREVER)
+            .findFirst()
+            .orElseThrow();
+        Node clonedMessage = clonedNodes.stream()
+            .filter(node -> node.getType() == NodeType.MESSAGE)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(1, clonedStart.getStartNodeNumber());
+        assertNotEquals(start.getId(), clonedStart.getId());
+        assertNotEquals(forever.getId(), clonedForever.getId());
+        assertNotEquals(message.getId(), clonedMessage.getId());
+        assertEquals(clonedMessage, clonedForever.getAttachedActionNode());
+    }
+
+    @Test
+    void externalBranchLaunchesForPresetBackedCustomNodeGraph() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node forever = new Node(NodeType.CONTROL_FOREVER, 120, 0);
+        Node wait = new Node(NodeType.WAIT, 220, 0);
+        wait.getParameter("Duration").setStringValue("5.0");
+        assertTrue(forever.attachActionNode(wait));
+        NodeConnection connection = new NodeConnection(start, forever, 0, 0);
+
+        assertTrue(NodeGraphPersistence.saveNodeGraphForPreset(
+            CUSTOM_NODE_FOREVER_PRESET,
+            List.of(start, forever, wait),
+            List.of(connection)
+        ));
+
+        var loadedGraph = NodeGraphPersistence.loadNodeGraphForPreset(CUSTOM_NODE_FOREVER_PRESET);
+        List<Node> reloadedNodes = NodeGraphPersistence.convertToNodes(loadedGraph);
+        Node reloadedStart = reloadedNodes.stream()
+            .filter(node -> node.getType() == NodeType.START)
+            .findFirst()
+            .orElseThrow();
+        Map<String, Node> nodeMap = new java.util.HashMap<>();
+        for (Node node : reloadedNodes) {
+            nodeMap.put(node.getId(), node);
+        }
+        List<NodeConnection> reloadedConnections = NodeGraphPersistence.convertToConnections(
+            loadedGraph,
+            nodeMap
+        );
+
+        Field activeChainsField = ExecutionManager.class.getDeclaredField("activeChains");
+        activeChainsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Node, Object> activeChains = (Map<Node, Object>) activeChainsField.get(manager);
+        int before = activeChains.size();
+
+        CompletableFuture<Void> future = manager.executeExternalBranchAndWait(
+            reloadedStart,
+            reloadedNodes,
+            reloadedConnections,
+            CUSTOM_NODE_FOREVER_PRESET
+        );
+
+        assertNotNull(future);
+        assertEquals(before + 1, activeChains.size());
+    }
+
+    @Test
+    void externalBranchCanStartWhenAnotherChainUsesSameStartNumber() throws Exception {
+        Node activeStart = new Node(NodeType.START, 0, 0);
+        activeStart.setStartNodeNumber(1);
+
+        Class<?> controllerClass = Arrays.stream(ExecutionManager.class.getDeclaredClasses())
+            .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
+            .findFirst()
+            .orElseThrow();
+        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
+        constructor.setAccessible(true);
+        Object controller = constructor.newInstance(activeStart, 99);
+
+        Field activeChainsField = ExecutionManager.class.getDeclaredField("activeChains");
+        activeChainsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Node, Object> activeChains = (Map<Node, Object>) activeChainsField.get(manager);
+        activeChains.put(activeStart, controller);
+
+        Node nestedStart = new Node(NodeType.START, 0, 0);
+        nestedStart.setStartNodeNumber(1);
+        Node forever = new Node(NodeType.CONTROL_FOREVER, 120, 0);
+        Node wait = new Node(NodeType.WAIT, 220, 0);
+        wait.getParameter("Duration").setStringValue("5.0");
+        assertTrue(forever.attachActionNode(wait));
+        NodeConnection connection = new NodeConnection(nestedStart, forever, 0, 0);
+
+        CompletableFuture<Void> future = manager.executeExternalBranchAndWait(
+            nestedStart,
+            List.of(nestedStart, forever, wait),
+            List.of(connection),
+            "NestedPreset"
+        );
+
+        assertNotNull(future);
+        assertEquals(2, activeChains.size());
     }
 
     private void setCachedSettingsForTests() throws Exception {

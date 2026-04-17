@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -681,19 +682,25 @@ public class ExecutionManager {
      * replacing the currently active graph state for other running chains.
      */
     public boolean executeExternalBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections, String presetName) {
+        return startExternalBranch(startNode, nodes, connections, presetName) != null;
+    }
+
+    public CompletableFuture<Void> executeExternalBranchAndWait(Node startNode, List<Node> nodes,
+                                                                List<NodeConnection> connections, String presetName) {
+        return startExternalBranch(startNode, nodes, connections, presetName);
+    }
+
+    private CompletableFuture<Void> startExternalBranch(Node startNode, List<Node> nodes,
+                                                        List<NodeConnection> connections, String presetName) {
         if (startNode == null || startNode.getType() != NodeType.START) {
             LOGGER.warn("Cannot execute external branch - invalid START node");
-            return false;
+            return null;
         }
         if (nodes == null || connections == null) {
             LOGGER.warn("Cannot execute external branch - missing nodes or connections");
-            return false;
+            return null;
         }
         logValidationErrors(nodes, connections, presetName, "preset \"" + presetName + "\"");
-        if (isChainActive(startNode)) {
-            LOGGER.debug("External START node already executing, ignoring branch start request");
-            return false;
-        }
 
         // Preserve this graph for Activate-node lookups within the launched preset chain.
         this.workspaceNodes = new ArrayList<>(nodes);
@@ -703,7 +710,7 @@ public class ExecutionManager {
         BranchData branchData = buildBranchData(startNode, nodes, filteredConnections);
         if (branchData == null || branchData.nodes.isEmpty()) {
             LOGGER.debug("External START node has no executable branch");
-            return false;
+            return null;
         }
 
         this.lastExecutedGraph = createGraphSnapshot(branchData.nodes, branchData.connections);
@@ -711,7 +718,7 @@ public class ExecutionManager {
         BranchLaunchData launchData = createBranchLaunchData(branchData, startNode.getStartNodeNumber());
         if (launchData == null) {
             LOGGER.debug("External START node branch could not be cloned for execution");
-            return false;
+            return null;
         }
         this.cancelRequested = false;
         mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
@@ -729,7 +736,7 @@ public class ExecutionManager {
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         updateLastStartContext(startNode, presetName);
-        return true;
+        return chainFuture;
     }
     
     /**
@@ -2181,7 +2188,29 @@ public class ExecutionManager {
         }
 
         List<NodeConnection> clonedConnections = NodeGraphPersistence.convertToConnections(snapshot, nodeMap);
+        assignRuntimeNodeIds(clonedNodes);
         return new BranchData(clonedNodes, clonedConnections);
+    }
+
+    private void assignRuntimeNodeIds(List<Node> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return;
+        }
+
+        try {
+            java.lang.reflect.Field idField = Node.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            for (Node node : nodes) {
+                if (node == null) {
+                    continue;
+                }
+                // Runtime clones must not reuse persisted IDs or nested preset executions with
+                // forever loops can collide in active-node/connection tracking.
+                idField.set(node, UUID.randomUUID().toString());
+            }
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to assign runtime node IDs: {}", e.getMessage());
+        }
     }
 
     private Node findNodeById(List<Node> nodes, String nodeId) {

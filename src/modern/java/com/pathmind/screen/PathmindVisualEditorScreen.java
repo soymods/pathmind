@@ -4125,7 +4125,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int animatedHeight = (int) (fullOptionsHeight * animProgress);
 
         // Use scissor to clip the dropdown content during animation
-        context.enableScissor(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + animatedHeight);
+        context.enableScissor(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + animatedHeight + 1);
 
         UIStyleHelper.drawBeveledPanel(
             context,
@@ -7591,7 +7591,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int animatedHeight = (int) (fullOptionsHeight * animProgress);
 
         // Use scissor to clip the dropdown content during animation
-        context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
+        context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight + 1);
 
         UIStyleHelper.drawBeveledPanel(
             context,

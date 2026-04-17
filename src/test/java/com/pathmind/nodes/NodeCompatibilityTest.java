@@ -35,6 +35,26 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void distanceBetweenAcceptsUserParameter() {
+        Node sensor = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
+        Node user = new Node(NodeType.PARAM_PLAYER, 0, 0);
+
+        assertTrue(sensor.canAcceptParameterNode(user, 0));
+        assertTrue(sensor.attachParameter(user, 0));
+    }
+
+    @Test
+    void distanceBetweenAcceptsPositionOfEntity() {
+        Node sensor = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
+        Node positionOf = new Node(NodeType.SENSOR_POSITION_OF, 0, 0);
+        Node entity = new Node(NodeType.PARAM_ENTITY, 0, 0);
+
+        assertTrue(positionOf.attachParameter(entity, 0));
+        assertTrue(sensor.canAcceptParameterNode(positionOf, 0));
+        assertTrue(sensor.attachParameter(positionOf, 0));
+    }
+
+    @Test
     void lookAcceptsAmountParameter() {
         Node look = new Node(NodeType.LOOK, 0, 0);
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);

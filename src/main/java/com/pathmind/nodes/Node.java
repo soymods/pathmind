@@ -5546,6 +5546,18 @@ public class Node {
                 return resolvePositionTarget(resolved, data, future);
             }
         }
+        if (parameterNode != null && parameterNode.getType() == NodeType.SENSOR_POSITION_OF) {
+            Node resolved = parameterNode.getAttachedParameterOfType(
+                NodeType.PARAM_ENTITY,
+                NodeType.PARAM_BLOCK,
+                NodeType.PARAM_ITEM,
+                NodeType.PARAM_PLAYER
+            );
+            if (resolved != null) {
+                return resolvePositionTarget(resolved, data, future);
+            }
+            return Optional.empty();
+        }
         if (data != null && data.targetVector != null) {
             return Optional.of(data.targetVector);
         }

@@ -1733,11 +1733,13 @@ public class NodeGraph {
 
     private boolean trySetParameterDropTarget(Node candidate, int worldMouseX, int worldMouseY, boolean excludeCandidateNode) {
         Node hoveredNode = getNodeAtWorld(worldMouseX, worldMouseY);
-        if (hoveredNode != null && (!excludeCandidateNode || hoveredNode != candidate)) {
-            int slotIndex = hoveredNode.getParameterSlotIndexAt(worldMouseX, worldMouseY);
-            if (slotIndex >= 0 && hoveredNode.canAcceptParameter()
-                && hoveredNode.canAcceptParameterNode(candidate, slotIndex)) {
-                parameterDropTarget = hoveredNode;
+        for (Node current = hoveredNode; current != null; current = getParentForNode(current)) {
+            if (excludeCandidateNode && current == candidate) {
+                continue;
+            }
+            int slotIndex = findPreferredParameterSlot(current, candidate, worldMouseX, worldMouseY, true);
+            if (slotIndex >= 0) {
+                parameterDropTarget = current;
                 parameterDropSlotIndex = slotIndex;
                 return true;
             }
@@ -1746,17 +1748,44 @@ public class NodeGraph {
             if (excludeCandidateNode && node == candidate) {
                 continue;
             }
-            if (!node.canAcceptParameter()) {
-                continue;
-            }
-            int slotIndex = node.getParameterSlotIndexAt(worldMouseX, worldMouseY);
-            if (slotIndex >= 0 && node.canAcceptParameterNode(candidate, slotIndex)) {
+            int slotIndex = findPreferredParameterSlot(node, candidate, worldMouseX, worldMouseY, false);
+            if (slotIndex >= 0) {
                 parameterDropTarget = node;
                 parameterDropSlotIndex = slotIndex;
                 return true;
             }
         }
         return false;
+    }
+
+    private int findPreferredParameterSlot(Node host, Node candidate, int worldMouseX, int worldMouseY, boolean allowBodyFallback) {
+        if (host == null || candidate == null || !host.canAcceptParameter()) {
+            return -1;
+        }
+
+        int hoveredSlotIndex = host.getParameterSlotIndexAt(worldMouseX, worldMouseY);
+        if (hoveredSlotIndex >= 0 && host.canAcceptParameterNode(candidate, hoveredSlotIndex)) {
+            return hoveredSlotIndex;
+        }
+
+        if (!allowBodyFallback || !host.containsPoint(worldMouseX, worldMouseY)) {
+            return -1;
+        }
+
+        int slotCount = host.getParameterSlotCount();
+        int firstCompatible = -1;
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            if (!host.canAcceptParameterNode(candidate, slotIndex)) {
+                continue;
+            }
+            if (firstCompatible < 0) {
+                firstCompatible = slotIndex;
+            }
+            if (host.getAttachedParameter(slotIndex) == null) {
+                return slotIndex;
+            }
+        }
+        return firstCompatible;
     }
 
     private boolean trySetSensorDropTarget(Node candidateToExclude, int worldMouseX, int worldMouseY) {

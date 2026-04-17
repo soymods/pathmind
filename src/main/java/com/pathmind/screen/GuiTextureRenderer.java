@@ -20,6 +20,10 @@ final class GuiTextureRenderer {
     private GuiTextureRenderer() {
     }
 
+    static boolean isAvailable() {
+        return BACKEND != RendererBackend.NO_OP;
+    }
+
     static void drawIcon(DrawContext context, Identifier texture, int x, int y, int size, int color) {
         drawIcon(context, List.of(texture), x, y, size, color);
     }

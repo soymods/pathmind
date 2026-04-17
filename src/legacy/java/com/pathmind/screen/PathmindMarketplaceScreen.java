@@ -378,7 +378,8 @@ public class PathmindMarketplaceScreen extends Screen {
         drawIconButton(context, x, y, buttonWidth, SORT_BUTTON_HEIGHT, hovered, authBusy);
         String accountLabel = getAccountButtonLabel();
         Identifier avatarTexture = getOrRequestAvatarTexture();
-        if (avatarTexture != null && authSession != null) {
+        boolean showAvatar = avatarTexture != null && authSession != null && GuiTextureRenderer.isAvailable();
+        if (showAvatar) {
             int labelColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
             int maxLabelWidth = Math.max(0, buttonWidth - SORT_BUTTON_HEIGHT - 10);
             String displayLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, accountLabel, maxLabelWidth);
@@ -4560,8 +4561,11 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         String label = getAccountButtonLabel();
         int labelWidth = this.textRenderer == null ? 0 : this.textRenderer.getWidth(label);
-        return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, labelWidth + SORT_BUTTON_HEIGHT + 10);
+        boolean showAvatar = getOrRequestAvatarTexture() != null && GuiTextureRenderer.isAvailable();
+        int contentWidth = showAvatar ? labelWidth + SORT_BUTTON_HEIGHT + 10 : labelWidth + 10;
+        return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, contentWidth);
     }
+
 
     private String normalizeSearch(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).trim();

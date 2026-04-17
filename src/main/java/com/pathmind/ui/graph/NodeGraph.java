@@ -1825,9 +1825,7 @@ public class NodeGraph {
             }
         }
 
-        int nodeX = worldMouseX - newNode.getWidth() / 2;
-        int nodeY = worldMouseY - newNode.getHeight() / 2;
-        newNode.setPosition(nodeX, nodeY);
+        positionNewNode(newNode, worldMouseX, worldMouseY);
         nodes.add(newNode);
         markWorkspaceDirty();
         return newNode;
@@ -2292,7 +2290,8 @@ public class NodeGraph {
      * Adds a node of the specified type at the given world coordinates.
      */
     public Node addNodeAtPosition(NodeType type, int worldX, int worldY) {
-        Node node = new Node(type, worldX, worldY);
+        Node node = new Node(type, 0, 0);
+        positionNewNode(node, worldX, worldY);
         addNode(node);
         selectNode(node);
         return node;
@@ -2303,6 +2302,19 @@ public class NodeGraph {
      */
     public Node addNodeFromContextMenu(NodeType type) {
         return addNodeAtPosition(type, contextMenuWorldX, contextMenuWorldY);
+    }
+
+    private void positionNewNode(Node node, int worldMouseX, int worldMouseY) {
+        if (node == null) {
+            return;
+        }
+        int nodeX = worldMouseX - node.getWidth() / 2;
+        int nodeY = worldMouseY - node.getHeight() / 2;
+        if (InputCompatibilityBridge.hasShiftDown()) {
+            nodeX = snapToGrid(nodeX);
+            nodeY = snapToGrid(nodeY);
+        }
+        node.setPosition(nodeX, nodeY);
     }
 
     /**

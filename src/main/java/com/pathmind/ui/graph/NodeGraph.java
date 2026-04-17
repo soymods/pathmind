@@ -80,6 +80,7 @@ public class NodeGraph {
     private static final int TEMPLATE_PREVIEW_MARGIN = 6;
     private static final int TEMPLATE_PREVIEW_TOP = 42;
     private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
+    private static final int VIEWPORT_CULL_MARGIN = 64;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
@@ -893,6 +894,60 @@ public class NodeGraph {
             return null;
         }
         return new SelectionBounds(minX, minY, maxX, maxY);
+    }
+
+    private SelectionBounds calculateHierarchyBounds(Node root) {
+        if (root == null) {
+            return null;
+        }
+        List<Node> hierarchyNodes = new ArrayList<>();
+        collectHierarchyNodes(root, hierarchyNodes, new HashSet<>());
+        return calculateBounds(hierarchyNodes);
+    }
+
+    private void collectHierarchyNodes(Node node, List<Node> collected, Set<Node> visited) {
+        if (node == null || !visited.add(node)) {
+            return;
+        }
+        collected.add(node);
+        collectHierarchyNodes(node.getAttachedActionNode(), collected, visited);
+        collectHierarchyNodes(node.getAttachedSensor(), collected, visited);
+        Map<Integer, Node> parameterMap = node.getAttachedParameters();
+        if (parameterMap != null && !parameterMap.isEmpty()) {
+            for (Node parameter : parameterMap.values()) {
+                collectHierarchyNodes(parameter, collected, visited);
+            }
+        }
+    }
+
+    private int getViewportWorldWidth() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return 0;
+        }
+        return Math.round(client.getWindow().getScaledWidth() / Math.max(0.0001f, getZoomScale()));
+    }
+
+    private int getViewportWorldHeight() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return 0;
+        }
+        return Math.round(client.getWindow().getScaledHeight() / Math.max(0.0001f, getZoomScale()));
+    }
+
+    private boolean intersectsViewport(SelectionBounds bounds) {
+        if (bounds == null) {
+            return false;
+        }
+        int viewportLeft = cameraX - VIEWPORT_CULL_MARGIN;
+        int viewportTop = cameraY - VIEWPORT_CULL_MARGIN;
+        int viewportRight = cameraX + getViewportWorldWidth() + VIEWPORT_CULL_MARGIN;
+        int viewportBottom = cameraY + getViewportWorldHeight() + VIEWPORT_CULL_MARGIN;
+        return bounds.maxX >= viewportLeft
+            && bounds.minX <= viewportRight
+            && bounds.maxY >= viewportTop
+            && bounds.minY <= viewportBottom;
     }
 
     private void addNodeToSelection(Node node) {
@@ -2758,6 +2813,10 @@ public class NodeGraph {
                 continue;
             }
             processedRoots.add(root);
+            if (!intersectsViewport(calculateHierarchyBounds(root))) {
+                markHierarchyRendered(root, renderedNodes);
+                continue;
+            }
             renderHierarchy(root, context, textRenderer, mouseX, mouseY, delta, onlyDragged, false, renderedNodes);
         }
 
@@ -12378,6 +12437,15 @@ public class NodeGraph {
                 int outputY = outputNode.getSocketY(connection.getOutputSocket(), false) - cameraY;
                 int inputX = inputNode.getSocketX(true) - cameraX;
                 int inputY = inputNode.getSocketY(connection.getInputSocket(), true) - cameraY;
+                int viewportWidth = getViewportWorldWidth();
+                int viewportHeight = getViewportWorldHeight();
+                int minX = Math.min(outputX, inputX) - VIEWPORT_CULL_MARGIN;
+                int maxX = Math.max(outputX, inputX) + VIEWPORT_CULL_MARGIN;
+                int minY = Math.min(outputY, inputY) - VIEWPORT_CULL_MARGIN;
+                int maxY = Math.max(outputY, inputY) + VIEWPORT_CULL_MARGIN;
+                if (maxX < 0 || minX > viewportWidth || maxY < 0 || minY > viewportHeight) {
+                    continue;
+                }
 
                 int color = outputNode.getOutputSocketColor(connection.getOutputSocket());
                 if (shouldGrayOutConnection(outputNode, inputNode)) {

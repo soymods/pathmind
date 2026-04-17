@@ -20569,15 +20569,12 @@ public class Node {
             if (leftVar == null || rightVar == null) {
                 return Optional.empty();
             }
-            if (leftVar.getType() != rightVar.getType()) {
+            Node leftSnapshot = createRuntimeVariableSnapshot(leftVar);
+            Node rightSnapshot = createRuntimeVariableSnapshot(rightVar);
+            if (leftSnapshot == null || rightSnapshot == null) {
                 return Optional.empty();
             }
-            Map<String, String> leftValues = leftVar.getValues();
-            Map<String, String> rightValues = rightVar.getValues();
-            if (leftValues == null || rightValues == null) {
-                return Optional.empty();
-            }
-            return Optional.of(leftValues.equals(rightValues));
+            return compareParameterNodes(leftSnapshot, rightSnapshot);
         }
         Node variableNode = leftIsVariable ? left : right;
         Node valueNode = leftIsVariable ? right : left;
@@ -20589,27 +20586,24 @@ public class Node {
         if (variable == null) {
             return Optional.empty();
         }
-        NodeType valueType = valueNode.getType();
-        if (valueType == NodeType.SENSOR_POSITION_OF
-            || valueType == NodeType.SENSOR_DISTANCE_BETWEEN
-            || valueType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || valueType == NodeType.SENSOR_TARGETED_BLOCK
-            || valueType == NodeType.SENSOR_TARGETED_ENTITY
-            || valueType == NodeType.SENSOR_LOOK_DIRECTION
-            || valueType == NodeType.SENSOR_SLOT_ITEM_COUNT) {
-            valueType = valueNode.getResolvedValueType();
-        } else if (NodeTraitRegistry.isBooleanSensor(valueType)) {
-            valueType = NodeType.PARAM_BOOLEAN;
-        }
-        if (variable.getType() != valueType) {
+        Node variableSnapshot = createRuntimeVariableSnapshot(variable);
+        if (variableSnapshot == null) {
             return Optional.empty();
         }
-        Map<String, String> currentValues = valueNode.exportParameterValues();
-        Map<String, String> storedValues = variable.getValues();
-        if (currentValues == null || storedValues == null) {
-            return Optional.empty();
+        return compareParameterNodes(variableSnapshot, valueNode);
+    }
+
+    private Node createRuntimeVariableSnapshot(ExecutionManager.RuntimeVariable runtimeVariable) {
+        if (runtimeVariable == null || runtimeVariable.getType() == null) {
+            return null;
         }
-        return Optional.of(storedValues.equals(currentValues));
+        Node snapshot = new Node(runtimeVariable.getType(), 0, 0);
+        snapshot.setSocketsHidden(true);
+        Map<String, String> values = runtimeVariable.getValues();
+        if (values != null && !values.isEmpty()) {
+            snapshot.applyParameterValuesFromMap(values);
+        }
+        return snapshot;
     }
 
     private Optional<Boolean> compareParameterNodes(Node left, Node right) {
@@ -20658,6 +20652,10 @@ public class Node {
         Optional<Boolean> entityComparison = compareEntitySelectionValues(leftValues, rightValues);
         if (entityComparison.isPresent()) {
             return entityComparison;
+        }
+        Optional<Boolean> itemComparison = compareItemSelectionValues(leftValues, rightValues);
+        if (itemComparison.isPresent()) {
+            return itemComparison;
         }
         return Optional.of(leftValues.equals(rightValues));
     }
@@ -20773,6 +20771,67 @@ public class Node {
         String leftState = getRuntimeValue(leftValues, "state");
         String rightState = getRuntimeValue(rightValues, "state");
         return Optional.of(statesMatch(leftState, rightState));
+    }
+
+    private Optional<Boolean> compareItemSelectionValues(Map<String, String> leftValues, Map<String, String> rightValues) {
+        List<String> leftItems = resolveComparableItemSelections(leftValues);
+        List<String> rightItems = resolveComparableItemSelections(rightValues);
+        if (leftItems.isEmpty() || rightItems.isEmpty()) {
+            return Optional.empty();
+        }
+        if (!selectionsOverlap(leftItems, rightItems)) {
+            return Optional.of(false);
+        }
+
+        Optional<Integer> leftCount = resolveComparableItemCount(leftValues);
+        Optional<Integer> rightCount = resolveComparableItemCount(rightValues);
+        if (leftCount.isPresent() && rightCount.isPresent()) {
+            return Optional.of(leftCount.get().intValue() == rightCount.get().intValue());
+        }
+        return Optional.of(true);
+    }
+
+    private List<String> resolveComparableItemSelections(Map<String, String> values) {
+        if (values == null || values.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> itemIds = new ArrayList<>();
+        for (String entry : splitMultiValueList(getRuntimeValue(values, "items"))) {
+            addItemIdentifier(itemIds, entry);
+        }
+        for (String entry : splitMultiValueList(getRuntimeValue(values, "item"))) {
+            addItemIdentifier(itemIds, entry);
+        }
+        return itemIds;
+    }
+
+    private Optional<Integer> resolveComparableItemCount(Map<String, String> values) {
+        if (values == null || values.isEmpty()) {
+            return Optional.empty();
+        }
+        Integer count = parseIntOrNull(getRuntimeValue(values, "count"));
+        if (count != null) {
+            return Optional.of(count);
+        }
+        Integer amount = parseIntOrNull(getRuntimeValue(values, "amount"));
+        return amount != null ? Optional.of(amount) : Optional.empty();
+    }
+
+    private boolean selectionsOverlap(List<String> leftValues, List<String> rightValues) {
+        if (leftValues == null || rightValues == null || leftValues.isEmpty() || rightValues.isEmpty()) {
+            return false;
+        }
+        for (String left : leftValues) {
+            if (left == null || left.isEmpty()) {
+                continue;
+            }
+            for (String right : rightValues) {
+                if (left.equalsIgnoreCase(right)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private boolean statesMatch(String leftState, String rightState) {

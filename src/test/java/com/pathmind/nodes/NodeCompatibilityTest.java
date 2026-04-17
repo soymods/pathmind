@@ -2,6 +2,7 @@ package com.pathmind.nodes;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeCompatibilityTest {
@@ -165,6 +166,34 @@ class NodeCompatibilityTest {
         assertTrue(equals.attachParameter(position, 0));
         assertTrue(equals.attachParameter(and, 1));
         assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void equalsSupportsItemComparisonsAcrossDifferentItemNodeShapes() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node item = new Node(NodeType.PARAM_ITEM, 0, 0);
+        Node trade = new Node(NodeType.PARAM_VILLAGER_TRADE, 0, 0);
+
+        item.getParameter("Item").setStringValue("minecraft:emerald");
+        trade.getParameter("Item").setStringValue("emerald");
+
+        assertTrue(equals.attachParameter(item, 0));
+        assertTrue(equals.attachParameter(trade, 1));
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void equalsFailsWhenItemSelectionsDiffer() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node left = new Node(NodeType.PARAM_ITEM, 0, 0);
+        Node right = new Node(NodeType.PARAM_VILLAGER_TRADE, 0, 0);
+
+        left.getParameter("Item").setStringValue("minecraft:emerald");
+        right.getParameter("Item").setStringValue("diamond");
+
+        assertTrue(equals.attachParameter(left, 0));
+        assertTrue(equals.attachParameter(right, 1));
+        assertFalse(equals.evaluateSensor());
     }
 
     @Test

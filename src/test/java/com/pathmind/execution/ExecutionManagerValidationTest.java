@@ -185,6 +185,48 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void equalsResolvesVariableAgainstSemanticallyEquivalentItemNode() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("stored_item");
+        Node trade = new Node(NodeType.PARAM_VILLAGER_TRADE, 0, 0);
+        trade.getParameter("Item").setStringValue("emerald");
+
+        assertTrue(equals.attachParameter(variable, 0));
+        assertTrue(equals.attachParameter(trade, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "stored_item",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_ITEM, Map.of("Item", "minecraft:emerald", "item", "minecraft:emerald"))
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void equalsResolvesSemanticallyEquivalentItemVariablesAcrossNodeShapes() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node left = new Node(NodeType.VARIABLE, 0, 0);
+        left.getParameter("Variable").setStringValue("left_item_compare");
+        Node right = new Node(NodeType.VARIABLE, 0, 0);
+        right.getParameter("Variable").setStringValue("right_item_compare");
+
+        assertTrue(equals.attachParameter(left, 0));
+        assertTrue(equals.attachParameter(right, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "left_item_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_ITEM, Map.of("Item", "minecraft:emerald", "item", "minecraft:emerald"))
+        );
+        manager.setRuntimeVariableForAnyActiveChain(
+            "right_item_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_VILLAGER_TRADE, Map.of("Item", "emerald", "item", "emerald"))
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
     void joinAllBarrierWaitsForBothInputsAndResets() throws Exception {
         Node start = new Node(NodeType.START, 0, 0);
         Node joinAll = new Node(NodeType.CONTROL_JOIN_ALL, 100, 0);

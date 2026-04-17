@@ -14,7 +14,9 @@ import com.pathmind.ui.overlay.NavigatorDebugOverlay;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.ChatMessageTracker;
+import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.FabricEventTracker;
+import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.UseItemCallbackCompat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientBlockEntityEvents;
@@ -216,18 +218,26 @@ public class PathmindClientMod implements ClientModInitializer {
 
         int scaledWidth = client.getWindow().getScaledWidth();
         int scaledHeight = client.getWindow().getScaledHeight();
+        DrawContextBridge.startNewRootLayer(drawContext);
+        Object matrices = drawContext.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translateZ(matrices, 500.0f);
 
-        if (activeNodeOverlay != null) {
-            activeNodeOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
-        }
-        if (variablesOverlay != null) {
-            variablesOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
-        }
-        if (navigatorDebugOverlay != null) {
-            navigatorDebugOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
-        }
-        if (nodeErrorNotificationOverlay != null) {
-            nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+        try {
+            if (activeNodeOverlay != null) {
+                activeNodeOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+            }
+            if (variablesOverlay != null) {
+                variablesOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+            }
+            if (navigatorDebugOverlay != null) {
+                navigatorDebugOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+            }
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+            }
+        } finally {
+            MatrixStackBridge.pop(matrices);
         }
     }
 

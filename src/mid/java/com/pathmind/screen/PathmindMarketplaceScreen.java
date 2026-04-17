@@ -3067,12 +3067,6 @@ public class PathmindMarketplaceScreen extends Screen {
             context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
         }
 
-        float popupAlpha = accountPopupAnimation.getPopupAlpha();
-        if (popupAlpha < 0.999f) {
-            int fadeAlpha = Math.max(0, Math.min(255, Math.round((1f - popupAlpha) * 255f)));
-            context.fill(x + 2, y + 2, x + size - 2, y + size - 2,
-                (fadeAlpha << 24) | (UITheme.BACKGROUND_SECONDARY & 0x00FFFFFF));
-        }
     }
 
     private void renderViewedAuthorAvatar(DrawContext context, int x, int y, int size) {

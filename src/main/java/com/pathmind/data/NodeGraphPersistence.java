@@ -89,19 +89,15 @@ public class NodeGraphPersistence {
     public static NodeGraphData loadNodeGraphFromPath(Path savePath) {
         try {
             if (!Files.exists(savePath)) {
-                System.out.println("No saved node graph found at: " + savePath);
                 return null;
             }
 
             try (Reader reader = Files.newBufferedReader(savePath)) {
-                NodeGraphData data = GSON.fromJson(reader, NodeGraphData.class);
-                System.out.println("Node graph loaded successfully from: " + savePath);
-                return data;
+                return GSON.fromJson(reader, NodeGraphData.class);
             }
 
         } catch (Exception e) {
             System.err.println("Failed to load node graph: " + e.getMessage());
-            e.printStackTrace();
             return null;
         }
     }
@@ -191,6 +187,7 @@ public class NodeGraphPersistence {
             }
             node.getParameters().add(param);
         }
+        node.repairSerializedParameters();
     }
 
     /**
@@ -922,11 +919,9 @@ public class NodeGraphPersistence {
             try (Writer writer = Files.newBufferedWriter(savePath)) {
                 GSON.toJson(data, writer);
             }
-            System.out.println("Node graph saved successfully to: " + savePath);
             return true;
         } catch (Exception e) {
             System.err.println("Failed to save node graph: " + e.getMessage());
-            e.printStackTrace();
             return false;
         }
     }

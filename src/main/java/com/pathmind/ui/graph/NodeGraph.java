@@ -1602,9 +1602,6 @@ public class NodeGraph {
             }
         }
         
-        System.out.println("Started dragging connection from " + (isOutput ? "output" : "input") + 
-                         " socket " + socketIndex + " of node " + node.getType() + 
-                         (disconnectedConnection != null ? " (disconnected existing connection)" : ""));
     }
 
     public void updateDrag(int mouseX, int mouseY) {
@@ -2137,7 +2134,6 @@ public class NodeGraph {
                     NodeConnection newConnection = new NodeConnection(connectionSourceNode, hoveredNode, connectionSourceSocket, hoveredSocket);
                     connections.add(newConnection);
                     connectionChanged = true;
-                    System.out.println("Created new connection from " + connectionSourceNode.getType() + " to " + hoveredNode.getType());
                 } else if (!isOutputSocket && !hoveredSocketIsInput) {
                     captureUndoStateForConnectionChange(disconnectedConnection);
                     // Remove any existing outgoing connection from the target socket
@@ -2149,21 +2145,17 @@ public class NodeGraph {
                     NodeConnection newConnection = new NodeConnection(hoveredNode, connectionSourceNode, hoveredSocket, connectionSourceSocket);
                     connections.add(newConnection);
                     connectionChanged = true;
-                    System.out.println("Created new connection from " + hoveredNode.getType() + " to " + connectionSourceNode.getType());
                 } else {
                     // Invalid connection - restore original
                     restoreDisconnectedConnection();
-                    System.out.println("Restored original connection (invalid target)");
                 }
             } else {
                 // No valid target - decide whether to keep the removal
                 if (disconnectedConnection != null && isOutputSocket && !connectionDragMoved) {
                     captureUndoStateForConnectionChange(disconnectedConnection);
                     connectionChanged = true;
-                    System.out.println("Disconnected connection from " + connectionSourceNode.getType() + " socket " + connectionSourceSocket);
                 } else {
                     restoreDisconnectedConnection();
-                    System.out.println("Restored original connection (no target)");
                 }
             }
         }
@@ -13232,7 +13224,6 @@ public class NodeGraph {
         invalidateValidation();
         restoreSessionViewportState();
 
-        System.out.println("Loaded " + nodes.size() + " nodes and " + connections.size() + " connections");
         return true;
     }
 

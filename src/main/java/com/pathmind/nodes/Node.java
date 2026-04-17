@@ -1970,6 +1970,15 @@ public class Node {
         }
     }
 
+    public void repairSerializedParameters() {
+        ensureBooleanParameters();
+        ensureVillagerTradeNumberParameter();
+        ensureCreateListRadiusParameters();
+        ensureAmountToggleParameters();
+        ensureRandomRoundingParameters();
+        ensureCombinedDirectionParameters();
+    }
+
     private boolean shouldUseLegacyVillagerTradeSelection() {
         if (!usesVillagerTradeNumberField()) {
             return false;

@@ -193,6 +193,43 @@ class NodeGraphPersistenceTest {
     }
 
     @Test
+    void convertToNodesRepairsMissingCompatibilityParameters() {
+        NodeGraphData.NodeData booleanNode = new NodeGraphData.NodeData(
+            "bool-1",
+            NodeType.PARAM_BOOLEAN,
+            null,
+            10,
+            20,
+            List.of(new NodeGraphData.ParameterData("Toggle", "false", "BOOLEAN"))
+        );
+        NodeGraphData.NodeData createListNode = new NodeGraphData.NodeData(
+            "list-1",
+            NodeType.CREATE_LIST,
+            null,
+            30,
+            40,
+            List.of()
+        );
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(
+            new NodeGraphData(List.of(booleanNode, createListNode), List.of())
+        );
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredBoolean = byId.get("bool-1");
+        Node restoredCreateList = byId.get("list-1");
+        assertNotNull(restoredBoolean);
+        assertNotNull(restoredCreateList);
+        assertNotNull(restoredBoolean.getParameter("Mode"));
+        assertNotNull(restoredBoolean.getParameter("Variable"));
+        assertEquals("false", restoredBoolean.getParameter("Toggle").getStringValue());
+        assertNotNull(restoredCreateList.getParameter("UseRadius"));
+        assertNotNull(restoredCreateList.getParameter("Radius"));
+        assertNotNull(restoredCreateList.getParameter("UseBlockCap"));
+        assertNotNull(restoredCreateList.getParameter("MaxBlocks"));
+    }
+
+    @Test
     void normalizeNodeGraphToPathPreservesKnownNodesFromMixedVersionPreset() throws Exception {
         Path sourcePath = tempDir.resolve("mixed-version.json");
         Files.writeString(sourcePath, """

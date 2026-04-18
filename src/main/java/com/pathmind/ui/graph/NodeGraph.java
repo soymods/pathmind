@@ -12902,7 +12902,20 @@ public class NodeGraph {
             return;
         }
         if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
-            node.setTemplateGraphData(null);
+            NodeParameter presetParam = node.getParameter("Preset");
+            String presetName = presetParam != null ? presetParam.getStringValue() : "";
+            String normalizedPreset = presetName == null ? "" : presetName.trim();
+            if (normalizedPreset.isEmpty()) {
+                node.setTemplateGraphData(null);
+            } else {
+                NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphForPreset(normalizedPreset);
+                NodeGraphData.CustomNodeDefinition definition = loaded != null
+                    ? NodeGraphPersistence.resolveCustomNodeDefinition(normalizedPreset, loaded)
+                    : null;
+                node.setTemplateGraphData(loaded);
+                node.setTemplateName(definition != null ? definition.getName() : normalizedPreset);
+                node.setTemplateVersion(definition != null && definition.getVersion() != null ? definition.getVersion() : 0);
+            }
         }
         markWorkspaceDirty();
     }

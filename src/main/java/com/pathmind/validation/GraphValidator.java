@@ -195,11 +195,15 @@ public final class GraphValidator {
                     (type == NodeType.CUSTOM_NODE ? "Custom Node" : "Template")
                         + " references preset \"" + displayValue(targetPreset) + "\", but that preset was not found.", node));
             }
-            if (node.getTemplateGraphData() == null) {
+            NodeGraphData resolvedGraph = node.getTemplateGraphData();
+            if (resolvedGraph == null && !targetPreset.isEmpty()) {
+                resolvedGraph = NodeGraphPersistence.loadNodeGraphForPreset(targetPreset);
+            }
+            if (resolvedGraph == null) {
                 issues.add(issue(GraphValidationSeverity.WARNING, "missing_template_graph",
                     (type == NodeType.CUSTOM_NODE ? "Custom Node" : "Template") + " has no saved internal graph yet.", node));
             } else {
-                NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(targetPreset, node.getTemplateGraphData());
+                NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(targetPreset, resolvedGraph);
                 int instanceVersion = node.getTemplateVersion();
                 int definitionVersion = definition != null && definition.getVersion() != null ? definition.getVersion() : 0;
                 if (instanceVersion > 0 && definitionVersion > instanceVersion) {

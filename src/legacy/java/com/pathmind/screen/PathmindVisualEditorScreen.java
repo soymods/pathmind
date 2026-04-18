@@ -1586,10 +1586,12 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (settingsPopupAnimation.isVisible()) {
             if (nodeDelayDragging) {
-                updateNodeDelayFromMouse((int) mouseX, getSettingsPopupX(), SETTINGS_POPUP_WIDTH);
+                int[] bounds = getSettingsPopupBounds();
+                updateNodeDelayFromMouse((int) mouseX, bounds[0], bounds[2]);
             }
             if (createListRadiusDragging) {
-                updateCreateListRadiusFromMouse(getEffectiveSettingsTargetNode(), (int) mouseX, getSettingsPopupX(), SETTINGS_POPUP_WIDTH);
+                int[] bounds = getSettingsPopupBounds();
+                updateCreateListRadiusFromMouse(getEffectiveSettingsTargetNode(), (int) mouseX, bounds[0], bounds[2]);
             }
             return true;
         }
@@ -3688,29 +3690,22 @@ public class PathmindVisualEditorScreen extends Screen {
 
         try {
             Path path = Paths.get(selection.trim());
-            boolean success = nodeGraph.importFromPath(path);
-            if (success) {
+            lastImportExportPath = path;
+            Path fileName = path.getFileName();
+            String fileLabel = fileName != null ? fileName.toString() : path.toString();
+            Optional<String> importedPreset = PresetManager.importPresetFromFile(path);
+            if (importedPreset.isPresent()) {
+                switchPreset(importedPreset.get());
+                movePresetTabToEnd(importedPreset.get());
                 refreshMissingBaritonePopup();
-        refreshMissingUiUtilsPopup();
-                lastImportExportPath = path;
-                Path fileName = path.getFileName();
-                String fileLabel = fileName != null ? fileName.toString() : path.toString();
-                Optional<String> importedPreset = PresetManager.importPresetFromFile(path);
-                if (importedPreset.isPresent()) {
-                    PresetManager.setActivePreset(importedPreset.get());
-                    refreshAvailablePresets();
-                    movePresetTabToEnd(importedPreset.get());
-                    nodeGraph.setActivePreset(activePresetName);
-                    updateImportExportPathFromPreset();
-                    setImportExportStatus(
-                            "Imported workspace \"" + fileLabel + "\" as preset \"" + importedPreset.get() + "\".",
-                            UITheme.STATE_SUCCESS
-                    );
-                } else {
-                    setImportExportStatus("Imported workspace from " + fileLabel + " but failed to create preset.", UITheme.STATE_ERROR);
-                }
+                refreshMissingUiUtilsPopup();
+                updateImportExportPathFromPreset();
+                setImportExportStatus(
+                        "Imported workspace \"" + fileLabel + "\" as preset \"" + importedPreset.get() + "\".",
+                        UITheme.STATE_SUCCESS
+                );
             } else {
-                setImportExportStatus("Failed to import workspace from file.", UITheme.STATE_ERROR);
+                setImportExportStatus("Failed to import workspace from " + fileLabel + ".", UITheme.STATE_ERROR);
             }
         } catch (InvalidPathException ex) {
             setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
@@ -6234,7 +6229,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private boolean isCreateListCustomRadiusEnabled(Node node) {
         if (node == null || node.getType() != NodeType.CREATE_LIST) {
-            return false;
+            return Boolean.TRUE.equals(SettingsManager.getCurrent().createListUseCustomRadius);
         }
         node.ensureCreateListRadiusParameters();
         return node.getParameter("UseRadius") != null && node.getParameter("UseRadius").getBoolValue();
@@ -6242,7 +6237,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int getCreateListSettingsRadius(Node node) {
         if (node == null || node.getType() != NodeType.CREATE_LIST) {
-            return 64;
+            Integer configured = SettingsManager.getCurrent().createListRadius;
+            return MathHelper.clamp(configured == null ? 64 : configured, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
         }
         node.ensureCreateListRadiusParameters();
         double value = 64.0;
@@ -6257,6 +6253,9 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void setCreateListCustomRadiusEnabled(Node node, boolean enabled) {
+        Settings settings = SettingsManager.getCurrent();
+        settings.createListUseCustomRadius = enabled;
+        SettingsManager.save(settings);
         if (node == null || node.getType() != NodeType.CREATE_LIST) {
             return;
         }
@@ -6268,11 +6267,14 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void setCreateListSettingsRadius(Node node, int radius) {
+        int clamped = MathHelper.clamp(radius, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
+        Settings settings = SettingsManager.getCurrent();
+        settings.createListRadius = clamped;
+        SettingsManager.save(settings);
         if (node == null || node.getType() != NodeType.CREATE_LIST) {
             return;
         }
         node.ensureCreateListRadiusParameters();
-        int clamped = MathHelper.clamp(radius, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
         node.setParameterValueAndPropagate("Radius", Integer.toString(clamped));
         if (nodeGraph != null) {
             nodeGraph.notifyNodeParametersChanged(node);
@@ -6617,6 +6619,10 @@ public class PathmindVisualEditorScreen extends Screen {
         return (this.height - getSettingsPopupHeight()) / 2;
     }
 
+    private int[] getSettingsPopupBounds() {
+        return settingsPopupAnimation.getScaledPopupBounds(this.width, this.height, SETTINGS_POPUP_WIDTH, getSettingsPopupHeight());
+    }
+
     private int getAccentColor() {
         return accentOption != null ? accentOption.color : UITheme.ACCENT_DEFAULT;
     }
@@ -6866,37 +6872,35 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         } else if (bodyHovered && !settingsNodeListView && selectedType == NodeType.CREATE_LIST) {
             Node targetNode = getEffectiveSettingsTargetNode();
-            if (targetNode != null) {
-                int createListToggleDividerY = nodeSettingsBodyY + 28;
-                int createListToggleRowCenterY = (nodeSettingsBodyY + 10 + createListToggleDividerY) / 2;
-                int createListToggleX = gridToggleX;
-                int createListToggleY = createListToggleRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-                if (isPointInRect(mouseXi, mouseYi, createListToggleX, createListToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-                    setCreateListCustomRadiusEnabled(targetNode, !isCreateListCustomRadiusEnabled(targetNode));
-                    return true;
-                }
+            int createListToggleDividerY = nodeSettingsBodyY + 28;
+            int createListToggleRowCenterY = (nodeSettingsBodyY + 10 + createListToggleDividerY) / 2;
+            int createListToggleX = gridToggleX;
+            int createListToggleY = createListToggleRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
+            if (isPointInRect(mouseXi, mouseYi, createListToggleX, createListToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+                setCreateListCustomRadiusEnabled(targetNode, !isCreateListCustomRadiusEnabled(targetNode));
+                return true;
+            }
 
-                if (isCreateListCustomRadiusEnabled(targetNode)) {
-                    int createListRadiusDividerY = createListToggleDividerY + 26;
-                    int createListRadiusRowCenterY = (createListToggleDividerY + createListRadiusDividerY) / 2;
-                    int createListSliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
-                    int createListSliderY = createListRadiusRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
-                    String radiusText = createListRadiusField != null ? createListRadiusField.getText() : Integer.toString(getCreateListSettingsRadius(targetNode));
-                    int[] radiusValueBox = getCreateListRadiusFieldBounds(popupX, SETTINGS_POPUP_WIDTH, createListRadiusRowCenterY, radiusText);
-                    if (createListRadiusField != null) {
-                        if (bodyHovered && isPointInRect(mouseXi, mouseYi, radiusValueBox[0], radiusValueBox[1], radiusValueBox[2], radiusValueBox[3])) {
-                            createListRadiusField.setEditable(true);
-                            createListRadiusField.setFocused(true);
-                            return true;
-                        } else if (createListRadiusField.isFocused()) {
-                            createListRadiusField.setFocused(false);
-                        }
-                    }
-                    if (isPointInRect(mouseXi, mouseYi, createListSliderX, createListSliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
-                        createListRadiusDragging = true;
-                        updateCreateListRadiusFromMouse(targetNode, mouseXi, popupX, SETTINGS_POPUP_WIDTH);
+            if (isCreateListCustomRadiusEnabled(targetNode)) {
+                int createListRadiusDividerY = createListToggleDividerY + 26;
+                int createListRadiusRowCenterY = (createListToggleDividerY + createListRadiusDividerY) / 2;
+                int createListSliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
+                int createListSliderY = createListRadiusRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
+                String radiusText = createListRadiusField != null ? createListRadiusField.getText() : Integer.toString(getCreateListSettingsRadius(targetNode));
+                int[] radiusValueBox = getCreateListRadiusFieldBounds(popupX, SETTINGS_POPUP_WIDTH, createListRadiusRowCenterY, radiusText);
+                if (createListRadiusField != null) {
+                    if (bodyHovered && isPointInRect(mouseXi, mouseYi, radiusValueBox[0], radiusValueBox[1], radiusValueBox[2], radiusValueBox[3])) {
+                        createListRadiusField.setEditable(true);
+                        createListRadiusField.setFocused(true);
                         return true;
+                    } else if (createListRadiusField.isFocused()) {
+                        createListRadiusField.setFocused(false);
                     }
+                }
+                if (isPointInRect(mouseXi, mouseYi, createListSliderX, createListSliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
+                    createListRadiusDragging = true;
+                    updateCreateListRadiusFromMouse(targetNode, mouseXi, popupX, SETTINGS_POPUP_WIDTH);
+                    return true;
                 }
             }
         }

@@ -41,6 +41,8 @@ public final class SettingsManager {
         public Boolean gotoAllowBreakWhileExecuting = false;
         public Boolean gotoAllowPlaceWhileExecuting = false;
         public Boolean keyPressedActivatesInGuis = true;
+        public Boolean createListUseCustomRadius = false;
+        public Integer createListRadius = 64;
 
         public Settings() {
         }
@@ -166,9 +168,13 @@ public final class SettingsManager {
         if (client != null && client.runDirectory != null) {
             return client.runDirectory.toPath();
         }
-        FabricLoader loader = FabricLoader.getInstance();
-        if (loader != null) {
-            return loader.getGameDir();
+        try {
+            FabricLoader loader = FabricLoader.getInstance();
+            if (loader != null) {
+                return loader.getGameDir();
+            }
+        } catch (IllegalStateException ignored) {
+            // Unit tests can exercise settings-backed node initialization before Fabric is ready.
         }
         return Paths.get(System.getProperty("user.home"), ".minecraft");
     }
@@ -223,6 +229,16 @@ public final class SettingsManager {
         }
         if (settings.keyPressedActivatesInGuis == null) {
             settings.keyPressedActivatesInGuis = true;
+        }
+        if (settings.createListUseCustomRadius == null) {
+            settings.createListUseCustomRadius = false;
+        }
+        if (settings.createListRadius == null) {
+            settings.createListRadius = 64;
+        } else if (settings.createListRadius < 1) {
+            settings.createListRadius = 1;
+        } else if (settings.createListRadius > 512) {
+            settings.createListRadius = 512;
         }
         return settings;
     }

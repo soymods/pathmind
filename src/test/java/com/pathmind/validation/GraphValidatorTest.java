@@ -113,6 +113,42 @@ class GraphValidatorTest {
     }
 
     @Test
+    void validateDoesNotWarnWhenCustomNodePresetExistsButInternalGraphCacheIsEmpty() throws Exception {
+        Files.writeString(PresetManager.getPresetPath(PRESET_NAME), """
+            {
+              "nodes": [
+                {
+                  "id": "start",
+                  "type": "START",
+                  "x": 0,
+                  "y": 0,
+                  "parameters": [],
+                  "parameterAttachments": [],
+                  "startNodeNumber": 1
+                }
+              ],
+              "connections": []
+            }
+            """);
+
+        Node start = new Node(NodeType.START, 0, 0);
+        Node customNode = new Node(NodeType.CUSTOM_NODE, 100, 0);
+        customNode.getParameter("Preset").setStringValue(PRESET_NAME);
+        customNode.setTemplateGraphData(null);
+        NodeConnection connection = new NodeConnection(start, customNode, 0, 0);
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, customNode),
+            List.of(connection),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertFalse(hasIssueCode(result, "missing_template_graph"));
+    }
+
+    @Test
     void validateAllowsDistinctJoinInputs() {
         Node startOne = new Node(NodeType.START, 0, 0);
         Node startTwo = new Node(NodeType.START, 0, 80);

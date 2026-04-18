@@ -1957,11 +1957,14 @@ public class Node {
         if (type != NodeType.CREATE_LIST) {
             return;
         }
+        com.pathmind.data.SettingsManager.Settings settings = com.pathmind.data.SettingsManager.getCurrent();
+        String useRadiusDefault = Boolean.toString(Boolean.TRUE.equals(settings.createListUseCustomRadius));
+        String radiusDefault = Double.toString(settings.createListRadius == null ? 64 : settings.createListRadius);
         if (getParameter("UseRadius") == null) {
-            parameters.add(new NodeParameter("UseRadius", ParameterType.BOOLEAN, "false"));
+            parameters.add(new NodeParameter("UseRadius", ParameterType.BOOLEAN, useRadiusDefault));
         }
         if (getParameter("Radius") == null) {
-            parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE, "64.0"));
+            parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE, radiusDefault));
         }
         if (getParameter("UseBlockCap") == null) {
             parameters.add(new NodeParameter("UseBlockCap", ParameterType.BOOLEAN, "false"));
@@ -3020,9 +3023,12 @@ public class Node {
                 parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
                 break;
             case CREATE_LIST:
+                com.pathmind.data.SettingsManager.Settings createListSettings = com.pathmind.data.SettingsManager.getCurrent();
                 parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                parameters.add(new NodeParameter("UseRadius", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE, "64.0"));
+                parameters.add(new NodeParameter("UseRadius", ParameterType.BOOLEAN,
+                    Boolean.toString(Boolean.TRUE.equals(createListSettings.createListUseCustomRadius))));
+                parameters.add(new NodeParameter("Radius", ParameterType.DOUBLE,
+                    Double.toString(createListSettings.createListRadius == null ? 64 : createListSettings.createListRadius)));
                 parameters.add(new NodeParameter("UseBlockCap", ParameterType.BOOLEAN, "false"));
                 parameters.add(new NodeParameter("MaxBlocks", ParameterType.INTEGER, "256"));
                 break;

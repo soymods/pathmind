@@ -123,7 +123,7 @@ public final class BlockSelection {
             ? trimmed.substring(startBracket + 1, trimmed.endsWith("]") ? trimmed.length() - 1 : trimmed.length())
             : "";
 
-        Identifier identifier = Identifier.tryParse(blockPart.trim());
+        Identifier identifier = normalizeBlockIdentifier(blockPart);
         if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
             return Optional.empty();
         }
@@ -206,7 +206,7 @@ public final class BlockSelection {
     }
 
     private static Optional<String> sanitizeBlockOnly(String blockId) {
-        Identifier identifier = Identifier.tryParse(blockId);
+        Identifier identifier = normalizeBlockIdentifier(blockId);
         if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
             return Optional.empty();
         }
@@ -226,7 +226,22 @@ public final class BlockSelection {
         }
         int bracket = trimmed.indexOf('[');
         String blockPart = bracket >= 0 ? trimmed.substring(0, bracket) : trimmed;
-        return Identifier.tryParse(blockPart.trim());
+        return normalizeBlockIdentifier(blockPart);
+    }
+
+    private static Identifier normalizeBlockIdentifier(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        Identifier identifier = Identifier.tryParse(trimmed);
+        if (identifier != null) {
+            return identifier;
+        }
+        return Identifier.tryParse("minecraft:" + trimmed.toLowerCase(Locale.ROOT));
     }
 
     /**

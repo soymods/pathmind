@@ -168,6 +168,8 @@ public class Node {
     private static final String LIST_SLOT_PLAYER_PREFIX = "player:";
     private static final long CRAFTING_ACTION_DELAY_MS = 75L;
     private static final long CONTROL_POLL_INTERVAL_MS = 10L;
+    private static final long FALLING_SENSOR_RETENTION_MS = 1000L;
+    private static final double FALLING_SENSOR_MIN_CLEARANCE = 0.6D;
     private static final int CRAFTING_OUTPUT_POLL_LIMIT = 5;
     private static final int SENSOR_SLOT_MARGIN_HORIZONTAL = 8;
     private static final int SENSOR_SLOT_INNER_PADDING = 4;
@@ -349,6 +351,9 @@ public class Node {
     private NodeGraphData templateGraphData;
     private transient Random randomGenerator;
     private transient String randomSeedCache;
+    private transient double fallingPeakY = Double.NaN;
+    private transient boolean fallingPeakInitialized = false;
+    private transient long lastFallingDetectedAtMs = Long.MIN_VALUE;
 
     private boolean usesTemplateBacking() {
         return type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE;
@@ -3109,7 +3114,7 @@ public class Node {
                 parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "10"));
                 break;
             case SENSOR_IS_FALLING:
-                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
+                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "0.25"));
                 break;
             case SENSOR_IS_RENDERED:
             case SENSOR_IS_VISIBLE:
@@ -19783,6 +19788,9 @@ public class Node {
         this.repeatActive = false;
         this.lastSensorResult = false;
         this.nextOutputSocket = 0;
+        this.fallingPeakY = Double.NaN;
+        this.fallingPeakInitialized = false;
+        this.lastFallingDetectedAtMs = Long.MIN_VALUE;
     }
     
     private enum SensorConditionType {
@@ -22038,12 +22046,90 @@ public class Node {
         return Optional.of(nearestDistance);
     }
 
+    static boolean isFallingState(
+        boolean onGround,
+        boolean swimming,
+        boolean submergedInWater,
+        boolean climbing,
+        boolean flying,
+        double downwardVelocity,
+        double fallDistance,
+        double peakY,
+        double currentY,
+        double groundClearance,
+        double requiredDistance,
+        long nowMs,
+        long lastDetectedAtMs
+    ) {
+        if (onGround || swimming || submergedInWater || climbing || flying) {
+            return false;
+        }
+        if (lastDetectedAtMs != Long.MIN_VALUE && nowMs - lastDetectedAtMs <= FALLING_SENSOR_RETENTION_MS) {
+            return true;
+        }
+        if (downwardVelocity >= -1.0E-3) {
+            return false;
+        }
+        if (groundClearance >= FALLING_SENSOR_MIN_CLEARANCE
+            && (fallDistance > 1.0E-3 || peakY - currentY > 1.0E-3)) {
+            return true;
+        }
+        if (fallDistance >= requiredDistance) {
+            return true;
+        }
+        return peakY - currentY >= requiredDistance;
+    }
+
     private boolean isFalling(double distance) {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        return client.player.fallDistance >= distance && !client.player.isOnGround();
+        long now = System.currentTimeMillis();
+        double currentY = client.player.getY();
+        if (client.player.isOnGround()) {
+            fallingPeakY = currentY;
+            fallingPeakInitialized = true;
+            lastFallingDetectedAtMs = Long.MIN_VALUE;
+            return false;
+        }
+        if (client.player.isSwimming()
+            || client.player.isSubmergedInWater()
+            || client.player.isClimbing()
+            || client.player.getAbilities().flying) {
+            fallingPeakY = currentY;
+            fallingPeakInitialized = false;
+            lastFallingDetectedAtMs = Long.MIN_VALUE;
+            return false;
+        }
+
+        if (!fallingPeakInitialized) {
+            fallingPeakY = currentY;
+            fallingPeakInitialized = true;
+        } else if (currentY > fallingPeakY) {
+            fallingPeakY = currentY;
+        }
+        double groundClearance = getDistanceFromGround().orElse(Double.POSITIVE_INFINITY);
+
+        boolean falling = isFallingState(
+            false,
+            false,
+            false,
+            false,
+            false,
+            client.player.getVelocity().y,
+            client.player.fallDistance,
+            fallingPeakY,
+            currentY,
+            groundClearance,
+            distance,
+            now,
+            lastFallingDetectedAtMs
+        );
+        if (falling) {
+            lastFallingDetectedAtMs = now;
+        }
+        return falling;
     }
     
     private void executeCommand(String command) {

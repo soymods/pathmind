@@ -5,7 +5,9 @@ import com.google.gson.GsonBuilder;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
+import com.pathmind.nodes.NodeTraitRegistry;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.NodeValueTrait;
 import com.pathmind.nodes.ParameterType;
 
 import java.io.Reader;
@@ -738,6 +740,12 @@ public class NodeGraphPersistence {
         return buildCustomNodeDefinition(presetName, convertToNodesOrEmpty(data), convertToConnectionsOrEmpty(data), null);
     }
 
+    public static NodeGraphData.CustomNodeDefinition resolveCustomNodeDefinition(String presetName, List<Node> nodes,
+                                                                                 List<NodeConnection> connections) {
+        return buildCustomNodeDefinition(presetName, nodes == null ? List.of() : nodes,
+            connections == null ? List.of() : connections, null);
+    }
+
     private static List<Node> convertToNodesOrEmpty(NodeGraphData data) {
         if (data == null || data.getNodes() == null || data.getNodes().isEmpty()) {
             return List.of();
@@ -800,6 +808,7 @@ public class NodeGraphPersistence {
 
     private static List<NodeGraphData.CustomNodePort> discoverCustomNodeInputs(List<Node> nodes) {
         Map<String, NodeGraphData.CustomNodePort> inputs = new LinkedHashMap<>();
+        Map<String, NodeGraphData.CustomNodePort> initializedInputs = discoverInitializedCustomNodeInputs(nodes);
         for (Node node : nodes) {
             if (node == null || node.getType() != NodeType.VARIABLE) {
                 continue;
@@ -813,9 +822,232 @@ public class NodeGraphPersistence {
                 continue;
             }
             String normalized = name.trim().toLowerCase(Locale.ROOT);
-            inputs.putIfAbsent(normalized, new NodeGraphData.CustomNodePort(name.trim(), "variable", ""));
+            NodeGraphData.CustomNodePort inferred = initializedInputs.get(normalized);
+            if (inferred == null) {
+                inferred = inferCustomNodeInputFromUsage(node, name.trim());
+            }
+            if (inferred == null) {
+                inferred = new NodeGraphData.CustomNodePort(name.trim(), NodeType.PARAM_MESSAGE.name(), "");
+            }
+            mergeDiscoveredInput(inputs, normalized, inferred);
         }
         return new ArrayList<>(inputs.values());
+    }
+
+    private static Map<String, NodeGraphData.CustomNodePort> discoverInitializedCustomNodeInputs(List<Node> nodes) {
+        Map<String, NodeGraphData.CustomNodePort> discovered = new LinkedHashMap<>();
+        for (Node node : nodes) {
+            if (node == null || node.getType() != NodeType.SET_VARIABLE) {
+                continue;
+            }
+            Node variableNode = node.getAttachedParameter(0);
+            Node valueNode = node.getAttachedParameter(1);
+            if (variableNode == null || variableNode.getType() != NodeType.VARIABLE || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
+                continue;
+            }
+            NodeParameter variableParam = variableNode.getParameter("Variable");
+            String variableName = variableParam != null ? variableParam.getStringValue() : null;
+            if (variableName == null || variableName.isBlank()) {
+                continue;
+            }
+            NodeGraphData.CustomNodePort port = createCustomNodePortFromValueNode(variableName.trim(), valueNode);
+            if (port != null) {
+                discovered.put(variableName.trim().toLowerCase(Locale.ROOT), port);
+            }
+        }
+        return discovered;
+    }
+
+    private static void mergeDiscoveredInput(Map<String, NodeGraphData.CustomNodePort> inputs, String normalizedKey,
+                                             NodeGraphData.CustomNodePort candidate) {
+        if (normalizedKey == null || normalizedKey.isBlank() || candidate == null) {
+            return;
+        }
+        NodeGraphData.CustomNodePort existing = inputs.get(normalizedKey);
+        if (existing == null) {
+            inputs.put(normalizedKey, candidate);
+            return;
+        }
+        if ((existing.getType() == null || existing.getType().isBlank())
+            || NodeType.PARAM_MESSAGE.name().equals(existing.getType())) {
+            existing.setType(candidate.getType());
+        }
+        if ((existing.getDefaultValue() == null || existing.getDefaultValue().isBlank())
+            && candidate.getDefaultValue() != null && !candidate.getDefaultValue().isBlank()) {
+            existing.setDefaultValue(candidate.getDefaultValue());
+        }
+    }
+
+    private static NodeGraphData.CustomNodePort inferCustomNodeInputFromUsage(Node variableNode, String variableName) {
+        if (variableNode == null || variableName == null || variableName.isBlank()) {
+            return null;
+        }
+        Node host = variableNode.getParentParameterHost();
+        if (host == null) {
+            return new NodeGraphData.CustomNodePort(variableName, NodeType.PARAM_MESSAGE.name(), "");
+        }
+        int slotIndex = 0;
+        for (Map.Entry<Integer, Node> entry : host.getAttachedParameters().entrySet()) {
+            if (entry.getValue() == variableNode) {
+                slotIndex = entry.getKey();
+                break;
+            }
+        }
+        NodeType inferredType = pickRepresentativeNodeType(NodeTraitRegistry.getAcceptedTraits(host.getType(), slotIndex));
+        if (inferredType == null) {
+            inferredType = NodeType.PARAM_MESSAGE;
+        }
+        return new NodeGraphData.CustomNodePort(variableName, inferredType.name(), "");
+    }
+
+    private static NodeGraphData.CustomNodePort createCustomNodePortFromValueNode(String variableName, Node valueNode) {
+        if (variableName == null || variableName.isBlank() || valueNode == null || valueNode.getType() == null) {
+            return null;
+        }
+        NodeType valueType = valueNode.getType();
+        if (!isSupportedPresetInputNodeType(valueType)) {
+            valueType = pickRepresentativeNodeType(NodeTraitRegistry.getProvidedTraits(valueType));
+        }
+        if (valueType == null) {
+            valueType = NodeType.PARAM_MESSAGE;
+        }
+        String defaultValue = serializeCustomNodeInputDefaultValue(valueNode);
+        return new NodeGraphData.CustomNodePort(variableName, valueType.name(), defaultValue);
+    }
+
+    private static String serializeCustomNodeInputDefaultValue(Node valueNode) {
+        if (valueNode == null || valueNode.getType() == null) {
+            return "";
+        }
+        return switch (valueNode.getType()) {
+            case PARAM_COORDINATE -> joinCoordinateValues(valueNode);
+            case PARAM_BLOCK -> getNodeParameterValue(valueNode, "Block");
+            case PARAM_ITEM -> getNodeParameterValue(valueNode, "Item");
+            case PARAM_VILLAGER_TRADE -> getNodeParameterValue(valueNode, "Item");
+            case PARAM_ENTITY -> getNodeParameterValue(valueNode, "Entity");
+            case PARAM_PLAYER -> getNodeParameterValue(valueNode, "Player");
+            case PARAM_MESSAGE -> getNodeParameterValue(valueNode, "Text");
+            case PARAM_WAYPOINT -> getNodeParameterValue(valueNode, "Waypoint");
+            case PARAM_SCHEMATIC -> getNodeParameterValue(valueNode, "Schematic");
+            case PARAM_INVENTORY_SLOT -> getNodeParameterValue(valueNode, "Slot");
+            case PARAM_DURATION -> getNodeParameterValue(valueNode, "Duration");
+            case PARAM_AMOUNT -> getNodeParameterValue(valueNode, "Amount");
+            case PARAM_BOOLEAN -> {
+                NodeParameter toggle = valueNode.getParameter("Toggle");
+                yield toggle == null ? "false" : toggle.getStringValue();
+            }
+            case PARAM_HAND -> getNodeParameterValue(valueNode, "Hand");
+            case PARAM_GUI -> getNodeParameterValue(valueNode, "GUI");
+            case PARAM_KEY -> getNodeParameterValue(valueNode, "Key");
+            case PARAM_MOUSE_BUTTON -> getNodeParameterValue(valueNode, "MouseButton");
+            case PARAM_RANGE -> getNodeParameterValue(valueNode, "Range");
+            case PARAM_DISTANCE -> getNodeParameterValue(valueNode, "Distance");
+            case PARAM_DIRECTION -> getNodeParameterValue(valueNode, "Direction");
+            case PARAM_BLOCK_FACE -> getNodeParameterValue(valueNode, "Face");
+            case PARAM_ROTATION -> getNodeParameterValue(valueNode, "Yaw") + "," + getNodeParameterValue(valueNode, "Pitch");
+            default -> "";
+        };
+    }
+
+    private static String joinCoordinateValues(Node valueNode) {
+        return getNodeParameterValue(valueNode, "X") + "," + getNodeParameterValue(valueNode, "Y") + "," + getNodeParameterValue(valueNode, "Z");
+    }
+
+    private static String getNodeParameterValue(Node node, String parameterName) {
+        NodeParameter parameter = node == null ? null : node.getParameter(parameterName);
+        return parameter == null || parameter.getStringValue() == null ? "" : parameter.getStringValue();
+    }
+
+    private static NodeType pickRepresentativeNodeType(java.util.Set<NodeValueTrait> traits) {
+        if (traits == null || traits.isEmpty()) {
+            return NodeType.PARAM_MESSAGE;
+        }
+        if (traits.contains(NodeValueTrait.DURATION)) {
+            return NodeType.PARAM_DURATION;
+        }
+        if (traits.contains(NodeValueTrait.RANGE)) {
+            return NodeType.PARAM_RANGE;
+        }
+        if (traits.contains(NodeValueTrait.DISTANCE)) {
+            return NodeType.PARAM_DISTANCE;
+        }
+        if (traits.contains(NodeValueTrait.BOOLEAN)) {
+            return NodeType.PARAM_BOOLEAN;
+        }
+        if (traits.contains(NodeValueTrait.BLOCK)) {
+            return NodeType.PARAM_BLOCK;
+        }
+        if (traits.contains(NodeValueTrait.ITEM)) {
+            return NodeType.PARAM_ITEM;
+        }
+        if (traits.contains(NodeValueTrait.COORDINATE)) {
+            return NodeType.PARAM_COORDINATE;
+        }
+        if (traits.contains(NodeValueTrait.PLAYER)) {
+            return NodeType.PARAM_PLAYER;
+        }
+        if (traits.contains(NodeValueTrait.ENTITY)) {
+            return NodeType.PARAM_ENTITY;
+        }
+        if (traits.contains(NodeValueTrait.INVENTORY_SLOT)) {
+            return NodeType.PARAM_INVENTORY_SLOT;
+        }
+        if (traits.contains(NodeValueTrait.KEY)) {
+            return NodeType.PARAM_KEY;
+        }
+        if (traits.contains(NodeValueTrait.MOUSE_BUTTON)) {
+            return NodeType.PARAM_MOUSE_BUTTON;
+        }
+        if (traits.contains(NodeValueTrait.HAND)) {
+            return NodeType.PARAM_HAND;
+        }
+        if (traits.contains(NodeValueTrait.GUI)) {
+            return NodeType.PARAM_GUI;
+        }
+        if (traits.contains(NodeValueTrait.WAYPOINT)) {
+            return NodeType.PARAM_WAYPOINT;
+        }
+        if (traits.contains(NodeValueTrait.SCHEMATIC)) {
+            return NodeType.PARAM_SCHEMATIC;
+        }
+        if (traits.contains(NodeValueTrait.VILLAGER_TRADE)) {
+            return NodeType.PARAM_VILLAGER_TRADE;
+        }
+        if (traits.contains(NodeValueTrait.ROTATION)) {
+            return NodeType.PARAM_ROTATION;
+        }
+        if (traits.contains(NodeValueTrait.DIRECTION)) {
+            return NodeType.PARAM_DIRECTION;
+        }
+        if (traits.contains(NodeValueTrait.NUMBER)) {
+            return NodeType.PARAM_AMOUNT;
+        }
+        return NodeType.PARAM_MESSAGE;
+    }
+
+    private static boolean isSupportedPresetInputNodeType(NodeType type) {
+        return type == NodeType.PARAM_COORDINATE
+            || type == NodeType.PARAM_BLOCK
+            || type == NodeType.PARAM_ITEM
+            || type == NodeType.PARAM_VILLAGER_TRADE
+            || type == NodeType.PARAM_ENTITY
+            || type == NodeType.PARAM_PLAYER
+            || type == NodeType.PARAM_MESSAGE
+            || type == NodeType.PARAM_WAYPOINT
+            || type == NodeType.PARAM_SCHEMATIC
+            || type == NodeType.PARAM_INVENTORY_SLOT
+            || type == NodeType.PARAM_DURATION
+            || type == NodeType.PARAM_AMOUNT
+            || type == NodeType.PARAM_BOOLEAN
+            || type == NodeType.PARAM_HAND
+            || type == NodeType.PARAM_GUI
+            || type == NodeType.PARAM_KEY
+            || type == NodeType.PARAM_MOUSE_BUTTON
+            || type == NodeType.PARAM_RANGE
+            || type == NodeType.PARAM_DISTANCE
+            || type == NodeType.PARAM_DIRECTION
+            || type == NodeType.PARAM_BLOCK_FACE
+            || type == NodeType.PARAM_ROTATION;
     }
 
     private static List<NodeGraphData.CustomNodePort> discoverCustomNodeOutputs(List<Node> nodes) {

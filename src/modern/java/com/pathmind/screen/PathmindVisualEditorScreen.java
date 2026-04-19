@@ -65,8 +65,9 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -137,6 +138,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int VALIDATION_PANEL_BOTTOM_PADDING = 2;
     private static final int VALIDATION_PANEL_HEADER_HEIGHT = 34;
     private static final int VALIDATION_PANEL_FOOTER_HEIGHT = 18;
+    private static final int VALIDATION_INPUT_FIELD_WIDTH = 128;
+    private static final int VALIDATION_INPUT_FIELD_HEIGHT = 16;
     private static final int ZOOM_BUTTON_SIZE = 14;
     private static final int ZOOM_BUTTON_MARGIN = 6;
     private static final int ZOOM_BUTTON_SPACING = 4;
@@ -292,6 +295,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean createListRadiusDragging = false;
     private TextFieldWidget nodeDelayField;
     private TextFieldWidget createListRadiusField;
+    private final Map<String, TextFieldWidget> presetInputFields = new LinkedHashMap<>();
     private boolean settingsNodeListView = true;
     private NodeType settingsNodeTargetType = null;
     private Node settingsNodeTarget = null;
@@ -620,9 +624,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
         int chromeMouseX = controlsDisabled ? Integer.MIN_VALUE : mouseX;
-        int chromeMouseY = controlsDisabled ? Integer.MIN_VALUE : mouseY;
+       int chromeMouseY = controlsDisabled ? Integer.MIN_VALUE : mouseY;
         if (controlsDisabled && validationPanelOpen) {
             validationPanelOpen = false;
+            clearPresetInputFieldFocus();
         }
         renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
@@ -1190,6 +1195,7 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         } else if (button == 0) {
             validationPanelOpen = false;
+            clearPresetInputFieldFocus();
         }
 
         if (!isPopupObscuringWorkspace() && button == 0 && shouldShowExecutionControls()) {
@@ -1218,6 +1224,9 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             if (isValidationButtonClicked((int) mouseX, (int) mouseY, button)) {
                 validationPanelOpen = !validationPanelOpen;
+                if (!validationPanelOpen) {
+                    clearPresetInputFieldFocus();
+                }
                 return true;
             }
             if (isSettingsButtonClicked((int) mouseX, (int) mouseY, button)) {
@@ -1994,6 +2003,13 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
         }
+        if (validationPanelOpen) {
+            for (TextFieldWidget field : presetInputFields.values()) {
+                if (field != null && field.isFocused() && field.keyPressed(input)) {
+                    return true;
+                }
+            }
+        }
         if (settingsPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 closeSettingsPopup();
@@ -2209,6 +2225,14 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             if (createListRadiusField != null && createListRadiusField.isFocused() && createListRadiusField.charTyped(input)) {
                 return true;
+            }
+            return true;
+        }
+        if (validationPanelOpen) {
+            for (TextFieldWidget field : presetInputFields.values()) {
+                if (field != null && field.isFocused() && field.charTyped(input)) {
+                    return true;
+                }
             }
             return true;
         }
@@ -6055,6 +6079,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
         float progress = validationPanelAnimation.getValue();
         if (progress <= 0.001f || validationResult == null) {
+            hidePresetInputFields();
             return;
         }
 
@@ -6085,7 +6110,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
             : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
             : UITheme.TEXT_PRIMARY;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("Validation"), panelX + VALIDATION_PANEL_PADDING,
+        context.drawTextWithShadow(this.textRenderer, Text.literal("Checks"), panelX + VALIDATION_PANEL_PADDING,
             panelY + 8, textColor);
 
         String summary = validationResult.getErrorCount() + " error" + (validationResult.getErrorCount() == 1 ? "" : "s")
@@ -6114,6 +6139,9 @@ public class PathmindVisualEditorScreen extends Screen {
             context.drawTextWithShadow(this.textRenderer, Text.literal(message), panelX + 18, rowY + 7,
                 hovered ? UITheme.TEXT_PRIMARY : UITheme.TEXT_HEADER);
         }
+
+        int presetInputsTop = contentTop + visibleIssues.size() * VALIDATION_PANEL_ROW_HEIGHT;
+        presetInputsTop = renderValidationPresetInputs(context, mouseX, mouseY, panelX, panelWidth, presetInputsTop);
 
         int hiddenCount = validationResult.getIssues().size() - visibleIssues.size();
         if (hiddenCount > 0) {
@@ -6156,6 +6184,9 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             return true;
         }
+        if (handleValidationPresetInputClick(mouseX, mouseY, bounds[0], bounds[2], contentTop + visibleIssues.size() * VALIDATION_PANEL_ROW_HEIGHT)) {
+            return true;
+        }
         return true;
     }
 
@@ -6170,11 +6201,13 @@ public class PathmindVisualEditorScreen extends Screen {
     private int[] getValidationPanelBounds(GraphValidationResult validationResult, float progress) {
         List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
         int rowCount = visibleIssues.size();
+        int presetInputHeight = getValidationPresetInputSectionHeight();
         int footerHeight = validationResult != null && validationResult.getIssues().size() > rowCount
             ? VALIDATION_PANEL_FOOTER_HEIGHT : 0;
         int fullWidth = VALIDATION_PANEL_WIDTH;
         int fullHeight = VALIDATION_PANEL_HEADER_HEIGHT
             + rowCount * VALIDATION_PANEL_ROW_HEIGHT
+            + presetInputHeight
             + footerHeight
             + VALIDATION_PANEL_BOTTOM_PADDING;
         int width = Math.max(1, Math.round(fullWidth * progress));
@@ -6182,6 +6215,262 @@ public class PathmindVisualEditorScreen extends Screen {
         int x = getValidationButtonX() + VALIDATION_BUTTON_SIZE - width;
         int y = getValidationButtonY();
         return new int[]{x, y, width, height};
+    }
+
+    private int renderValidationPresetInputs(DrawContext context, int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
+        hidePresetInputFields();
+        List<NodeGraphData.CustomNodePort> ports = getActivePresetInputPorts();
+        if (ports.isEmpty()) {
+            return topY;
+        }
+        int sectionTop = topY + VALIDATION_PANEL_SECTION_GAP;
+        context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, sectionTop, UITheme.BORDER_SUBTLE);
+        int labelY = sectionTop + 5;
+        context.drawTextWithShadow(this.textRenderer, Text.literal("Preset Inputs"), panelX + VALIDATION_PANEL_PADDING, labelY, UITheme.TEXT_SECONDARY);
+        int currentTop = sectionTop + 18;
+        for (NodeGraphData.CustomNodePort port : ports) {
+            int rowY = currentTop;
+            context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + VALIDATION_PANEL_ROW_HEIGHT, UITheme.BACKGROUND_SECONDARY);
+            context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
+            int labelMaxWidth = Math.max(40, panelWidth - VALIDATION_PANEL_PADDING * 2 - VALIDATION_INPUT_FIELD_WIDTH - 10);
+            String trimmed = TextRenderUtil.trimWithEllipsis(this.textRenderer, port.getName(), labelMaxWidth);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), panelX + VALIDATION_PANEL_PADDING, rowY + 7, UITheme.TEXT_HEADER);
+            if (isPresetBooleanPort(port)) {
+                int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
+                int toggleY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - SETTINGS_TOGGLE_HEIGHT) / 2;
+                boolean hovered = isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT);
+                PopupButtonStyle style = getPresetBooleanValue(port) ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
+                String toggleLabel = getPresetBooleanValue(port) ? Text.translatable("pathmind.settings.on").getString() : Text.translatable("pathmind.settings.off").getString();
+                drawPopupButton(context, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT, hovered,
+                    Text.literal(toggleLabel), style, settingsPopupAnimation);
+            } else {
+                renderValidationPresetInputField(context, mouseX, mouseY, panelX, panelWidth, rowY, port);
+            }
+            currentTop += VALIDATION_PANEL_ROW_HEIGHT;
+        }
+        return currentTop;
+    }
+
+    private void renderValidationPresetInputField(DrawContext context, int mouseX, int mouseY, int panelX, int panelWidth,
+                                                  int rowY, NodeGraphData.CustomNodePort port) {
+        int fieldX = panelX + panelWidth - VALIDATION_INPUT_FIELD_WIDTH - VALIDATION_PANEL_PADDING;
+        int fieldY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - VALIDATION_INPUT_FIELD_HEIGHT) / 2;
+        TextFieldWidget field = getOrCreatePresetInputField(port);
+        String valueText = getPresetInputValue(port);
+        boolean hovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT);
+        boolean focused = field.isFocused();
+        int bg = focused ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        if (hovered) {
+            bg = focused ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
+        }
+        int border = focused ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        if (hovered) {
+            border = getAccentColor();
+        }
+        context.fill(fieldX, fieldY, fieldX + VALIDATION_INPUT_FIELD_WIDTH, fieldY + VALIDATION_INPUT_FIELD_HEIGHT, bg);
+        DrawContextBridge.drawBorder(context, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT, border);
+        if (!focused && !valueText.equals(field.getText())) {
+            field.setText(valueText);
+        }
+        field.setVisible(true);
+        field.setEditable(true);
+        field.setEditableColor(UITheme.TEXT_HEADER);
+        field.setUneditableColor(UITheme.TEXT_HEADER);
+        int textFieldHeight = Math.max(10, VALIDATION_INPUT_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
+        field.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
+        field.setWidth(VALIDATION_INPUT_FIELD_WIDTH - 8);
+        field.setHeight(textFieldHeight);
+        field.render(context, mouseX, mouseY, 0f);
+    }
+
+    private boolean handleValidationPresetInputClick(int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
+        List<NodeGraphData.CustomNodePort> ports = getActivePresetInputPorts();
+        if (ports.isEmpty()) {
+            return false;
+        }
+        int currentTop = topY + VALIDATION_PANEL_SECTION_GAP + 18;
+        for (NodeGraphData.CustomNodePort port : ports) {
+            int rowY = currentTop;
+            if (isPresetBooleanPort(port)) {
+                int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
+                int toggleY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - SETTINGS_TOGGLE_HEIGHT) / 2;
+                if (isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+                    setPresetInputValue(port, Boolean.toString(!getPresetBooleanValue(port)));
+                    return true;
+                }
+            } else {
+                int fieldX = panelX + panelWidth - VALIDATION_INPUT_FIELD_WIDTH - VALIDATION_PANEL_PADDING;
+                int fieldY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - VALIDATION_INPUT_FIELD_HEIGHT) / 2;
+                TextFieldWidget field = getOrCreatePresetInputField(port);
+                if (isPointInRect(mouseX, mouseY, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT)) {
+                    field.setEditable(true);
+                    field.setFocused(true);
+                    return true;
+                } else if (field.isFocused()) {
+                    field.setFocused(false);
+                }
+            }
+            currentTop += VALIDATION_PANEL_ROW_HEIGHT;
+        }
+        return false;
+    }
+
+    private int getValidationPresetInputSectionHeight() {
+        List<NodeGraphData.CustomNodePort> ports = getActivePresetInputPorts();
+        if (ports.isEmpty()) {
+            return 0;
+        }
+        return VALIDATION_PANEL_SECTION_GAP + 18 + (ports.size() * VALIDATION_PANEL_ROW_HEIGHT);
+    }
+
+    private List<NodeGraphData.CustomNodePort> getActivePresetInputPorts() {
+        NodeGraphData.CustomNodeDefinition definition = getActivePresetInputDefinition();
+        if (definition == null || definition.getInputs() == null || definition.getInputs().isEmpty()) {
+            return List.of();
+        }
+        List<NodeGraphData.CustomNodePort> ports = new ArrayList<>();
+        for (NodeGraphData.CustomNodePort port : definition.getInputs()) {
+            if (port != null && port.getName() != null && !port.getName().isBlank()) {
+                ports.add(port);
+            }
+        }
+        return ports;
+    }
+
+    private NodeGraphData.CustomNodeDefinition getActivePresetInputDefinition() {
+        if (nodeGraph == null) {
+            return null;
+        }
+        String presetName = getPresetInputScopeKey();
+        if (presetName == null || presetName.isBlank()) {
+            return null;
+        }
+        NodeGraphData snapshot = nodeGraph.exportGraphDataSnapshot();
+        return NodeGraphPersistence.resolveCustomNodeDefinition(presetName, snapshot);
+    }
+
+    private String getPresetInputScopeKey() {
+        String presetName = activePresetName;
+        if ((presetName == null || presetName.isBlank()) && nodeGraph != null) {
+            presetName = nodeGraph.getActivePreset();
+        }
+        return presetName == null ? "" : presetName.trim();
+    }
+
+    private Map<String, String> getPresetInputValues(boolean create) {
+        if (currentSettings == null) {
+            return null;
+        }
+        if (currentSettings.presetInputValues == null) {
+            if (!create) {
+                return null;
+            }
+            currentSettings.presetInputValues = new LinkedHashMap<>();
+        }
+        String scopeKey = getPresetInputScopeKey();
+        if (scopeKey == null || scopeKey.isBlank()) {
+            return null;
+        }
+        Map<String, String> values = currentSettings.presetInputValues.get(scopeKey);
+        if (values == null && create) {
+            values = new LinkedHashMap<>();
+            currentSettings.presetInputValues.put(scopeKey, values);
+        }
+        return values;
+    }
+
+    private String getPresetInputValue(NodeGraphData.CustomNodePort port) {
+        if (port == null || port.getName() == null) {
+            return "";
+        }
+        Map<String, String> values = getPresetInputValues(false);
+        if (values != null) {
+            String configured = values.get(port.getName());
+            if (configured != null) {
+                return configured;
+            }
+        }
+        return port.getDefaultValue() == null ? "" : port.getDefaultValue();
+    }
+
+    private boolean getPresetBooleanValue(NodeGraphData.CustomNodePort port) {
+        return Boolean.parseBoolean(getPresetInputValue(port));
+    }
+
+    private void setPresetInputValue(NodeGraphData.CustomNodePort port, String value) {
+        if (port == null || port.getName() == null || currentSettings == null) {
+            return;
+        }
+        Map<String, String> values = getPresetInputValues(true);
+        if (values == null) {
+            return;
+        }
+        values.put(port.getName(), value == null ? "" : value);
+        SettingsManager.save(currentSettings);
+    }
+
+    private TextFieldWidget getOrCreatePresetInputField(NodeGraphData.CustomNodePort port) {
+        String fieldKey = getPresetInputScopeKey() + "::" + port.getName();
+        TextFieldWidget existing = presetInputFields.get(fieldKey);
+        if (existing != null) {
+            return existing;
+        }
+        TextFieldWidget field = new TextFieldWidget(this.textRenderer, 0, 0, VALIDATION_INPUT_FIELD_WIDTH, 20, Text.literal(port.getName()));
+        field.setMaxLength(96);
+        field.setDrawsBackground(false);
+        field.setVisible(false);
+        field.setEditable(false);
+        field.setEditableColor(UITheme.TEXT_HEADER);
+        field.setUneditableColor(UITheme.TEXT_HEADER);
+        if (isPresetIntegerPort(port)) {
+            field.setTextPredicate(value -> value == null || value.isEmpty() || value.matches("-?\\d*"));
+        } else if (isPresetDecimalPort(port)) {
+            field.setTextPredicate(value -> value == null || value.isEmpty() || value.matches("-?\\d*(\\.\\d*)?"));
+        }
+        field.setChangedListener(value -> setPresetInputValue(port, value));
+        this.addSelectableChild(field);
+        presetInputFields.put(fieldKey, field);
+        return field;
+    }
+
+    private void hidePresetInputFields() {
+        for (TextFieldWidget field : presetInputFields.values()) {
+            if (field != null) {
+                field.setVisible(false);
+                field.setEditable(false);
+            }
+        }
+    }
+
+    private void clearPresetInputFieldFocus() {
+        for (TextFieldWidget field : presetInputFields.values()) {
+            if (field != null) {
+                field.setFocused(false);
+                field.setVisible(false);
+                field.setEditable(false);
+            }
+        }
+    }
+
+    private boolean isPresetBooleanPort(NodeGraphData.CustomNodePort port) {
+        return port != null && NodeType.PARAM_BOOLEAN.name().equals(port.getType());
+    }
+
+    private boolean isPresetIntegerPort(NodeGraphData.CustomNodePort port) {
+        if (port == null || port.getType() == null) {
+            return false;
+        }
+        return NodeType.PARAM_RANGE.name().equals(port.getType())
+            || NodeType.PARAM_INVENTORY_SLOT.name().equals(port.getType());
+    }
+
+    private boolean isPresetDecimalPort(NodeGraphData.CustomNodePort port) {
+        if (port == null || port.getType() == null) {
+            return false;
+        }
+        return NodeType.PARAM_AMOUNT.name().equals(port.getType())
+            || NodeType.PARAM_DURATION.name().equals(port.getType())
+            || NodeType.PARAM_DISTANCE.name().equals(port.getType());
     }
 
     private void drawValidationConsoleIcon(DrawContext context, int buttonX, int buttonY, int color) {

@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Utility class that manages Pathmind user settings.
@@ -43,6 +45,7 @@ public final class SettingsManager {
         public Boolean keyPressedActivatesInGuis = true;
         public Boolean createListUseCustomRadius = false;
         public Integer createListRadius = 64;
+        public Map<String, Map<String, String>> presetInputValues = new LinkedHashMap<>();
 
         public Settings() {
         }
@@ -239,6 +242,9 @@ public final class SettingsManager {
             settings.createListRadius = 1;
         } else if (settings.createListRadius > 512) {
             settings.createListRadius = 512;
+        }
+        if (settings.presetInputValues == null) {
+            settings.presetInputValues = new LinkedHashMap<>();
         }
         return settings;
     }

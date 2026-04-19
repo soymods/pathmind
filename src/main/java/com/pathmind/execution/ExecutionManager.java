@@ -616,6 +616,7 @@ public class ExecutionManager {
         int executionId = allocateExecutionId();
         ChainController controller = new ChainController(launchData.rootNode, executionId);
         activeChains.put(launchData.rootNode, controller);
+        seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -671,6 +672,7 @@ public class ExecutionManager {
         int executionId = allocateExecutionId();
         ChainController controller = new ChainController(launchData.rootNode, executionId);
         activeChains.put(launchData.rootNode, controller);
+        seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -732,11 +734,99 @@ public class ExecutionManager {
         int executionId = allocateExecutionId();
         ChainController controller = new ChainController(launchData.rootNode, executionId);
         activeChains.put(launchData.rootNode, controller);
+        seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
         updateLastStartContext(startNode, presetName);
         return chainFuture;
+    }
+
+    private void seedPresetInputRuntimeVariables(Node startNode, String presetName, List<Node> nodes, List<NodeConnection> connections) {
+        if (startNode == null || presetName == null || presetName.isBlank() || nodes == null || connections == null) {
+            return;
+        }
+        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(presetName, nodes, connections);
+        if (definition == null || definition.getInputs() == null || definition.getInputs().isEmpty()) {
+            return;
+        }
+        SettingsManager.Settings settings = SettingsManager.getCurrent();
+        Map<String, Map<String, String>> allPresetValues = settings.presetInputValues;
+        Map<String, String> configuredValues = allPresetValues == null ? null : allPresetValues.get(presetName.trim());
+        for (NodeGraphData.CustomNodePort port : definition.getInputs()) {
+            if (port == null || port.getName() == null || port.getName().isBlank()) {
+                continue;
+            }
+            String configured = configuredValues == null ? null : configuredValues.get(port.getName());
+            String rawValue = configured != null ? configured : port.getDefaultValue();
+            RuntimeVariable runtimeVariable = createPresetInputRuntimeVariable(port, rawValue);
+            if (runtimeVariable != null) {
+                setRuntimeVariable(startNode, port.getName().trim(), runtimeVariable);
+            }
+        }
+    }
+
+    private RuntimeVariable createPresetInputRuntimeVariable(NodeGraphData.CustomNodePort port, String rawValue) {
+        if (port == null) {
+            return null;
+        }
+        NodeType nodeType = parsePresetInputNodeType(port.getType());
+        Map<String, String> values = buildPresetInputValueMap(nodeType, rawValue == null ? "" : rawValue);
+        return new RuntimeVariable(nodeType, values);
+    }
+
+    private NodeType parsePresetInputNodeType(String rawType) {
+        if (rawType != null && !rawType.isBlank()) {
+            try {
+                return NodeType.valueOf(rawType.trim());
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return NodeType.PARAM_MESSAGE;
+    }
+
+    private Map<String, String> buildPresetInputValueMap(NodeType nodeType, String rawValue) {
+        Map<String, String> values = new HashMap<>();
+        String safeValue = rawValue == null ? "" : rawValue.trim();
+        switch (nodeType) {
+            case PARAM_COORDINATE -> {
+                String[] parts = safeValue.isEmpty() ? new String[0] : safeValue.split("\\s*,\\s*|\\s+");
+                values.put("X", parts.length > 0 ? parts[0] : "0");
+                values.put("Y", parts.length > 1 ? parts[1] : "64");
+                values.put("Z", parts.length > 2 ? parts[2] : "0");
+            }
+            case PARAM_BLOCK -> values.put("Block", safeValue);
+            case PARAM_ITEM -> values.put("Item", safeValue);
+            case PARAM_VILLAGER_TRADE -> values.put("Item", safeValue);
+            case PARAM_ENTITY -> values.put("Entity", safeValue);
+            case PARAM_PLAYER -> values.put("Player", safeValue);
+            case PARAM_MESSAGE -> values.put("Text", safeValue);
+            case PARAM_WAYPOINT -> values.put("Waypoint", safeValue);
+            case PARAM_SCHEMATIC -> values.put("Schematic", safeValue);
+            case PARAM_INVENTORY_SLOT -> values.put("Slot", safeValue.isEmpty() ? "0" : safeValue);
+            case PARAM_DURATION -> values.put("Duration", safeValue.isEmpty() ? "0.0" : safeValue);
+            case PARAM_AMOUNT -> values.put("Amount", safeValue.isEmpty() ? "0.0" : safeValue);
+            case PARAM_BOOLEAN -> {
+                values.put("Mode", "literal");
+                values.put("Toggle", Boolean.toString(Boolean.parseBoolean(safeValue)));
+                values.put("Variable", "");
+            }
+            case PARAM_HAND -> values.put("Hand", safeValue.isEmpty() ? "main" : safeValue);
+            case PARAM_GUI -> values.put("GUI", safeValue);
+            case PARAM_KEY -> values.put("Key", safeValue);
+            case PARAM_MOUSE_BUTTON -> values.put("MouseButton", safeValue);
+            case PARAM_RANGE -> values.put("Range", safeValue.isEmpty() ? "0" : safeValue);
+            case PARAM_DISTANCE -> values.put("Distance", safeValue.isEmpty() ? "0.0" : safeValue);
+            case PARAM_DIRECTION -> values.put("Direction", safeValue);
+            case PARAM_BLOCK_FACE -> values.put("Face", safeValue);
+            case PARAM_ROTATION -> {
+                String[] parts = safeValue.isEmpty() ? new String[0] : safeValue.split("\\s*,\\s*|\\s+");
+                values.put("Yaw", parts.length > 0 ? parts[0] : "0.0");
+                values.put("Pitch", parts.length > 1 ? parts[1] : "0.0");
+            }
+            default -> values.put("Text", safeValue);
+        }
+        return values;
     }
     
     /**

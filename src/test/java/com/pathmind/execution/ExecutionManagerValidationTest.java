@@ -286,6 +286,58 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void setVariableStoresResolvedPositionFromListItem() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
+        setVariable.setOwningStartNode(start);
+
+        Class<?> controllerClass = Arrays.stream(ExecutionManager.class.getDeclaredClasses())
+            .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
+            .findFirst()
+            .orElseThrow();
+        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
+        constructor.setAccessible(true);
+        Object controller = constructor.newInstance(start, 1);
+
+        Field activeChainsField = ExecutionManager.class.getDeclaredField("activeChains");
+        activeChainsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Node, Object> activeChains = (Map<Node, Object>) activeChainsField.get(manager);
+        activeChains.put(start, controller);
+
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("stored_position");
+
+        Node position = new Node(NodeType.SENSOR_POSITION_OF, 0, 0);
+        Node listItem = new Node(NodeType.LIST_ITEM, 0, 0);
+        listItem.getParameter("List").setStringValue("list");
+        listItem.getParameter("Index").setStringValue("1");
+
+        assertTrue(position.attachParameter(listItem, 0));
+        assertTrue(setVariable.attachParameter(variable, 0));
+        assertTrue(setVariable.attachParameter(position, 1));
+
+        manager.setRuntimeList(start, "list", new ExecutionManager.RuntimeList(
+            NodeType.PARAM_COORDINATE,
+            List.of("pm_list:{\"X\":\"10\",\"Y\":\"64\",\"Z\":\"-3\",\"x\":\"10\",\"y\":\"64\",\"z\":\"-3\"}")
+        ));
+
+        Method executeSetVariable = Node.class.getDeclaredMethod("executeSetVariableCommand", CompletableFuture.class);
+        executeSetVariable.setAccessible(true);
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        executeSetVariable.invoke(setVariable, future);
+        future.get(1, TimeUnit.SECONDS);
+
+        ExecutionManager.RuntimeVariable stored = manager.getRuntimeVariable(start, "stored_position");
+        assertNotNull(stored);
+        assertEquals(NodeType.PARAM_COORDINATE, stored.getType());
+        assertEquals("10", stored.getValues().get("X"));
+        assertEquals("64", stored.getValues().get("Y"));
+        assertEquals("-3", stored.getValues().get("Z"));
+    }
+
+    @Test
     void joinAllBarrierWaitsForBothInputsAndResets() throws Exception {
         Node start = new Node(NodeType.START, 0, 0);
         Node joinAll = new Node(NodeType.CONTROL_JOIN_ALL, 100, 0);

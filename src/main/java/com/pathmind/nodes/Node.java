@@ -3802,12 +3802,7 @@ public class Node {
                 break;
             }
             case SENSOR_POSITION_OF: {
-                Node parameterNode = getAttachedParameterOfType(
-                    NodeType.PARAM_ENTITY,
-                    NodeType.PARAM_BLOCK,
-                    NodeType.PARAM_ITEM,
-                    NodeType.PARAM_PLAYER
-                );
+                Node parameterNode = getAttachedParameter(0);
                 if (parameterNode == null) {
                     break;
                 }
@@ -7646,12 +7641,7 @@ public class Node {
             valueType = NodeType.PARAM_BOOLEAN;
         } else
         if (valueType == NodeType.SENSOR_POSITION_OF) {
-            Node parameterNode = valueNode.getAttachedParameterOfType(
-                NodeType.PARAM_ENTITY,
-                NodeType.PARAM_BLOCK,
-                NodeType.PARAM_ITEM,
-                NodeType.PARAM_PLAYER
-            );
+            Node parameterNode = valueNode.getAttachedParameter(0);
             if (parameterNode == null) {
                 if (client != null) {
                     sendNodeErrorMessage(client, "Position Of requires an entity, user, block, or item parameter.");

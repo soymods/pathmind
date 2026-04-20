@@ -1385,6 +1385,7 @@ public class Node {
             case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
             case SENSOR_IS_ON_GROUND -> NodeType.PARAM_DISTANCE;
             case SENSOR_SLOT_ITEM_COUNT -> NodeType.PARAM_AMOUNT;
+            case LIST_LENGTH -> NodeType.PARAM_AMOUNT;
             default -> type;
         };
     }
@@ -5525,11 +5526,10 @@ public class Node {
             return null;
         }
 
-        Node snapshot = new Node(valueType, 0, 0);
-        snapshot.setSocketsHidden(true);
-        Map<String, String> values = runtimeVariable.getValues();
-        if (values != null && !values.isEmpty()) {
-            snapshot.applyParameterValuesFromMap(values);
+        Node snapshot = createRuntimeVariableSnapshot(runtimeVariable);
+        if (snapshot == null) {
+            sendVariableError("Variable \"" + variableName.trim() + "\" has no value.", future);
+            return null;
         }
 
         boolean variableSupported = isParameterSupported(snapshot, slotIndex);
@@ -7991,10 +7991,7 @@ public class Node {
         boolean useCustomRadius = isCreateListCustomRadiusEnabled();
         double searchRadius = getCreateListSearchRadius(client);
 
-        if (parameterType != NodeType.PARAM_ENTITY
-            && parameterType != NodeType.PARAM_PLAYER
-            && parameterType != NodeType.PARAM_ITEM
-            && parameterType != NodeType.PARAM_GUI) {
+        if (!isCreateListCollectionTarget(parameterType)) {
             ListValueEntry singleValue = resolveListValueEntry(parameterNode, future);
             if (future.isDone()) {
                 return;
@@ -8219,6 +8216,14 @@ public class Node {
         manager.setRuntimeList(startNode, listName.trim(),
             new ExecutionManager.RuntimeList(parameterType, entries));
         future.complete(null);
+    }
+
+    static boolean isCreateListCollectionTarget(NodeType parameterType) {
+        return parameterType == NodeType.PARAM_BLOCK
+            || parameterType == NodeType.PARAM_ENTITY
+            || parameterType == NodeType.PARAM_PLAYER
+            || parameterType == NodeType.PARAM_ITEM
+            || parameterType == NodeType.PARAM_GUI;
     }
 
     private List<String> collectGuiListEntries(ScreenHandler handler, GuiSelectionMode guiMode) {
@@ -20614,7 +20619,11 @@ public class Node {
         if (runtimeVariable == null || runtimeVariable.getType() == null) {
             return null;
         }
-        Node snapshot = new Node(runtimeVariable.getType(), 0, 0);
+        NodeType runtimeType = runtimeVariable.getType();
+        NodeType snapshotType = runtimeType == NodeType.LIST_LENGTH
+            ? NodeType.PARAM_AMOUNT
+            : runtimeType;
+        Node snapshot = new Node(snapshotType, 0, 0);
         snapshot.setSocketsHidden(true);
         Map<String, String> values = runtimeVariable.getValues();
         if (values != null && !values.isEmpty()) {

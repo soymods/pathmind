@@ -83,6 +83,25 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void fabricEventSensorDoesNotExposeParameterSlot() {
+        Node sensor = new Node(NodeType.SENSOR_FABRIC_EVENT, 0, 0);
+        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+
+        assertFalse(sensor.hasParameterSlot());
+        assertFalse(sensor.canAcceptParameterNode(amount, 0));
+    }
+
+    @Test
+    void createListTreatsBlockTargetsAsCollectionSources() {
+        assertTrue(Node.isCreateListCollectionTarget(NodeType.PARAM_BLOCK));
+        assertTrue(Node.isCreateListCollectionTarget(NodeType.PARAM_ENTITY));
+        assertTrue(Node.isCreateListCollectionTarget(NodeType.PARAM_PLAYER));
+        assertTrue(Node.isCreateListCollectionTarget(NodeType.PARAM_ITEM));
+        assertTrue(Node.isCreateListCollectionTarget(NodeType.PARAM_GUI));
+        assertFalse(Node.isCreateListCollectionTarget(NodeType.PARAM_COORDINATE));
+    }
+
+    @Test
     void lookAcceptsAmountParameter() {
         Node look = new Node(NodeType.LOOK, 0, 0);
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);

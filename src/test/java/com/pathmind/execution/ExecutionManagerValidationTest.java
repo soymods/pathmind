@@ -185,6 +185,29 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void equalsResolvesAmountVariableAgainstStoredListLengthVariable() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node left = new Node(NodeType.VARIABLE, 0, 0);
+        left.getParameter("Variable").setStringValue("left_compare");
+        Node right = new Node(NodeType.VARIABLE, 0, 0);
+        right.getParameter("Variable").setStringValue("right_compare");
+
+        assertTrue(equals.attachParameter(left, 0));
+        assertTrue(equals.attachParameter(right, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "left_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, Map.of("Amount", "1", "amount", "1"))
+        );
+        manager.setRuntimeVariableForAnyActiveChain(
+            "right_compare",
+            new ExecutionManager.RuntimeVariable(NodeType.LIST_LENGTH, Map.of("List", "list", "Amount", "1", "amount", "1"))
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
     void equalsResolvesVariableAgainstSemanticallyEquivalentItemNode() {
         Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
         Node variable = new Node(NodeType.VARIABLE, 0, 0);

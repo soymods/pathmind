@@ -16501,6 +16501,17 @@ public class Node {
         if (shiftClickTarget) {
             if (moveAllMatchingStacks) {
                 quickMoveAllMatchingStacks(client, interactionManager, handler, inventory, sourceParameterNode, sourceSelection);
+            } else if (requestedCount > 0) {
+                moveRequestedCountToGuiTarget(
+                    client,
+                    interactionManager,
+                    handler,
+                    inventory,
+                    sourceParameterNode,
+                    sourceResolution,
+                    sourceSelection,
+                    moveCount
+                );
             } else {
                 interactionManager.clickSlot(
                     handler.syncId,
@@ -16597,6 +16608,73 @@ public class Node {
         }
     }
 
+    private void moveRequestedCountToGuiTarget(net.minecraft.client.MinecraftClient client,
+                                               ClientPlayerInteractionManager interactionManager,
+                                               ScreenHandler handler,
+                                               PlayerInventory inventory,
+                                               Node sourceParameterNode,
+                                               SlotResolution initialSourceResolution,
+                                               SlotSelectionType sourceSelection,
+                                               int requestedCount) {
+        if (client == null || client.player == null || interactionManager == null || handler == null || requestedCount <= 0) {
+            return;
+        }
+
+        SlotSelectionType destinationSelection = sourceSelection == SlotSelectionType.GUI_CONTAINER
+            ? SlotSelectionType.PLAYER_INVENTORY
+            : SlotSelectionType.GUI_CONTAINER;
+        int remaining = requestedCount;
+        SlotResolution currentResolution = initialSourceResolution;
+
+        List<String> itemIds = List.of();
+        boolean anySelection = false;
+        boolean iterateMatchingSources = sourceParameterNode != null && sourceParameterNode.getType() == NodeType.PARAM_ITEM;
+        if (iterateMatchingSources) {
+            itemIds = resolveItemIdsFromParameter(sourceParameterNode);
+            anySelection = itemIds.isEmpty()
+                && (isAnySelectionValue(getParameterString(sourceParameterNode, "Item"))
+                    || isAnySelectionValue(getParameterString(sourceParameterNode, "Items")));
+        }
+
+        while (remaining > 0 && currentResolution != null && currentResolution.slot != null) {
+            ItemStack source = currentResolution.slot.getStack();
+            if (source.isEmpty()) {
+                if (!iterateMatchingSources) {
+                    break;
+                }
+                currentResolution = findNextMoveItemSourceResolution(client, handler, inventory, itemIds, anySelection, sourceSelection);
+                continue;
+            }
+
+            int transferAmount = Math.min(remaining, source.getCount());
+            SlotResolution destinationResolution = findTransferDestinationResolution(
+                handler,
+                destinationSelection,
+                source,
+                transferAmount
+            );
+            if (destinationResolution == null) {
+                break;
+            }
+
+            performInventoryTransfer(
+                interactionManager,
+                handler,
+                client.player,
+                currentResolution.handlerSlotIndex,
+                destinationResolution.handlerSlotIndex,
+                transferAmount,
+                transferAmount >= source.getCount()
+            );
+            remaining -= transferAmount;
+
+            if (!iterateMatchingSources) {
+                break;
+            }
+            currentResolution = findNextMoveItemSourceResolution(client, handler, inventory, itemIds, anySelection, sourceSelection);
+        }
+    }
+
     private SlotResolution findNextMoveItemSourceResolution(net.minecraft.client.MinecraftClient client,
                                                             ScreenHandler handler,
                                                             PlayerInventory inventory,
@@ -16638,6 +16716,44 @@ public class Node {
             }
         }
         return null;
+    }
+
+    private SlotResolution findTransferDestinationResolution(ScreenHandler handler,
+                                                             SlotSelectionType selectionType,
+                                                             ItemStack sourceStack,
+                                                             int transferAmount) {
+        if (handler == null || selectionType == null || sourceStack == null || sourceStack.isEmpty() || transferAmount <= 0) {
+            return null;
+        }
+
+        SlotResolution emptySlot = null;
+        for (int i = 0; i < handler.slots.size(); i++) {
+            Slot slot = handler.getSlot(i);
+            if (slot == null || !isSlotInSelectionType(slot, selectionType)) {
+                continue;
+            }
+            if (!slot.canInsert(sourceStack)) {
+                continue;
+            }
+
+            ItemStack destinationStack = slot.getStack();
+            if (!destinationStack.isEmpty()) {
+                if (!ItemStack.areItemsAndComponentsEqual(destinationStack, sourceStack)) {
+                    continue;
+                }
+                int maxCount = Math.min(slot.getMaxItemCount(sourceStack), sourceStack.getMaxCount());
+                int space = Math.max(0, maxCount - destinationStack.getCount());
+                if (space >= transferAmount) {
+                    return new SlotResolution(slot, i);
+                }
+                continue;
+            }
+
+            if (emptySlot == null) {
+                emptySlot = new SlotResolution(slot, i);
+            }
+        }
+        return emptySlot;
     }
 
     private boolean matchesMoveItemSource(ItemStack stack, List<String> itemIds, boolean anySelection) {

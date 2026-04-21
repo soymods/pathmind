@@ -1399,7 +1399,7 @@ public class Node {
     }
 
     public boolean showsModeFieldAboveParameterSlot() {
-        return (type == NodeType.SENSOR_POSITION_OF || type == NodeType.SENSOR_LOOK_DIRECTION)
+        return type == NodeType.SENSOR_POSITION_OF
             && supportsModeSelection()
             && !isInlineParameterNode()
             && !shouldRenderInlineParameters()
@@ -1438,7 +1438,7 @@ public class Node {
     }
 
     public String getModeFieldLabelText() {
-        if (type == NodeType.SENSOR_POSITION_OF || type == NodeType.SENSOR_LOOK_DIRECTION) {
+        if (type == NodeType.SENSOR_POSITION_OF) {
             return "Axis:";
         }
         return "Mode:";
@@ -4553,6 +4553,9 @@ public class Node {
     }
 
     public boolean supportsModeSelection() {
+        if (type == NodeType.SENSOR_LOOK_DIRECTION) {
+            return false;
+        }
         NodeMode[] modes = NodeMode.getModesForNodeType(type);
         return modes != null && modes.length > 0;
     }

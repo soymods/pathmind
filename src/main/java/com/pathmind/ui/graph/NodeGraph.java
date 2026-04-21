@@ -5,6 +5,7 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.nodes.AttributeDetectionConfig;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeConnection;
@@ -3615,6 +3616,7 @@ public class NodeGraph {
                         boolean isGuiParam = isGuiParameter(node, param);
                         boolean isMouseButtonParam = isMouseButtonParameter(node, param);
                         boolean isAmountParam = isAmountParameter(node, param);
+                        boolean isAttributeDetectionDropdownParam = isAttributeDetectionDropdownParameter(node, i);
                         boolean showPlayerPlaceholder = false;
                         boolean showMessagePlaceholder = false;
                         boolean showSeedPlaceholder = false;
@@ -3703,6 +3705,9 @@ public class NodeGraph {
                         if (!editingThis && isMouseButtonParam) {
                             value = formatMouseButtonValue(value);
                         }
+                        if (!editingThis && isAttributeDetectionDropdownParam) {
+                            value = formatAttributeDetectionInlineValue(node, param, value);
+                        }
                         if (!editingThis && isBooleanLiteralParameter(node, i) && value.isEmpty()) {
                             value = "True";
                         }
@@ -3735,14 +3740,14 @@ public class NodeGraph {
                             }
                             valueColor = UITheme.TEXT_TERTIARY;
                         }
-                        boolean booleanLiteralDropdown = isBooleanLiteralParameter(node, i);
-                        boolean booleanLiteralOpen = booleanLiteralDropdown
+                        boolean inlineDropdown = isBooleanLiteralParameter(node, i) || isAttributeDetectionDropdownParam;
+                        boolean inlineDropdownOpen = inlineDropdown
                             && parameterDropdownOpen
                             && parameterDropdownNode == node
                             && parameterDropdownIndex == i;
-                        String arrow = booleanLiteralDropdown ? (booleanLiteralOpen ? "v" : "^") : "";
-                        int arrowWidth = booleanLiteralDropdown ? textRenderer.getWidth(arrow) : 0;
-                        if (booleanLiteralDropdown) {
+                        String arrow = inlineDropdown ? (inlineDropdownOpen ? "v" : "^") : "";
+                        int arrowWidth = inlineDropdown ? textRenderer.getWidth(arrow) : 0;
+                        if (inlineDropdown) {
                             maxValueWidth = Math.max(0, maxValueWidth - arrowWidth - 8);
                         }
                         String displayValue = editingThis
@@ -3788,7 +3793,7 @@ public class NodeGraph {
                             drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, valueY, valueColor);
                         }
 
-                        if (booleanLiteralDropdown) {
+                        if (inlineDropdown) {
                             int arrowX = fieldRight - arrowWidth - 4;
                             drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, valueY, valueColor);
                         }
@@ -3809,6 +3814,7 @@ public class NodeGraph {
                             || isMouseButtonParameter(node, param)
                             || isGuiParameter(node, param)
                             || isDirectionParameter(node, i)
+                            || isAttributeDetectionDropdownParameter(node, i)
                             || isBlockFaceParameter(node, i)
                             || isFabricEventSensorParameter(node, i))) {
                             updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
@@ -8481,6 +8487,7 @@ public class NodeGraph {
             || isMouseButtonParameter(node, parameter)
             || isGuiParameter(node, parameter)
             || isDirectionParameter(node, index)
+            || isAttributeDetectionBooleanValueParameter(node, index)
             || isBlockFaceParameter(node, index)
             || isBlockItemParameter(node, index)
             || isFabricEventSensorParameter(node, index))) {
@@ -8489,6 +8496,7 @@ public class NodeGraph {
                 || "Self".equalsIgnoreCase(parameterEditBuffer)
                 || "Any State".equalsIgnoreCase(parameterEditBuffer)
                 || "North".equalsIgnoreCase(parameterEditBuffer)
+                || "True".equalsIgnoreCase(parameterEditBuffer)
                 || isDefaultMouseButtonValue(parameterEditBuffer)
                 || "0".equals(parameterEditBuffer)
                 || (isTradeInlineParameter(node, parameter) && "1".equals(parameterEditBuffer))) {
@@ -8554,6 +8562,9 @@ public class NodeGraph {
                 || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isBlockFaceParam = isBlockFaceParameter(parameterEditingNode, parameterEditingIndex);
             boolean isBooleanLiteralParam = isBooleanLiteralParameter(parameterEditingNode, parameterEditingIndex);
+            boolean isAttributeDetectionAttributeParam = isAttributeDetectionAttributeParameter(parameterEditingNode, parameterEditingIndex);
+            boolean isAttributeDetectionOperatorParam = isAttributeDetectionOperatorParameter(parameterEditingNode, parameterEditingIndex);
+            boolean isAttributeDetectionBooleanValueParam = isAttributeDetectionBooleanValueParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
             boolean isTradeInlineParam = isTradeInlineParameter(parameterEditingNode, parameter);
@@ -8645,6 +8656,59 @@ public class NodeGraph {
                     parameter.setStringValueFromUser(normalized);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), normalized);
                 }
+            } else if (isAttributeDetectionAttributeParam) {
+                String trimmed = value.trim();
+                AttributeDetectionConfig.TargetKind targetKind = getAttributeDetectionTargetKind(parameterEditingNode);
+                AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(trimmed);
+                if (attribute == null || (targetKind != null && !attribute.supports(targetKind))) {
+                    attribute = AttributeDetectionConfig.getDefaultAttribute(targetKind);
+                    appliedValue = attribute.id();
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    appliedValue = attribute.id();
+                    parameter.setStringValueFromUser(appliedValue);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                }
+            } else if (isAttributeDetectionOperatorParam) {
+                String trimmed = value.trim();
+                AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(
+                    parameterEditingNode.getParameter("Attribute") != null
+                        ? parameterEditingNode.getParameter("Attribute").getStringValue()
+                        : ""
+                );
+                if (attribute == null) {
+                    attribute = AttributeDetectionConfig.getDefaultAttribute(getAttributeDetectionTargetKind(parameterEditingNode));
+                }
+                AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(trimmed);
+                if (operator == null || !operator.supports(attribute.valueType())) {
+                    operator = AttributeDetectionConfig.getDefaultOperator(attribute);
+                    appliedValue = operator.id();
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    appliedValue = operator.id();
+                    parameter.setStringValueFromUser(appliedValue);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                }
+            } else if (isAttributeDetectionBooleanValueParam) {
+                String trimmed = value.trim();
+                String normalized = (trimmed.isEmpty() || "true".equalsIgnoreCase(trimmed) || "1".equals(trimmed))
+                    ? "true"
+                    : ("false".equalsIgnoreCase(trimmed) || "0".equals(trimmed) ? "false" : trimmed.toLowerCase(Locale.ROOT));
+                if (!"true".equals(normalized) && !"false".equals(normalized)) {
+                    normalized = "true";
+                }
+                appliedValue = normalized;
+                if ("true".equals(normalized) && trimmed.isEmpty()) {
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                } else {
+                    parameter.setStringValueFromUser(appliedValue);
+                }
+                parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
             } else if (isAnyLikeParam || isBlockItemParam) {
                 String trimmed = value.trim();
                 boolean isEmptyOrAny = trimmed.isEmpty()
@@ -8828,6 +8892,43 @@ public class NodeGraph {
             return false;
         }
         return "Toggle".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isAttributeDetectionAttributeParameter(Node node, int index) {
+        if (node == null || !node.isAttributeDetectionSensor() || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        return param != null && "Attribute".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isAttributeDetectionOperatorParameter(Node node, int index) {
+        if (node == null || !node.isAttributeDetectionSensor() || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        return param != null && "Operator".equalsIgnoreCase(param.getName());
+    }
+
+    private boolean isAttributeDetectionBooleanValueParameter(Node node, int index) {
+        if (node == null || !node.isAttributeDetectionSensor() || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter param = node.getParameters().get(index);
+        if (param == null || !"Value".equalsIgnoreCase(param.getName())) {
+            return false;
+        }
+        AttributeDetectionConfig.AttributeOption attribute =
+            AttributeDetectionConfig.getAttribute(node.getParameter("Attribute") != null
+                ? node.getParameter("Attribute").getStringValue()
+                : "");
+        return attribute != null && attribute.valueType() == AttributeDetectionConfig.ValueType.BOOLEAN;
+    }
+
+    private boolean isAttributeDetectionDropdownParameter(Node node, int index) {
+        return isAttributeDetectionAttributeParameter(node, index)
+            || isAttributeDetectionOperatorParameter(node, index)
+            || isAttributeDetectionBooleanValueParameter(node, index);
     }
 
     private boolean isBlockFaceParameter(Node node, int index) {
@@ -10272,8 +10373,64 @@ public class NodeGraph {
         return new ParameterSegment(start, end, leading, trimmed);
     }
 
+    private AttributeDetectionConfig.TargetKind getAttributeDetectionTargetKind(Node node) {
+        if (node == null || !node.isAttributeDetectionSensor()) {
+            return null;
+        }
+        Node attached = node.getAttachedParameter(0);
+        if (attached == null) {
+            return null;
+        }
+        return AttributeDetectionConfig.inferTargetKind(attached.getType());
+    }
+
+    private String formatAttributeDetectionInlineValue(Node node, NodeParameter parameter, String value) {
+        if (node == null || parameter == null || !node.isAttributeDetectionSensor()) {
+            return value;
+        }
+        if ("Attribute".equalsIgnoreCase(parameter.getName())) {
+            AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(value);
+            return attribute != null ? attribute.label() : value;
+        }
+        if ("Operator".equalsIgnoreCase(parameter.getName())) {
+            AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(value);
+            return operator != null ? operator.label() : value;
+        }
+        if ("Value".equalsIgnoreCase(parameter.getName()) && isAttributeDetectionBooleanValueParameter(node, node.getParameters().indexOf(parameter))) {
+            return "true".equalsIgnoreCase(value) ? "True" : "False";
+        }
+        return value;
+    }
+
     private List<ParameterDropdownOption> getParameterDropdownOptions(Node node, int index, String query) {
         String lowered = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        if (isAttributeDetectionAttributeParameter(node, index)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            for (AttributeDetectionConfig.AttributeOption option : AttributeDetectionConfig.getAttributesForTarget(getAttributeDetectionTargetKind(node))) {
+                result.add(new ParameterDropdownOption(option.label(), option.id()));
+            }
+            return filterDropdownOptions(result, lowered);
+        }
+        if (isAttributeDetectionOperatorParameter(node, index)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            AttributeDetectionConfig.AttributeOption attribute =
+                AttributeDetectionConfig.getAttribute(node.getParameter("Attribute") != null
+                    ? node.getParameter("Attribute").getStringValue()
+                    : "");
+            if (attribute == null) {
+                attribute = AttributeDetectionConfig.getDefaultAttribute(getAttributeDetectionTargetKind(node));
+            }
+            for (AttributeDetectionConfig.OperatorOption option : AttributeDetectionConfig.getOperatorsForAttribute(attribute)) {
+                result.add(new ParameterDropdownOption(option.label(), option.id()));
+            }
+            return filterDropdownOptions(result, lowered);
+        }
+        if (isAttributeDetectionBooleanValueParameter(node, index)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("True", "true"));
+            result.add(new ParameterDropdownOption("False", "false"));
+            return filterDropdownOptions(result, lowered);
+        }
         if (isBlockStateParameter(node, index)) {
             return getBlockStateDropdownOptions(node, lowered);
         }
@@ -10513,6 +10670,7 @@ public class NodeGraph {
             && !isMouseButtonParameter(node, null)
             && !isDirectionParameter(node, index)
             && !isBooleanLiteralParameter(node, index)
+            && !isAttributeDetectionDropdownParameter(node, index)
             && !isBlockFaceParameter(node, index)
             && !isFabricEventSensorParameter(node, index)) {
             closeParameterDropdown();

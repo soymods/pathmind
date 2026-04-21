@@ -12,6 +12,7 @@ import com.pathmind.marketplace.MarketplacePreset;
 import com.pathmind.marketplace.MarketplaceRateLimitManager;
 import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
@@ -6278,7 +6279,24 @@ public class PathmindVisualEditorScreen extends Screen {
             context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
             int labelMaxWidth = Math.max(40, panelWidth - VALIDATION_PANEL_PADDING * 2 - VALIDATION_INPUT_FIELD_WIDTH - 10);
             String trimmed = TextRenderUtil.trimWithEllipsis(this.textRenderer, port.getName(), labelMaxWidth);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), panelX + VALIDATION_PANEL_PADDING, rowY + 7, UITheme.TEXT_HEADER);
+            Node targetNode = findPresetInputVariableNode(port);
+            int labelX = panelX + VALIDATION_PANEL_PADDING;
+            int labelWidth = Math.min(labelMaxWidth, this.textRenderer.getWidth(trimmed));
+            boolean labelHovered = targetNode != null && isPointInRect(mouseX, mouseY, labelX - 2, rowY + 4, labelWidth + 4, this.textRenderer.fontHeight + 4);
+            float hoverProgress = getPresetInputLabelHoverProgress(port, labelHovered);
+            int labelColor = AnimationHelper.lerpColor(UITheme.TEXT_HEADER, getAccentColor(), hoverProgress * 0.8f);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), labelX, rowY + 7, labelColor);
+            if (hoverProgress > 0.001f) {
+                int glowColor = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, getAccentColor(), hoverProgress * 0.18f);
+                context.fill(labelX - 2, rowY + 5, labelX + labelWidth + 2, rowY + 5 + this.textRenderer.fontHeight + 2, glowColor);
+                context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), labelX, rowY + 7, labelColor);
+                int underlineWidth = Math.round(labelWidth * hoverProgress);
+                if (underlineWidth > 0) {
+                    int underlineStartX = labelX + (labelWidth - underlineWidth) / 2;
+                    int underlineY = rowY + 7 + this.textRenderer.fontHeight + 1;
+                    context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, labelColor);
+                }
+            }
             if (isPresetBooleanPort(port)) {
                 int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
                 int toggleY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - SETTINGS_TOGGLE_HEIGHT) / 2;
@@ -6335,6 +6353,11 @@ public class PathmindVisualEditorScreen extends Screen {
         int currentTop = topY + VALIDATION_PANEL_SECTION_GAP + 18;
         for (NodeGraphData.CustomNodePort port : ports) {
             int rowY = currentTop;
+            Node targetNode = findPresetInputVariableNode(port);
+            if (isPresetInputLabelHovered(mouseX, mouseY, panelX, panelWidth, rowY, port, targetNode)) {
+                nodeGraph.focusNode(targetNode, this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+                return true;
+            }
             if (isPresetBooleanPort(port)) {
                 int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
                 int toggleY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - SETTINGS_TOGGLE_HEIGHT) / 2;
@@ -6379,6 +6402,43 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
         return ports;
+    }
+
+    private Node findPresetInputVariableNode(NodeGraphData.CustomNodePort port) {
+        if (nodeGraph == null || port == null || port.getName() == null || port.getName().isBlank()) {
+            return null;
+        }
+        String targetName = port.getName().trim();
+        for (Node node : nodeGraph.getNodes()) {
+            if (node == null || node.getType() != NodeType.VARIABLE) {
+                continue;
+            }
+            NodeParameter variableParam = node.getParameter("Variable");
+            String variableName = variableParam != null ? variableParam.getStringValue() : null;
+            if (variableName != null && targetName.equalsIgnoreCase(variableName.trim())) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    private boolean isPresetInputLabelHovered(int mouseX, int mouseY, int panelX, int panelWidth, int rowY,
+                                              NodeGraphData.CustomNodePort port, Node targetNode) {
+        if (targetNode == null) {
+            return false;
+        }
+        int labelMaxWidth = Math.max(40, panelWidth - VALIDATION_PANEL_PADDING * 2 - VALIDATION_INPUT_FIELD_WIDTH - 10);
+        String trimmed = TextRenderUtil.trimWithEllipsis(this.textRenderer, port.getName(), labelMaxWidth);
+        int labelX = panelX + VALIDATION_PANEL_PADDING;
+        int labelWidth = Math.min(labelMaxWidth, this.textRenderer.getWidth(trimmed));
+        return isPointInRect(mouseX, mouseY, labelX - 2, rowY + 4, labelWidth + 4, this.textRenderer.fontHeight + 4);
+    }
+
+    private float getPresetInputLabelHoverProgress(NodeGraphData.CustomNodePort port, boolean hovered) {
+        if (port == null || port.getName() == null) {
+            return 0f;
+        }
+        return HoverAnimator.getProgress("validation-preset-input-label:" + getPresetInputScopeKey() + ":" + port.getName(), hovered);
     }
 
     private NodeGraphData.CustomNodeDefinition getActivePresetInputDefinition() {

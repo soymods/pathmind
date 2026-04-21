@@ -26,6 +26,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_IS_VISIBLE,
         NodeType.SENSOR_KEY_PRESSED,
         NodeType.SENSOR_CHAT_MESSAGE,
+        NodeType.SENSOR_ATTRIBUTE_DETECTION,
         NodeType.SENSOR_FABRIC_EVENT,
         NodeType.SENSOR_GUI_FILLED,
         NodeType.OPERATOR_EQUALS,
@@ -63,6 +64,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_ITEM_IN_INVENTORY,
         NodeType.SENSOR_ITEM_IN_SLOT,
         NodeType.SENSOR_SLOT_ITEM_COUNT,
+        NodeType.SENSOR_ATTRIBUTE_DETECTION,
         NodeType.SENSOR_CHAT_MESSAGE
     );
 
@@ -199,6 +201,11 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_ITEM_IN_INVENTORY, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_ITEM_IN_SLOT, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
+        accepted.put(NodeType.SENSOR_ATTRIBUTE_DETECTION, EnumSet.of(
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.ITEM
+        ));
         accepted.put(NodeType.SENSOR_VILLAGER_TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_IN_STOCK, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_CHAT_MESSAGE, EnumSet.of(NodeValueTrait.PLAYER, NodeValueTrait.MESSAGE, NodeValueTrait.NUMBER));
@@ -370,6 +377,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
         slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Slot"});
         slotLabels.put(NodeType.SENSOR_SLOT_ITEM_COUNT, new String[]{"Slot"});
+        slotLabels.put(NodeType.SENSOR_ATTRIBUTE_DETECTION, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_DISTANCE_BETWEEN, new String[]{"Target A", "Target B"});
         slotLabels.put(NodeType.SENSOR_VILLAGER_TRADE, new String[]{"Villager Trade"});
@@ -544,6 +552,9 @@ public final class NodeTraitRegistry {
         }
         if (hostType == NodeType.SENSOR_CHAT_MESSAGE) {
             return slotIndex == 0 || slotIndex == 1;
+        }
+        if (hostType == NodeType.SENSOR_ATTRIBUTE_DETECTION) {
+            return slotIndex == 0;
         }
         if (hostType == NodeType.SENSOR_DISTANCE_BETWEEN) {
             return slotIndex == 0 || slotIndex == 1;

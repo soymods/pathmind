@@ -55,6 +55,7 @@ import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.ItemEntity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.registry.Registries;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
@@ -690,6 +691,7 @@ public class Node {
     public boolean shouldRenderInlineParameters() {
         return type == NodeType.UI_UTILS
             || type == NodeType.SENSOR_FABRIC_EVENT
+            || type == NodeType.SENSOR_ATTRIBUTE_DETECTION
             || type == NodeType.TRADE
             || type == NodeType.REMOVE_LIST_ITEM;
     }
@@ -1104,6 +1106,28 @@ public class Node {
             } else {
                 top += BODY_PADDING_NO_PARAMS;
             }
+        } else if (shouldRenderInlineParameters()) {
+            int parameterDisplayHeight = getParameterDisplayHeight();
+            if (parameterDisplayHeight > 0) {
+                top += parameterDisplayHeight;
+            } else {
+                top += BODY_PADDING_NO_PARAMS;
+            }
+            if (hasParameterSlot()) {
+                int slotCount = getParameterSlotCount();
+                for (int i = 0; i < slotCount; i++) {
+                    top += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
+                }
+            }
+            if (hasVariableInputField()) {
+                top += getVariableFieldDisplayHeight();
+            }
+            if (hasCoordinateInputFields()) {
+                top += getCoordinateFieldDisplayHeight();
+            }
+            if (hasSensorSlot() || hasActionSlot()) {
+                top += SLOT_AREA_PADDING_TOP;
+            }
         } else if (hasParameterSlot()) {
             int slotCount = getParameterSlotCount();
             for (int i = 0; i < slotCount; i++) {
@@ -1204,14 +1228,15 @@ public class Node {
 
     public int getParameterSlotTop(int slotIndex) {
         int top = y + HEADER_HEIGHT + PARAMETER_SLOT_LABEL_HEIGHT;
-        if (isInlineParameterNode() && hasParameterSlot()) {
+        if ((isInlineParameterNode() || shouldRenderInlineParameters()) && hasParameterSlot()) {
             top = y + HEADER_HEIGHT;
-            int lineCount = parameters.size();
-            if (supportsModeSelection()) {
-                lineCount++;
+            int parameterDisplayHeight = getParameterDisplayHeight();
+            if (parameterDisplayHeight > 0) {
+                top += parameterDisplayHeight;
+            } else if (isInlineParameterNode()) {
+                top += BODY_PADDING_NO_PARAMS;
             }
-            top += PARAM_PADDING_TOP + lineCount * PARAM_LINE_HEIGHT + PARAM_PADDING_BOTTOM;
-            if (hasPopupEditButton()) {
+            if (isInlineParameterNode() && hasPopupEditButton()) {
                 top += getPopupEditButtonDisplayHeight();
             }
             top += PARAMETER_SLOT_LABEL_HEIGHT;
@@ -2031,6 +2056,7 @@ public class Node {
         ensureAmountToggleParameters();
         ensureRandomRoundingParameters();
         ensureCombinedDirectionParameters();
+        normalizeAttributeDetectionParameters();
     }
 
     private boolean shouldUseLegacyVillagerTradeSelection() {
@@ -3176,6 +3202,11 @@ public class Node {
             case SENSOR_FABRIC_EVENT:
                 parameters.add(new NodeParameter("Event", ParameterType.STRING, "Any"));
                 break;
+            case SENSOR_ATTRIBUTE_DETECTION:
+                parameters.add(new NodeParameter("Attribute", ParameterType.STRING, AttributeDetectionConfig.AttributeOption.NAME.id()));
+                parameters.add(new NodeParameter("Operator", ParameterType.STRING, AttributeDetectionConfig.OperatorOption.CONTAINS.id()));
+                parameters.add(new NodeParameter("Value", ParameterType.STRING, ""));
+                break;
             case PARAM_COORDINATE:
                 parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
                 parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "64"));
@@ -3412,6 +3443,23 @@ public class Node {
             return "";
         }
         String value = parameter.getDisplayValue();
+        if (isAttributeDetectionSensor()) {
+            if ("Attribute".equalsIgnoreCase(parameter.getName())) {
+                AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(value);
+                return attribute != null ? attribute.label() : value;
+            }
+            if ("Operator".equalsIgnoreCase(parameter.getName())) {
+                AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(value);
+                return operator != null ? operator.label() : value;
+            }
+            if ("Value".equalsIgnoreCase(parameter.getName())) {
+                AttributeDetectionConfig.AttributeOption attribute =
+                    AttributeDetectionConfig.getAttribute(getParameterString(this, "Attribute"));
+                if (attribute != null && attribute.valueType() == AttributeDetectionConfig.ValueType.BOOLEAN) {
+                    return parseBooleanLike(value) ? "True" : "False";
+                }
+            }
+        }
         if (type == NodeType.PARAM_GUI && "GUI".equalsIgnoreCase(parameter.getName())) {
             return GuiSelectionMode.getDisplayNameOrFallback(value);
         }
@@ -3523,6 +3571,63 @@ public class Node {
         ensureBooleanParameter("Mode", ParameterType.STRING, BOOLEAN_MODE_LITERAL, 0);
         ensureBooleanParameter("Toggle", ParameterType.BOOLEAN, "true", 1);
         ensureBooleanParameter("Variable", ParameterType.STRING, "", 2);
+    }
+
+    public boolean isAttributeDetectionSensor() {
+        return type == NodeType.SENSOR_ATTRIBUTE_DETECTION;
+    }
+
+    public void normalizeAttributeDetectionParameters() {
+        if (!isAttributeDetectionSensor()) {
+            return;
+        }
+        ensureAttributeDetectionParameter("Attribute", AttributeDetectionConfig.AttributeOption.NAME.id(), 0);
+        ensureAttributeDetectionParameter("Operator", AttributeDetectionConfig.OperatorOption.CONTAINS.id(), 1);
+        ensureAttributeDetectionParameter("Value", "", 2);
+
+        AttributeDetectionConfig.TargetKind targetKind = null;
+        Node targetNode = getAttachedParameter(0);
+        if (targetNode != null) {
+            targetKind = AttributeDetectionConfig.inferTargetKind(targetNode.getType());
+        }
+
+        NodeParameter attributeParameter = getParameter("Attribute");
+        NodeParameter operatorParameter = getParameter("Operator");
+        NodeParameter valueParameter = getParameter("Value");
+        if (attributeParameter == null || operatorParameter == null || valueParameter == null) {
+            return;
+        }
+
+        AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(attributeParameter.getStringValue());
+        if (attribute == null || (targetKind != null && !attribute.supports(targetKind))) {
+            attribute = AttributeDetectionConfig.getDefaultAttribute(targetKind);
+            attributeParameter.setStringValue(attribute.id());
+        }
+
+        AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(operatorParameter.getStringValue());
+        if (operator == null || !operator.supports(attribute.valueType())) {
+            operator = AttributeDetectionConfig.getDefaultOperator(attribute);
+            operatorParameter.setStringValue(operator.id());
+        }
+
+        String normalizedValue = valueParameter.getStringValue();
+        if (attribute.valueType() == AttributeDetectionConfig.ValueType.BOOLEAN) {
+            if (normalizedValue == null || normalizedValue.isBlank()) {
+                normalizedValue = AttributeDetectionConfig.getDefaultValue(attribute);
+            } else {
+                normalizedValue = Boolean.toString(parseBooleanLike(normalizedValue));
+            }
+            valueParameter.setStringValue(normalizedValue);
+        }
+    }
+
+    private void ensureAttributeDetectionParameter(String name, String defaultValue, int targetIndex) {
+        if (getParameter(name) != null) {
+            return;
+        }
+        NodeParameter parameter = new NodeParameter(name, ParameterType.STRING, defaultValue);
+        int insertIndex = Math.max(0, Math.min(targetIndex, parameters.size()));
+        parameters.add(insertIndex, parameter);
     }
 
     private void ensureBooleanParameter(String name, ParameterType parameterType, String defaultValue, int targetIndex) {
@@ -4878,6 +4983,8 @@ public class Node {
             return;
         }
 
+        normalizeAttributeDetectionParameters();
+
         int maxTextLength = Math.max(type.getDisplayName().length(), 1);
         if (isInlineParameterNode() || shouldRenderInlineParameters()) {
             for (NodeParameter param : parameters) {
@@ -5080,6 +5187,15 @@ public class Node {
                 contentHeight += PARAM_PADDING_TOP + (parameterLineCount * PARAM_LINE_HEIGHT) + PARAM_PADDING_BOTTOM;
             } else {
                 contentHeight += BODY_PADDING_NO_PARAMS;
+            }
+            if (hasParameterSlot()) {
+                int slotCount = getParameterSlotCount();
+                for (int i = 0; i < slotCount; i++) {
+                    contentHeight += PARAMETER_SLOT_LABEL_HEIGHT + getParameterSlotHeight(i) + PARAMETER_SLOT_BOTTOM_PADDING;
+                }
+            }
+            if (hasSlots) {
+                contentHeight += SLOT_AREA_PADDING_TOP;
             }
         } else if (type == NodeType.EVENT_FUNCTION || type == NodeType.EVENT_CALL) {
             contentHeight += EVENT_NAME_FIELD_TOP_MARGIN + EVENT_NAME_FIELD_HEIGHT + EVENT_NAME_FIELD_BOTTOM_MARGIN;
@@ -7604,6 +7720,7 @@ public class Node {
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
             case SENSOR_FABRIC_EVENT:
+            case SENSOR_ATTRIBUTE_DETECTION:
             case SENSOR_TARGETED_BLOCK:
             case SENSOR_TARGETED_ENTITY:
             case SENSOR_LOOK_DIRECTION:
@@ -20813,6 +20930,9 @@ public class Node {
                 result = FabricEventTracker.hasRecentEvent(trimmed, seconds);
                 break;
             }
+            case SENSOR_ATTRIBUTE_DETECTION:
+                result = evaluateAttributeDetectionSensor();
+                break;
             default:
                 result = false;
                 break;
@@ -20835,6 +20955,274 @@ public class Node {
 
     private boolean sensorRequiresParameterNode() {
         return NodeTraitRegistry.isSensorParameterRequired(type);
+    }
+
+    private boolean evaluateAttributeDetectionSensor() {
+        normalizeAttributeDetectionParameters();
+        Node parameterNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (parameterNode == null) {
+            if (client != null) {
+                sendNodeErrorMessage(client, type.getDisplayName() + " requires a target parameter.");
+            }
+            return false;
+        }
+
+        AttributeDetectionConfig.TargetKind targetKind = AttributeDetectionConfig.inferTargetKind(parameterNode.getType());
+        if (targetKind == null) {
+            sendIncompatibleParameterMessage(parameterNode);
+            return false;
+        }
+
+        AttributeDetectionConfig.AttributeOption attribute =
+            AttributeDetectionConfig.getAttribute(getParameterString(this, "Attribute"));
+        if (attribute == null || !attribute.supports(targetKind)) {
+            attribute = AttributeDetectionConfig.getDefaultAttribute(targetKind);
+        }
+
+        AttributeDetectionConfig.OperatorOption operator =
+            AttributeDetectionConfig.getOperator(getParameterString(this, "Operator"));
+        if (operator == null || !operator.supports(attribute.valueType())) {
+            operator = AttributeDetectionConfig.getDefaultOperator(attribute);
+        }
+
+        String expectedValue = getParameterString(this, "Value");
+        if (expectedValue == null) {
+            expectedValue = "";
+        }
+
+        return switch (targetKind) {
+            case ENTITY, PLAYER -> evaluateEntityAttributeDetection(parameterNode, attribute, operator, expectedValue);
+            case ITEM -> evaluateItemAttributeDetection(parameterNode, attribute, operator, expectedValue);
+        };
+    }
+
+    private boolean evaluateEntityAttributeDetection(Node parameterNode,
+                                                     AttributeDetectionConfig.AttributeOption attribute,
+                                                     AttributeDetectionConfig.OperatorOption operator,
+                                                     String expectedValue) {
+        RuntimeParameterData data = new RuntimeParameterData();
+        Optional<Vec3d> resolved = resolvePositionTarget(parameterNode, data, null);
+        if (resolved.isEmpty() || data.targetEntity == null) {
+            return false;
+        }
+        Entity entity = data.targetEntity;
+        return switch (attribute) {
+            case NAME -> evaluateStringAttribute(entity.getName().getString(), operator, expectedValue);
+            case CUSTOM_NAME -> evaluateStringAttribute(getEntityCustomName(entity), operator, expectedValue);
+            case TYPE -> evaluateStringAttribute(getEntityTypeId(entity), operator, expectedValue);
+            case HEALTH -> entity instanceof LivingEntity livingEntity
+                && evaluateNumericAttribute(livingEntity.getHealth(), operator, expectedValue);
+            case MAX_HEALTH -> entity instanceof LivingEntity livingEntity
+                && evaluateNumericAttribute(livingEntity.getMaxHealth(), operator, expectedValue);
+            case IS_BABY -> evaluateBooleanAttribute(EntityStateOptions.matchesState(entity, "age=baby"), operator, expectedValue);
+            case TAG -> evaluateTagAttribute(entity.getCommandTags(), operator, expectedValue);
+            default -> false;
+        };
+    }
+
+    private boolean evaluateItemAttributeDetection(Node parameterNode,
+                                                   AttributeDetectionConfig.AttributeOption attribute,
+                                                   AttributeDetectionConfig.OperatorOption operator,
+                                                   String expectedValue) {
+        Optional<ItemEntity> resolved = resolveItemEntityParameter(parameterNode);
+        if (resolved.isEmpty()) {
+            return false;
+        }
+        ItemStack stack = resolved.get().getStack();
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+        return switch (attribute) {
+            case NAME -> evaluateStringAttribute(stack.getName().getString(), operator, expectedValue);
+            case CUSTOM_NAME -> evaluateStringAttribute(getItemCustomName(stack), operator, expectedValue);
+            case ITEM_ID -> evaluateStringAttribute(getItemId(stack), operator, expectedValue);
+            case COUNT -> evaluateNumericAttribute(stack.getCount(), operator, expectedValue);
+            case DAMAGE -> evaluateNumericAttribute(stack.getDamage(), operator, expectedValue);
+            case MAX_DAMAGE -> evaluateNumericAttribute(stack.getMaxDamage(), operator, expectedValue);
+            case IS_STACKABLE -> evaluateBooleanAttribute(stack.isStackable(), operator, expectedValue);
+            case IS_ENCHANTED -> evaluateBooleanAttribute(stack.hasEnchantments(), operator, expectedValue);
+            default -> false;
+        };
+    }
+
+    private Optional<ItemEntity> resolveItemEntityParameter(Node parameterNode) {
+        if (parameterNode == null || parameterNode.getType() != NodeType.PARAM_ITEM) {
+            return Optional.empty();
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null) {
+            return Optional.empty();
+        }
+        List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
+        if (itemIds.isEmpty()) {
+            return Optional.empty();
+        }
+        double range = parseNodeDouble(parameterNode, "Range", PARAMETER_SEARCH_RADIUS);
+        ItemEntity nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item item = Registries.ITEM.get(identifier);
+            Optional<ItemEntity> candidate = findNearestDroppedItemEntity(client, item, range);
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            double distance = candidate.get().squaredDistanceTo(client.player);
+            if (nearest == null || distance < nearestDistance) {
+                nearest = candidate.get();
+                nearestDistance = distance;
+            }
+        }
+        return Optional.ofNullable(nearest);
+    }
+
+    private Optional<ItemEntity> findNearestDroppedItemEntity(net.minecraft.client.MinecraftClient client, Item item, double range) {
+        if (client == null || client.player == null || client.world == null || item == null) {
+            return Optional.empty();
+        }
+        double searchRadius = Math.max(1.0, range);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+        List<ItemEntity> entities = client.world.getEntitiesByClass(ItemEntity.class, searchBox,
+            entity -> entity != null && !entity.isRemoved() && !entity.getStack().isEmpty() && entity.getStack().isOf(item));
+        if (entities.isEmpty()) {
+            return Optional.empty();
+        }
+        ItemEntity nearest = Collections.min(entities, Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)));
+        return Optional.of(nearest);
+    }
+
+    private boolean evaluateStringAttribute(String actualValue,
+                                            AttributeDetectionConfig.OperatorOption operator,
+                                            String expectedValue) {
+        String actual = actualValue == null ? "" : actualValue.trim();
+        String expected = expectedValue == null ? "" : expectedValue.trim();
+        String actualLower = actual.toLowerCase(Locale.ROOT);
+        String expectedLower = expected.toLowerCase(Locale.ROOT);
+        return switch (operator) {
+            case EQUALS -> actualLower.equals(expectedLower);
+            case NOT_EQUALS -> !actualLower.equals(expectedLower);
+            case CONTAINS -> !expectedLower.isEmpty() && actualLower.contains(expectedLower);
+            case STARTS_WITH -> !expectedLower.isEmpty() && actualLower.startsWith(expectedLower);
+            default -> false;
+        };
+    }
+
+    private boolean evaluateTagAttribute(Set<String> actualTags,
+                                         AttributeDetectionConfig.OperatorOption operator,
+                                         String expectedValue) {
+        if (actualTags == null || actualTags.isEmpty()) {
+            return operator == AttributeDetectionConfig.OperatorOption.NOT_EQUALS
+                && expectedValue != null && !expectedValue.trim().isEmpty();
+        }
+        String expected = expectedValue == null ? "" : expectedValue.trim().toLowerCase(Locale.ROOT);
+        if (expected.isEmpty()) {
+            return false;
+        }
+        boolean matched = false;
+        for (String tag : actualTags) {
+            if (tag == null) {
+                continue;
+            }
+            String candidate = tag.trim().toLowerCase(Locale.ROOT);
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            matched = switch (operator) {
+                case EQUALS -> candidate.equals(expected);
+                case NOT_EQUALS -> false;
+                case CONTAINS -> candidate.contains(expected);
+                case STARTS_WITH -> candidate.startsWith(expected);
+                default -> false;
+            };
+            if (matched) {
+                break;
+            }
+        }
+        if (operator == AttributeDetectionConfig.OperatorOption.NOT_EQUALS) {
+            return !evaluateTagAttribute(actualTags, AttributeDetectionConfig.OperatorOption.EQUALS, expectedValue);
+        }
+        return matched;
+    }
+
+    private boolean evaluateNumericAttribute(double actualValue,
+                                             AttributeDetectionConfig.OperatorOption operator,
+                                             String expectedValue) {
+        Double expected = parseDoubleOrNull(expectedValue);
+        if (expected == null) {
+            return false;
+        }
+        return switch (operator) {
+            case EQUALS -> Double.compare(actualValue, expected) == 0;
+            case NOT_EQUALS -> Double.compare(actualValue, expected) != 0;
+            case GREATER_THAN -> actualValue > expected;
+            case GREATER_OR_EQUAL -> actualValue >= expected;
+            case LESS_THAN -> actualValue < expected;
+            case LESS_OR_EQUAL -> actualValue <= expected;
+            default -> false;
+        };
+    }
+
+    private boolean evaluateBooleanAttribute(boolean actualValue,
+                                             AttributeDetectionConfig.OperatorOption operator,
+                                             String expectedValue) {
+        boolean expected = parseBooleanLike(expectedValue);
+        return switch (operator) {
+            case EQUALS -> actualValue == expected;
+            case NOT_EQUALS -> actualValue != expected;
+            default -> false;
+        };
+    }
+
+    private boolean parseBooleanLike(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return "true".equals(normalized)
+            || "1".equals(normalized)
+            || "yes".equals(normalized)
+            || "on".equals(normalized);
+    }
+
+    private String getEntityCustomName(Entity entity) {
+        if (entity == null || entity.getCustomName() == null) {
+            return "";
+        }
+        return entity.getCustomName().getString();
+    }
+
+    private String getEntityTypeId(Entity entity) {
+        if (entity == null) {
+            return "";
+        }
+        Identifier id = Registries.ENTITY_TYPE.getId(entity.getType());
+        if (id == null) {
+            return "";
+        }
+        return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+    }
+
+    private String getItemId(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "";
+        }
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        if (id == null) {
+            return "";
+        }
+        return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+    }
+
+    private String getItemCustomName(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "";
+        }
+        Text customName = stack.get(DataComponentTypes.CUSTOM_NAME);
+        return customName != null ? customName.getString() : "";
     }
 
     private boolean evaluateOperatorEquals() {

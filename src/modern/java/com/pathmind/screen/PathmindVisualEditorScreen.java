@@ -4703,9 +4703,10 @@ public class PathmindVisualEditorScreen extends Screen {
         int iconX = nodeSearchFieldX + 6;
         int iconY = nodeSearchFieldY + (NODE_SEARCH_FIELD_HEIGHT - 9) / 2;
         drawNodeSearchIcon(context, iconX, iconY, UITheme.TEXT_PRIMARY);
-        nodeSearchField.setPosition(nodeSearchFieldX + 20, nodeSearchFieldY + 6);
+        int textFieldHeight = Math.max(10, NODE_SEARCH_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
+        nodeSearchField.setPosition(nodeSearchFieldX + 20, nodeSearchFieldY + TEXT_FIELD_VERTICAL_PADDING);
         nodeSearchField.setWidth(NODE_SEARCH_FIELD_WIDTH - 26);
-        nodeSearchField.setHeight(NODE_SEARCH_FIELD_HEIGHT);
+        nodeSearchField.setHeight(textFieldHeight);
         nodeSearchField.render(context, transformedMouseX, transformedMouseY, delta);
 
         renderNodeSearchDropdown(context, transformedMouseX, transformedMouseY);

@@ -3204,7 +3204,6 @@ public class Node {
                 break;
             case SENSOR_ATTRIBUTE_DETECTION:
                 parameters.add(new NodeParameter("Attribute", ParameterType.STRING, AttributeDetectionConfig.AttributeOption.NAME.id()));
-                parameters.add(new NodeParameter("Operator", ParameterType.STRING, AttributeDetectionConfig.OperatorOption.CONTAINS.id()));
                 parameters.add(new NodeParameter("Value", ParameterType.STRING, ""));
                 break;
             case PARAM_COORDINATE:
@@ -3448,10 +3447,6 @@ public class Node {
                 AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(value);
                 return attribute != null ? attribute.label() : value;
             }
-            if ("Operator".equalsIgnoreCase(parameter.getName())) {
-                AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(value);
-                return operator != null ? operator.label() : value;
-            }
             if ("Value".equalsIgnoreCase(parameter.getName())) {
                 AttributeDetectionConfig.AttributeOption attribute =
                     AttributeDetectionConfig.getAttribute(getParameterString(this, "Attribute"));
@@ -3581,9 +3576,9 @@ public class Node {
         if (!isAttributeDetectionSensor()) {
             return;
         }
+        parameters.removeIf(param -> param != null && "Operator".equalsIgnoreCase(param.getName()));
         ensureAttributeDetectionParameter("Attribute", AttributeDetectionConfig.AttributeOption.NAME.id(), 0);
-        ensureAttributeDetectionParameter("Operator", AttributeDetectionConfig.OperatorOption.CONTAINS.id(), 1);
-        ensureAttributeDetectionParameter("Value", "", 2);
+        ensureAttributeDetectionParameter("Value", "", 1);
 
         AttributeDetectionConfig.TargetKind targetKind = null;
         Node targetNode = getAttachedParameter(0);
@@ -3592,9 +3587,8 @@ public class Node {
         }
 
         NodeParameter attributeParameter = getParameter("Attribute");
-        NodeParameter operatorParameter = getParameter("Operator");
         NodeParameter valueParameter = getParameter("Value");
-        if (attributeParameter == null || operatorParameter == null || valueParameter == null) {
+        if (attributeParameter == null || valueParameter == null) {
             return;
         }
 
@@ -3602,12 +3596,6 @@ public class Node {
         if (attribute == null || (targetKind != null && !attribute.supports(targetKind))) {
             attribute = AttributeDetectionConfig.getDefaultAttribute(targetKind);
             attributeParameter.setStringValue(attribute.id());
-        }
-
-        AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(operatorParameter.getStringValue());
-        if (operator == null || !operator.supports(attribute.valueType())) {
-            operator = AttributeDetectionConfig.getDefaultOperator(attribute);
-            operatorParameter.setStringValue(operator.id());
         }
 
         String normalizedValue = valueParameter.getStringValue();
@@ -20980,26 +20968,19 @@ public class Node {
             attribute = AttributeDetectionConfig.getDefaultAttribute(targetKind);
         }
 
-        AttributeDetectionConfig.OperatorOption operator =
-            AttributeDetectionConfig.getOperator(getParameterString(this, "Operator"));
-        if (operator == null || !operator.supports(attribute.valueType())) {
-            operator = AttributeDetectionConfig.getDefaultOperator(attribute);
-        }
-
         String expectedValue = getParameterString(this, "Value");
         if (expectedValue == null) {
             expectedValue = "";
         }
 
         return switch (targetKind) {
-            case ENTITY, PLAYER -> evaluateEntityAttributeDetection(parameterNode, attribute, operator, expectedValue);
-            case ITEM -> evaluateItemAttributeDetection(parameterNode, attribute, operator, expectedValue);
+            case ENTITY, PLAYER -> evaluateEntityAttributeDetection(parameterNode, attribute, expectedValue);
+            case ITEM -> evaluateItemAttributeDetection(parameterNode, attribute, expectedValue);
         };
     }
 
     private boolean evaluateEntityAttributeDetection(Node parameterNode,
                                                      AttributeDetectionConfig.AttributeOption attribute,
-                                                     AttributeDetectionConfig.OperatorOption operator,
                                                      String expectedValue) {
         RuntimeParameterData data = new RuntimeParameterData();
         Optional<Vec3d> resolved = resolvePositionTarget(parameterNode, data, null);
@@ -21008,40 +20989,59 @@ public class Node {
         }
         Entity entity = data.targetEntity;
         return switch (attribute) {
-            case NAME -> evaluateStringAttribute(entity.getName().getString(), operator, expectedValue);
-            case CUSTOM_NAME -> evaluateStringAttribute(getEntityCustomName(entity), operator, expectedValue);
-            case TYPE -> evaluateStringAttribute(getEntityTypeId(entity), operator, expectedValue);
+            case NAME -> evaluateStringAttribute(entity.getName().getString(), expectedValue);
+            case CUSTOM_NAME -> evaluateStringAttribute(getEntityCustomName(entity), expectedValue);
+            case HAS_CUSTOM_NAME -> evaluateBooleanAttribute(entity.hasCustomName(), expectedValue);
+            case TYPE -> evaluateStringAttribute(getEntityTypeId(entity), expectedValue);
+            case UUID -> evaluateStringAttribute(entity.getUuidAsString(), expectedValue);
             case HEALTH -> entity instanceof LivingEntity livingEntity
-                && evaluateNumericAttribute(livingEntity.getHealth(), operator, expectedValue);
+                && evaluateNumericAttribute(livingEntity.getHealth(), expectedValue);
             case MAX_HEALTH -> entity instanceof LivingEntity livingEntity
-                && evaluateNumericAttribute(livingEntity.getMaxHealth(), operator, expectedValue);
-            case IS_BABY -> evaluateBooleanAttribute(EntityStateOptions.matchesState(entity, "age=baby"), operator, expectedValue);
-            case TAG -> evaluateTagAttribute(entity.getCommandTags(), operator, expectedValue);
+                && evaluateNumericAttribute(livingEntity.getMaxHealth(), expectedValue);
+            case X -> evaluateNumericAttribute(entity.getX(), expectedValue);
+            case Y -> evaluateNumericAttribute(entity.getY(), expectedValue);
+            case Z -> evaluateNumericAttribute(entity.getZ(), expectedValue);
+            case YAW -> evaluateNumericAttribute(entity.getYaw(), expectedValue);
+            case PITCH -> evaluateNumericAttribute(entity.getPitch(), expectedValue);
+            case IS_ALIVE -> evaluateBooleanAttribute(entity.isAlive(), expectedValue);
+            case IS_ON_GROUND -> evaluateBooleanAttribute(entity.isOnGround(), expectedValue);
+            case IS_ON_FIRE -> evaluateBooleanAttribute(entity.isOnFire(), expectedValue);
+            case IS_SNEAKING -> evaluateBooleanAttribute(entity.isSneaking(), expectedValue);
+            case IS_SPRINTING -> evaluateBooleanAttribute(entity.isSprinting(), expectedValue);
+            case IS_SWIMMING -> evaluateBooleanAttribute(entity.isSwimming(), expectedValue);
+            case IS_BABY -> evaluateBooleanAttribute(EntityStateOptions.matchesState(entity, "age=baby"), expectedValue);
+            case TAG -> evaluateTagAttribute(entity.getCommandTags(), expectedValue);
             default -> false;
         };
     }
 
     private boolean evaluateItemAttributeDetection(Node parameterNode,
                                                    AttributeDetectionConfig.AttributeOption attribute,
-                                                   AttributeDetectionConfig.OperatorOption operator,
                                                    String expectedValue) {
         Optional<ItemEntity> resolved = resolveItemEntityParameter(parameterNode);
         if (resolved.isEmpty()) {
             return false;
         }
-        ItemStack stack = resolved.get().getStack();
+        ItemEntity itemEntity = resolved.get();
+        ItemStack stack = itemEntity.getStack();
         if (stack == null || stack.isEmpty()) {
             return false;
         }
         return switch (attribute) {
-            case NAME -> evaluateStringAttribute(stack.getName().getString(), operator, expectedValue);
-            case CUSTOM_NAME -> evaluateStringAttribute(getItemCustomName(stack), operator, expectedValue);
-            case ITEM_ID -> evaluateStringAttribute(getItemId(stack), operator, expectedValue);
-            case COUNT -> evaluateNumericAttribute(stack.getCount(), operator, expectedValue);
-            case DAMAGE -> evaluateNumericAttribute(stack.getDamage(), operator, expectedValue);
-            case MAX_DAMAGE -> evaluateNumericAttribute(stack.getMaxDamage(), operator, expectedValue);
-            case IS_STACKABLE -> evaluateBooleanAttribute(stack.isStackable(), operator, expectedValue);
-            case IS_ENCHANTED -> evaluateBooleanAttribute(stack.hasEnchantments(), operator, expectedValue);
+            case NAME -> evaluateStringAttribute(stack.getName().getString(), expectedValue);
+            case CUSTOM_NAME -> evaluateStringAttribute(getItemCustomName(stack), expectedValue);
+            case HAS_CUSTOM_NAME -> evaluateBooleanAttribute(stack.getCustomName() != null, expectedValue);
+            case ITEM_ID -> evaluateStringAttribute(getItemId(stack), expectedValue);
+            case COUNT -> evaluateNumericAttribute(stack.getCount(), expectedValue);
+            case MAX_COUNT -> evaluateNumericAttribute(stack.getMaxCount(), expectedValue);
+            case DAMAGE -> evaluateNumericAttribute(stack.getDamage(), expectedValue);
+            case MAX_DAMAGE -> evaluateNumericAttribute(stack.getMaxDamage(), expectedValue);
+            case X -> evaluateNumericAttribute(itemEntity.getX(), expectedValue);
+            case Y -> evaluateNumericAttribute(itemEntity.getY(), expectedValue);
+            case Z -> evaluateNumericAttribute(itemEntity.getZ(), expectedValue);
+            case IS_STACKABLE -> evaluateBooleanAttribute(stack.isStackable(), expectedValue);
+            case IS_ENCHANTED -> evaluateBooleanAttribute(stack.hasEnchantments(), expectedValue);
+            case IS_DAMAGEABLE -> evaluateBooleanAttribute(stack.isDamageable(), expectedValue);
             default -> false;
         };
     }
@@ -21095,28 +21095,17 @@ public class Node {
         return Optional.of(nearest);
     }
 
-    private boolean evaluateStringAttribute(String actualValue,
-                                            AttributeDetectionConfig.OperatorOption operator,
-                                            String expectedValue) {
+    private boolean evaluateStringAttribute(String actualValue, String expectedValue) {
         String actual = actualValue == null ? "" : actualValue.trim();
         String expected = expectedValue == null ? "" : expectedValue.trim();
         String actualLower = actual.toLowerCase(Locale.ROOT);
         String expectedLower = expected.toLowerCase(Locale.ROOT);
-        return switch (operator) {
-            case EQUALS -> actualLower.equals(expectedLower);
-            case NOT_EQUALS -> !actualLower.equals(expectedLower);
-            case CONTAINS -> !expectedLower.isEmpty() && actualLower.contains(expectedLower);
-            case STARTS_WITH -> !expectedLower.isEmpty() && actualLower.startsWith(expectedLower);
-            default -> false;
-        };
+        return !expectedLower.isEmpty() && actualLower.contains(expectedLower);
     }
 
-    private boolean evaluateTagAttribute(Set<String> actualTags,
-                                         AttributeDetectionConfig.OperatorOption operator,
-                                         String expectedValue) {
+    private boolean evaluateTagAttribute(Set<String> actualTags, String expectedValue) {
         if (actualTags == null || actualTags.isEmpty()) {
-            return operator == AttributeDetectionConfig.OperatorOption.NOT_EQUALS
-                && expectedValue != null && !expectedValue.trim().isEmpty();
+            return false;
         }
         String expected = expectedValue == null ? "" : expectedValue.trim().toLowerCase(Locale.ROOT);
         if (expected.isEmpty()) {
@@ -21131,50 +21120,25 @@ public class Node {
             if (candidate.isEmpty()) {
                 continue;
             }
-            matched = switch (operator) {
-                case EQUALS -> candidate.equals(expected);
-                case NOT_EQUALS -> false;
-                case CONTAINS -> candidate.contains(expected);
-                case STARTS_WITH -> candidate.startsWith(expected);
-                default -> false;
-            };
+            matched = candidate.contains(expected);
             if (matched) {
                 break;
             }
         }
-        if (operator == AttributeDetectionConfig.OperatorOption.NOT_EQUALS) {
-            return !evaluateTagAttribute(actualTags, AttributeDetectionConfig.OperatorOption.EQUALS, expectedValue);
-        }
         return matched;
     }
 
-    private boolean evaluateNumericAttribute(double actualValue,
-                                             AttributeDetectionConfig.OperatorOption operator,
-                                             String expectedValue) {
+    private boolean evaluateNumericAttribute(double actualValue, String expectedValue) {
         Double expected = parseDoubleOrNull(expectedValue);
         if (expected == null) {
             return false;
         }
-        return switch (operator) {
-            case EQUALS -> Double.compare(actualValue, expected) == 0;
-            case NOT_EQUALS -> Double.compare(actualValue, expected) != 0;
-            case GREATER_THAN -> actualValue > expected;
-            case GREATER_OR_EQUAL -> actualValue >= expected;
-            case LESS_THAN -> actualValue < expected;
-            case LESS_OR_EQUAL -> actualValue <= expected;
-            default -> false;
-        };
+        return actualValue >= expected;
     }
 
-    private boolean evaluateBooleanAttribute(boolean actualValue,
-                                             AttributeDetectionConfig.OperatorOption operator,
-                                             String expectedValue) {
+    private boolean evaluateBooleanAttribute(boolean actualValue, String expectedValue) {
         boolean expected = parseBooleanLike(expectedValue);
-        return switch (operator) {
-            case EQUALS -> actualValue == expected;
-            case NOT_EQUALS -> actualValue != expected;
-            default -> false;
-        };
+        return actualValue == expected;
     }
 
     private boolean parseBooleanLike(String value) {

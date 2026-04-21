@@ -8559,7 +8559,6 @@ public class NodeGraph {
             boolean isBlockFaceParam = isBlockFaceParameter(parameterEditingNode, parameterEditingIndex);
             boolean isBooleanLiteralParam = isBooleanLiteralParameter(parameterEditingNode, parameterEditingIndex);
             boolean isAttributeDetectionAttributeParam = isAttributeDetectionAttributeParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isAttributeDetectionOperatorParam = isAttributeDetectionOperatorParameter(parameterEditingNode, parameterEditingIndex);
             boolean isAttributeDetectionBooleanValueParam = isAttributeDetectionBooleanValueParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
@@ -8664,28 +8663,6 @@ public class NodeGraph {
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
                 } else {
                     appliedValue = attribute.id();
-                    parameter.setStringValueFromUser(appliedValue);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                }
-            } else if (isAttributeDetectionOperatorParam) {
-                String trimmed = value.trim();
-                AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(
-                    parameterEditingNode.getParameter("Attribute") != null
-                        ? parameterEditingNode.getParameter("Attribute").getStringValue()
-                        : ""
-                );
-                if (attribute == null) {
-                    attribute = AttributeDetectionConfig.getDefaultAttribute(getAttributeDetectionTargetKind(parameterEditingNode));
-                }
-                AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(trimmed);
-                if (operator == null || !operator.supports(attribute.valueType())) {
-                    operator = AttributeDetectionConfig.getDefaultOperator(attribute);
-                    appliedValue = operator.id();
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    appliedValue = operator.id();
                     parameter.setStringValueFromUser(appliedValue);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
                 }
@@ -8898,14 +8875,6 @@ public class NodeGraph {
         return param != null && "Attribute".equalsIgnoreCase(param.getName());
     }
 
-    private boolean isAttributeDetectionOperatorParameter(Node node, int index) {
-        if (node == null || !node.isAttributeDetectionSensor() || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        return param != null && "Operator".equalsIgnoreCase(param.getName());
-    }
-
     private boolean isAttributeDetectionBooleanValueParameter(Node node, int index) {
         if (node == null || !node.isAttributeDetectionSensor() || index < 0 || index >= node.getParameters().size()) {
             return false;
@@ -8923,7 +8892,6 @@ public class NodeGraph {
 
     private boolean isAttributeDetectionDropdownParameter(Node node, int index) {
         return isAttributeDetectionAttributeParameter(node, index)
-            || isAttributeDetectionOperatorParameter(node, index)
             || isAttributeDetectionBooleanValueParameter(node, index);
     }
 
@@ -10388,10 +10356,6 @@ public class NodeGraph {
             AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(value);
             return attribute != null ? attribute.label() : value;
         }
-        if ("Operator".equalsIgnoreCase(parameter.getName())) {
-            AttributeDetectionConfig.OperatorOption operator = AttributeDetectionConfig.getOperator(value);
-            return operator != null ? operator.label() : value;
-        }
         if ("Value".equalsIgnoreCase(parameter.getName()) && isAttributeDetectionBooleanValueParameter(node, node.getParameters().indexOf(parameter))) {
             return "true".equalsIgnoreCase(value) ? "True" : "False";
         }
@@ -10403,20 +10367,6 @@ public class NodeGraph {
         if (isAttributeDetectionAttributeParameter(node, index)) {
             List<ParameterDropdownOption> result = new ArrayList<>();
             for (AttributeDetectionConfig.AttributeOption option : AttributeDetectionConfig.getAttributesForTarget(getAttributeDetectionTargetKind(node))) {
-                result.add(new ParameterDropdownOption(option.label(), option.id()));
-            }
-            return filterDropdownOptions(result, lowered);
-        }
-        if (isAttributeDetectionOperatorParameter(node, index)) {
-            List<ParameterDropdownOption> result = new ArrayList<>();
-            AttributeDetectionConfig.AttributeOption attribute =
-                AttributeDetectionConfig.getAttribute(node.getParameter("Attribute") != null
-                    ? node.getParameter("Attribute").getStringValue()
-                    : "");
-            if (attribute == null) {
-                attribute = AttributeDetectionConfig.getDefaultAttribute(getAttributeDetectionTargetKind(node));
-            }
-            for (AttributeDetectionConfig.OperatorOption option : AttributeDetectionConfig.getOperatorsForAttribute(attribute)) {
                 result.add(new ParameterDropdownOption(option.label(), option.id()));
             }
             return filterDropdownOptions(result, lowered);

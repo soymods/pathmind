@@ -350,6 +350,7 @@
   "pathmind.settings.nodeDelay": "Atraso do nó",
   "pathmind.settings.off": "Desativado",
   "pathmind.settings.on": "Ativado",
+  "pathmind.settings.renderConnectionsOnTop": "Renderizar conexões por cima",
   "pathmind.settings.showChatErrors": "Mostrar notificações de erro",
   "pathmind.settings.showGrid": "Mostrar grade",
   "pathmind.settings.showHudOverlays": "Mostrar sobreposições do HUD",

@@ -350,6 +350,7 @@
   "pathmind.settings.nodeDelay": "Knotenverzögerung",
   "pathmind.settings.off": "Aus",
   "pathmind.settings.on": "An",
+  "pathmind.settings.renderConnectionsOnTop": "Verbindungen oben rendern",
   "pathmind.settings.showChatErrors": "Fehlerbenachrichtigungen anzeigen",
   "pathmind.settings.showGrid": "Raster anzeigen",
   "pathmind.settings.showHudOverlays": "HUD-Overlays anzeigen",

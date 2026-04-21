@@ -350,6 +350,7 @@
   "pathmind.settings.nodeDelay": "Opóźnienie węzła",
   "pathmind.settings.off": "Wył.",
   "pathmind.settings.on": "Wł.",
+  "pathmind.settings.renderConnectionsOnTop": "Renderuj połączenia na wierzchu",
   "pathmind.settings.showChatErrors": "Pokaż powiadomienia o błędach",
   "pathmind.settings.showGrid": "Pokaż siatkę",
   "pathmind.settings.showHudOverlays": "Pokaż nakładki HUD",

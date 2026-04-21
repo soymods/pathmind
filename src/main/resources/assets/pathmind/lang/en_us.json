@@ -356,6 +356,7 @@
   "pathmind.settings.nodeDelay": "Node delay",
   "pathmind.settings.off": "Off",
   "pathmind.settings.on": "On",
+  "pathmind.settings.renderConnectionsOnTop": "Render connections on top",
   "pathmind.settings.showChatErrors": "Show error notifications",
   "pathmind.settings.showGrid": "Show grid",
   "pathmind.settings.showHudOverlays": "Show HUD overlays",

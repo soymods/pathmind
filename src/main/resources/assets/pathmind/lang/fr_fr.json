@@ -350,6 +350,7 @@
   "pathmind.settings.nodeDelay": "Délai du nœud",
   "pathmind.settings.off": "Désactivé",
   "pathmind.settings.on": "Activé",
+  "pathmind.settings.renderConnectionsOnTop": "Afficher les connexions au-dessus",
   "pathmind.settings.showChatErrors": "Afficher les notifications d'erreur",
   "pathmind.settings.showGrid": "Afficher la grille",
   "pathmind.settings.showHudOverlays": "Afficher les superpositions HUD",

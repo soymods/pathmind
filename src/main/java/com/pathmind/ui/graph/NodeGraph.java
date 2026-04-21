@@ -2793,7 +2793,10 @@ public class NodeGraph {
         if (!onlyDragged) {
             updateCascadeDeletionPreview();
         }
-        renderConnections(context, onlyDragged);
+        boolean renderConnectionsOnTop = shouldRenderConnectionsOnTop();
+        if (!renderConnectionsOnTop) {
+            renderConnections(context, onlyDragged);
+        }
 
         Set<Node> processedRoots = new HashSet<>();
         Set<Node> renderedNodes = new HashSet<>();
@@ -2818,8 +2821,17 @@ public class NodeGraph {
             renderAmountSignDropdownList(context, textRenderer, mouseX, mouseY);
         }
 
+        if (renderConnectionsOnTop) {
+            renderConnections(context, onlyDragged);
+        }
+
         MatrixStackBridge.pop(matrices);
 
+    }
+
+    private boolean shouldRenderConnectionsOnTop() {
+        SettingsManager.Settings settings = SettingsManager.getCurrent();
+        return settings != null && Boolean.TRUE.equals(settings.renderConnectionsOnTop);
     }
 
     public void renderScreenCoordinateCaptureOverlay(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {

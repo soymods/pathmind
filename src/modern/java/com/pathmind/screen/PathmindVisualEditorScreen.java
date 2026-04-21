@@ -291,6 +291,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int languageDropdownY = 0;
     private int languageDropdownWidth = 0;
     private boolean showGrid = true;
+    private boolean renderConnectionsOnTop = false;
     private boolean showWorkspaceTooltips = true;
     private boolean showChatErrors = true;
     private boolean showHudOverlays = true;
@@ -376,6 +377,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Apply loaded settings
         this.accentOption = getAccentOptionFromString(currentSettings.accentColor);
         this.showGrid = currentSettings.showGrid == null || currentSettings.showGrid;
+        this.renderConnectionsOnTop = currentSettings.renderConnectionsOnTop != null && currentSettings.renderConnectionsOnTop;
         this.showWorkspaceTooltips = currentSettings.showTooltips == null || currentSettings.showTooltips;
         this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
         this.showHudOverlays = currentSettings.showHudOverlays == null || currentSettings.showHudOverlays;
@@ -6738,24 +6740,30 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int footerDividerY = settingDividerY + 22;
         int tooltipRowCenterY = (settingDividerY + footerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.showTooltips").getString(), showWorkspaceTooltips, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.renderConnectionsOnTop").getString(), renderConnectionsOnTop, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int chatDividerY = footerDividerY + 22;
         int chatRowCenterY = (footerDividerY + chatDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY, Text.translatable("pathmind.settings.showChatErrors").getString(), showChatErrors, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY, Text.translatable("pathmind.settings.showTooltips").getString(), showWorkspaceTooltips, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, chatDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int overlayDividerY = chatDividerY + 22;
         int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.showHudOverlays").getString(), showHudOverlays, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.showChatErrors").getString(), showChatErrors, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
-        int delayDividerY = overlayDividerY + 26;
-        int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
+        int hudDividerY = overlayDividerY + 22;
+        int hudRowCenterY = (overlayDividerY + hudDividerY) / 2;
+        renderToggleRow(context, mouseX, mouseY, contentX, hudRowCenterY, Text.translatable("pathmind.settings.showHudOverlays").getString(), showHudOverlays, popupX, scaledWidth);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, hudDividerY,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+        int delayDividerY = hudDividerY + 26;
+        int delayRowCenterY = (hudDividerY + delayDividerY) / 2;
         renderNodeDelayRow(context, mouseX, mouseY, contentX, delayRowCenterY, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
@@ -7812,8 +7820,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int tooltipToggleX = gridToggleX;
         int tooltipToggleY = tooltipRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
         if (bodyHovered && isPointInRect(mouseXi, mouseYi, tooltipToggleX, tooltipToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            showWorkspaceTooltips = !showWorkspaceTooltips;
-            currentSettings.showTooltips = showWorkspaceTooltips;
+            renderConnectionsOnTop = !renderConnectionsOnTop;
+            currentSettings.renderConnectionsOnTop = renderConnectionsOnTop;
             SettingsManager.save(currentSettings);
             return true;
         }
@@ -7823,8 +7831,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int chatToggleX = gridToggleX;
         int chatToggleY = chatRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
         if (bodyHovered && isPointInRect(mouseXi, mouseYi, chatToggleX, chatToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            showChatErrors = !showChatErrors;
-            currentSettings.showChatErrors = showChatErrors;
+            showWorkspaceTooltips = !showWorkspaceTooltips;
+            currentSettings.showTooltips = showWorkspaceTooltips;
             SettingsManager.save(currentSettings);
             return true;
         }
@@ -7834,14 +7842,25 @@ public class PathmindVisualEditorScreen extends Screen {
         int overlayToggleX = gridToggleX;
         int overlayToggleY = overlayRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
         if (bodyHovered && isPointInRect(mouseXi, mouseYi, overlayToggleX, overlayToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            showChatErrors = !showChatErrors;
+            currentSettings.showChatErrors = showChatErrors;
+            SettingsManager.save(currentSettings);
+            return true;
+        }
+
+        int hudDividerY = overlayDividerY + 22;
+        int hudRowCenterY = (overlayDividerY + hudDividerY) / 2;
+        int hudToggleX = gridToggleX;
+        int hudToggleY = hudRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (bodyHovered && isPointInRect(mouseXi, mouseYi, hudToggleX, hudToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
             showHudOverlays = !showHudOverlays;
             currentSettings.showHudOverlays = showHudOverlays;
             SettingsManager.save(currentSettings);
             return true;
         }
 
-        int delayDividerY = overlayDividerY + 26;
-        int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
+        int delayDividerY = hudDividerY + 26;
+        int delayRowCenterY = (hudDividerY + delayDividerY) / 2;
         int sliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
         String delayText = nodeDelayField != null ? nodeDelayField.getText() : Integer.toString(nodeDelayMs);

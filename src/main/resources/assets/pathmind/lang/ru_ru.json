@@ -350,6 +350,7 @@
   "pathmind.settings.nodeDelay": "Задержка узла",
   "pathmind.settings.off": "Выкл",
   "pathmind.settings.on": "Вкл",
+  "pathmind.settings.renderConnectionsOnTop": "Рисовать соединения поверх",
   "pathmind.settings.showChatErrors": "Показывать уведомления об ошибках",
   "pathmind.settings.showGrid": "Показать сетку",
   "pathmind.settings.showHudOverlays": "Показывать HUD-накладки",

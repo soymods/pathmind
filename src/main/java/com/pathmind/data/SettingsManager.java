@@ -33,6 +33,7 @@ public final class SettingsManager {
         public String language = "en_us";
         public String accentColor = "sky";
         public Boolean showGrid = true;
+        public Boolean renderConnectionsOnTop = false;
         public Boolean showTooltips = true;
         public Boolean showChatErrors = true;
         public Boolean showHudOverlays = true;
@@ -200,6 +201,9 @@ public final class SettingsManager {
         }
         if (settings.showGrid == null) {
             settings.showGrid = true;
+        }
+        if (settings.renderConnectionsOnTop == null) {
+            settings.renderConnectionsOnTop = false;
         }
         if (settings.showTooltips == null) {
             settings.showTooltips = true;

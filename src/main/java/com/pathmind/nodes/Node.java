@@ -16444,6 +16444,8 @@ public class Node {
         SlotSelectionType sourceSelection = resolveInventorySlotSelectionType(0);
         SlotSelectionType targetSelection = resolveInventorySlotSelectionType(1);
         boolean shiftClickTarget = false;
+        boolean moveAllMatchingStacks = false;
+        Node sourceParameterNode = getAttachedParameter(0);
         Node targetParameterNode = getAttachedParameter(1);
         GuiSelectionMode targetGuiMode = null;
         if (targetParameterNode != null && targetParameterNode.getType() == NodeType.PARAM_GUI) {
@@ -16452,11 +16454,11 @@ public class Node {
         }
 
         if (shiftClickTarget && targetGuiMode != null) {
-            Node sourceParameterNode = getAttachedParameter(0);
             SlotSelectionType desiredSourceSelection = targetGuiMode == GuiSelectionMode.PLAYER_INVENTORY
                 ? SlotSelectionType.GUI_CONTAINER
                 : SlotSelectionType.PLAYER_INVENTORY;
             if (sourceParameterNode != null && sourceParameterNode.getType() == NodeType.PARAM_ITEM) {
+                moveAllMatchingStacks = shouldMoveAllMatchingStacks(sourceParameterNode);
                 if (!resolveMoveItemSlotFromItemParameter(sourceParameterNode, 0, desiredSourceSelection, future)) {
                     return;
                 }
@@ -16497,13 +16499,17 @@ public class Node {
         boolean moveEntireStack = moveCount >= available;
 
         if (shiftClickTarget) {
-            interactionManager.clickSlot(
-                handler.syncId,
-                sourceResolution.handlerSlotIndex,
-                0,
-                SlotActionType.QUICK_MOVE,
-                client.player
-            );
+            if (moveAllMatchingStacks) {
+                quickMoveAllMatchingStacks(client, interactionManager, handler, inventory, sourceParameterNode, sourceSelection);
+            } else {
+                interactionManager.clickSlot(
+                    handler.syncId,
+                    sourceResolution.handlerSlotIndex,
+                    0,
+                    SlotActionType.QUICK_MOVE,
+                    client.player
+                );
+            }
         } else {
             performInventoryTransfer(
                 interactionManager,
@@ -16519,6 +16525,142 @@ public class Node {
         inventory.markDirty();
         client.player.playerScreenHandler.sendContentUpdates();
         future.complete(null);
+    }
+
+    private boolean shouldMoveAllMatchingStacks(Node sourceParameterNode) {
+        if (type != NodeType.MOVE_ITEM || sourceParameterNode == null || sourceParameterNode.getType() != NodeType.PARAM_ITEM) {
+            return false;
+        }
+        Node targetParameterNode = getAttachedParameter(1);
+        if (targetParameterNode == null || targetParameterNode.getType() != NodeType.PARAM_GUI) {
+            return false;
+        }
+        String countValue = getParameterString(this, "Count");
+        return countValue == null
+            || countValue.trim().isEmpty()
+            || "0".equals(countValue.trim())
+            || "all".equalsIgnoreCase(countValue.trim())
+            || "any".equalsIgnoreCase(countValue.trim());
+    }
+
+    private void quickMoveAllMatchingStacks(net.minecraft.client.MinecraftClient client,
+                                            ClientPlayerInteractionManager interactionManager,
+                                            ScreenHandler handler,
+                                            PlayerInventory inventory,
+                                            Node sourceParameterNode,
+                                            SlotSelectionType sourceSelection) {
+        if (client == null || client.player == null || interactionManager == null || handler == null || inventory == null || sourceParameterNode == null) {
+            return;
+        }
+
+        List<String> itemIds = resolveItemIdsFromParameter(sourceParameterNode);
+        boolean anySelection = itemIds.isEmpty()
+            && (isAnySelectionValue(getParameterString(sourceParameterNode, "Item"))
+                || isAnySelectionValue(getParameterString(sourceParameterNode, "Items")));
+        int movedStacks = 0;
+        int stalledAttempts = 0;
+
+        while (stalledAttempts < 2) {
+            SlotResolution nextResolution = findNextMoveItemSourceResolution(client, handler, inventory, itemIds, anySelection, sourceSelection);
+            if (nextResolution == null || nextResolution.slot == null) {
+                break;
+            }
+
+            ItemStack beforeStack = nextResolution.slot.getStack().copy();
+            if (beforeStack.isEmpty()) {
+                break;
+            }
+
+            interactionManager.clickSlot(
+                handler.syncId,
+                nextResolution.handlerSlotIndex,
+                0,
+                SlotActionType.QUICK_MOVE,
+                client.player
+            );
+
+            ItemStack afterStack = nextResolution.slot.getStack();
+            boolean moved = afterStack.isEmpty()
+                || afterStack.getCount() < beforeStack.getCount()
+                || !ItemStack.areItemsAndComponentsEqual(afterStack, beforeStack);
+            if (moved) {
+                movedStacks++;
+                stalledAttempts = 0;
+            } else {
+                stalledAttempts++;
+                break;
+            }
+        }
+
+        if (movedStacks == 0) {
+            sendNodeErrorMessage(client, "No matching stacks could be quick-moved for " + type.getDisplayName() + ".");
+        }
+    }
+
+    private SlotResolution findNextMoveItemSourceResolution(net.minecraft.client.MinecraftClient client,
+                                                            ScreenHandler handler,
+                                                            PlayerInventory inventory,
+                                                            List<String> itemIds,
+                                                            boolean anySelection,
+                                                            SlotSelectionType selectionType) {
+        if (client == null || client.player == null || handler == null) {
+            return null;
+        }
+
+        if (selectionType == SlotSelectionType.GUI_CONTAINER) {
+            for (int i = 0; i < handler.slots.size(); i++) {
+                Slot slot = handler.getSlot(i);
+                if (slot == null || slot.getStack().isEmpty() || !isSlotInSelectionType(slot, selectionType)) {
+                    continue;
+                }
+                if (matchesMoveItemSource(slot.getStack(), itemIds, anySelection)) {
+                    return new SlotResolution(slot, i);
+                }
+            }
+            return null;
+        }
+
+        if (inventory == null) {
+            return null;
+        }
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (stack.isEmpty() || !matchesMoveItemSource(stack, itemIds, anySelection)) {
+                continue;
+            }
+            int handlerSlot = mapPlayerInventorySlot(handler, clampInventorySlot(inventory, i));
+            if (handlerSlot < 0 || handlerSlot >= handler.slots.size()) {
+                continue;
+            }
+            Slot slot = handler.getSlot(handlerSlot);
+            if (slot != null && !slot.getStack().isEmpty() && isSlotInSelectionType(slot, selectionType)) {
+                return new SlotResolution(slot, handlerSlot);
+            }
+        }
+        return null;
+    }
+
+    private boolean matchesMoveItemSource(ItemStack stack, List<String> itemIds, boolean anySelection) {
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+        if (anySelection) {
+            return true;
+        }
+        if (itemIds == null || itemIds.isEmpty()) {
+            return false;
+        }
+        for (String candidateId : itemIds) {
+            Identifier identifier = Identifier.tryParse(candidateId);
+            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+                continue;
+            }
+            Item candidateItem = Registries.ITEM.get(identifier);
+            if (stack.isOf(candidateItem)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void performInventoryTransfer(ClientPlayerInteractionManager interactionManager, ScreenHandler handler,
@@ -16617,7 +16759,7 @@ public class Node {
                 return null;
             }
             Slot slot = handler.getSlot(slotValue);
-            if (slot == null) {
+            if (slot == null || !isSlotInSelectionType(slot, selectionType)) {
                 return null;
             }
             return new SlotResolution(slot, slotValue);
@@ -16660,6 +16802,14 @@ public class Node {
             this.slotIndex = slotIndex;
             this.selectionType = selectionType;
         }
+    }
+
+    private boolean isSlotInSelectionType(Slot slot, SlotSelectionType selectionType) {
+        if (slot == null || selectionType == null) {
+            return false;
+        }
+        boolean playerInventorySlot = slot.inventory instanceof PlayerInventory;
+        return selectionType == SlotSelectionType.GUI_CONTAINER ? !playerInventorySlot : playerInventorySlot;
     }
 
     private boolean resolveMoveItemSlotFromItemParameter(Node parameterNode, int slotIndex, CompletableFuture<Void> future) {

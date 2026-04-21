@@ -367,15 +367,15 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.BUILD, new String[]{"Position"});
         slotLabels.put(NodeType.PLACE, new String[]{"Source", "Position"});
         slotLabels.put(NodeType.PLACE_HAND, new String[]{"Source", "Position"});
-        slotLabels.put(NodeType.MOVE_ITEM, new String[]{"Source Slot", "Target Slot"});
+        slotLabels.put(NodeType.MOVE_ITEM, new String[]{"Source", "Destination"});
         slotLabels.put(NodeType.DROP_ITEM, new String[]{"Target"});
         slotLabels.put(NodeType.DROP_SLOT, new String[]{"Target"});
-        slotLabels.put(NodeType.CLICK_SLOT, new String[]{"Inventory Slot"});
+        slotLabels.put(NodeType.CLICK_SLOT, new String[]{"Selection"});
         slotLabels.put(NodeType.WALK, new String[]{"Direction", "Duration/Distance"});
         slotLabels.put(NodeType.BREAK, new String[]{"Target"});
         slotLabels.put(NodeType.PRESS_KEY, new String[]{"Button"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
-        slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Slot"});
+        slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Selection"});
         slotLabels.put(NodeType.SENSOR_SLOT_ITEM_COUNT, new String[]{"Slot"});
         slotLabels.put(NodeType.SENSOR_ATTRIBUTE_DETECTION, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});

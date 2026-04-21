@@ -153,7 +153,7 @@ public class Node {
     private static final String BOOLEAN_MODE_LITERAL = "literal";
     private static final String BOOLEAN_MODE_VARIABLE = "variable";
     private static final String RECIPE_CACHE_FILE_NAME = "recipe_cache.json";
-    private static final int RECIPE_CACHE_VERSION = 1;
+    private static final int RECIPE_CACHE_VERSION = 2;
     private static final int RECIPE_WARMUP_RECIPE_BATCH_SIZE = 8;
     private static final int RECIPE_WARMUP_DISPLAY_BATCH_SIZE = 4;
     private static final int RECIPE_WARMUP_SAVE_INTERVAL = 64;
@@ -170,7 +170,7 @@ public class Node {
     private static final long CONTROL_POLL_INTERVAL_MS = 10L;
     private static final long FALLING_SENSOR_RETENTION_MS = 1000L;
     private static final double FALLING_SENSOR_MIN_CLEARANCE = 0.6D;
-    private static final int CRAFTING_OUTPUT_POLL_LIMIT = 5;
+    private static final int CRAFTING_OUTPUT_POLL_LIMIT = 20;
     private static final int SENSOR_SLOT_MARGIN_HORIZONTAL = 8;
     private static final int SENSOR_SLOT_INNER_PADDING = 4;
     private static final int SENSOR_SLOT_MIN_CONTENT_WIDTH = 60;
@@ -5253,8 +5253,7 @@ public class Node {
                 try {
                     ExecutionManager.getInstance().runWithExecutionContext(executionId, () -> executeNodeCommand(future));
                 } catch (Exception e) {
-                    System.err.println("Error executing node " + type + ": " + e.getMessage());
-                    e.printStackTrace();
+                    LOGGER.warn("Error executing node {}: {}", type, e.getMessage(), e);
                     future.completeExceptionally(e);
                 }
             });
@@ -7356,15 +7355,12 @@ public class Node {
         switch (type) {
             case START:
                 // START node doesn't execute any command, just passes through
-                System.out.println("START node - passing through");
                 future.complete(null);
                 break;
             case EVENT_FUNCTION:
-                System.out.println("Function node - awaiting body execution");
                 future.complete(null);
                 break;
             case EVENT_CALL:
-                System.out.println("Call Function node - dispatching handlers");
                 future.complete(null);
                 break;
             case SET_VARIABLE:
@@ -7596,7 +7592,6 @@ public class Node {
                 break;
                 
             default:
-                System.out.println("Unknown node type: " + type);
                 future.complete(null);
                 break;
         }
@@ -8867,7 +8862,6 @@ public class Node {
                     return;
                 }
 
-                System.out.println("Executing goto to: " + x + ", " + y + ", " + z);
                 startGotoTaskWithBreakGuard(future);
                 Object goal = BaritoneApiProxy.createGoalBlock(x, y, z);
                 BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
@@ -8886,7 +8880,6 @@ public class Node {
                     return;
                 }
 
-                System.out.println("Executing goto to: " + x2 + ", " + z2);
                 startGotoTaskWithBreakGuard(future);
                 Object goal2 = BaritoneApiProxy.createGoalXZ(x2, z2);
                 BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal2);
@@ -8897,7 +8890,6 @@ public class Node {
                 NodeParameter yParam3 = getParameter("Y");
                 if (yParam3 != null) y3 = yParam3.getIntValue();
                 
-                System.out.println("Executing goto to Y level: " + y3);
                 startGotoTaskWithBreakGuard(future);
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client != null && client.player != null) {
@@ -8917,7 +8909,6 @@ public class Node {
                     block = blockParam.getStringValue();
                 }
 
-                System.out.println("Executing goto to block: " + block);
                 BlockPos nearbyBlockTarget = resolveGotoFallbackTargetFromBlockId(block, future);
                 if (future.isDone()) {
                     break;
@@ -9886,17 +9877,13 @@ public class Node {
                     break;
                 }
                 startCollectWithPreferredTarget(baritone, mineProcess, preferredCollectTarget.orElse(null), future, () -> {
-                    System.out.println("Executing mine by name for " + amount + "x " + targets);
                     resetBaritonePathing(baritone, mineProcess);
                     applyBaritoneCacheGuardsDuringMovement(future, false, true);
                     PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
                     CompletableFuture.runAsync(() -> {
                         try {
                             BaritoneApiProxy.mineByName(mineProcess, amount, targets.toArray(new String[0]));
-                            System.out.println("Collect (single) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
                         } catch (Exception e) {
-                            System.err.println("Failed to start mine command: " + e.getMessage());
-                            e.printStackTrace();
                         }
                     });
                 });
@@ -9904,17 +9891,13 @@ public class Node {
             }
             case COLLECT_MULTIPLE: {
                 startCollectWithPreferredTarget(baritone, mineProcess, preferredCollectTarget.orElse(null), future, () -> {
-                    System.out.println("Executing mine by name for blocks: " + targets);
                     resetBaritonePathing(baritone, mineProcess);
                     applyBaritoneCacheGuardsDuringMovement(future, false, true);
                     PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
                     CompletableFuture.runAsync(() -> {
                         try {
                             BaritoneApiProxy.mineByName(mineProcess, targets.toArray(new String[0]));
-                            System.out.println("Collect (multi) dispatched mine command; active=" + BaritoneApiProxy.isProcessActive(mineProcess));
                         } catch (Exception e) {
-                            System.err.println("Failed to start mine command: " + e.getMessage());
-                            e.printStackTrace();
                         }
                     });
                 });
@@ -9935,7 +9918,6 @@ public class Node {
             if (mineProcess != null) {
                 BaritoneApiProxy.cancelMine(mineProcess);
                 if (BaritoneApiProxy.isProcessActive(mineProcess)) {
-                    System.out.println("Resetting active Baritone mine process");
                     BaritoneApiProxy.onLostControl(mineProcess);
                 }
             }
@@ -9943,7 +9925,6 @@ public class Node {
             Object pathingBehavior = BaritoneApiProxy.getPathingBehavior(baritone);
             if (pathingBehavior != null) {
                 if (BaritoneApiProxy.isPathing(pathingBehavior) || BaritoneApiProxy.hasPath(pathingBehavior)) {
-                    System.out.println("Resetting active Baritone pathing behavior");
                 }
                 BaritoneApiProxy.forceCancel(pathingBehavior);
             }
@@ -9952,30 +9933,25 @@ public class Node {
             if (goalProcess != null) {
                 BaritoneApiProxy.setGoal(goalProcess, null);
                 if (BaritoneApiProxy.isProcessActive(goalProcess)) {
-                    System.out.println("Resetting active Baritone custom goal process");
                     BaritoneApiProxy.onLostControl(goalProcess);
                 }
             }
 
             Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
             if (getToBlockProcess != null && BaritoneApiProxy.isProcessActive(getToBlockProcess)) {
-                System.out.println("Resetting active Baritone get-to-block process");
                 BaritoneApiProxy.onLostControl(getToBlockProcess);
             }
 
             Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
             if (exploreProcess != null && BaritoneApiProxy.isProcessActive(exploreProcess)) {
-                System.out.println("Resetting active Baritone explore process");
                 BaritoneApiProxy.onLostControl(exploreProcess);
             }
 
             Object farmProcess = BaritoneApiProxy.getFarmProcess(baritone);
             if (farmProcess != null && BaritoneApiProxy.isProcessActive(farmProcess)) {
-                System.out.println("Resetting active Baritone farm process");
                 BaritoneApiProxy.onLostControl(farmProcess);
             }
         } catch (Exception e) {
-            System.err.println("Node: Failed to reset Baritone pathing before mining: " + e.getMessage());
         }
     }
 
@@ -9999,7 +9975,6 @@ public class Node {
             return;
         }
 
-        System.out.println("Approaching nearest loaded collect target at " + preferredTarget);
         resetBaritonePathing(baritone, mineProcess);
 
         CompletableFuture<Void> approachFuture = new CompletableFuture<>();
@@ -10858,7 +10833,10 @@ public class Node {
         Object serverRegistryManager = client.getServer() != null ? client.getServer().getRegistryManager() : null;
         net.minecraft.world.World clientWorld = EntityCompatibilityBridge.getWorld(client.player);
         Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
+        Object ingredientRegistryManager = clientWorld != null ? clientWorld : clientRegistryManager;
+        ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
         List<String> managerTypes = new ArrayList<>();
+        RecipeEntry<CraftingRecipe> fallbackMatch = null;
         for (Object manager : managers) {
             if (manager == null) {
                 continue;
@@ -10901,12 +10879,19 @@ public class Node {
 
                 @SuppressWarnings("unchecked")
                 RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) entry;
-                return castEntry;
+                if (fallbackMatch == null) {
+                    fallbackMatch = castEntry;
+                }
+
+                List<GridIngredient> gridIngredients = resolveGridIngredients(craftingRecipe, craftMode, ingredientRegistryManager);
+                if (canSatisfyGridIngredients(handler, gridIngredients, ingredientRegistryManager)) {
+                    return castEntry;
+                }
             }
         }
 
         logCraftDebug(targetItem, craftMode, managers.size(), totalEntries, craftingEntries, emptyOutputs, matchingOutputs, sampleOutputs, managerTypes);
-        return null;
+        return fallbackMatch;
     }
 
     private Object findCraftingDisplayEntry(net.minecraft.client.MinecraftClient client,
@@ -10924,6 +10909,8 @@ public class Node {
         if (collections == null || collections.isEmpty()) {
             return null;
         }
+        ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+        Object fallbackMatch = null;
         for (RecipeResultCollection collection : collections) {
             if (collection == null) {
                 continue;
@@ -10950,10 +10937,16 @@ public class Node {
                     }
                     continue;
                 }
-                return entry;
+                if (fallbackMatch == null) {
+                    fallbackMatch = entry;
+                }
+                List<GridIngredient> gridIngredients = resolveDisplayGridIngredients(display, craftMode, registryManager);
+                if (canSatisfyGridIngredients(handler, gridIngredients, registryManager)) {
+                    return entry;
+                }
             }
         }
-        return null;
+        return fallbackMatch;
     }
 
     private boolean displayFitsPlayerGrid(Object display, Object registryManager) {
@@ -11192,12 +11185,21 @@ public class Node {
         if (recipes == null || recipes.isEmpty()) {
             return null;
         }
+        ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+        CachedRecipe fallbackMatch = null;
         for (CachedRecipe recipe : recipes) {
-            if (recipe != null && craftMode.name().equals(recipe.mode)) {
+            if (recipe == null || !craftMode.name().equals(recipe.mode)) {
+                continue;
+            }
+            if (fallbackMatch == null) {
+                fallbackMatch = recipe;
+            }
+            List<GridIngredient> gridIngredients = buildGridIngredientsFromCache(recipe);
+            if (canSatisfyGridIngredients(handler, gridIngredients, client.world)) {
                 return recipe;
             }
         }
-        return null;
+        return fallbackMatch;
     }
 
     private void cacheCraftingRecipe(net.minecraft.client.MinecraftClient client,
@@ -11356,10 +11358,7 @@ public class Node {
             return;
         }
         String key = outputId.toString();
-        book.recipesByOutput.computeIfAbsent(key, unused -> new ArrayList<>());
-        List<CachedRecipe> list = book.recipesByOutput.get(key);
-        list.removeIf(existing -> existing != null && mode.name().equals(existing.mode));
-        list.add(cachedRecipe);
+        addCachedRecipe(book, key, cachedRecipe);
     }
 
     private void cacheRecipeForMode(CachedRecipeBook book,
@@ -11419,9 +11418,17 @@ public class Node {
             return;
         }
         String key = outputId.toString();
+        addCachedRecipe(book, key, cachedRecipe);
+    }
+
+    private void addCachedRecipe(CachedRecipeBook book, String key, CachedRecipe cachedRecipe) {
+        if (book == null || key == null || key.isBlank() || cachedRecipe == null) {
+            return;
+        }
         book.recipesByOutput.computeIfAbsent(key, unused -> new ArrayList<>());
         List<CachedRecipe> list = book.recipesByOutput.get(key);
-        list.removeIf(existing -> existing != null && mode.name().equals(existing.mode));
+        String signature = getCachedRecipeSignature(cachedRecipe);
+        list.removeIf(existing -> existing != null && getCachedRecipeSignature(existing).equals(signature));
         list.add(cachedRecipe);
     }
 
@@ -11441,6 +11448,24 @@ public class Node {
             result.add(new GridIngredient(cachedIngredient.slotIndex, ingredient, false));
         }
         return result;
+    }
+
+    private String getCachedRecipeSignature(CachedRecipe recipe) {
+        if (recipe == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (recipe.grid != null) {
+            for (CachedGridIngredient ingredient : recipe.grid) {
+                if (ingredient == null) {
+                    continue;
+                }
+                List<String> ids = ingredient.itemIds != null ? new ArrayList<>(ingredient.itemIds) : List.of();
+                parts.add(ingredient.slotIndex + "=" + String.join("|", ids));
+            }
+        }
+        Collections.sort(parts);
+        return recipe.mode + ":" + recipe.outputCount + ":" + String.join(",", parts);
     }
 
     private List<ItemStack> resolveIngredientStacksByTesting(Ingredient ingredient) {
@@ -11529,7 +11554,7 @@ public class Node {
                 String json = RECIPE_CACHE_GSON.toJson(book);
                 Files.writeString(path, json, StandardCharsets.UTF_8);
                 if (!existed) {
-                    LOGGER.info("Pathmind recipe cache created at {}", path.toAbsolutePath());
+                    LOGGER.debug("Pathmind recipe cache created at {}", path.toAbsolutePath());
                 }
             } catch (Exception ignored) {
             }
@@ -12232,6 +12257,7 @@ public class Node {
                                                          Object registryManager) throws InterruptedException {
         java.util.concurrent.atomic.AtomicReference<String> errorRef = new java.util.concurrent.atomic.AtomicReference<>();
         java.util.concurrent.atomic.AtomicInteger producedRef = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicReference<List<Integer>> plannedSourceSlotsRef = new java.util.concurrent.atomic.AtomicReference<>();
 
         runOnClientThread(client, () -> {
             ClientPlayerInteractionManager interactionManager = client.interactionManager;
@@ -12247,17 +12273,29 @@ public class Node {
             }
 
             clearCraftingGrid(client, interactionManager, handler, gridSlots, craftMode);
+            List<Integer> plannedSourceSlots = planIngredientSourceSlots(handler, gridIngredients, registryManager);
+            if (plannedSourceSlots == null || plannedSourceSlots.size() != gridIngredients.size()) {
+                errorRef.set("Cannot craft " + itemDisplayName + ": missing required ingredients.");
+                return;
+            }
+            plannedSourceSlotsRef.set(plannedSourceSlots);
         });
 
         if (errorRef.get() != null) {
             return new CraftingAttemptResult(0, errorRef.get());
         }
 
-        for (GridIngredient ingredient : gridIngredients) {
+        List<Integer> plannedSourceSlots = plannedSourceSlotsRef.get();
+        if (plannedSourceSlots == null || plannedSourceSlots.size() != gridIngredients.size()) {
+            return new CraftingAttemptResult(0, "Cannot craft " + itemDisplayName + ": missing required ingredients.");
+        }
+
+        for (int ingredientIndex = 0; ingredientIndex < gridIngredients.size(); ingredientIndex++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException();
             }
 
+            GridIngredient ingredient = gridIngredients.get(ingredientIndex);
             if (ingredient == null) {
                 continue;
             }
@@ -12266,6 +12304,7 @@ public class Node {
             }
 
             java.util.concurrent.atomic.AtomicBoolean placed = new java.util.concurrent.atomic.AtomicBoolean(false);
+            final int plannedSourceSlot = plannedSourceSlots.get(ingredientIndex);
 
             runOnClientThread(client, () -> {
                 ClientPlayerInteractionManager interactionManager = client.interactionManager;
@@ -12280,7 +12319,7 @@ public class Node {
                     return;
                 }
 
-                int sourceSlot = findIngredientSourceSlot(handler, ingredient.ingredient(), registryManager, ingredient.allowEmpty());
+                int sourceSlot = plannedSourceSlot;
                 if (sourceSlot == -1) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": missing required ingredients.");
                     return;
@@ -12376,7 +12415,101 @@ public class Node {
             return new CraftingAttemptResult(producedRef.get(), errorRef.get());
         }
 
+        logCraftingOutputFailure(client, itemDisplayName, craftMode, gridIngredients, plannedSourceSlots);
         return new CraftingAttemptResult(0, "Cannot craft " + itemDisplayName + ": missing required ingredients.");
+    }
+
+    private void logCraftingOutputFailure(net.minecraft.client.MinecraftClient client,
+                                          String itemDisplayName,
+                                          NodeMode craftMode,
+                                          List<GridIngredient> gridIngredients,
+                                          List<Integer> plannedSourceSlots) {
+        if (client == null || client.player == null) {
+            return;
+        }
+
+        ScreenHandler handler = client.player.currentScreenHandler;
+        if (handler == null) {
+            LOGGER.warn("Crafting '{}' failed before output appeared: handler missing after placement.", itemDisplayName);
+            return;
+        }
+
+        String outputDescription = "missing";
+        try {
+            Slot outputSlot = handler.getSlot(0);
+            ItemStack outputStack = outputSlot.getStack();
+            if (!outputStack.isEmpty()) {
+                Identifier outputId = Registries.ITEM.getId(outputStack.getItem());
+                outputDescription = outputId + " x" + outputStack.getCount();
+            } else {
+                outputDescription = "empty";
+            }
+        } catch (RuntimeException ignored) {
+            outputDescription = "unavailable";
+        }
+
+        LOGGER.warn(
+            "Crafting '{}' produced no output after ingredient placement. mode={}, handler={}, outputSlot={}, sources={}, grid={}",
+            itemDisplayName,
+            craftMode,
+            handler.getClass().getSimpleName(),
+            outputDescription,
+            plannedSourceSlots,
+            describeCraftingGridIngredients(gridIngredients)
+        );
+    }
+
+    private List<Integer> planIngredientSourceSlots(ScreenHandler handler,
+                                                    List<GridIngredient> gridIngredients,
+                                                    Object registryManager) {
+        if (handler == null || gridIngredients == null) {
+            return null;
+        }
+
+        List<Integer> handlerSlots = new ArrayList<>();
+        List<ItemStack> inventoryStacks = new ArrayList<>();
+        List<IngredientReservation> reservations = new ArrayList<>();
+        List<Slot> slots = handler.slots;
+        for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
+            Slot slot = slots.get(slotIdx);
+            if (!(slot.inventory instanceof PlayerInventory)) {
+                continue;
+            }
+
+            int inventoryIndex = slot.getIndex();
+            if (inventoryIndex < 0 || inventoryIndex >= PlayerInventory.MAIN_SIZE) {
+                continue;
+            }
+
+            handlerSlots.add(slotIdx);
+            inventoryStacks.add(slot.getStack().copy());
+        }
+
+        for (GridIngredient ingredient : gridIngredients) {
+            if (ingredient == null) {
+                reservations.add(new IngredientReservation(-1));
+                continue;
+            }
+            if (!ingredient.allowEmpty() && RecipeCompatibilityBridge.isIngredientEmpty(ingredient.ingredient(), registryManager)) {
+                reservations.add(new IngredientReservation(-1));
+                continue;
+            }
+
+            int inventorySlotIndex = findIngredientInventorySlot(inventoryStacks, ingredient.ingredient(), registryManager, ingredient.allowEmpty());
+            if (inventorySlotIndex == -1) {
+                return null;
+            }
+
+            ItemStack reservedStack = inventoryStacks.get(inventorySlotIndex);
+            reservedStack.decrement(1);
+            reservations.add(new IngredientReservation(handlerSlots.get(inventorySlotIndex)));
+        }
+
+        List<Integer> plannedSlots = new ArrayList<>(reservations.size());
+        for (IngredientReservation reservation : reservations) {
+            plannedSlots.add(reservation.handlerSlot());
+        }
+        return plannedSlots;
     }
 
     private void clearCraftingGrid(net.minecraft.client.MinecraftClient client,
@@ -12400,6 +12533,64 @@ public class Node {
                 // Ignore missing grid slots for the current handler.
             }
         }
+    }
+
+    static List<Integer> planIngredientSourceSlotsForTests(List<ItemStack> inventoryStacks,
+                                                           List<Ingredient> ingredients,
+                                                           Object registryManager) {
+        if (inventoryStacks == null || ingredients == null) {
+            return null;
+        }
+
+        List<ItemStack> simulatedInventory = new ArrayList<>(inventoryStacks.size());
+        for (ItemStack stack : inventoryStacks) {
+            simulatedInventory.add(stack == null ? ItemStack.EMPTY : stack.copy());
+        }
+
+        List<Integer> plannedSlots = new ArrayList<>(ingredients.size());
+        for (Ingredient ingredient : ingredients) {
+            int inventorySlot = findIngredientInventorySlot(simulatedInventory, ingredient, registryManager, false);
+            if (inventorySlot == -1) {
+                return null;
+            }
+
+            simulatedInventory.get(inventorySlot).decrement(1);
+            plannedSlots.add(inventorySlot);
+        }
+        return plannedSlots;
+    }
+
+    static List<Integer> planIngredientSourceSlotsForTests(List<TestIngredientStack> inventoryStacks,
+                                                           List<String> ingredientKeys) {
+        if (inventoryStacks == null || ingredientKeys == null) {
+            return null;
+        }
+
+        List<TestIngredientStack> simulatedInventory = new ArrayList<>(inventoryStacks.size());
+        for (TestIngredientStack stack : inventoryStacks) {
+            simulatedInventory.add(stack == null ? new TestIngredientStack("", 0) : stack);
+        }
+
+        List<Integer> plannedSlots = new ArrayList<>(ingredientKeys.size());
+        for (String ingredientKey : ingredientKeys) {
+            int inventorySlot = -1;
+            for (int slotIdx = 0; slotIdx < simulatedInventory.size(); slotIdx++) {
+                TestIngredientStack stack = simulatedInventory.get(slotIdx);
+                if (stack == null || stack.count() <= 0) {
+                    continue;
+                }
+                if (Objects.equals(stack.key(), ingredientKey)) {
+                    inventorySlot = slotIdx;
+                    simulatedInventory.set(slotIdx, new TestIngredientStack(stack.key(), stack.count() - 1));
+                    break;
+                }
+            }
+            if (inventorySlot == -1) {
+                return null;
+            }
+            plannedSlots.add(inventorySlot);
+        }
+        return plannedSlots;
     }
 
     private int findIngredientSourceSlot(ScreenHandler handler,
@@ -12439,7 +12630,33 @@ public class Node {
         return -1;
     }
 
-    private boolean matchesCandidateStack(List<ItemStack> candidates, ItemStack stack) {
+    private static int findIngredientInventorySlot(List<ItemStack> inventoryStacks,
+                                                   Ingredient ingredient,
+                                                   Object registryManager,
+                                                   boolean allowEmpty) {
+        if (inventoryStacks == null || ingredient == null) {
+            return -1;
+        }
+        if (!allowEmpty && RecipeCompatibilityBridge.isIngredientEmpty(ingredient, registryManager)) {
+            return -1;
+        }
+
+        List<ItemStack> candidates = RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager);
+        for (int slotIdx = 0; slotIdx < inventoryStacks.size(); slotIdx++) {
+            ItemStack stack = inventoryStacks.get(slotIdx);
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+
+            if (ingredient.test(stack) || matchesCandidateStack(candidates, stack)) {
+                return slotIdx;
+            }
+        }
+
+        return -1;
+    }
+
+    private static boolean matchesCandidateStack(List<ItemStack> candidates, ItemStack stack) {
         if (candidates == null || candidates.isEmpty()) {
             return false;
         }
@@ -12449,6 +12666,48 @@ public class Node {
             }
         }
         return false;
+    }
+
+    private boolean canSatisfyGridIngredients(ScreenHandler handler,
+                                              List<GridIngredient> gridIngredients,
+                                              Object registryManager) {
+        if (handler == null || gridIngredients == null || gridIngredients.isEmpty()) {
+            return false;
+        }
+        List<Integer> plannedSourceSlots = planIngredientSourceSlots(handler, gridIngredients, registryManager);
+        return plannedSourceSlots != null && plannedSourceSlots.size() == gridIngredients.size();
+    }
+
+    private String describeCraftingGridIngredients(List<GridIngredient> gridIngredients) {
+        if (gridIngredients == null || gridIngredients.isEmpty()) {
+            return "[]";
+        }
+
+        List<String> parts = new ArrayList<>(gridIngredients.size());
+        for (GridIngredient ingredient : gridIngredients) {
+            if (ingredient == null) {
+                parts.add("null");
+                continue;
+            }
+
+            List<ItemStack> candidates = RecipeCompatibilityBridge.getIngredientStacks(ingredient.ingredient(), null);
+            String candidateDescription = "empty";
+            if (candidates != null && !candidates.isEmpty()) {
+                List<String> ids = new ArrayList<>();
+                for (ItemStack candidate : candidates) {
+                    if (candidate == null || candidate.isEmpty()) {
+                        continue;
+                    }
+                    ids.add(String.valueOf(Registries.ITEM.getId(candidate.getItem())));
+                }
+                if (!ids.isEmpty()) {
+                    candidateDescription = String.join("|", ids);
+                }
+            }
+
+            parts.add(ingredient.slotIndex() + ":" + candidateDescription);
+        }
+        return parts.toString();
     }
 
     private int[] mapGridSlotsForHandler(ScreenHandler handler, NodeMode craftMode, int[] logicalSlots) {
@@ -12471,6 +12730,12 @@ public class Node {
             compact[i] = mapped[i];
         }
         return compact;
+    }
+
+    static record TestIngredientStack(String key, int count) {
+    }
+
+    private record IngredientReservation(int handlerSlot) {
     }
 
     private int mapLogicalSlotToHandlerSlot(ScreenHandler handler, NodeMode craftMode, int logicalSlot) {
@@ -13142,6 +13407,14 @@ public class Node {
         return node.warmRecipeCacheInternal(client);
     }
 
+    public static boolean hasUsableRecipeCache(net.minecraft.client.MinecraftClient client) {
+        if (client == null) {
+            return false;
+        }
+        Node node = new Node(NodeType.CRAFT, 0, 0);
+        return node.hasUsableRecipeCacheInternal(client);
+    }
+
     public static void resetRecipeCacheWarmup() {
         recipeCacheWarmupState = null;
     }
@@ -13216,8 +13489,115 @@ public class Node {
         return state.book.recipesByOutput != null && !state.book.recipesByOutput.isEmpty();
     }
 
+    private boolean hasUsableRecipeCacheInternal(net.minecraft.client.MinecraftClient client) {
+        Path path = getRecipeCachePath(client);
+        if (path == null || !Files.exists(path)) {
+            return false;
+        }
+        CachedRecipeBook book = loadRecipeCache(client);
+        return isRecipeCacheUsable(book);
+    }
+
+    static boolean isRecipeCacheUsableForTests(Map<String, List<Map<String, Object>>> rawRecipesByOutput) {
+        CachedRecipeBook book = new CachedRecipeBook();
+        book.recipesByOutput = new HashMap<>();
+        if (rawRecipesByOutput != null) {
+            for (Map.Entry<String, List<Map<String, Object>>> entry : rawRecipesByOutput.entrySet()) {
+                List<CachedRecipe> recipes = new ArrayList<>();
+                if (entry.getValue() != null) {
+                    for (Map<String, Object> rawRecipe : entry.getValue()) {
+                        if (rawRecipe == null) {
+                            continue;
+                        }
+                        CachedRecipe recipe = new CachedRecipe();
+                        Object mode = rawRecipe.get("mode");
+                        if (mode instanceof String modeString) {
+                            recipe.mode = modeString;
+                        }
+                        Object outputCount = rawRecipe.get("outputCount");
+                        if (outputCount instanceof Number number) {
+                            recipe.outputCount = number.intValue();
+                        }
+                        Object rawGrid = rawRecipe.get("grid");
+                        if (rawGrid instanceof List<?> gridList) {
+                            for (Object rawIngredient : gridList) {
+                                if (!(rawIngredient instanceof Map<?, ?> ingredientMap)) {
+                                    continue;
+                                }
+                                CachedGridIngredient ingredient = new CachedGridIngredient();
+                                Object slotIndex = ingredientMap.get("slotIndex");
+                                if (slotIndex instanceof Number number) {
+                                    ingredient.slotIndex = number.intValue();
+                                }
+                                Object itemIds = ingredientMap.get("itemIds");
+                                if (itemIds instanceof List<?> ids) {
+                                    for (Object id : ids) {
+                                        if (id instanceof String idString) {
+                                            ingredient.itemIds.add(idString);
+                                        }
+                                    }
+                                }
+                                recipe.grid.add(ingredient);
+                            }
+                        }
+                        recipes.add(recipe);
+                    }
+                }
+                book.recipesByOutput.put(entry.getKey(), recipes);
+            }
+        }
+        return isRecipeCacheUsable(book);
+    }
+
+    private static boolean isRecipeCacheUsable(CachedRecipeBook book) {
+        if (book == null || book.schemaVersion != RECIPE_CACHE_VERSION || book.recipesByOutput == null || book.recipesByOutput.isEmpty()) {
+            return false;
+        }
+        for (Map.Entry<String, List<CachedRecipe>> entry : book.recipesByOutput.entrySet()) {
+            if (entry == null || entry.getKey() == null || entry.getKey().trim().isEmpty()) {
+                continue;
+            }
+            List<CachedRecipe> recipes = entry.getValue();
+            if (recipes == null || recipes.isEmpty()) {
+                continue;
+            }
+            for (CachedRecipe recipe : recipes) {
+                if (recipe == null || recipe.mode == null || recipe.mode.trim().isEmpty() || recipe.outputCount <= 0) {
+                    continue;
+                }
+                if (recipe.grid == null || recipe.grid.isEmpty()) {
+                    continue;
+                }
+                boolean hasIngredient = false;
+                for (CachedGridIngredient ingredient : recipe.grid) {
+                    if (ingredient == null || ingredient.itemIds == null || ingredient.itemIds.isEmpty()) {
+                        continue;
+                    }
+                    boolean hasValidId = false;
+                    for (String itemId : ingredient.itemIds) {
+                        if (itemId != null && !itemId.trim().isEmpty()) {
+                            hasValidId = true;
+                            break;
+                        }
+                    }
+                    if (hasValidId) {
+                        hasIngredient = true;
+                        break;
+                    }
+                }
+                if (hasIngredient) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private RecipeCacheWarmupState createRecipeCacheWarmupState(net.minecraft.client.MinecraftClient client) {
         if (client == null || client.getServer() == null) {
+            return null;
+        }
+        if (hasUsableRecipeCacheInternal(client)) {
             return null;
         }
         RecipeManager manager = client.getServer().getRecipeManager();
@@ -13499,7 +13879,6 @@ public class Node {
             return;
         }
 
-        System.out.println("Placing block '" + block + "' at " + x + ", " + y + ", " + z);
 
         BlockPos targetPos = new BlockPos(x, y, z);
         if (parameterData != null) {
@@ -13737,12 +14116,10 @@ public class Node {
             int y = (int) Math.floor(targetVector.y);
             int z = (int) Math.floor(targetVector.z);
             command = String.format("#build %s %d %d %d", schematic, x, y, z);
-            System.out.println("Executing build at parameter coordinates: " + command);
         } else {
             switch (mode) {
                 case BUILD_PLAYER:
                     command = String.format("#build %s", schematic);
-                    System.out.println("Executing build at player location: " + command);
                     break;
                     
                 case BUILD_XYZ:
@@ -13756,7 +14133,6 @@ public class Node {
                     if (zParam != null) z = zParam.getIntValue();
                     
                     command = String.format("#build %s %d %d %d", schematic, x, y, z);
-                    System.out.println("Executing build at coordinates: " + command);
                     break;
                     
                 default:
@@ -13839,7 +14215,6 @@ public class Node {
         
         switch (mode) {
             case EXPLORE_CURRENT:
-                System.out.println("Executing explore from current position");
                 BaritoneApiProxy.explore(exploreProcess, 0, 0); // 0,0 means from current position
                 break;
                 
@@ -13851,7 +14226,6 @@ public class Node {
                 if (xParam != null) x = xParam.getIntValue();
                 if (zParam != null) z = zParam.getIntValue();
                 
-                System.out.println("Executing explore at: " + x + ", " + z);
                 BaritoneApiProxy.explore(exploreProcess, x, z);
                 break;
                 
@@ -13862,7 +14236,6 @@ public class Node {
                     filter = filterParam.getStringValue();
                 }
                 
-                System.out.println("Executing explore with filter: " + filter);
                 // For filter-based exploration, we need to use a different approach
                 executeCommand("#explore " + filter);
                 future.complete(null); // Command-based exploration completes immediately
@@ -13895,7 +14268,6 @@ public class Node {
 
                 if (isAnyPlayerValue(player)) {
                     command = "#follow players";
-                    System.out.println("Executing follow any players: " + command);
                 } else {
                     if (isSelfPlayerValue(player)) {
                         player = client != null && client.player != null
@@ -13903,18 +14275,15 @@ public class Node {
                             : "Self";
                     }
                     command = "#follow player " + player;
-                    System.out.println("Executing follow player: " + command);
                 }
                 break;
                 
             case FOLLOW_PLAYERS:
                 command = "#follow players";
-                System.out.println("Executing follow any players: " + command);
                 break;
                 
             case FOLLOW_ENTITIES:
                 command = "#follow entities";
-                System.out.println("Executing follow any entities: " + command);
                 break;
                 
             case FOLLOW_ENTITY_TYPE:
@@ -13925,7 +14294,6 @@ public class Node {
                 }
 
                 command = "#follow entity " + entity;
-                System.out.println("Executing follow entity type: " + command);
                 break;
                 
             default:
@@ -13967,7 +14335,6 @@ public class Node {
             }
             waitSeconds = baseDuration * unitSeconds;
         }
-        System.out.println("Waiting for " + waitSeconds + " seconds (configured duration=" + baseDuration + " " + waitMode.getDisplayName() + ")");
         ExecutionManager manager = ExecutionManager.getInstance();
         Integer executionId = manager.getCurrentExecutionId();
 
@@ -14612,9 +14979,7 @@ public class Node {
                 }
 
                 if (pages == null) {
-                    System.err.println("BookEditScreen pages list not found. Fields:");
                     for (Field field : bookScreen.getClass().getDeclaredFields()) {
-                        System.err.println(" - " + field.getName() + " : " + field.getType());
                     }
                     sendNodeErrorMessage(client, "Could not access book pages");
                     future.completeExceptionally(new RuntimeException("Could not access book pages"));
@@ -14627,8 +14992,6 @@ public class Node {
                 Method setPageTextMethod = null;
                 Method updatePageMethod = null;
                 Method writeNbtDataMethod = null;
-                System.out.println("WRITE_BOOK: screen=" + bookScreen.getClass().getName()
-                    + " pageIndex=" + pageIndex);
                 for (Method method : bookScreen.getClass().getDeclaredMethods()) {
                     String methodName = method.getName().toLowerCase();
                     if (method.getParameterCount() == 0 && method.getReturnType() == void.class) {
@@ -14673,7 +15036,6 @@ public class Node {
                     if (value instanceof java.util.List) {
                         @SuppressWarnings("unchecked")
                         java.util.List<Object> list = (java.util.List<Object>) value;
-                        System.out.println("WRITE_BOOK: pagesField list size before=" + list.size());
                         if (list.isEmpty()) {
                             try {
                                 list.add(setPageTextMethod != null ? RawFilteredPair.of("") : "");
@@ -14694,7 +15056,6 @@ public class Node {
                 } else if (pages.isEmpty()) {
                     pages.add(setPageTextMethod != null ? RawFilteredPair.of("") : "");
                 }
-                System.out.println("WRITE_BOOK: pages size after seed=" + pages.size());
 
                 boolean useRawFilteredPairs = false;
                 if (!pages.isEmpty()) {
@@ -14704,13 +15065,7 @@ public class Node {
                 }
                 if (!pages.isEmpty()) {
                     Object first = pages.get(0);
-                    System.out.println("WRITE_BOOK: pages element type=" + (first == null ? "null" : first.getClass().getName()));
                 }
-                System.out.println("WRITE_BOOK: useRawFilteredPairs=" + useRawFilteredPairs
-                    + " setPageText=" + (setPageTextMethod != null)
-                    + " updatePage=" + (updatePageMethod != null)
-                    + " writeNbtData=" + (writeNbtDataMethod != null));
-
                 int pageCount = pages.size();
                 if (countPagesMethod != null) {
                     try {
@@ -14764,8 +15119,6 @@ public class Node {
                 if (truncatedText.length() > BOOK_PAGE_MAX_CHARS) {
                     truncatedText = truncatedText.substring(0, BOOK_PAGE_MAX_CHARS);
                 }
-                System.out.println("WRITE_BOOK: text length=" + truncatedText.length()
-                    + " preview=\"" + (truncatedText.length() > 40 ? truncatedText.substring(0, 40) + "..." : truncatedText) + "\"");
                 boolean setViaMethod = false;
                 if (setPageTextMethod != null && pageIndex >= 0 && pageIndex < pages.size()) {
                     try {
@@ -15030,7 +15383,6 @@ public class Node {
 
                 future.complete(null);
             } catch (Exception e) {
-                e.printStackTrace();
                 String message = e.getMessage();
                 if (message == null || message.isBlank()) {
                     message = e.getClass().getSimpleName();
@@ -15150,7 +15502,6 @@ public class Node {
 
                 future.complete(null);
             } catch (Exception e) {
-                e.printStackTrace();
                 String message = e.getMessage();
                 if (message == null || message.isBlank()) {
                     message = e.getClass().getSimpleName();
@@ -15259,7 +15610,6 @@ public class Node {
                 if (yParam != null) y = yParam.getIntValue();
                 if (zParam != null) z = zParam.getIntValue();
                 
-                System.out.println("Setting goal to: " + x + ", " + y + ", " + z);
                 Object goal = BaritoneApiProxy.createGoalBlock(x, y, z);
                 BaritoneApiProxy.setGoal(customGoalProcess, goal);
                 break;
@@ -15272,7 +15622,6 @@ public class Node {
                 if (xParam2 != null) x2 = xParam2.getIntValue();
                 if (zParam2 != null) z2 = zParam2.getIntValue();
 
-                System.out.println("Setting goal to: " + x2 + ", " + z2);
                 Object goal2 = BaritoneApiProxy.createGoalXZ(x2, z2);
                 BaritoneApiProxy.setGoal(customGoalProcess, goal2);
                 break;
@@ -15282,7 +15631,6 @@ public class Node {
                 NodeParameter yParam3 = getParameter("Y");
                 if (yParam3 != null) y3 = yParam3.getIntValue();
 
-                System.out.println("Setting goal to Y level: " + y3);
                 net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
                 if (client != null && client.player != null) {
                     Object goal3 = BaritoneApiProxy.createGoalYLevel(y3);
@@ -15291,7 +15639,6 @@ public class Node {
                 break;
                 
             case GOAL_CURRENT:
-                System.out.println("Setting goal to current position");
                 net.minecraft.client.MinecraftClient client2 = net.minecraft.client.MinecraftClient.getInstance();
                 if (client2 != null && client2.player != null) {
                     int currentX = (int) client2.player.getX();
@@ -15303,7 +15650,6 @@ public class Node {
                 break;
                 
             case GOAL_CLEAR:
-                System.out.println("Clearing current goal");
                 BaritoneApiProxy.setGoal(customGoalProcess, null);
                 break;
                 
@@ -15321,7 +15667,6 @@ public class Node {
             return;
         }
 
-        System.out.println("Executing path command");
 
         if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
             if (runtimeParameterData != null && runtimeParameterData.targetBlockPos != null) {
@@ -15391,7 +15736,6 @@ public class Node {
         
         switch (mode) {
             case STOP_NORMAL:
-                System.out.println("Executing stop command");
                 // Cancel all pending tasks first
                 PreciseCompletionTracker.getInstance().cancelAllTasks();
                 // Stop all Baritone processes
@@ -15399,7 +15743,6 @@ public class Node {
                 break;
                 
             case STOP_CANCEL:
-                System.out.println("Executing cancel command");
                 // Cancel all pending tasks first
                 PreciseCompletionTracker.getInstance().cancelAllTasks();
                 // Stop all Baritone processes
@@ -15407,7 +15750,6 @@ public class Node {
                 break;
                 
             case STOP_FORCE:
-                System.out.println("Executing force cancel command");
                 // Force cancel all tasks
                 PreciseCompletionTracker.getInstance().cancelAllTasks();
                 // Force stop all Baritone processes
@@ -15431,7 +15773,6 @@ public class Node {
         if (targetNumber > 0) {
             boolean stopped = manager.requestStopForStartNumber(targetNumber);
             if (!stopped) {
-                System.out.println("Stop node could not find START node " + targetNumber + ". Stopping all node trees.");
                 manager.requestStopAll();
             }
             future.complete(null);
@@ -15439,13 +15780,10 @@ public class Node {
         }
 
         if (owningStart == null) {
-            System.out.println("Stop node executed without owning START node. Stopping all node trees.");
             manager.requestStopAll();
         } else {
-            System.out.println("Executing stop node for START node " + owningStart.getId());
             boolean stopped = manager.requestStopForStart(owningStart);
             if (!stopped) {
-                System.out.println("Stop node could not cancel its owning START chain. Stopping all node trees.");
                 manager.requestStopAll();
             }
         }
@@ -15456,7 +15794,6 @@ public class Node {
     private void executeStartChainNode(CompletableFuture<Void> future) {
         int targetNumber = getIntParameter("StartNumber", 0);
         if (targetNumber <= 0) {
-            System.out.println("Activate node executed without a valid START number.");
             future.complete(null);
             return;
         }
@@ -15464,7 +15801,6 @@ public class Node {
         ExecutionManager manager = ExecutionManager.getInstance();
         boolean started = manager.requestStartForStartNumber(targetNumber);
         if (!started) {
-            System.out.println("Activate node could not find START node " + targetNumber + ".");
         }
 
         future.complete(null);
@@ -15487,14 +15823,12 @@ public class Node {
 
         NodeGraphData graphData = NodeGraphPersistence.loadNodeGraphForPreset(presetName);
         if (graphData == null || graphData.getNodes() == null || graphData.getNodes().isEmpty()) {
-            System.out.println("Run Preset node could not load preset \"" + presetName + "\".");
             future.complete(null);
             return;
         }
 
         List<Node> nodes = NodeGraphPersistence.convertToNodes(graphData);
         if (nodes == null || nodes.isEmpty()) {
-            System.out.println("Run Preset node could not build nodes for preset \"" + presetName + "\".");
             future.complete(null);
             return;
         }
@@ -15513,7 +15847,6 @@ public class Node {
             }
         }
         if (presetStarts.isEmpty()) {
-            System.out.println("Run Preset node found no START nodes in preset \"" + presetName + "\".");
             future.complete(null);
             return;
         }
@@ -15534,10 +15867,8 @@ public class Node {
         }
 
         if (started == 0) {
-            System.out.println("Run Preset node did not start any chains for preset \"" + presetName + "\".");
             future.complete(null);
         } else if (type == NodeType.CUSTOM_NODE || type == NodeType.TEMPLATE) {
-            System.out.println("Custom node started " + started + " chain(s) for preset \"" + presetName + "\".");
             CompletableFuture.allOf(nestedFutures.toArray(new CompletableFuture[0]))
                 .whenComplete((ignored, throwable) -> {
                     if (throwable != null) {
@@ -15548,13 +15879,11 @@ public class Node {
                 });
             return;
         } else {
-            System.out.println("Run Preset node started " + started + " chain(s) for preset \"" + presetName + "\".");
             future.complete(null);
         }
     }
 
     private void executeStopAllNode(CompletableFuture<Void> future) {
-        System.out.println("Executing stop all node");
         ExecutionManager.getInstance().requestStopAll();
         future.complete(null);
     }
@@ -15564,7 +15893,6 @@ public class Node {
             return;
         }
         String command = "#invert";
-        System.out.println("Executing command: " + command);
 
         executeCommand(command);
         future.complete(null); // Invert commands complete immediately
@@ -15575,7 +15903,6 @@ public class Node {
             return;
         }
         String command = "#come";
-        System.out.println("Executing command: " + command);
 
         executeCommand(command);
         future.complete(null); // These commands complete immediately
@@ -15586,7 +15913,6 @@ public class Node {
             return;
         }
         String command = "#surface";
-        System.out.println("Executing command: " + command);
 
         executeCommand(command);
         future.complete(null); // These commands complete immediately
@@ -15597,7 +15923,6 @@ public class Node {
             return;
         }
         String command = "#tunnel";
-        System.out.println("Executing command: " + command);
 
         executeCommand(command);
         future.complete(null); // These commands complete immediately
@@ -15663,7 +15988,6 @@ public class Node {
                     range = rangeParam.getIntValue();
                 }
                 
-                System.out.println("Executing farm within range: " + range);
                 BaritoneApiProxy.farm(farmProcess, range);
                 break;
                 
@@ -15680,7 +16004,6 @@ public class Node {
                     waypointRange = waypointRangeParam.getIntValue();
                 }
                 
-                System.out.println("Executing farm around waypoint: " + waypoint + " with range: " + waypointRange);
                 // For waypoint-based farming, we need to use a different approach
                 executeCommand("#farm " + waypoint + " " + waypointRange);
                 future.complete(null); // Command-based farming completes immediately
@@ -22136,13 +22459,9 @@ public class Node {
             net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
             if (client != null && client.player != null) {
                 client.player.networkHandler.sendChatMessage(command);
-                System.out.println("Sent command to Minecraft: " + command);
-            } else {
-                System.out.println("Cannot execute command - client or player is null");
             }
         } catch (Exception e) {
-            System.err.println("Error executing command: " + e.getMessage());
-            e.printStackTrace();
+            LOGGER.warn("Error executing command: {}", e.getMessage(), e);
         }
     }
     

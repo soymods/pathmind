@@ -2,7 +2,12 @@ package com.pathmind.nodes;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeCompatibilityTest {
@@ -99,6 +104,45 @@ class NodeCompatibilityTest {
         assertTrue(Node.isCreateListCollectionTarget(NodeType.PARAM_ITEM));
         assertTrue(Node.isCreateListCollectionTarget(NodeType.PARAM_GUI));
         assertFalse(Node.isCreateListCollectionTarget(NodeType.PARAM_COORDINATE));
+    }
+
+    @Test
+    void recipeCacheUsableRequiresAtLeastOneValidRecipeEntry() {
+        assertFalse(Node.isRecipeCacheUsableForTests(Map.of()));
+        assertFalse(Node.isRecipeCacheUsableForTests(Map.of(
+            "minecraft:stick", List.of(Map.of(
+                "mode", "CRAFT_CRAFTING_TABLE",
+                "outputCount", 1,
+                "grid", List.of(Map.of("slotIndex", 0, "itemIds", List.of()))
+            ))
+        )));
+        assertTrue(Node.isRecipeCacheUsableForTests(Map.of(
+            "minecraft:stick", List.of(Map.of(
+                "mode", "CRAFT_CRAFTING_TABLE",
+                "outputCount", 4,
+                "grid", List.of(Map.of("slotIndex", 0, "itemIds", List.of("minecraft:oak_planks")))
+            ))
+        )));
+    }
+
+    @Test
+    void ingredientSourcePlannerAllowsRepeatedIngredientsFromSameStack() {
+        List<Integer> plannedSlots = Node.planIngredientSourceSlotsForTests(
+            List.of(new Node.TestIngredientStack("minecraft:oak_planks", 2)),
+            List.of("minecraft:oak_planks", "minecraft:oak_planks")
+        );
+
+        assertEquals(List.of(0, 0), plannedSlots);
+    }
+
+    @Test
+    void ingredientSourcePlannerFailsWhenRepeatedIngredientsExceedStackCount() {
+        List<Integer> plannedSlots = Node.planIngredientSourceSlotsForTests(
+            List.of(new Node.TestIngredientStack("minecraft:oak_planks", 1)),
+            List.of("minecraft:oak_planks", "minecraft:oak_planks")
+        );
+
+        assertNull(plannedSlots);
     }
 
     @Test

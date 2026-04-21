@@ -524,16 +524,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Try to load saved node graph first
         if (nodeGraph.hasSavedGraph()) {
-            System.out.println("Found saved node graph, loading...");
             if (nodeGraph.load()) {
                 nodeGraph.restoreSessionViewportState();
-                System.out.println("Successfully loaded saved node graph");
                 resetWorkspaceTabsFromCurrentGraph();
                 refreshMissingBaritonePopup();
         refreshMissingUiUtilsPopup();
                 return; // Don't initialize default nodes if we loaded a saved graph
-            } else {
-                System.out.println("Failed to load saved node graph, using default");
             }
         }
         
@@ -3155,11 +3151,7 @@ public class PathmindVisualEditorScreen extends Screen {
         syncAllTemplateTabsIntoParents();
         restoreRootWorkspaceIfNeeded();
 
-        if (nodeGraph.save()) {
-            System.out.println("Node graph auto-saved successfully");
-        } else {
-            System.err.println("Failed to auto-save node graph");
-        }
+        nodeGraph.save();
 
         PresetManager.setActivePreset(activePresetName);
     }

@@ -159,7 +159,7 @@ public class PathmindClientMod implements ClientModInitializer {
                 nodeErrorNotificationOverlay.clear();
             }
             Node.resetRecipeCacheWarmup();
-            recipeCacheWarmed = false;
+            recipeCacheWarmed = Node.hasUsableRecipeCache(client);
             recipeCacheWarmupCooldownTicks = 0;
             fireFabricEvent(EVT_CLIENT_PLAY_JOIN);
         });
@@ -470,7 +470,7 @@ public class PathmindClientMod implements ClientModInitializer {
                 nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
                 nodeErrorNotificationOverlay.show("Recipe cache ready.", com.pathmind.ui.theme.UITheme.ACCENT_SKY);
             }
-            LOGGER.info("Pathmind recipe cache populated from singleplayer recipes.");
+            LOGGER.debug("Pathmind recipe cache populated from singleplayer recipes.");
         } else if (!Node.isRecipeCacheWarmupInProgress(client)) {
             recipeCacheWarmupCooldownTicks = 100;
             if (nodeErrorNotificationOverlay != null) {

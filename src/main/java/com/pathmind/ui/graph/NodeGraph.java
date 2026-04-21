@@ -15,7 +15,6 @@ import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
-import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
@@ -59,9 +58,7 @@ import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.InputCompatibilityBridge;
-import com.pathmind.validation.GraphValidationIssue;
 import com.pathmind.validation.GraphValidationResult;
-import com.pathmind.validation.GraphValidationSeverity;
 import com.pathmind.validation.GraphValidator;
 
 /**
@@ -287,7 +284,6 @@ public class NodeGraph {
     private int nextStartNodeNumber = 1;
     private boolean validationDirty = true;
     private GraphValidationResult cachedValidationResult = GraphValidationResult.empty();
-    private int lastValidationIssueCount = 0;
     private static final float ZOOM_SCROLL_STEP = 1.12f;
     private static final float ZOOM_EPSILON = 0.0001f;
     private ZoomLevel zoomLevel = ZoomLevel.FOCUSED;
@@ -13277,35 +13273,12 @@ public class NodeGraph {
         if (validationDirty) {
             cachedValidationResult = GraphValidator.validate(nodes, connections, activePreset, baritoneAvailable, uiUtilsAvailable);
             validationDirty = false;
-            maybeNotifyValidationSummary(cachedValidationResult);
         }
         return cachedValidationResult;
     }
 
     private void invalidateValidation() {
         validationDirty = true;
-    }
-
-    private void maybeNotifyValidationSummary(GraphValidationResult result) {
-        int issueCount = result == null ? 0 : result.getIssues().size();
-        if (issueCount <= 0 || issueCount == lastValidationIssueCount) {
-            lastValidationIssueCount = issueCount;
-            return;
-        }
-        for (GraphValidationIssue issue : result.getIssues()) {
-            if (issue != null && issue.getSeverity() == GraphValidationSeverity.ERROR) {
-                NodeErrorNotificationOverlay.getInstance().show(
-                    "Validation: " + result.getErrorCount() + " error"
-                        + (result.getErrorCount() == 1 ? "" : "s")
-                        + (result.getWarningCount() > 0
-                        ? ", " + result.getWarningCount() + " warning" + (result.getWarningCount() == 1 ? "" : "s")
-                        : ""),
-                    UITheme.STATE_ERROR
-                );
-                break;
-            }
-        }
-        lastValidationIssueCount = issueCount;
     }
 
     private void invalidateTemplatePreviewCachesForPreset(String presetName) {

@@ -6170,7 +6170,8 @@ public class PathmindVisualEditorScreen extends Screen {
             int rowY = contentTop + index * VALIDATION_PANEL_ROW_HEIGHT;
             boolean clickable = issue != null && issue.hasNodeTarget();
             boolean hovered = clickable && isPointInRect(mouseX, mouseY, panelX + 1, rowY, panelWidth - 2, VALIDATION_PANEL_ROW_HEIGHT);
-            int rowBg = hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.BACKGROUND_SECONDARY;
+            float hoverProgress = getValidationIssueHoverProgress(issue, index, hovered);
+            int rowBg = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, UITheme.TOOLBAR_BG_HOVER, hoverProgress);
             context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + VALIDATION_PANEL_ROW_HEIGHT, rowBg);
             context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
 
@@ -6181,8 +6182,9 @@ public class PathmindVisualEditorScreen extends Screen {
             String prefix = issue.getSeverity() == GraphValidationSeverity.ERROR ? "Error" : "Warning";
             String message = TextRenderUtil.trimWithEllipsis(this.textRenderer,
                 prefix + ": " + issue.getMessage(), panelWidth - 34);
+            int rowTextColor = AnimationHelper.lerpColor(UITheme.TEXT_HEADER, UITheme.TEXT_PRIMARY, hoverProgress);
             context.drawTextWithShadow(this.textRenderer, Text.literal(message), panelX + 18, rowY + 7,
-                hovered ? UITheme.TEXT_PRIMARY : UITheme.TEXT_HEADER);
+                rowTextColor);
         }
 
         int presetInputsTop = contentTop + visibleIssues.size() * VALIDATION_PANEL_ROW_HEIGHT;
@@ -6290,12 +6292,6 @@ public class PathmindVisualEditorScreen extends Screen {
                 int glowColor = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, getAccentColor(), hoverProgress * 0.18f);
                 context.fill(labelX - 2, rowY + 5, labelX + labelWidth + 2, rowY + 5 + this.textRenderer.fontHeight + 2, glowColor);
                 context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), labelX, rowY + 7, labelColor);
-                int underlineWidth = Math.round(labelWidth * hoverProgress);
-                if (underlineWidth > 0) {
-                    int underlineStartX = labelX + (labelWidth - underlineWidth) / 2;
-                    int underlineY = rowY + 7 + this.textRenderer.fontHeight + 1;
-                    context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, labelColor);
-                }
             }
             if (isPresetBooleanPort(port)) {
                 int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
@@ -6321,14 +6317,13 @@ public class PathmindVisualEditorScreen extends Screen {
         String valueText = getPresetInputValue(port);
         boolean hovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT);
         boolean focused = field.isFocused();
-        int bg = focused ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-        if (hovered) {
-            bg = focused ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
-        }
-        int border = focused ? getAccentColor() : UITheme.BORDER_SUBTLE;
-        if (hovered) {
-            border = getAccentColor();
-        }
+        float hoverProgress = getValidationInputFieldHoverProgress(port, hovered);
+        int bgNormal = focused ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
+        int bgHover = focused ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
+        int borderNormal = focused ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        int borderHover = getAccentColor();
+        int bg = AnimationHelper.lerpColor(bgNormal, bgHover, hoverProgress);
+        int border = AnimationHelper.lerpColor(borderNormal, borderHover, hoverProgress);
         context.fill(fieldX, fieldY, fieldX + VALIDATION_INPUT_FIELD_WIDTH, fieldY + VALIDATION_INPUT_FIELD_HEIGHT, bg);
         DrawContextBridge.drawBorder(context, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT, border);
         if (!focused && !valueText.equals(field.getText())) {
@@ -6439,6 +6434,18 @@ public class PathmindVisualEditorScreen extends Screen {
             return 0f;
         }
         return HoverAnimator.getProgress("validation-preset-input-label:" + getPresetInputScopeKey() + ":" + port.getName(), hovered);
+    }
+
+    private float getValidationIssueHoverProgress(GraphValidationIssue issue, int index, boolean hovered) {
+        String issueKey = issue == null ? "unknown-" + index : issue.getCode() + ":" + issue.getNodeId() + ":" + index;
+        return getHoverProgress("validation-issue-row:" + issueKey, hovered);
+    }
+
+    private float getValidationInputFieldHoverProgress(NodeGraphData.CustomNodePort port, boolean hovered) {
+        if (port == null || port.getName() == null) {
+            return 0f;
+        }
+        return getHoverProgress("validation-input-field:" + getPresetInputScopeKey() + ":" + port.getName(), hovered);
     }
 
     private NodeGraphData.CustomNodeDefinition getActivePresetInputDefinition() {

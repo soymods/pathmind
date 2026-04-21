@@ -5,6 +5,7 @@ package com.pathmind.nodes;
  * Each parameter has a name, value, and type.
  */
 public class NodeParameter {
+    private final String id;
     private final String name;
     private final ParameterType type;
     private final String defaultValue;
@@ -15,6 +16,11 @@ public class NodeParameter {
     private boolean userEdited;
 
     public NodeParameter(String name, ParameterType type, String defaultValue) {
+        this(createDefaultId(name), name, type, defaultValue);
+    }
+
+    public NodeParameter(String id, String name, ParameterType type, String defaultValue) {
+        this.id = normalizeId(id, name);
         this.name = name;
         this.type = type;
         String initialValue = defaultValue != null ? defaultValue : "";
@@ -41,6 +47,22 @@ public class NodeParameter {
         } else if (type == ParameterType.BOOLEAN) {
             this.boolValue = Boolean.parseBoolean(defaultValue);
         }
+    }
+
+    public static String createDefaultId(String name) {
+        return normalizeId(null, name);
+    }
+
+    private static String normalizeId(String id, String fallbackName) {
+        String source = id != null && !id.isBlank() ? id : fallbackName;
+        if (source == null) {
+            return "";
+        }
+        return source.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
+    public String getId() {
+        return id;
     }
 
     public String getName() {

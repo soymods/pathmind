@@ -4,6 +4,7 @@ import com.pathmind.data.PresetManager;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeCompatibility;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeTraitRegistry;
@@ -17,6 +18,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -37,6 +39,7 @@ public final class GraphValidator {
         Map<String, Integer> inputOccupancy = new HashMap<>();
         List<Node> startNodes = new ArrayList<>();
         Map<String, List<Node>> functionNodesByName = new LinkedHashMap<>();
+        Map<String, Set<NodeType>> inferredVariableTypes = new LinkedHashMap<>();
         List<String> availablePresets = PresetManager.getAvailablePresets();
 
         for (Node node : safeNodes) {
@@ -54,6 +57,7 @@ public final class GraphValidator {
                     functionNodesByName.computeIfAbsent(name, ignored -> new ArrayList<>()).add(node);
                 }
             }
+            collectVariableAssignments(node, inferredVariableTypes);
         }
 
         for (NodeConnection connection : safeConnections) {
@@ -101,6 +105,7 @@ public final class GraphValidator {
             validateInputConnections(node, inputOccupancy, issues);
             validateRequiredParameterSlots(node, issues);
             validateNamedNodes(node, functionNodesByName, availablePresets, activePreset, issues);
+            validateVariableParameterWarnings(node, inferredVariableTypes, issues);
         }
 
         for (Map.Entry<String, List<Node>> entry : functionNodesByName.entrySet()) {
@@ -221,6 +226,80 @@ public final class GraphValidator {
                 issues.add(issue(GraphValidationSeverity.ERROR, "missing_start_target",
                     type.getDisplayName() + " is missing a START target.", node));
             }
+        }
+    }
+
+    private static void collectVariableAssignments(Node node, Map<String, Set<NodeType>> inferredVariableTypes) {
+        if (node == null || node.getType() != NodeType.SET_VARIABLE) {
+            return;
+        }
+        Node variableNode = node.getAttachedParameter(0);
+        Node valueNode = node.getAttachedParameter(1);
+        if (variableNode == null || valueNode == null || variableNode.getType() != NodeType.VARIABLE) {
+            return;
+        }
+        String variableName = normalize(getParameterValue(variableNode, "Variable"));
+        if (variableName.isEmpty()) {
+            return;
+        }
+        NodeType valueType = inferAssignedVariableType(valueNode);
+        if (valueType == null) {
+            return;
+        }
+        inferredVariableTypes.computeIfAbsent(variableName, ignored -> new LinkedHashSet<>()).add(valueType);
+    }
+
+    private static NodeType inferAssignedVariableType(Node valueNode) {
+        if (valueNode == null) {
+            return null;
+        }
+        if (valueNode.isSensorNode() && NodeTraitRegistry.isBooleanSensor(valueNode.getType())) {
+            return NodeType.PARAM_BOOLEAN;
+        }
+        NodeType resolved = valueNode.getResolvedValueType();
+        return resolved != null && resolved != NodeType.VARIABLE ? resolved : null;
+    }
+
+    private static void validateVariableParameterWarnings(Node node, Map<String, Set<NodeType>> inferredVariableTypes,
+                                                          List<GraphValidationIssue> issues) {
+        if (node == null || !node.canAcceptParameter()) {
+            return;
+        }
+        int slotCount = node.getParameterSlotCount();
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            Node attached = node.getAttachedParameter(slotIndex);
+            if (attached == null || attached.getType() != NodeType.VARIABLE) {
+                continue;
+            }
+            if (NodeTraitRegistry.getAcceptedTraits(node.getType(), slotIndex).contains(com.pathmind.nodes.NodeValueTrait.VARIABLE)) {
+                continue;
+            }
+            String variableName = normalize(getParameterValue(attached, "Variable"));
+            if (variableName.isEmpty()) {
+                continue;
+            }
+            Set<NodeType> types = inferredVariableTypes.get(variableName);
+            if (types == null || types.isEmpty()) {
+                continue;
+            }
+            List<String> incompatibleNames = new ArrayList<>();
+            boolean hasCompatible = false;
+            for (NodeType type : types) {
+                if (NodeCompatibility.canAttachResolvedType(node.getType(), type, slotIndex)) {
+                    hasCompatible = true;
+                } else {
+                    incompatibleNames.add(type.getDisplayName());
+                }
+            }
+            if (incompatibleNames.isEmpty()) {
+                continue;
+            }
+            String message = hasCompatible
+                ? "Variable \"" + displayValue(variableName) + "\" is assigned incompatible value types for "
+                    + node.getType().getDisplayName() + ": " + String.join(", ", incompatibleNames) + "."
+                : "Variable \"" + displayValue(variableName) + "\" is only assigned incompatible value types for "
+                    + node.getType().getDisplayName() + ": " + String.join(", ", incompatibleNames) + ".";
+            issues.add(issue(GraphValidationSeverity.WARNING, "variable_type_mismatch", message, node));
         }
     }
 

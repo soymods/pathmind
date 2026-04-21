@@ -140,56 +140,71 @@ public class NodeGraphPersistence {
             return;
         }
 
-        Map<String, String> savedValues = new HashMap<>();
-        Map<String, Boolean> savedEdited = new HashMap<>();
-        Map<String, ParameterType> savedTypes = new HashMap<>();
+        Map<String, NodeGraphData.ParameterData> savedById = new HashMap<>();
+        Map<String, NodeGraphData.ParameterData> savedByName = new HashMap<>();
         if (parameterData != null) {
             for (NodeGraphData.ParameterData paramData : parameterData) {
                 if (paramData == null || paramData.getName() == null || paramData.getName().isBlank()) {
                     continue;
                 }
-                savedValues.put(paramData.getName(), paramData.getValue());
-                if (paramData.getUserEdited() != null) {
-                    savedEdited.put(paramData.getName(), paramData.getUserEdited());
+                String serializedId = normalizeParameterId(paramData.getId(), paramData.getName());
+                if (!serializedId.isEmpty()) {
+                    savedById.put(serializedId, paramData);
                 }
-                ParameterType parsedType = parseParameterType(paramData.getType());
-                if (parsedType != null) {
-                    savedTypes.put(paramData.getName(), parsedType);
-                }
+                savedByName.put(paramData.getName(), paramData);
             }
         }
 
-        if (savedValues.isEmpty()) {
+        if (savedById.isEmpty() && savedByName.isEmpty()) {
             return;
         }
 
         for (NodeParameter param : node.getParameters()) {
-            String savedValue = savedValues.get(param.getName());
-            if (savedValue != null) {
-                param.setStringValue(savedValue);
+            NodeGraphData.ParameterData saved = savedById.get(param.getId());
+            if (saved == null) {
+                saved = savedByName.get(param.getName());
             }
-            Boolean edited = savedEdited.get(param.getName());
-            if (edited != null) {
-                param.setUserEdited(edited);
+            if (saved == null) {
+                continue;
+            }
+            if (saved.getValue() != null) {
+                param.setStringValue(saved.getValue());
+            }
+            if (saved.getUserEdited() != null) {
+                param.setUserEdited(saved.getUserEdited());
             }
         }
 
-        for (Map.Entry<String, String> entry : savedValues.entrySet()) {
-            if (node.getParameter(entry.getKey()) != null) {
+        for (NodeGraphData.ParameterData saved : parameterData == null ? List.<NodeGraphData.ParameterData>of() : parameterData) {
+            if (saved == null || saved.getName() == null || saved.getName().isBlank()) {
                 continue;
             }
-            ParameterType paramType = savedTypes.get(entry.getKey());
+            String serializedId = normalizeParameterId(saved.getId(), saved.getName());
+            boolean alreadyPresent = false;
+            for (NodeParameter param : node.getParameters()) {
+                if (serializedId.equals(param.getId()) || saved.getName().equals(param.getName())) {
+                    alreadyPresent = true;
+                    break;
+                }
+            }
+            if (alreadyPresent) {
+                continue;
+            }
+            ParameterType paramType = parseParameterType(saved.getType());
             if (paramType == null) {
                 continue;
             }
-            NodeParameter param = new NodeParameter(entry.getKey(), paramType, entry.getValue());
-            Boolean edited = savedEdited.get(entry.getKey());
-            if (edited != null) {
-                param.setUserEdited(edited);
+            NodeParameter param = new NodeParameter(serializedId, saved.getName(), paramType, saved.getValue());
+            if (saved.getUserEdited() != null) {
+                param.setUserEdited(saved.getUserEdited());
             }
             node.getParameters().add(param);
         }
         node.repairSerializedParameters();
+    }
+
+    private static String normalizeParameterId(String id, String name) {
+        return NodeParameter.createDefaultId(id != null && !id.isBlank() ? id : name);
     }
 
     /**
@@ -346,7 +361,9 @@ public class NodeGraphPersistence {
             }
         }
 
-        recoverMissingNestedAttachments(nodes);
+        if (requiresLegacyAttachmentRecovery(data)) {
+            recoverMissingNestedAttachments(nodes);
+        }
 
         java.util.Set<Integer> usedStartNumbers = new java.util.HashSet<>();
         int maxStartNumber = 0;
@@ -373,6 +390,30 @@ public class NodeGraphPersistence {
         }
 
         return nodes;
+    }
+
+    private static boolean requiresLegacyAttachmentRecovery(NodeGraphData data) {
+        if (data == null || data.getNodes() == null || data.getNodes().isEmpty()) {
+            return false;
+        }
+        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
+            if (nodeData == null) {
+                continue;
+            }
+            if (nodeData.getAttachedSensorId() != null
+                || nodeData.getParentControlId() != null
+                || nodeData.getAttachedActionId() != null
+                || nodeData.getParentActionControlId() != null
+                || nodeData.getAttachedParameterId() != null
+                || nodeData.getParentParameterHostId() != null) {
+                return false;
+            }
+            List<NodeGraphData.ParameterAttachmentData> attachments = nodeData.getParameterAttachments();
+            if (attachments != null && !attachments.isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static void recoverMissingNestedAttachments(List<Node> nodes) {
@@ -622,6 +663,7 @@ public class NodeGraphPersistence {
             List<NodeGraphData.ParameterData> paramDataList = new ArrayList<>();
             for (NodeParameter param : node.getParameters()) {
                 NodeGraphData.ParameterData paramData = new NodeGraphData.ParameterData();
+                paramData.setId(param.getId());
                 paramData.setName(param.getName());
                 paramData.setValue(param.getStringValue());
                 paramData.setType(param.getType().name());

@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeGraphPersistenceTest {
@@ -193,6 +194,51 @@ class NodeGraphPersistenceTest {
     }
 
     @Test
+    void convertToNodesDoesNotGuessAttachmentsWhenStructuredMetadataExists() {
+        Node wait = new Node(NodeType.WAIT, 200, 60);
+        Node duration = new Node(NodeType.PARAM_DURATION, 0, 0);
+        duration.getParameter("Duration").setStringValue("3");
+        assertTrue(wait.attachParameter(duration, 0));
+
+        Node controlWaitUntil = new Node(NodeType.CONTROL_WAIT_UNTIL, 40, 30);
+        Node sensor = new Node(NodeType.SENSOR_IS_DAYTIME, 0, 0);
+        assertTrue(controlWaitUntil.attachSensor(sensor));
+
+        Path savePath = tempDir.resolve("mixed-attachment-metadata.json");
+        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(List.of(wait, duration, controlWaitUntil, sensor), List.of(), savePath));
+
+        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
+        assertNotNull(loaded);
+
+        for (NodeGraphData.NodeData nodeData : loaded.getNodes()) {
+            if (wait.getId().equals(nodeData.getId())) {
+                nodeData.setParameterAttachments(List.of());
+                nodeData.setAttachedParameterId(null);
+            }
+            if (duration.getId().equals(nodeData.getId())) {
+                nodeData.setParentParameterHostId(null);
+            }
+        }
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(loaded);
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredWait = byId.get(wait.getId());
+        Node restoredDuration = byId.get(duration.getId());
+        Node restoredControl = byId.get(controlWaitUntil.getId());
+        Node restoredSensor = byId.get(sensor.getId());
+
+        assertNotNull(restoredWait);
+        assertNotNull(restoredDuration);
+        assertNotNull(restoredControl);
+        assertNotNull(restoredSensor);
+        assertNull(restoredWait.getAttachedParameter(0));
+        assertNull(restoredDuration.getParentParameterHost());
+        assertEquals(restoredSensor, restoredControl.getAttachedSensor());
+        assertEquals(restoredControl, restoredSensor.getParentControl());
+    }
+
+    @Test
     void convertToNodesRepairsMissingCompatibilityParameters() {
         NodeGraphData.NodeData booleanNode = new NodeGraphData.NodeData(
             "bool-1",
@@ -227,6 +273,180 @@ class NodeGraphPersistenceTest {
         assertNotNull(restoredCreateList.getParameter("Radius"));
         assertNotNull(restoredCreateList.getParameter("UseBlockCap"));
         assertNotNull(restoredCreateList.getParameter("MaxBlocks"));
+    }
+
+    @Test
+    void convertToNodesRestoresParametersByStableIdBeforeDisplayName() {
+        NodeGraphData.ParameterData renamedDuration = new NodeGraphData.ParameterData();
+        renamedDuration.setId("duration");
+        renamedDuration.setName("Seconds");
+        renamedDuration.setType("DOUBLE");
+        renamedDuration.setValue("7.5");
+
+        NodeGraphData.NodeData waitNode = new NodeGraphData.NodeData(
+            "wait-1",
+            NodeType.WAIT,
+            null,
+            10,
+            20,
+            List.of(renamedDuration)
+        );
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(
+            new NodeGraphData(List.of(waitNode), List.of())
+        );
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredWait = byId.get("wait-1");
+        assertNotNull(restoredWait);
+        assertNotNull(restoredWait.getParameter("Duration"));
+        assertEquals("7.5", restoredWait.getParameter("Duration").getStringValue());
+        assertNull(restoredWait.getParameter("Seconds"));
+    }
+
+    @Test
+    void convertToNodesRestoresExplicitTradeParameterIdsAcrossDisplayNameChanges() {
+        NodeGraphData.ParameterData legacyTradeNumber = new NodeGraphData.ParameterData();
+        legacyTradeNumber.setId("trade_number");
+        legacyTradeNumber.setName("Amount");
+        legacyTradeNumber.setType("INTEGER");
+        legacyTradeNumber.setValue("4");
+
+        NodeGraphData.NodeData tradeNode = new NodeGraphData.NodeData(
+            "trade-1",
+            NodeType.TRADE,
+            null,
+            10,
+            20,
+            List.of(legacyTradeNumber)
+        );
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(
+            new NodeGraphData(List.of(tradeNode), List.of())
+        );
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredTrade = byId.get("trade-1");
+        assertNotNull(restoredTrade);
+        assertNotNull(restoredTrade.getParameter("Number"));
+        assertEquals("4", restoredTrade.getParameter("Number").getStringValue());
+        assertNull(restoredTrade.getParameter("Amount"));
+    }
+
+    @Test
+    void convertToNodesRestoresDirectionAndRotationParameterIdsAcrossDisplayNameChanges() {
+        NodeGraphData.ParameterData renamedDirectionYaw = new NodeGraphData.ParameterData();
+        renamedDirectionYaw.setId("direction_yaw");
+        renamedDirectionYaw.setName("Horizontal");
+        renamedDirectionYaw.setType("DOUBLE");
+        renamedDirectionYaw.setValue("90");
+
+        NodeGraphData.ParameterData renamedDirectionPitch = new NodeGraphData.ParameterData();
+        renamedDirectionPitch.setId("direction_pitch");
+        renamedDirectionPitch.setName("Vertical");
+        renamedDirectionPitch.setType("DOUBLE");
+        renamedDirectionPitch.setValue("-30");
+
+        NodeGraphData.ParameterData renamedRotationDistance = new NodeGraphData.ParameterData();
+        renamedRotationDistance.setId("rotation_distance");
+        renamedRotationDistance.setName("Reach");
+        renamedRotationDistance.setType("DOUBLE");
+        renamedRotationDistance.setValue("24");
+
+        NodeGraphData.NodeData directionNode = new NodeGraphData.NodeData(
+            "direction-1",
+            NodeType.PARAM_DIRECTION,
+            null,
+            10,
+            20,
+            List.of(renamedDirectionYaw, renamedDirectionPitch)
+        );
+        NodeGraphData.NodeData rotationNode = new NodeGraphData.NodeData(
+            "rotation-1",
+            NodeType.PARAM_ROTATION,
+            null,
+            30,
+            40,
+            List.of(renamedRotationDistance)
+        );
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(
+            new NodeGraphData(List.of(directionNode, rotationNode), List.of())
+        );
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredDirection = byId.get("direction-1");
+        Node restoredRotation = byId.get("rotation-1");
+        assertNotNull(restoredDirection);
+        assertNotNull(restoredRotation);
+        assertEquals("90", restoredDirection.getParameter("Yaw").getStringValue());
+        assertEquals("-30", restoredDirection.getParameter("Pitch").getStringValue());
+        assertNull(restoredDirection.getParameter("Horizontal"));
+        assertNull(restoredDirection.getParameter("Vertical"));
+        assertEquals("24", restoredRotation.getParameter("Distance").getStringValue());
+        assertNull(restoredRotation.getParameter("Reach"));
+    }
+
+    @Test
+    void convertToNodesRestoresSlotParameterIdsAcrossDisplayNameChanges() {
+        NodeGraphData.ParameterData renamedInventorySlot = new NodeGraphData.ParameterData();
+        renamedInventorySlot.setId("inventory_slot_index");
+        renamedInventorySlot.setName("Index");
+        renamedInventorySlot.setType("INTEGER");
+        renamedInventorySlot.setValue("12");
+
+        NodeGraphData.ParameterData renamedInventoryMode = new NodeGraphData.ParameterData();
+        renamedInventoryMode.setId("inventory_slot_mode");
+        renamedInventoryMode.setName("Selection");
+        renamedInventoryMode.setType("STRING");
+        renamedInventoryMode.setValue("gui_container");
+
+        NodeGraphData.ParameterData renamedMoveSource = new NodeGraphData.ParameterData();
+        renamedMoveSource.setId("move_item_source_slot");
+        renamedMoveSource.setName("From");
+        renamedMoveSource.setType("INTEGER");
+        renamedMoveSource.setValue("5");
+
+        NodeGraphData.ParameterData renamedMoveTarget = new NodeGraphData.ParameterData();
+        renamedMoveTarget.setId("move_item_target_slot");
+        renamedMoveTarget.setName("To");
+        renamedMoveTarget.setType("INTEGER");
+        renamedMoveTarget.setValue("17");
+
+        NodeGraphData.NodeData inventorySlotNode = new NodeGraphData.NodeData(
+            "slot-1",
+            NodeType.PARAM_INVENTORY_SLOT,
+            null,
+            10,
+            20,
+            List.of(renamedInventorySlot, renamedInventoryMode)
+        );
+        NodeGraphData.NodeData moveItemNode = new NodeGraphData.NodeData(
+            "move-1",
+            NodeType.MOVE_ITEM,
+            null,
+            30,
+            40,
+            List.of(renamedMoveSource, renamedMoveTarget)
+        );
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(
+            new NodeGraphData(List.of(inventorySlotNode, moveItemNode), List.of())
+        );
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+
+        Node restoredInventorySlot = byId.get("slot-1");
+        Node restoredMoveItem = byId.get("move-1");
+        assertNotNull(restoredInventorySlot);
+        assertNotNull(restoredMoveItem);
+        assertEquals("12", restoredInventorySlot.getParameter("Slot").getStringValue());
+        assertEquals("gui_container", restoredInventorySlot.getParameter("Mode").getStringValue());
+        assertNull(restoredInventorySlot.getParameter("Index"));
+        assertNull(restoredInventorySlot.getParameter("Selection"));
+        assertEquals("5", restoredMoveItem.getParameter("SourceSlot").getStringValue());
+        assertEquals("17", restoredMoveItem.getParameter("TargetSlot").getStringValue());
+        assertNull(restoredMoveItem.getParameter("From"));
+        assertNull(restoredMoveItem.getParameter("To"));
     }
 
     @Test

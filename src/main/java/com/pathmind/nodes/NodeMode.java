@@ -82,7 +82,12 @@ public enum NodeMode {
     SENSOR_POSITION_X("x", "Get only the X position component"),
     SENSOR_POSITION_Y("y", "Get only the Y position component"),
     SENSOR_POSITION_Z("z", "Get only the Z position component"),
-    SENSOR_POSITION_XYZ("xyz", "Get the full X, Y, Z position");
+    SENSOR_POSITION_XYZ("xyz", "Get the full X, Y, Z position"),
+
+    // SENSOR_LOOK_DIRECTION modes
+    SENSOR_LOOK_YAW("yaw", "Get only the yaw component"),
+    SENSOR_LOOK_PITCH("pitch", "Get only the pitch component"),
+    SENSOR_LOOK_ROTATION("yaw/pitch", "Get the full yaw and pitch rotation");
 
     private final String displayName;
     private final String description;
@@ -168,6 +173,10 @@ public enum NodeMode {
                 return new NodeMode[]{
                     SENSOR_POSITION_X, SENSOR_POSITION_Y, SENSOR_POSITION_Z, SENSOR_POSITION_XYZ
                 };
+            case SENSOR_LOOK_DIRECTION:
+                return new NodeMode[]{
+                    SENSOR_LOOK_YAW, SENSOR_LOOK_PITCH, SENSOR_LOOK_ROTATION
+                };
             default:
                 return new NodeMode[0];
         }
@@ -206,6 +215,8 @@ public enum NodeMode {
                 return WAIT_SECONDS;
             case SENSOR_POSITION_OF:
                 return SENSOR_POSITION_XYZ;
+            case SENSOR_LOOK_DIRECTION:
+                return SENSOR_LOOK_ROTATION;
             default:
                 return null;
         }

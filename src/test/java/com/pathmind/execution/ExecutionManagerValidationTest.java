@@ -4,6 +4,7 @@ import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeType;
 import org.junit.jupiter.api.AfterEach;
@@ -156,6 +157,100 @@ class ExecutionManagerValidationTest {
         manager.setRuntimeVariableForAnyActiveChain(
             "rhs_compare",
             new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, Map.of("Amount", "5", "amount", "5"))
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void runtimeVariableInterpolationFormatsStoredRotationValues() throws Exception {
+        Node message = new Node(NodeType.MESSAGE, 0, 0);
+        manager.setRuntimeVariableForAnyActiveChain(
+            "look_dir",
+            new ExecutionManager.RuntimeVariable(
+                NodeType.PARAM_ROTATION,
+                Map.of("Yaw", "90", "yaw", "90", "Pitch", "-30", "pitch", "-30")
+            )
+        );
+
+        Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
+        resolveRuntimeVariablesInText.setAccessible(true);
+
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~look_dir");
+        assertEquals("90 -30", resolved);
+    }
+
+    @Test
+    void runtimeVariableInterpolationFormatsLegacyExactDirectionValues() throws Exception {
+        Node message = new Node(NodeType.MESSAGE, 0, 0);
+        manager.setRuntimeVariableForAnyActiveChain(
+            "look_dir",
+            new ExecutionManager.RuntimeVariable(
+                NodeType.PARAM_DIRECTION,
+                Map.of("Mode", "exact", "mode", "exact", "Yaw", "180", "yaw", "180", "Pitch", "15", "pitch", "15")
+            )
+        );
+
+        Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
+        resolveRuntimeVariablesInText.setAccessible(true);
+
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~look_dir");
+        assertEquals("180 15", resolved);
+    }
+
+    @Test
+    void lookDirectionSingleAxisModeResolvesToNumericType() {
+        Node lookDirection = new Node(NodeType.SENSOR_LOOK_DIRECTION, 0, 0);
+        lookDirection.setMode(NodeMode.SENSOR_LOOK_YAW);
+
+        assertEquals(NodeType.PARAM_AMOUNT, lookDirection.getResolvedValueType());
+    }
+
+    @Test
+    void equalsTreatsRotationAndExactDirectionAsEquivalent() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("look_rotation");
+
+        Node direction = new Node(NodeType.PARAM_DIRECTION, 0, 0);
+        direction.getParameter("Mode").setStringValue("exact");
+        direction.getParameter("Yaw").setStringValue("90");
+        direction.getParameter("Pitch").setStringValue("-30");
+
+        assertTrue(equals.attachParameter(variable, 0));
+        assertTrue(equals.attachParameter(direction, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "look_rotation",
+            new ExecutionManager.RuntimeVariable(
+                NodeType.PARAM_ROTATION,
+                Map.of("Yaw", "90", "yaw", "90", "Pitch", "-30", "pitch", "-30")
+            )
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void equalsTreatsStoredCoordinateAndCoordinateNodeAsEquivalent() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("target_pos");
+
+        Node coordinate = new Node(NodeType.PARAM_COORDINATE, 0, 0);
+        coordinate.getParameter("X").setStringValue("10");
+        coordinate.getParameter("Y").setStringValue("64");
+        coordinate.getParameter("Z").setStringValue("-4");
+
+        assertTrue(equals.attachParameter(variable, 0));
+        assertTrue(equals.attachParameter(coordinate, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "target_pos",
+            new ExecutionManager.RuntimeVariable(
+                NodeType.PARAM_COORDINATE,
+                Map.of("X", "10", "x", "10", "Y", "64", "y", "64", "Z", "-4", "z", "-4")
+            )
         );
 
         assertTrue(equals.evaluateSensor());

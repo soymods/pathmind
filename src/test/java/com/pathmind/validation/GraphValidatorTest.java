@@ -3,6 +3,7 @@ package com.pathmind.validation;
 import com.pathmind.data.PresetManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
+import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -168,6 +169,67 @@ class GraphValidatorTest {
         );
 
         assertFalse(result.hasErrors());
+    }
+
+    @Test
+    void validateWarnsWhenVariableAssignmentsAreIncompatibleWithAttachedHost() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
+        Node look = new Node(NodeType.LOOK, 220, 0);
+        NodeConnection first = new NodeConnection(start, setVariable, 0, 0);
+        NodeConnection second = new NodeConnection(setVariable, look, 0, 0);
+
+        Node variableTarget = new Node(NodeType.VARIABLE, 0, 0);
+        variableTarget.getParameter("Variable").setStringValue("stored_target");
+        Node itemValue = new Node(NodeType.PARAM_MESSAGE, 0, 0);
+        itemValue.getParameter("Text").setStringValue("hello");
+        Node variableConsumer = new Node(NodeType.VARIABLE, 0, 0);
+        variableConsumer.getParameter("Variable").setStringValue("stored_target");
+
+        assertTrue(setVariable.attachParameter(variableTarget, 0));
+        assertTrue(setVariable.attachParameter(itemValue, 1));
+        assertTrue(look.attachParameter(variableConsumer, 0));
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, setVariable, look, variableTarget, itemValue, variableConsumer),
+            List.of(first, second),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertTrue(hasIssueCode(result, "variable_type_mismatch"));
+        assertTrue(result.hasWarnings());
+    }
+
+    @Test
+    void validateDoesNotWarnWhenVariableAssignmentsMatchAttachedHost() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
+        Node look = new Node(NodeType.LOOK, 220, 0);
+        NodeConnection first = new NodeConnection(start, setVariable, 0, 0);
+        NodeConnection second = new NodeConnection(setVariable, look, 0, 0);
+
+        Node variableTarget = new Node(NodeType.VARIABLE, 0, 0);
+        variableTarget.getParameter("Variable").setStringValue("stored_target");
+        Node lookValue = new Node(NodeType.SENSOR_LOOK_DIRECTION, 0, 0);
+        lookValue.setMode(NodeMode.SENSOR_LOOK_ROTATION);
+        Node variableConsumer = new Node(NodeType.VARIABLE, 0, 0);
+        variableConsumer.getParameter("Variable").setStringValue("stored_target");
+
+        assertTrue(setVariable.attachParameter(variableTarget, 0));
+        assertTrue(setVariable.attachParameter(lookValue, 1));
+        assertTrue(look.attachParameter(variableConsumer, 0));
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, setVariable, look, variableTarget, lookValue, variableConsumer),
+            List.of(first, second),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertFalse(hasIssueCode(result, "variable_type_mismatch"));
     }
 
     private boolean hasIssueCode(GraphValidationResult result, String code) {

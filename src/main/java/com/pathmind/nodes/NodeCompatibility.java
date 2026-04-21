@@ -104,6 +104,29 @@ public final class NodeCompatibility {
         return false;
     }
 
+    public static boolean canAttachResolvedType(NodeType hostType, NodeType candidateType, int slotIndex) {
+        if (hostType == null || candidateType == null) {
+            return false;
+        }
+        EnumSet<NodeValueTrait> accepted = NodeTraitRegistry.getAcceptedTraits(hostType, slotIndex);
+        if (accepted.isEmpty()) {
+            return false;
+        }
+        if (accepted.contains(NodeValueTrait.ANY)) {
+            return true;
+        }
+        EnumSet<NodeValueTrait> provided = NodeTraitRegistry.getProvidedTraits(candidateType);
+        if (provided.isEmpty()) {
+            return false;
+        }
+        for (NodeValueTrait trait : provided) {
+            if (accepted.contains(trait)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean isConfigurableNumericComparisonOperand(NodeType hostType, NodeType candidateType) {
         if (hostType != NodeType.OPERATOR_GREATER && hostType != NodeType.OPERATOR_LESS) {
             return false;

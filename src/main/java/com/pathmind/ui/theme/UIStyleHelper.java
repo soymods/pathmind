@@ -122,12 +122,11 @@ public final class UIStyleHelper {
         }
         int startY = Math.min(topY, bottomY);
         int endY = Math.max(topY, bottomY);
-        int caretY = Math.max(startY, endY - 1);
-        int endX = Math.min(caretX + 4, maxRight);
+        int endX = Math.min(caretX + 1, maxRight);
         if (endX <= caretX || endY <= startY) {
             return;
         }
-        context.fill(caretX, caretY, endX, Math.min(endY, caretY + 1), color);
+        context.fill(caretX, startY, endX, endY, color);
     }
 
     public static void drawTextCaretAtBaseline(DrawContext context, TextRenderer textRenderer, int caretX, int baselineY, int maxRight, int color) {

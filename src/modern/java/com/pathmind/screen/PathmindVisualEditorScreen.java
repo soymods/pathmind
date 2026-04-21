@@ -18,6 +18,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
@@ -409,7 +410,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.setActivePreset(activePresetName);
 
         if (createPresetField == null) {
-            createPresetField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.presetName"));
+            createPresetField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.presetName"));
             createPresetField.setMaxLength(64);
             createPresetField.setDrawsBackground(false);
             createPresetField.setVisible(false);
@@ -420,7 +421,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(createPresetField);
         }
         if (publishPresetNameField == null) {
-            publishPresetNameField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 20, Text.literal("Preset name"));
+            publishPresetNameField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.literal("Preset name"));
             publishPresetNameField.setMaxLength(64);
             publishPresetNameField.setDrawsBackground(false);
             publishPresetNameField.setVisible(false);
@@ -431,7 +432,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(publishPresetNameField);
         }
         if (publishPresetDescriptionField == null) {
-            publishPresetDescriptionField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 20, Text.literal("Description"));
+            publishPresetDescriptionField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.literal("Description"));
             publishPresetDescriptionField.setMaxLength(180);
             publishPresetDescriptionField.setDrawsBackground(false);
             publishPresetDescriptionField.setVisible(false);
@@ -442,7 +443,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(publishPresetDescriptionField);
         }
         if (publishPresetTagsField == null) {
-            publishPresetTagsField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 20, Text.literal("Tags"));
+            publishPresetTagsField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.literal("Tags"));
             publishPresetTagsField.setMaxLength(96);
             publishPresetTagsField.setDrawsBackground(false);
             publishPresetTagsField.setVisible(false);
@@ -454,7 +455,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (renamePresetField == null) {
-            renamePresetField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
+            renamePresetField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
             renamePresetField.setMaxLength(64);
             renamePresetField.setDrawsBackground(false);
             renamePresetField.setVisible(false);
@@ -465,7 +466,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(renamePresetField);
         }
         if (inlinePresetRenameField == null) {
-            inlinePresetRenameField = new TextFieldWidget(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
+            inlinePresetRenameField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
             inlinePresetRenameField.setMaxLength(64);
             inlinePresetRenameField.setDrawsBackground(false);
             inlinePresetRenameField.setVisible(false);
@@ -475,7 +476,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(inlinePresetRenameField);
         }
         if (nodeDelayField == null) {
-            nodeDelayField = new TextFieldWidget(this.textRenderer, 0, 0, 120, 20, Text.literal("Delay"));
+            nodeDelayField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.literal("Delay"));
             nodeDelayField.setMaxLength(6);
             nodeDelayField.setDrawsBackground(false);
             nodeDelayField.setVisible(false);
@@ -494,7 +495,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(nodeDelayField);
         }
         if (createListRadiusField == null) {
-            createListRadiusField = new TextFieldWidget(this.textRenderer, 0, 0, 120, 20, Text.literal("Radius"));
+            createListRadiusField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.literal("Radius"));
             createListRadiusField.setMaxLength(6);
             createListRadiusField.setDrawsBackground(false);
             createListRadiusField.setVisible(false);
@@ -512,7 +513,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(createListRadiusField);
         }
         if (nodeSearchField == null) {
-            nodeSearchField = new TextFieldWidget(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.literal("Search nodes"));
+            nodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.literal("Search nodes"));
             nodeSearchField.setMaxLength(64);
             nodeSearchField.setDrawsBackground(false);
             nodeSearchField.setVisible(false);
@@ -6526,7 +6527,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (existing != null) {
             return existing;
         }
-        TextFieldWidget field = new TextFieldWidget(this.textRenderer, 0, 0, VALIDATION_INPUT_FIELD_WIDTH, 20, Text.literal(port.getName()));
+        TextFieldWidget field = new PathmindTextField(this.textRenderer, 0, 0, VALIDATION_INPUT_FIELD_WIDTH, 20, Text.literal(port.getName()));
         field.setMaxLength(96);
         field.setDrawsBackground(false);
         field.setVisible(false);

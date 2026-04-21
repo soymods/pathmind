@@ -15,6 +15,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
@@ -210,7 +211,7 @@ public class PathmindMarketplaceScreen extends Screen {
     protected void init() {
         super.init();
         if (searchField == null) {
-            searchField = new TextFieldWidget(this.textRenderer, 0, 0, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT, Text.literal("Search presets"));
+            searchField = new PathmindTextField(this.textRenderer, 0, 0, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT, Text.literal("Search presets"));
             searchField.setMaxLength(64);
             searchField.setDrawsBackground(false);
             searchField.setEditableColor(UITheme.TEXT_PRIMARY);
@@ -219,7 +220,7 @@ public class PathmindMarketplaceScreen extends Screen {
             this.addSelectableChild(searchField);
         }
         if (publishNameField == null) {
-            publishNameField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 18, Text.literal("Preset name"));
+            publishNameField = new PathmindTextField(this.textRenderer, 0, 0, 240, 18, Text.literal("Preset name"));
             publishNameField.setMaxLength(64);
             publishNameField.setDrawsBackground(false);
             publishNameField.setEditableColor(UITheme.TEXT_PRIMARY);
@@ -227,7 +228,7 @@ public class PathmindMarketplaceScreen extends Screen {
             this.addSelectableChild(publishNameField);
         }
         if (publishDescriptionField == null) {
-            publishDescriptionField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 18, Text.literal("Description"));
+            publishDescriptionField = new PathmindTextField(this.textRenderer, 0, 0, 240, 18, Text.literal("Description"));
             publishDescriptionField.setMaxLength(180);
             publishDescriptionField.setDrawsBackground(false);
             publishDescriptionField.setEditableColor(UITheme.TEXT_PRIMARY);
@@ -235,7 +236,7 @@ public class PathmindMarketplaceScreen extends Screen {
             this.addSelectableChild(publishDescriptionField);
         }
         if (publishTagsField == null) {
-            publishTagsField = new TextFieldWidget(this.textRenderer, 0, 0, 240, 18, Text.literal("Tags"));
+            publishTagsField = new PathmindTextField(this.textRenderer, 0, 0, 240, 18, Text.literal("Tags"));
             publishTagsField.setMaxLength(96);
             publishTagsField.setDrawsBackground(false);
             publishTagsField.setEditableColor(UITheme.TEXT_PRIMARY);

@@ -19,8 +19,11 @@ public final class InputCompatibilityBridge {
     private static final Method SCREEN_HAS_SHIFT_DOWN = resolveScreenMethod("hasShiftDown");
     private static final Method IS_KEY_PRESSED_WINDOW = resolveIsKeyPressed(Window.class);
     private static final Method IS_KEY_PRESSED_HANDLE = resolveIsKeyPressed(long.class);
+    private static final Method SCREEN_MOUSE_CLICKED = resolveScreenMouseMethod("mouseClicked");
+    private static final Method SCREEN_MOUSE_RELEASED = resolveScreenMouseMethod("mouseReleased");
     private static final Method MOUSE_CURSOR_POS_CALLBACK = resolveMouseCursorPosCallback();
     private static final Method MOUSE_BUTTON_CALLBACK = resolveMouseButtonCallback();
+    private static final Constructor<?> SCREEN_CLICK_CONSTRUCTOR = resolveScreenClickConstructor();
     private static final Constructor<?> MOUSE_INPUT_CONSTRUCTOR = resolveMouseInputConstructor();
 
     private InputCompatibilityBridge() {
@@ -137,6 +140,14 @@ public final class InputCompatibilityBridge {
         }
     }
 
+    public static boolean dispatchScreenMouseClicked(Screen screen, double x, double y, int button) {
+        return dispatchScreenMouseEvent(screen, SCREEN_MOUSE_CLICKED, x, y, button, true);
+    }
+
+    public static boolean dispatchScreenMouseReleased(Screen screen, double x, double y, int button) {
+        return dispatchScreenMouseEvent(screen, SCREEN_MOUSE_RELEASED, x, y, button, false);
+    }
+
     private static Method resolveScreenMethod(String name) {
         try {
             Method method = Screen.class.getMethod(name);
@@ -165,6 +176,122 @@ public final class InputCompatibilityBridge {
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveScreenMouseMethod(String name) {
+        for (Method method : Screen.class.getMethods()) {
+            if (!method.getName().equals(name)) {
+                continue;
+            }
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == double.class
+                && parameterTypes[1] == double.class
+                && parameterTypes[2] == int.class) {
+                method.setAccessible(true);
+                return method;
+            }
+            if (name.equals("mouseClicked")
+                && parameterTypes.length == 2
+                && parameterTypes[1] == boolean.class
+                && isScreenClickClass(parameterTypes[0])) {
+                method.setAccessible(true);
+                return method;
+            }
+            if (name.equals("mouseReleased")
+                && parameterTypes.length == 1
+                && isScreenClickClass(parameterTypes[0])) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static boolean dispatchScreenMouseEvent(Screen screen, Method method, double x, double y, int button, boolean inBounds) {
+        if (screen == null || method == null) {
+            return false;
+        }
+        try {
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == double.class
+                && parameterTypes[1] == double.class
+                && parameterTypes[2] == int.class) {
+                Object result = method.invoke(screen, x, y, button);
+                return !(result instanceof Boolean value) || value;
+            }
+            Object click = createScreenClick(x, y, button);
+            if (click == null) {
+                return false;
+            }
+            Object result;
+            if (parameterTypes.length == 2) {
+                result = method.invoke(screen, click, inBounds);
+            } else {
+                result = method.invoke(screen, click);
+            }
+            return !(result instanceof Boolean value) || value;
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+            return false;
+        }
+    }
+
+    private static Constructor<?> resolveScreenClickConstructor() {
+        try {
+            Class<?> clickClass = Class.forName("net.minecraft.client.gui.Click");
+            for (Constructor<?> constructor : clickClass.getDeclaredConstructors()) {
+                Class<?>[] parameterTypes = constructor.getParameterTypes();
+                if (parameterTypes.length != 3) {
+                    continue;
+                }
+                int doubleCount = 0;
+                int intCount = 0;
+                for (Class<?> parameterType : parameterTypes) {
+                    if (parameterType == double.class) {
+                        doubleCount++;
+                    } else if (parameterType == int.class) {
+                        intCount++;
+                    }
+                }
+                if (doubleCount == 2 && intCount == 1) {
+                    constructor.setAccessible(true);
+                    return constructor;
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static boolean isScreenClickClass(Class<?> type) {
+        return type != null && "net.minecraft.client.gui.Click".equals(type.getName());
+    }
+
+    private static Object createScreenClick(double x, double y, int button) {
+        if (SCREEN_CLICK_CONSTRUCTOR == null) {
+            return null;
+        }
+        Class<?>[] parameterTypes = SCREEN_CLICK_CONSTRUCTOR.getParameterTypes();
+        Object[] arguments = new Object[parameterTypes.length];
+        boolean xAssigned = false;
+        for (int i = 0; i < parameterTypes.length; i++) {
+            Class<?> parameterType = parameterTypes[i];
+            if (parameterType == double.class) {
+                arguments[i] = xAssigned ? y : x;
+                xAssigned = true;
+            } else if (parameterType == int.class) {
+                arguments[i] = button;
+            } else {
+                return null;
+            }
+        }
+        try {
+            return SCREEN_CLICK_CONSTRUCTOR.newInstance(arguments);
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
             return null;
         }
     }

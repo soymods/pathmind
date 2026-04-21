@@ -16257,15 +16257,25 @@ public class Node {
         double windowScaleY = window.getHeight() / (double) scaledHeight;
         double windowX = guiX * windowScaleX;
         double windowY = guiY * windowScaleY;
+        final int targetGuiX = guiX;
+        final int targetGuiY = guiY;
 
         client.execute(() -> {
             boolean moved = InputCompatibilityBridge.dispatchCursorPos(client, windowX, windowY);
-            boolean pressed = InputCompatibilityBridge.dispatchMouseButton(
-                client,
-                GLFW.GLFW_MOUSE_BUTTON_LEFT,
-                GLFW.GLFW_PRESS,
-                0
+            boolean pressed = InputCompatibilityBridge.dispatchScreenMouseClicked(
+                client.currentScreen,
+                targetGuiX,
+                targetGuiY,
+                GLFW.GLFW_MOUSE_BUTTON_LEFT
             );
+            if (!pressed) {
+                pressed = InputCompatibilityBridge.dispatchMouseButton(
+                    client,
+                    GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                    GLFW.GLFW_PRESS,
+                    0
+                );
+            }
             if (!moved || !pressed) {
                 sendNodeErrorMessage(client, "Failed to dispatch screen click.");
                 future.complete(null);
@@ -16279,12 +16289,20 @@ public class Node {
                     return;
                 }
                 releaseClient.execute(() -> {
-                    InputCompatibilityBridge.dispatchMouseButton(
-                        releaseClient,
-                        GLFW.GLFW_MOUSE_BUTTON_LEFT,
-                        GLFW.GLFW_RELEASE,
-                        0
+                    boolean released = InputCompatibilityBridge.dispatchScreenMouseReleased(
+                        releaseClient.currentScreen,
+                        targetGuiX,
+                        targetGuiY,
+                        GLFW.GLFW_MOUSE_BUTTON_LEFT
                     );
+                    if (!released) {
+                        InputCompatibilityBridge.dispatchMouseButton(
+                            releaseClient,
+                            GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                            GLFW.GLFW_RELEASE,
+                            0
+                        );
+                    }
                     future.complete(null);
                 });
             }, 75L, TimeUnit.MILLISECONDS);

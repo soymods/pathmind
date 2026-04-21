@@ -1518,9 +1518,14 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
                 
-                if (InputCompatibilityBridge.hasShiftDown()) {
-                    // Shift-click: toggle node in selection
+                if (InputCompatibilityBridge.hasControlDown()) {
+                    // Control-click: toggle node in selection
                     nodeGraph.toggleNodeInSelection(clickedNode);
+                } else if (InputCompatibilityBridge.hasShiftDown()) {
+                    // Shift-click: add node to selection without removing existing nodes
+                    if (!nodeGraph.isNodeSelected(clickedNode)) {
+                        nodeGraph.toggleNodeInSelection(clickedNode);
+                    }
                 } else {
                     // Normal click: select only this node or focus if already selected
                     if (!nodeGraph.isNodeSelected(clickedNode)) {

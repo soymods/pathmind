@@ -648,6 +648,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         DrawContextBridge.startNewRootLayer(context);
         NodeErrorNotificationOverlay.getInstance().render(context, this.textRenderer, this.width, this.height);
+        if (nodeGraph.isScreenCoordinateCaptureActive()) {
+            DrawContextBridge.startNewRootLayer(context);
+            nodeGraph.renderScreenCoordinateCaptureOverlay(context, this.textRenderer, mouseX, mouseY);
+        }
         } finally {
             OverlayProtection.setPathmindRendering(false);
         }
@@ -970,6 +974,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 renderGrid(context);
             }
         }
+
+        nodeGraph.updateScreenCoordinateCapturePreview(mouseX, mouseY);
         
         // Render nodes
         nodeGraph.render(context, this.textRenderer, mouseX, mouseY, delta, onlyDragged);
@@ -1027,6 +1033,12 @@ public class PathmindVisualEditorScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+        if (nodeGraph.isScreenCoordinateCaptureActive()) {
+            if (button == 0) {
+                return nodeGraph.commitScreenCoordinateCapture((int) mouseX, (int) mouseY);
+            }
+            return true;
+        }
         if (missingBaritonePopupAnimation.isVisible()) {
             return handleMissingBaritonePopupClick(mouseX, mouseY, button);
         }
@@ -1317,6 +1329,19 @@ public class PathmindVisualEditorScreen extends Screen {
     
     
     private boolean handleNodeGraphClick(double mouseX, double mouseY, int button) {
+        if (button == 0 && nodeGraph.isScreenCoordinateCaptureActive()) {
+            return nodeGraph.commitScreenCoordinateCapture((int) mouseX, (int) mouseY);
+        }
+        if (button == 0) {
+            List<Node> graphNodes = nodeGraph.getNodes();
+            for (int i = graphNodes.size() - 1; i >= 0; i--) {
+                Node candidate = graphNodes.get(i);
+                if (candidate != null
+                    && nodeGraph.isPointInsideScreenCoordinatePickerButton(candidate, (int) mouseX, (int) mouseY)) {
+                    return nodeGraph.handleScreenCoordinatePickerClick(candidate, (int) mouseX, (int) mouseY);
+                }
+            }
+        }
         int worldMouseX = nodeGraph.screenToWorldX((int) mouseX);
         int worldMouseY = nodeGraph.screenToWorldY((int) mouseY);
         // FIRST check if clicking on ANY socket (before checking node body)
@@ -1392,6 +1417,10 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 if (nodeGraph.handleMessageButtonClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
+
+                if (nodeGraph.handleScreenCoordinatePickerClick(clickedNode, (int) mouseX, (int) mouseY)) {
                     return true;
                 }
 
@@ -1575,6 +1604,9 @@ public class PathmindVisualEditorScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+        if (nodeGraph.isScreenCoordinateCaptureActive()) {
+            return true;
+        }
         if (missingBaritonePopupAnimation.isVisible()) {
             return true;
         }
@@ -2014,6 +2046,11 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.isScreenCoordinateCaptureActive() && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            nodeGraph.cancelScreenCoordinateCapture();
+            return true;
+        }
+
         if (nodeGraph.handleStopTargetKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -2163,6 +2200,9 @@ public class PathmindVisualEditorScreen extends Screen {
     
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (nodeGraph.isScreenCoordinateCaptureActive()) {
+            return true;
+        }
         if (settingsPopupAnimation.isVisible()) {
             int popupX = getSettingsPopupX();
             int popupY = getSettingsPopupY();

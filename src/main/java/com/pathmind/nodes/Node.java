@@ -205,6 +205,10 @@ public class Node {
     private static final int COORDINATE_FIELD_TOP_MARGIN = 6;
     private static final int COORDINATE_FIELD_LABEL_HEIGHT = 10;
     private static final int COORDINATE_FIELD_BOTTOM_MARGIN = 6;
+    private static final int SCREEN_PICK_BUTTON_TOP_MARGIN = 6;
+    private static final int SCREEN_PICK_BUTTON_HEIGHT = 16;
+    private static final int SCREEN_PICK_BUTTON_MIN_WIDTH = 70;
+    private static final int SCREEN_PICK_BUTTON_BOTTOM_MARGIN = 6;
     private static final int AMOUNT_FIELD_TOP_MARGIN = 6;
     private static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
     private static final int AMOUNT_FIELD_HEIGHT = 16;
@@ -1119,6 +1123,11 @@ public class Node {
             if (hasSensorSlot() || hasActionSlot()) {
                 top += SLOT_AREA_PADDING_TOP;
             }
+        } else if (hasCoordinateInputFields()) {
+            top += getCoordinateFieldDisplayHeight();
+            if (hasSensorSlot() || hasActionSlot()) {
+                top += SLOT_AREA_PADDING_TOP;
+            }
         } else if (hasSensorSlot() || hasActionSlot()) {
             top += SLOT_AREA_PADDING_TOP;
         } else if (hasBooleanToggle()) {
@@ -1287,14 +1296,27 @@ public class Node {
     }
 
     public boolean hasCoordinateInputFields() {
-        return false;
+        return type == NodeType.CLICK_SCREEN;
+    }
+
+    public String[] getCoordinateFieldAxes() {
+        if (type == NodeType.CLICK_SCREEN) {
+            return new String[]{"X", "Y"};
+        }
+        return new String[]{"X", "Y", "Z"};
     }
 
     public int getCoordinateFieldDisplayHeight() {
         if (!hasCoordinateInputFields()) {
             return 0;
         }
-        return COORDINATE_FIELD_TOP_MARGIN + COORDINATE_FIELD_LABEL_HEIGHT + COORDINATE_FIELD_HEIGHT + COORDINATE_FIELD_BOTTOM_MARGIN;
+        int height = COORDINATE_FIELD_TOP_MARGIN + COORDINATE_FIELD_LABEL_HEIGHT + COORDINATE_FIELD_HEIGHT;
+        if (hasScreenCoordinatePickerButton()) {
+            height += SCREEN_PICK_BUTTON_TOP_MARGIN + SCREEN_PICK_BUTTON_HEIGHT + SCREEN_PICK_BUTTON_BOTTOM_MARGIN;
+        } else {
+            height += COORDINATE_FIELD_BOTTOM_MARGIN;
+        }
+        return height;
     }
 
     public boolean showsModeFieldAboveParameterSlot() {
@@ -1426,7 +1448,28 @@ public class Node {
     }
 
     public int getCoordinateFieldTotalWidth() {
-        return (getCoordinateFieldWidth() * 3) + (COORDINATE_FIELD_SPACING * 2);
+        int axisCount = getCoordinateFieldAxes().length;
+        return (getCoordinateFieldWidth() * axisCount) + (COORDINATE_FIELD_SPACING * Math.max(0, axisCount - 1));
+    }
+
+    public boolean hasScreenCoordinatePickerButton() {
+        return type == NodeType.CLICK_SCREEN;
+    }
+
+    public int getScreenCoordinatePickerButtonTop() {
+        return getCoordinateFieldInputTop() + COORDINATE_FIELD_HEIGHT + SCREEN_PICK_BUTTON_TOP_MARGIN;
+    }
+
+    public int getScreenCoordinatePickerButtonLeft() {
+        return x + POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL;
+    }
+
+    public int getScreenCoordinatePickerButtonWidth() {
+        return Math.max(SCREEN_PICK_BUTTON_MIN_WIDTH, width - 2 * POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL);
+    }
+
+    public int getScreenCoordinatePickerButtonHeight() {
+        return SCREEN_PICK_BUTTON_HEIGHT;
     }
 
     public boolean hasAmountInputField() {
@@ -2929,6 +2972,10 @@ public class Node {
                 break;
             case CLICK_SLOT:
                 parameters.add(new NodeParameter("Slot", ParameterType.INTEGER, "0"));
+                break;
+            case CLICK_SCREEN:
+                parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
+                parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
                 break;
             case MOVE_ITEM:
                 parameters.add(new NodeParameter("SourceSlot", ParameterType.INTEGER, "0"));
@@ -5076,6 +5123,11 @@ public class Node {
             if (type != NodeType.CONTROL_REPEAT) {
                 contentHeight += getAmountFieldDisplayHeight();
             }
+            if (hasSlots) {
+                contentHeight += SLOT_AREA_PADDING_TOP;
+            }
+        } else if (hasCoordinateInputFields()) {
+            contentHeight += getCoordinateFieldDisplayHeight();
             if (hasSlots) {
                 contentHeight += SLOT_AREA_PADDING_TOP;
             }
@@ -7477,6 +7529,9 @@ public class Node {
                 break;
             case CLICK_SLOT:
                 executeClickSlotCommand(future);
+                break;
+            case CLICK_SCREEN:
+                executeClickScreenCommand(future);
                 break;
             case MOVE_ITEM:
                 executeMoveItemCommand(future);
@@ -16176,6 +16231,64 @@ public class Node {
         inventory.markDirty();
         client.player.playerScreenHandler.sendContentUpdates();
         future.complete(null);
+    }
+
+    private void executeClickScreenCommand(CompletableFuture<Void> future) {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+        if (client.currentScreen == null) {
+            sendNodeErrorMessage(client, "Click Screen requires an open GUI.");
+            future.complete(null);
+            return;
+        }
+
+        int guiX = getIntParameter("X", 0);
+        int guiY = getIntParameter("Y", 0);
+        net.minecraft.client.util.Window window = client.getWindow();
+        int scaledWidth = Math.max(1, window.getScaledWidth());
+        int scaledHeight = Math.max(1, window.getScaledHeight());
+        guiX = MathHelper.clamp(guiX, 0, Math.max(0, scaledWidth - 1));
+        guiY = MathHelper.clamp(guiY, 0, Math.max(0, scaledHeight - 1));
+
+        double windowScaleX = window.getWidth() / (double) scaledWidth;
+        double windowScaleY = window.getHeight() / (double) scaledHeight;
+        double windowX = guiX * windowScaleX;
+        double windowY = guiY * windowScaleY;
+
+        client.execute(() -> {
+            boolean moved = InputCompatibilityBridge.dispatchCursorPos(client, windowX, windowY);
+            boolean pressed = InputCompatibilityBridge.dispatchMouseButton(
+                client,
+                GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                GLFW.GLFW_PRESS,
+                0
+            );
+            if (!moved || !pressed) {
+                sendNodeErrorMessage(client, "Failed to dispatch screen click.");
+                future.complete(null);
+                return;
+            }
+
+            MESSAGE_SCHEDULER.schedule(() -> {
+                net.minecraft.client.MinecraftClient releaseClient = net.minecraft.client.MinecraftClient.getInstance();
+                if (releaseClient == null) {
+                    future.complete(null);
+                    return;
+                }
+                releaseClient.execute(() -> {
+                    InputCompatibilityBridge.dispatchMouseButton(
+                        releaseClient,
+                        GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                        GLFW.GLFW_RELEASE,
+                        0
+                    );
+                    future.complete(null);
+                });
+            }, 75L, TimeUnit.MILLISECONDS);
+        });
     }
     
     private void executeMoveItemCommand(CompletableFuture<Void> future) {

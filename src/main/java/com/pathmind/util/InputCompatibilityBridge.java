@@ -19,6 +19,7 @@ public final class InputCompatibilityBridge {
     private static final Method SCREEN_HAS_SHIFT_DOWN = resolveScreenMethod("hasShiftDown");
     private static final Method IS_KEY_PRESSED_WINDOW = resolveIsKeyPressed(Window.class);
     private static final Method IS_KEY_PRESSED_HANDLE = resolveIsKeyPressed(long.class);
+    private static final Method MOUSE_CURSOR_POS_CALLBACK = resolveMouseCursorPosCallback();
     private static final Method MOUSE_BUTTON_CALLBACK = resolveMouseButtonCallback();
     private static final Constructor<?> MOUSE_INPUT_CONSTRUCTOR = resolveMouseInputConstructor();
 
@@ -115,6 +116,27 @@ public final class InputCompatibilityBridge {
         return false;
     }
 
+    public static boolean dispatchCursorPos(MinecraftClient client, double x, double y) {
+        if (client == null) {
+            return false;
+        }
+        Window window = client.getWindow();
+        if (window == null) {
+            return false;
+        }
+        Mouse mouse = client.mouse;
+        if (mouse == null || MOUSE_CURSOR_POS_CALLBACK == null) {
+            return false;
+        }
+        GLFW.glfwSetCursorPos(window.getHandle(), x, y);
+        try {
+            MOUSE_CURSOR_POS_CALLBACK.invoke(mouse, window.getHandle(), x, y);
+            return true;
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+            return false;
+        }
+    }
+
     private static Method resolveScreenMethod(String name) {
         try {
             Method method = Screen.class.getMethod(name);
@@ -169,6 +191,23 @@ public final class InputCompatibilityBridge {
                     method.setAccessible(true);
                     return method;
                 }
+            }
+        }
+        return null;
+    }
+
+    private static Method resolveMouseCursorPosCallback() {
+        for (Method method : Mouse.class.getDeclaredMethods()) {
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (method.getReturnType() != void.class) {
+                continue;
+            }
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == long.class
+                && parameterTypes[1] == double.class
+                && parameterTypes[2] == double.class) {
+                method.setAccessible(true);
+                return method;
             }
         }
         return null;

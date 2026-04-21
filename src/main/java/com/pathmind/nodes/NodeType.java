@@ -95,6 +95,7 @@ public enum NodeType {
     DROP_ITEM("pathmind.node.type.dropItem", 0xFFFFAB91, "pathmind.node.type.dropItem.desc"),
     DROP_SLOT("pathmind.node.type.dropSlot", 0xFFFF7043, "pathmind.node.type.dropSlot.desc"),
     CLICK_SLOT("pathmind.node.type.clickSlot", 0xFFFF7043, "pathmind.node.type.clickSlot.desc"),
+    CLICK_SCREEN("pathmind.node.type.clickScreen", 0xFFFF7043, "pathmind.node.type.clickScreen.desc"),
     MOVE_ITEM("pathmind.node.type.moveItem", 0xFFFFB74D, "pathmind.node.type.moveItem.desc"),
     OPEN_INVENTORY("pathmind.node.type.openInventory", 0xFFB0BEC5, "pathmind.node.type.openInventory.desc"),
     CLOSE_GUI("pathmind.node.type.closeGui", 0xFFB0BEC5, "pathmind.node.type.closeGui.desc"),
@@ -337,6 +338,7 @@ public enum NodeType {
             case DROP_ITEM:
             case DROP_SLOT:
             case CLICK_SLOT:
+            case CLICK_SCREEN:
             case MOVE_ITEM:
             case OPEN_INVENTORY:
             case CLOSE_GUI:

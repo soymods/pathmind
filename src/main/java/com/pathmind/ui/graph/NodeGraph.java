@@ -153,7 +153,6 @@ public class NodeGraph {
     private final Set<Node> cascadeDeletionPreviewNodes;
 
     private static final long COORDINATE_CARET_BLINK_INTERVAL_MS = 500;
-    private static final String[] COORDINATE_AXES = {"X", "Y", "Z"};
     private static final int PARAMETER_INPUT_HEIGHT = 16;
     private static final int PARAMETER_INPUT_GAP = 4;
     private static final int DIRECTION_MODE_TAB_HEIGHT = 18;
@@ -173,6 +172,9 @@ public class NodeGraph {
     private int coordinateSelectionStart = -1;
     private int coordinateSelectionEnd = -1;
     private int coordinateSelectionAnchor = -1;
+    private Node screenCoordinateCaptureNode = null;
+    private int screenCoordinatePreviewX = 0;
+    private int screenCoordinatePreviewY = 0;
     private int amountCaretPosition = 0;
     private int amountSelectionStart = -1;
     private int amountSelectionEnd = -1;
@@ -2820,6 +2822,52 @@ public class NodeGraph {
         }
 
         MatrixStackBridge.pop(matrices);
+
+    }
+
+    public void renderScreenCoordinateCaptureOverlay(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        if (context == null) {
+            return;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) {
+            return;
+        }
+
+        int width = client.getWindow().getScaledWidth();
+        int height = client.getWindow().getScaledHeight();
+        int clampedX = MathHelper.clamp(mouseX, 0, Math.max(0, width - 1));
+        int clampedY = MathHelper.clamp(mouseY, 0, Math.max(0, height - 1));
+
+        int lineColor = 0xE6FFFFFF;
+        int glowColor = 0x33FFFFFF;
+        int panelFill = 0xCC111111;
+        int panelBorder = 0xE6FFFFFF;
+        int accentFill = 0xE6FFFFFF;
+        int textColor = UITheme.TEXT_PRIMARY;
+
+        context.fill(clampedX - 1, 0, clampedX + 1, height, glowColor);
+        context.fill(0, clampedY - 1, width, clampedY + 1, glowColor);
+        context.drawVerticalLine(clampedX, 0, height - 1, lineColor);
+        context.drawHorizontalLine(0, width - 1, clampedY, lineColor);
+
+        int crossRadius = 6;
+        context.fill(clampedX - crossRadius, clampedY - 1, clampedX + crossRadius + 1, clampedY + 1, accentFill);
+        context.fill(clampedX - 1, clampedY - crossRadius, clampedX + 1, clampedY + crossRadius + 1, accentFill);
+        context.fill(clampedX - 2, clampedY - 2, clampedX + 3, clampedY + 3, 0xFF101010);
+        context.fill(clampedX - 1, clampedY - 1, clampedX + 2, clampedY + 2, accentFill);
+
+        if (textRenderer != null) {
+            String label = "Pick Mode  " + clampedX + ", " + clampedY;
+            int textWidth = textRenderer.getWidth(label);
+            int boxWidth = textWidth + 12;
+            int boxHeight = 18;
+            int boxX = MathHelper.clamp(clampedX + 12, 4, Math.max(4, width - boxWidth - 4));
+            int boxY = clampedY > height - 28 ? clampedY - 24 : clampedY + 12;
+            context.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, panelFill);
+            DrawContextBridge.drawBorderInLayer(context, boxX, boxY, boxWidth, boxHeight, panelBorder);
+            drawNodeText(context, textRenderer, Text.literal(label), boxX + 6, boxY + 5, textColor);
+        }
     }
 
     public void renderSelectionBox(DrawContext context) {
@@ -3803,11 +3851,13 @@ public class NodeGraph {
                         renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
                     }
                     if (node.hasCoordinateInputFields()) {
-                        renderCoordinateInputFields(context, textRenderer, node, isOverSidebar);
+                        renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     }
                     if (node.hasAmountInputField()) {
                         renderAmountInputField(context, textRenderer, node, isOverSidebar);
                     }
+                } else if (node.hasCoordinateInputFields()) {
+                    renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 } else if (node.hasAmountInputField()) {
                     renderAmountInputField(context, textRenderer, node, isOverSidebar);
                 }
@@ -4706,7 +4756,54 @@ public class NodeGraph {
         return true;
     }
 
-    private void renderCoordinateInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private String[] getCoordinateAxes(Node node) {
+        if (node == null) {
+            return new String[0];
+        }
+        return node.getCoordinateFieldAxes();
+    }
+
+    private void renderScreenCoordinatePickerButton(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                                    int mouseX, int mouseY) {
+        if (node == null || !node.hasScreenCoordinatePickerButton()) {
+            return;
+        }
+        int buttonLeft = node.getScreenCoordinatePickerButtonLeft() - cameraX;
+        int buttonTop = node.getScreenCoordinatePickerButtonTop() - cameraY;
+        int buttonWidth = node.getScreenCoordinatePickerButtonWidth();
+        int buttonHeight = node.getScreenCoordinatePickerButtonHeight();
+
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= node.getScreenCoordinatePickerButtonLeft()
+            && worldMouseX <= node.getScreenCoordinatePickerButtonLeft() + buttonWidth
+            && worldMouseY >= node.getScreenCoordinatePickerButtonTop()
+            && worldMouseY <= node.getScreenCoordinatePickerButtonTop() + buttonHeight;
+
+        int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG;
+        int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
+        if (isScreenCoordinateCaptureActiveFor(node)) {
+            buttonFill = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.BUTTON_DEFAULT_HOVER;
+            buttonBorder = getSelectedNodeAccentColor();
+        } else if (hovered) {
+            buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
+            buttonBorder = getSelectedNodeAccentColor();
+        }
+
+        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
+        DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
+
+        String buttonLabel = isScreenCoordinateCaptureActiveFor(node) ? "Click To Set" : "Pick";
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int textX = buttonLeft + Math.max(0, (buttonWidth - textRenderer.getWidth(buttonLabel)) / 2);
+        int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2;
+        drawNodeText(context, textRenderer, Text.literal(buttonLabel), textX, textY, textColor);
+    }
+
+    private void renderCoordinateInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                             int mouseX, int mouseY) {
+        String[] axes = getCoordinateAxes(node);
         int baseLabelColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY;
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
@@ -4726,15 +4823,16 @@ public class NodeGraph {
         int fieldWidth = node.getCoordinateFieldWidth();
         int spacing = node.getCoordinateFieldSpacing();
         int startX = node.getCoordinateFieldStartX() - cameraX;
+        boolean captureActive = isScreenCoordinateCaptureActiveFor(node);
 
-        for (int i = 0; i < COORDINATE_AXES.length; i++) {
+        for (int i = 0; i < axes.length; i++) {
             int fieldX = startX + i * (fieldWidth + spacing);
 
             boolean editingAxis = isEditingCoordinateField()
                 && coordinateEditingNode == node
                 && coordinateEditingAxis == i;
 
-            String axisLabel = COORDINATE_AXES[i];
+            String axisLabel = axes[i];
             int labelWidth = textRenderer.getWidth(axisLabel);
             int labelX = fieldX + Math.max(0, (fieldWidth - labelWidth) / 2);
             int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
@@ -4745,6 +4843,10 @@ public class NodeGraph {
             int backgroundColor = editingAxis ? activeFieldBackground : fieldBackground;
             int borderColor = editingAxis ? activeFieldBorder : fieldBorder;
             int valueColor = editingAxis ? activeTextColor : textColor;
+            if (captureActive && !editingAxis) {
+                borderColor = getSelectedNodeAccentColor();
+                valueColor = UITheme.TEXT_TERTIARY;
+            }
 
             context.fill(fieldX, inputTop, fieldX + fieldWidth, inputBottom, backgroundColor);
             DrawContextBridge.drawBorderInLayer(context, fieldX, inputTop, fieldWidth, fieldHeight, borderColor);
@@ -4752,6 +4854,8 @@ public class NodeGraph {
             String value;
             if (editingAxis) {
                 value = coordinateEditBuffer;
+            } else if (captureActive) {
+                value = Integer.toString(i == 0 ? screenCoordinatePreviewX : screenCoordinatePreviewY);
             } else {
                 NodeParameter parameter = node.getParameter(axisLabel);
                 value = parameter != null ? parameter.getStringValue() : "";
@@ -4812,6 +4916,10 @@ public class NodeGraph {
                 int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, inputBottom - 2);
                 UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, fieldX + fieldWidth - 2, UITheme.CARET_COLOR);
             }
+        }
+
+        if (node.hasScreenCoordinatePickerButton()) {
+            renderScreenCoordinatePickerButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
     }
 
@@ -5723,7 +5831,8 @@ public class NodeGraph {
             return;
         }
         int maxWidth = 0;
-        for (int i = 0; i < COORDINATE_AXES.length; i++) {
+        String[] axes = getCoordinateAxes(coordinateEditingNode);
+        for (int i = 0; i < axes.length; i++) {
             NodeParameter parameter = getCoordinateParameter(coordinateEditingNode, i);
             String value = i == coordinateEditingAxis ? coordinateEditBuffer : (parameter != null ? parameter.getStringValue() : "");
             if (value == null) {
@@ -7012,6 +7121,61 @@ public class NodeGraph {
         return coordinateEditingNode != null && coordinateEditingAxis >= 0;
     }
 
+    public boolean isScreenCoordinateCaptureActive() {
+        return screenCoordinateCaptureNode != null;
+    }
+
+    public boolean isScreenCoordinateCaptureActiveFor(Node node) {
+        return node != null && node == screenCoordinateCaptureNode;
+    }
+
+    public void startScreenCoordinateCapture(Node node) {
+        if (node == null || !node.hasScreenCoordinatePickerButton()) {
+            cancelScreenCoordinateCapture();
+            return;
+        }
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+        stopStopTargetEditing(true);
+        stopVariableEditing(true);
+        stopMessageEditing(true);
+        stopParameterEditing(true);
+        stopEventNameEditing(true);
+        screenCoordinateCaptureNode = node;
+        NodeParameter xParam = node.getParameter("X");
+        NodeParameter yParam = node.getParameter("Y");
+        screenCoordinatePreviewX = xParam != null ? xParam.getIntValue() : 0;
+        screenCoordinatePreviewY = yParam != null ? yParam.getIntValue() : 0;
+    }
+
+    public void cancelScreenCoordinateCapture() {
+        screenCoordinateCaptureNode = null;
+    }
+
+    public void updateScreenCoordinateCapturePreview(int screenX, int screenY) {
+        if (!isScreenCoordinateCaptureActive()) {
+            return;
+        }
+        screenCoordinatePreviewX = Math.max(0, screenX);
+        screenCoordinatePreviewY = Math.max(0, screenY);
+    }
+
+    public boolean commitScreenCoordinateCapture(int screenX, int screenY) {
+        if (!isScreenCoordinateCaptureActive()) {
+            return false;
+        }
+        Node node = screenCoordinateCaptureNode;
+        screenCoordinateCaptureNode = null;
+        if (node == null) {
+            return false;
+        }
+        node.setParameterValueAndPropagate("X", Integer.toString(Math.max(0, screenX)));
+        node.setParameterValueAndPropagate("Y", Integer.toString(Math.max(0, screenY)));
+        node.recalculateDimensions();
+        notifyNodeParametersChanged(node);
+        return true;
+    }
+
     private void updateCoordinateCaretBlink() {
         long now = System.currentTimeMillis();
         if (now - coordinateCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
@@ -7029,6 +7193,9 @@ public class NodeGraph {
         if (node == null || !node.hasCoordinateInputFields()) {
             return -1;
         }
+        if (isScreenCoordinateCaptureActiveFor(node)) {
+            return -1;
+        }
 
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
@@ -7041,8 +7208,9 @@ public class NodeGraph {
         int startX = node.getCoordinateFieldStartX();
         int fieldWidth = node.getCoordinateFieldWidth();
         int spacing = node.getCoordinateFieldSpacing();
+        String[] axes = getCoordinateAxes(node);
 
-        for (int i = 0; i < COORDINATE_AXES.length; i++) {
+        for (int i = 0; i < axes.length; i++) {
             int fieldX = startX + i * (fieldWidth + spacing);
             if (worldX >= fieldX && worldX <= fieldX + fieldWidth) {
                 return i;
@@ -7051,12 +7219,38 @@ public class NodeGraph {
         return -1;
     }
 
+    public boolean isPointInsideScreenCoordinatePickerButton(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasScreenCoordinatePickerButton()) {
+            return false;
+        }
+        int worldX = screenToWorldX(mouseX);
+        int worldY = screenToWorldY(mouseY);
+        int buttonLeft = node.getScreenCoordinatePickerButtonLeft();
+        int buttonTop = node.getScreenCoordinatePickerButtonTop();
+        int buttonWidth = node.getScreenCoordinatePickerButtonWidth();
+        int buttonHeight = node.getScreenCoordinatePickerButtonHeight();
+        return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth
+            && worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
+    }
+
+    public boolean handleScreenCoordinatePickerClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideScreenCoordinatePickerButton(node, mouseX, mouseY)) {
+            return false;
+        }
+        selectNode(node);
+        startScreenCoordinateCapture(node);
+        return true;
+    }
+
     public void startCoordinateEditing(Node node, int axisIndex) {
+        String[] axes = getCoordinateAxes(node);
         if (node == null || !node.hasCoordinateInputFields() || axisIndex < 0
-            || axisIndex >= COORDINATE_AXES.length) {
+            || axisIndex >= axes.length) {
             stopCoordinateEditing(false);
             return;
         }
+
+        cancelScreenCoordinateCapture();
 
         closeSchematicDropdown();
         closeRunPresetDropdown();
@@ -7138,7 +7332,7 @@ public class NodeGraph {
         if (value.isEmpty() || "-".equals(value)) {
             value = "0";
         }
-        String axisName = COORDINATE_AXES[coordinateEditingAxis];
+        String axisName = getCoordinateAxes(coordinateEditingNode)[coordinateEditingAxis];
         NodeParameter parameter = getCoordinateParameter(coordinateEditingNode, coordinateEditingAxis);
         String previous = parameter != null ? parameter.getStringValue() : "";
         coordinateEditingNode.setParameterValueAndPropagate(axisName, value);
@@ -7150,16 +7344,17 @@ public class NodeGraph {
         if (!isEditingCoordinateField()) {
             return;
         }
-        String axisName = COORDINATE_AXES[coordinateEditingAxis];
+        String axisName = getCoordinateAxes(coordinateEditingNode)[coordinateEditingAxis];
         coordinateEditingNode.setParameterValueAndPropagate(axisName, coordinateEditOriginalValue);
         coordinateEditingNode.recalculateDimensions();
     }
 
     private NodeParameter getCoordinateParameter(Node node, int axisIndex) {
-        if (node == null || axisIndex < 0 || axisIndex >= COORDINATE_AXES.length) {
+        String[] axes = getCoordinateAxes(node);
+        if (node == null || axisIndex < 0 || axisIndex >= axes.length) {
             return null;
         }
-        return node.getParameter(COORDINATE_AXES[axisIndex]);
+        return node.getParameter(axes[axisIndex]);
     }
 
     public boolean handleCoordinateKeyPressed(int keyCode, int modifiers) {
@@ -7222,7 +7417,8 @@ public class NodeGraph {
             case GLFW.GLFW_KEY_TAB:
                 Node node = coordinateEditingNode;
                 int direction = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 ? -1 : 1;
-                int nextAxis = (coordinateEditingAxis + direction + COORDINATE_AXES.length) % COORDINATE_AXES.length;
+                int axisCount = getCoordinateAxes(node).length;
+                int nextAxis = (coordinateEditingAxis + direction + axisCount) % axisCount;
                 startCoordinateEditing(node, nextAxis);
                 return true;
             case GLFW.GLFW_KEY_A:
@@ -9053,12 +9249,12 @@ public class NodeGraph {
 
         // Try to parse as multi-coordinate format (e.g., "2313 123 -32131" or "100,200,300")
         String[] parts = clipboardText.trim().split("[\\s,]+");
-        if (parts.length == 3) {
-            // Attempt to parse all three as valid coordinates
-            String[] parsedCoords = new String[3];
+        String[] axes = getCoordinateAxes(coordinateEditingNode);
+        if (parts.length == axes.length) {
+            String[] parsedCoords = new String[axes.length];
             boolean allValid = true;
 
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < axes.length; i++) {
                 String trimmed = parts[i].trim();
                 // Remove any non-digit/minus characters
                 StringBuilder cleaned = new StringBuilder();
@@ -9088,9 +9284,8 @@ public class NodeGraph {
                 // Stop current coordinate editing
                 stopCoordinateEditing(false);
 
-                // Apply all three coordinate values
-                for (int i = 0; i < 3; i++) {
-                    node.setParameterValueAndPropagate(COORDINATE_AXES[i], parsedCoords[i]);
+                for (int i = 0; i < axes.length; i++) {
+                    node.setParameterValueAndPropagate(axes[i], parsedCoords[i]);
                 }
                 node.recalculateDimensions();
                 notifyNodeParametersChanged(node);

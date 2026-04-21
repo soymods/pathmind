@@ -19,6 +19,7 @@ import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
+import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.NodeParameterOverlay;
 import com.pathmind.ui.sidebar.Sidebar;
 import com.pathmind.ui.tooltip.TooltipRenderer;
@@ -154,6 +155,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int SETTINGS_NODE_LIST_GAP = 6;
     private static final int SETTINGS_BACK_BUTTON_WIDTH = 52;
     private static final int SETTINGS_BACK_BUTTON_HEIGHT = 18;
+    private static final int SETTINGS_SECTION_BUTTON_WIDTH = 56;
+    private static final int SETTINGS_SECTION_BUTTON_HEIGHT = 20;
     private static final int CREATE_LIST_RADIUS_MIN = 1;
     private static final int CREATE_LIST_RADIUS_MAX = 512;
     private static final NodeType[] SETTINGS_NODE_TYPES = {
@@ -656,6 +659,8 @@ public class PathmindVisualEditorScreen extends Screen {
         if (isDraggingFromSidebar && (draggingNodeType != null || draggingSidebarNode != null)) {
             renderDraggingNode(context, mouseX, mouseY);
         }
+        DrawContextBridge.startNewRootLayer(context);
+        NodeErrorNotificationOverlay.getInstance().render(context, this.textRenderer, this.width, this.height);
         } finally {
             OverlayProtection.setPathmindRendering(false);
         }
@@ -5777,19 +5782,20 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         drawPopupTextWithEllipsis(context, "Node Settings", nodeSettingsHeaderX, nodeSettingsLabelY, scaledWidth - 40 - (nodeSettingsHeaderX - contentX),
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
+        int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY);
 
         if (settingsNodeListView) {
-            renderSettingsNodeList(context, mouseX, mouseY, popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsBodyY);
+            renderSettingsNodeList(context, mouseX, mouseY, popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
         } else {
             NodeType targetType = getEffectiveSettingsTargetType();
             if (targetType == null) {
-                renderSettingsNodeList(context, mouseX, mouseY, popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsBodyY);
+                renderSettingsNodeList(context, mouseX, mouseY, popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
             } else if (targetType == NodeType.GOTO) {
-                drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsBodyY, scaledWidth - 40,
+                drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsContentY, scaledWidth - 40,
                     getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
-                int gotoBreakDividerY = nodeSettingsBodyY + 28;
-                int gotoBreakRowCenterY = (nodeSettingsBodyY + 10 + gotoBreakDividerY) / 2;
+                int gotoBreakDividerY = nodeSettingsContentY + 28;
+                int gotoBreakRowCenterY = (nodeSettingsContentY + 10 + gotoBreakDividerY) / 2;
                 renderToggleRow(context, mouseX, mouseY, contentX, gotoBreakRowCenterY,
                     "Allow Baritone to break blocks while executing", currentSettings.gotoAllowBreakWhileExecuting != null && currentSettings.gotoAllowBreakWhileExecuting, popupX, scaledWidth);
                 context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoBreakDividerY,
@@ -5802,11 +5808,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoPlaceDividerY,
                     getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
             } else if (targetType == NodeType.SENSOR_KEY_PRESSED) {
-                drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsBodyY, scaledWidth - 40,
+                drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsContentY, scaledWidth - 40,
                     getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
-                int keyPressedDividerY = nodeSettingsBodyY + 28;
-                int keyPressedRowCenterY = (nodeSettingsBodyY + 10 + keyPressedDividerY) / 2;
+                int keyPressedDividerY = nodeSettingsContentY + 28;
+                int keyPressedRowCenterY = (nodeSettingsContentY + 10 + keyPressedDividerY) / 2;
                 renderToggleRow(context, mouseX, mouseY, contentX, keyPressedRowCenterY,
                     "Activate while GUIs are open", currentSettings.keyPressedActivatesInGuis == null || currentSettings.keyPressedActivatesInGuis, popupX, scaledWidth);
                 context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, keyPressedDividerY,
@@ -5815,11 +5821,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 Node targetNode = getEffectiveSettingsTargetNode();
                 boolean useRadius = isCreateListCustomRadiusEnabled(targetNode);
                 int radius = getCreateListSettingsRadius(targetNode);
-                drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsBodyY, scaledWidth - 40,
+                drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsContentY, scaledWidth - 40,
                     getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
-                int createListToggleDividerY = nodeSettingsBodyY + 28;
-                int createListToggleRowCenterY = (nodeSettingsBodyY + 10 + createListToggleDividerY) / 2;
+                int createListToggleDividerY = nodeSettingsContentY + 28;
+                int createListToggleRowCenterY = (nodeSettingsContentY + 10 + createListToggleDividerY) / 2;
                 renderToggleRow(context, mouseX, mouseY, contentX, createListToggleRowCenterY,
                     "Use custom radius instead of render distance", useRadius, popupX, scaledWidth);
                 context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, createListToggleDividerY,
@@ -5835,6 +5841,18 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
             }
         }
+
+        int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
+        int clearCacheRowCenterY = getSettingsClearCacheRowCenterY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16,
+            getSettingsClearCacheDividerY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+        boolean clearCacheHovered = isPointInRect(mouseX, mouseY, clearCacheButtonBounds[0], clearCacheButtonBounds[1],
+            clearCacheButtonBounds[2], clearCacheButtonBounds[3]);
+        drawPopupTextWithEllipsis(context, "Clear cache", contentX, clearCacheRowCenterY - this.textRenderer.fontHeight / 2,
+            scaledWidth - 40 - clearCacheButtonBounds[2] - 12, getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupButton(context, clearCacheButtonBounds[0], clearCacheButtonBounds[1], clearCacheButtonBounds[2], clearCacheButtonBounds[3],
+            clearCacheHovered, Text.literal("Clear"), PopupButtonStyle.DEFAULT, settingsPopupAnimation);
 
         int buttonWidth = 90;
         int buttonHeight = 20;
@@ -6318,6 +6336,61 @@ public class PathmindVisualEditorScreen extends Screen {
         return findFirstNodeWithSettingsType(targetType);
     }
 
+    private int getSettingsNodeSectionContentBottom(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        NodeType targetType = getEffectiveSettingsTargetType();
+        if (settingsNodeListView || targetType == null) {
+            int[] listBounds = getSettingsNodeListBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+            return listBounds[1] + listBounds[3];
+        } else if (targetType == NodeType.GOTO) {
+            int gotoBreakDividerY = nodeSettingsContentY + 28;
+            return gotoBreakDividerY + 22;
+        } else if (targetType == NodeType.CREATE_LIST) {
+            Node targetNode = getEffectiveSettingsTargetNode();
+            boolean useRadius = isCreateListCustomRadiusEnabled(targetNode);
+            int createListToggleDividerY = nodeSettingsContentY + 28;
+            if (useRadius) {
+                return createListToggleDividerY + 26;
+            }
+            return createListToggleDividerY;
+        } else {
+            return nodeSettingsContentY + 28;
+        }
+    }
+
+    private int[] getSettingsClearCacheButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        int dividerY = getSettingsClearCacheDividerY(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int buttonY = dividerY + 8;
+        int buttonX = popupX + popupWidth - SETTINGS_SECTION_BUTTON_WIDTH - 20;
+        return new int[]{buttonX, buttonY, SETTINGS_SECTION_BUTTON_WIDTH, SETTINGS_SECTION_BUTTON_HEIGHT};
+    }
+
+    private int getSettingsClearCacheRowCenterY(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        return getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY)[1]
+            + SETTINGS_SECTION_BUTTON_HEIGHT / 2;
+    }
+
+    private int getSettingsClearCacheDividerY(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        return getSettingsNodeSectionContentBottom(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY) + 10;
+    }
+
+    private int getSettingsClearCacheSectionHeight() {
+        return 38;
+    }
+
+    private int getSettingsNodeSectionContentY(int bodyY) {
+        return bodyY;
+    }
+
+    private void clearSettingsCache() {
+        boolean cleared = Node.clearRecipeCache(this.client);
+        NodeErrorNotificationOverlay overlay = NodeErrorNotificationOverlay.getInstance();
+        if (cleared) {
+            overlay.show("Cache cleared.", UITheme.STATE_SUCCESS);
+        } else {
+            overlay.show("No cache file found.", UITheme.STATE_ERROR);
+        }
+    }
+
     private int getSettingsNodeSectionBodyY(int popupY) {
         int languageLabelY = popupY + 44;
         int languageButtonY = languageLabelY + 12;
@@ -6344,7 +6417,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int listWidth = scaledWidth - 40;
         int buttonY = popupY + scaledHeight - 20 - 16;
         int minListHeight = SETTINGS_NODE_LIST_ROW_HEIGHT * 4;
-        int listHeight = Math.max(minListHeight, buttonY - 8 - listY);
+        int availableHeight = buttonY - 8 - listY - getSettingsClearCacheSectionHeight();
+        int listHeight = Math.max(minListHeight, availableHeight);
         return new int[]{listX, listY, listWidth, listHeight};
     }
 
@@ -6421,28 +6495,9 @@ public class PathmindVisualEditorScreen extends Screen {
         int bodyBottom = bodyBounds[1] + bodyBounds[3];
         int contentX = popupX + 20;
         int nodeSettingsBodyY = getSettingsNodeSectionBodyY(popupY);
-        int contentBottom;
-        NodeType targetType = getEffectiveSettingsTargetType();
-        if (settingsNodeListView || targetType == null) {
-            int[] listBounds = getSettingsNodeListBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsBodyY);
-            contentBottom = listBounds[1] + listBounds[3];
-        } else if (targetType == NodeType.GOTO) {
-            int gotoBreakDividerY = nodeSettingsBodyY + 28;
-            int gotoPlaceDividerY = gotoBreakDividerY + 22;
-            contentBottom = gotoPlaceDividerY;
-        } else if (targetType == NodeType.CREATE_LIST) {
-            Node targetNode = getEffectiveSettingsTargetNode();
-            boolean useRadius = isCreateListCustomRadiusEnabled(targetNode);
-            int createListToggleDividerY = nodeSettingsBodyY + 28;
-            int contentY = createListToggleDividerY;
-            if (useRadius) {
-                int createListRadiusDividerY = createListToggleDividerY + 26;
-                contentY = createListRadiusDividerY;
-            }
-            contentBottom = contentY;
-        } else {
-            contentBottom = nodeSettingsBodyY + 28;
-        }
+        int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY);
+        int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int contentBottom = clearCacheButtonBounds[1] + clearCacheButtonBounds[3];
         return Math.max(0, contentBottom - bodyBottom + 8);
     }
 
@@ -6807,9 +6862,18 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         int nodeSettingsBodyY = getSettingsNodeSectionBodyY(contentPopupY);
+        int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY);
+        int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(
+            popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, contentX, nodeSettingsContentY);
+        if (isPointInRect(mouseXi, mouseYi, clearCacheButtonBounds[0], clearCacheButtonBounds[1],
+            clearCacheButtonBounds[2], clearCacheButtonBounds[3])) {
+            clearSettingsCache();
+            return true;
+        }
+
         if (bodyHovered && settingsNodeListView) {
             List<NodeType> settingsNodes = getSettingsNodeTypes();
-            int[] listBounds = getSettingsNodeListBounds(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, contentX, nodeSettingsBodyY);
+            int[] listBounds = getSettingsNodeListBounds(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, contentX, nodeSettingsContentY);
             int visibleRows = Math.max(1, listBounds[3] / SETTINGS_NODE_LIST_ROW_HEIGHT);
             int maxScroll = Math.max(0, settingsNodes.size() - visibleRows);
             settingsNodeListScrollOffset = MathHelper.clamp(settingsNodeListScrollOffset, 0, maxScroll);
@@ -6833,8 +6897,8 @@ public class PathmindVisualEditorScreen extends Screen {
 
         NodeType selectedType = getEffectiveSettingsTargetType();
         if (bodyHovered && !settingsNodeListView && selectedType == NodeType.GOTO) {
-            int gotoBreakDividerY = nodeSettingsBodyY + 28;
-            int gotoBreakRowCenterY = (nodeSettingsBodyY + 10 + gotoBreakDividerY) / 2;
+            int gotoBreakDividerY = nodeSettingsContentY + 28;
+            int gotoBreakRowCenterY = (nodeSettingsContentY + 10 + gotoBreakDividerY) / 2;
             int gotoToggleX = gridToggleX;
             int gotoBreakToggleY = gotoBreakRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
             if (isPointInRect(mouseXi, mouseYi, gotoToggleX, gotoBreakToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
@@ -6852,8 +6916,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
         } else if (bodyHovered && !settingsNodeListView && selectedType == NodeType.SENSOR_KEY_PRESSED) {
-            int keyPressedDividerY = nodeSettingsBodyY + 28;
-            int keyPressedRowCenterY = (nodeSettingsBodyY + 10 + keyPressedDividerY) / 2;
+            int keyPressedDividerY = nodeSettingsContentY + 28;
+            int keyPressedRowCenterY = (nodeSettingsContentY + 10 + keyPressedDividerY) / 2;
             int keyPressedToggleX = gridToggleX;
             int keyPressedToggleY = keyPressedRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
             if (isPointInRect(mouseXi, mouseYi, keyPressedToggleX, keyPressedToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
@@ -6864,8 +6928,8 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         } else if (bodyHovered && !settingsNodeListView && selectedType == NodeType.CREATE_LIST) {
             Node targetNode = getEffectiveSettingsTargetNode();
-            int createListToggleDividerY = nodeSettingsBodyY + 28;
-            int createListToggleRowCenterY = (nodeSettingsBodyY + 10 + createListToggleDividerY) / 2;
+            int createListToggleDividerY = nodeSettingsContentY + 28;
+            int createListToggleRowCenterY = (nodeSettingsContentY + 10 + createListToggleDividerY) / 2;
             int createListToggleX = gridToggleX;
             int createListToggleY = createListToggleRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
             if (isPointInRect(mouseXi, mouseYi, createListToggleX, createListToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {

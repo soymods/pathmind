@@ -4,6 +4,7 @@ import net.minecraft.text.Text;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.math.BigDecimal;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -13417,6 +13418,25 @@ public class Node {
 
     public static void resetRecipeCacheWarmup() {
         recipeCacheWarmupState = null;
+    }
+
+    public static boolean clearRecipeCache(net.minecraft.client.MinecraftClient client) {
+        synchronized (RECIPE_CACHE_LOCK) {
+            cachedRecipeBook = null;
+            recipeCacheWarmupState = null;
+
+            Path path = getRecipeCachePath(client);
+            if (path == null) {
+                return false;
+            }
+
+            try {
+                return Files.deleteIfExists(path);
+            } catch (IOException e) {
+                LOGGER.warn("Failed to clear Pathmind cache file at {}", path.toAbsolutePath(), e);
+                return false;
+            }
+        }
     }
 
     public static boolean isRecipeCacheWarmupInProgress(net.minecraft.client.MinecraftClient client) {

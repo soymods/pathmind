@@ -126,6 +126,7 @@ import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.GuiSelectionMode;
 import com.pathmind.util.GameProfileCompatibilityBridge;
 import com.pathmind.util.InputCompatibilityBridge;
+import com.pathmind.util.ServerJoinTracker;
 
 /**
  * Represents a single node in the Pathmind visual editor.
@@ -3294,6 +3295,8 @@ public class Node {
             case SENSOR_CHAT_MESSAGE:
                 parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
                 parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "true"));
+                break;
+            case SENSOR_JOINED_SERVER:
                 break;
             case SENSOR_FABRIC_EVENT:
                 parameters.add(new NodeParameter("Event", ParameterType.STRING, "Any"));
@@ -7888,6 +7891,7 @@ public class Node {
             case SENSOR_IS_VISIBLE:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_JOINED_SERVER:
             case SENSOR_FABRIC_EVENT:
             case SENSOR_ATTRIBUTE_DETECTION:
             case SENSOR_TARGETED_BLOCK:
@@ -21364,6 +21368,29 @@ public class Node {
                     ? Math.max(0.0, getDoubleParameter("Amount", 10.0))
                     : ChatMessageTracker.getMaxRetentionSeconds();
                 result = ChatMessageTracker.hasRecentMessage(playerName, messageText, seconds, anyPlayer, anyMessage);
+                break;
+            }
+            case SENSOR_JOINED_SERVER: {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                Node playerNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
+                if (playerNode == null) {
+                    if (client != null) {
+                        sendNodeErrorMessage(client, type.getDisplayName() + " requires a user parameter.");
+                    }
+                    result = false;
+                    break;
+                }
+                if (!providesTrait(playerNode, NodeValueTrait.PLAYER)) {
+                    sendIncompatibleParameterMessage(playerNode);
+                    result = false;
+                    break;
+                }
+                String playerName = getParameterString(playerNode, "Player");
+                boolean anyPlayer = isAnyPlayerValue(playerName);
+                if (!anyPlayer && isSelfPlayerValue(playerName) && client != null && client.player != null) {
+                    playerName = GameProfileCompatibilityBridge.getName(client.player.getGameProfile());
+                }
+                result = ServerJoinTracker.hasRecentJoin(playerName, ServerJoinTracker.getRetentionSeconds(), anyPlayer);
                 break;
             }
             case SENSOR_FABRIC_EVENT: {

@@ -26,6 +26,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_IS_VISIBLE,
         NodeType.SENSOR_KEY_PRESSED,
         NodeType.SENSOR_CHAT_MESSAGE,
+        NodeType.SENSOR_JOINED_SERVER,
         NodeType.SENSOR_ATTRIBUTE_DETECTION,
         NodeType.SENSOR_FABRIC_EVENT,
         NodeType.SENSOR_GUI_FILLED,
@@ -65,7 +66,8 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_ITEM_IN_SLOT,
         NodeType.SENSOR_SLOT_ITEM_COUNT,
         NodeType.SENSOR_ATTRIBUTE_DETECTION,
-        NodeType.SENSOR_CHAT_MESSAGE
+        NodeType.SENSOR_CHAT_MESSAGE,
+        NodeType.SENSOR_JOINED_SERVER
     );
 
     private static final EnumMap<NodeType, EnumSet<NodeValueTrait>> PROVIDED_TRAITS;
@@ -209,6 +211,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_VILLAGER_TRADE, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_IN_STOCK, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_CHAT_MESSAGE, EnumSet.of(NodeValueTrait.PLAYER, NodeValueTrait.MESSAGE, NodeValueTrait.NUMBER));
+        accepted.put(NodeType.SENSOR_JOINED_SERVER, EnumSet.of(NodeValueTrait.PLAYER));
         accepted.put(NodeType.SENSOR_KEY_PRESSED, EnumSet.of(NodeValueTrait.KEY));
         accepted.put(NodeType.SENSOR_IS_RENDERED, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
         accepted.put(NodeType.SENSOR_IS_VISIBLE, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
@@ -349,6 +352,7 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.BREAK, 1);
         slotCounts.put(NodeType.PRESS_KEY, 1);
         slotCounts.put(NodeType.SENSOR_CHAT_MESSAGE, 2);
+        slotCounts.put(NodeType.SENSOR_JOINED_SERVER, 1);
         slotCounts.put(NodeType.SENSOR_ITEM_IN_SLOT, 2);
         slotCounts.put(NodeType.SENSOR_SLOT_ITEM_COUNT, 1);
         slotCounts.put(NodeType.SENSOR_DISTANCE_BETWEEN, 2);
@@ -374,6 +378,7 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.BREAK, new String[]{"Target"});
         slotLabels.put(NodeType.PRESS_KEY, new String[]{"Button"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
+        slotLabels.put(NodeType.SENSOR_JOINED_SERVER, new String[]{"User"});
         slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Selection"});
         slotLabels.put(NodeType.SENSOR_SLOT_ITEM_COUNT, new String[]{"Slot"});
         slotLabels.put(NodeType.SENSOR_ATTRIBUTE_DETECTION, new String[]{"Target"});
@@ -462,6 +467,9 @@ public final class NodeTraitRegistry {
         if (hostType == NodeType.SENSOR_CHAT_MESSAGE && slotIndex == 1) {
             return EnumSet.of(NodeValueTrait.MESSAGE);
         }
+        if (hostType == NodeType.SENSOR_JOINED_SERVER && slotIndex == 0) {
+            return EnumSet.of(NodeValueTrait.PLAYER);
+        }
         if (hostType == NodeType.PLACE || hostType == NodeType.PLACE_HAND) {
             if (slotIndex == 0) {
                 return EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.INVENTORY_SLOT);
@@ -547,6 +555,9 @@ public final class NodeTraitRegistry {
         }
         if (hostType == NodeType.SENSOR_CHAT_MESSAGE) {
             return slotIndex == 0 || slotIndex == 1;
+        }
+        if (hostType == NodeType.SENSOR_JOINED_SERVER) {
+            return slotIndex == 0;
         }
         if (hostType == NodeType.SENSOR_ATTRIBUTE_DETECTION) {
             return slotIndex == 0;

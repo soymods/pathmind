@@ -137,6 +137,7 @@ public enum NodeType {
     SENSOR_IS_VISIBLE("pathmind.node.type.sensorIsVisible", 0xFF64B5F6, "pathmind.node.type.sensorIsVisible.desc"),
     SENSOR_KEY_PRESSED("pathmind.node.type.sensorKeyPressed", 0xFF64B5F6, "pathmind.node.type.sensorKeyPressed.desc"),
     SENSOR_CHAT_MESSAGE("pathmind.node.type.sensorChatMessage", 0xFF64B5F6, "pathmind.node.type.sensorChatMessage.desc"),
+    SENSOR_JOINED_SERVER("pathmind.node.type.sensorJoinedServer", 0xFF64B5F6, "pathmind.node.type.sensorJoinedServer.desc"),
     SENSOR_FABRIC_EVENT("pathmind.node.type.sensorFabricEvent", 0xFF64B5F6, "pathmind.node.type.sensorFabricEvent.desc"),
     SENSOR_ATTRIBUTE_DETECTION("pathmind.node.type.sensorAttributeDetection", 0xFF64B5F6, "pathmind.node.type.sensorAttributeDetection.desc"),
 
@@ -303,6 +304,7 @@ public enum NodeType {
             case SENSOR_IS_VISIBLE:
             case SENSOR_KEY_PRESSED:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_JOINED_SERVER:
             case SENSOR_FABRIC_EVENT:
             case SENSOR_ATTRIBUTE_DETECTION:
                 return NodeCategory.SENSORS;
@@ -447,6 +449,7 @@ public enum NodeType {
             case SENSOR_IS_RENDERED:
             case SENSOR_IS_VISIBLE:
             case SENSOR_CHAT_MESSAGE:
+            case SENSOR_JOINED_SERVER:
             case SENSOR_FABRIC_EVENT:
             case SENSOR_ATTRIBUTE_DETECTION:
             case SENSOR_CURRENT_HAND:

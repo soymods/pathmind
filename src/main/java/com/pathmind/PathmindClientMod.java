@@ -17,6 +17,7 @@ import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.MatrixStackBridge;
+import com.pathmind.util.ServerJoinTracker;
 import com.pathmind.util.UseItemCallbackCompat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientBlockEntityEvents;
@@ -148,6 +149,7 @@ public class PathmindClientMod implements ClientModInitializer {
             handleRecipeCacheWarmup(client);
             NavigatorChatSuggestions.getInstance().tick(client);
             PathmindNavigator.getInstance().tick(client);
+            ServerJoinTracker.tick(client);
             fireFabricEvent(EVT_CLIENT_TICK_END);
         });
 
@@ -155,6 +157,7 @@ public class PathmindClientMod implements ClientModInitializer {
             worldShutdownHandled = false;
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
+            ServerJoinTracker.recordClientJoin(client);
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.clear();
             }
@@ -169,6 +172,7 @@ public class PathmindClientMod implements ClientModInitializer {
             PathmindNavigator.getInstance().reset();
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
+            ServerJoinTracker.clear();
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.clear();
             }
@@ -181,6 +185,7 @@ public class PathmindClientMod implements ClientModInitializer {
             PathmindNavigator.getInstance().reset();
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
+            ServerJoinTracker.clear();
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.clear();
             }

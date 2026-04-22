@@ -169,6 +169,8 @@
   "pathmind.node.type.operatorNot.desc": "Checks if a variable does not equal a parameter value",
   "pathmind.node.type.operatorRandom": "Random",
   "pathmind.node.type.operatorRandom.desc": "Generates a random number between a minimum and maximum value",
+  "pathmind.node.type.sensorJoinedServer": "Joined Server",
+  "pathmind.node.type.sensorJoinedServer.desc": "Detects whether a specific user recently joined the server",
   "pathmind.node.type.paramAmount": "Amount",
   "pathmind.node.type.paramAmount.desc": "Represents a generic numeric amount",
   "pathmind.node.type.paramBlock": "Block",

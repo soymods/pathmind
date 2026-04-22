@@ -443,6 +443,10 @@ public class Sidebar {
         return !nodeType.requiresBaritone();
     }
 
+    public boolean isNodeAvailable(NodeType nodeType) {
+        return shouldIncludeNode(nodeType);
+    }
+
     private boolean hasGroupedContent(NodeCategory category) {
         List<NodeGroup> groups = groupedCategoryNodes.get(category);
         if (groups == null) {

@@ -4449,7 +4449,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         for (NodeType nodeType : NodeType.values()) {
-            if (nodeType == null || !nodeType.isDraggableFromSidebar()) {
+            if (!sidebar.isNodeAvailable(nodeType)) {
                 continue;
             }
             int score = scoreNodeSearchCandidate(nodeType, normalizedQuery);
@@ -5628,6 +5628,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int[] bounds = getValidationPanelBounds(validationResult, 1f);
         if (!isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3])) {
             validationPanelOpen = false;
+            clearPresetInputFieldFocus();
             return false;
         }
 
@@ -5756,6 +5757,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean handleValidationPresetInputClick(int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
         List<NodeGraphData.CustomNodePort> ports = getActivePresetInputPorts();
         if (ports.isEmpty()) {
+            clearPresetInputFieldFocus();
             return false;
         }
         int currentTop = topY + VALIDATION_PANEL_SECTION_GAP + 18;
@@ -5763,6 +5765,7 @@ public class PathmindVisualEditorScreen extends Screen {
             int rowY = currentTop;
             Node targetNode = findPresetInputVariableNode(port);
             if (isPresetInputLabelHovered(mouseX, mouseY, panelX, panelWidth, rowY, port, targetNode)) {
+                clearPresetInputFieldFocus();
                 nodeGraph.focusNode(targetNode, this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
                 return true;
             }
@@ -5770,6 +5773,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
                 int toggleY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - SETTINGS_TOGGLE_HEIGHT) / 2;
                 if (isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+                    clearPresetInputFieldFocus();
                     setPresetInputValue(port, Boolean.toString(!getPresetBooleanValue(port)));
                     return true;
                 }
@@ -5778,15 +5782,13 @@ public class PathmindVisualEditorScreen extends Screen {
                 int fieldY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - VALIDATION_INPUT_FIELD_HEIGHT) / 2;
                 TextFieldWidget field = getOrCreatePresetInputField(port);
                 if (isPointInRect(mouseX, mouseY, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT)) {
-                    field.setEditable(true);
-                    field.setFocused(true);
+                    focusPresetInputField(field);
                     return true;
-                } else if (field.isFocused()) {
-                    field.setFocused(false);
                 }
             }
             currentTop += VALIDATION_PANEL_ROW_HEIGHT;
         }
+        clearPresetInputFieldFocus();
         return false;
     }
 
@@ -5828,6 +5830,105 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
         return null;
+    }
+
+    private Node findPresetInputAssignmentNode(NodeGraphData.CustomNodePort port) {
+        if (nodeGraph == null || port == null || port.getName() == null || port.getName().isBlank()) {
+            return null;
+        }
+        String targetName = port.getName().trim();
+        for (Node node : nodeGraph.getNodes()) {
+            if (node == null || node.getType() != NodeType.SET_VARIABLE) {
+                continue;
+            }
+            Node variableNode = node.getAttachedParameter(0);
+            Node valueNode = node.getAttachedParameter(1);
+            if (variableNode == null || variableNode.getType() != NodeType.VARIABLE || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
+                continue;
+            }
+            NodeParameter variableParam = variableNode.getParameter("Variable");
+            String variableName = variableParam != null ? variableParam.getStringValue() : null;
+            if (variableName != null && targetName.equalsIgnoreCase(variableName.trim())) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    private void syncPresetInputValueToWorkspace(NodeGraphData.CustomNodePort port, String rawValue) {
+        Node assignmentNode = findPresetInputAssignmentNode(port);
+        if (assignmentNode == null) {
+            return;
+        }
+        Node valueNode = assignmentNode.getAttachedParameter(1);
+        if (valueNode == null || valueNode.getType() == null || valueNode.getType() == NodeType.VARIABLE) {
+            return;
+        }
+        applyPresetInputValueToNode(valueNode, rawValue == null ? "" : rawValue);
+        valueNode.recalculateDimensions();
+        assignmentNode.recalculateDimensions();
+        nodeGraph.notifyNodeParametersChanged(valueNode);
+        nodeGraph.notifyNodeParametersChanged(assignmentNode);
+    }
+
+    private void applyPresetInputValueToNode(Node valueNode, String rawValue) {
+        if (valueNode == null || valueNode.getType() == null) {
+            return;
+        }
+        String safeValue = rawValue == null ? "" : rawValue.trim();
+        switch (valueNode.getType()) {
+            case PARAM_COORDINATE -> applyCoordinatePresetInputValue(valueNode, safeValue);
+            case PARAM_BLOCK -> valueNode.setParameterValueAndPropagate("Block", safeValue);
+            case PARAM_ITEM -> valueNode.setParameterValueAndPropagate("Item", safeValue);
+            case PARAM_VILLAGER_TRADE -> valueNode.setParameterValueAndPropagate("Item", safeValue);
+            case PARAM_ENTITY -> valueNode.setParameterValueAndPropagate("Entity", safeValue);
+            case PARAM_PLAYER -> valueNode.setParameterValueAndPropagate("Player", safeValue);
+            case PARAM_MESSAGE -> valueNode.setParameterValueAndPropagate("Text", safeValue);
+            case PARAM_WAYPOINT -> valueNode.setParameterValueAndPropagate("Waypoint", safeValue);
+            case PARAM_SCHEMATIC -> valueNode.setParameterValueAndPropagate("Schematic", safeValue);
+            case PARAM_INVENTORY_SLOT -> valueNode.setParameterValueAndPropagate("Slot", safeValue);
+            case PARAM_DURATION -> valueNode.setParameterValueAndPropagate("Duration", safeValue);
+            case PARAM_AMOUNT -> valueNode.setParameterValueAndPropagate("Amount", safeValue);
+            case PARAM_BOOLEAN -> {
+                valueNode.setParameterValueAndPropagate("Mode", "literal");
+                valueNode.setParameterValueAndPropagate("Variable", "");
+                valueNode.setParameterValueAndPropagate("Toggle", Boolean.toString(Boolean.parseBoolean(safeValue)));
+            }
+            case PARAM_HAND -> valueNode.setParameterValueAndPropagate("Hand", safeValue);
+            case PARAM_GUI -> valueNode.setParameterValueAndPropagate("GUI", safeValue);
+            case PARAM_KEY -> valueNode.setParameterValueAndPropagate("Key", safeValue);
+            case PARAM_MOUSE_BUTTON -> valueNode.setParameterValueAndPropagate("MouseButton", safeValue);
+            case PARAM_RANGE -> valueNode.setParameterValueAndPropagate("Range", safeValue);
+            case PARAM_DISTANCE -> valueNode.setParameterValueAndPropagate("Distance", safeValue);
+            case PARAM_DIRECTION -> valueNode.setParameterValueAndPropagate("Direction", safeValue);
+            case PARAM_BLOCK_FACE -> valueNode.setParameterValueAndPropagate("Face", safeValue);
+            case PARAM_ROTATION -> applyRotationPresetInputValue(valueNode, safeValue);
+            default -> {
+            }
+        }
+    }
+
+    private void applyCoordinatePresetInputValue(Node valueNode, String rawValue) {
+        String[] parts = rawValue.isEmpty() ? new String[0] : rawValue.split("\\s*,\\s*|\\s+");
+        String x = parts.length > 0 ? parts[0] : getNodeParameterValue(valueNode, "X");
+        String y = parts.length > 1 ? parts[1] : getNodeParameterValue(valueNode, "Y");
+        String z = parts.length > 2 ? parts[2] : getNodeParameterValue(valueNode, "Z");
+        valueNode.setParameterValueAndPropagate("X", x);
+        valueNode.setParameterValueAndPropagate("Y", y);
+        valueNode.setParameterValueAndPropagate("Z", z);
+    }
+
+    private void applyRotationPresetInputValue(Node valueNode, String rawValue) {
+        String[] parts = rawValue.isEmpty() ? new String[0] : rawValue.split("\\s*,\\s*|\\s+");
+        String yaw = parts.length > 0 ? parts[0] : getNodeParameterValue(valueNode, "Yaw");
+        String pitch = parts.length > 1 ? parts[1] : getNodeParameterValue(valueNode, "Pitch");
+        valueNode.setParameterValueAndPropagate("Yaw", yaw);
+        valueNode.setParameterValueAndPropagate("Pitch", pitch);
+    }
+
+    private String getNodeParameterValue(Node node, String parameterName) {
+        NodeParameter parameter = node == null ? null : node.getParameter(parameterName);
+        return parameter == null || parameter.getStringValue() == null ? "" : parameter.getStringValue();
     }
 
     private boolean isPresetInputLabelHovered(int mouseX, int mouseY, int panelX, int panelWidth, int rowY,
@@ -5910,7 +6011,7 @@ public class PathmindVisualEditorScreen extends Screen {
         Map<String, String> values = getPresetInputValues(false);
         if (values != null) {
             String configured = values.get(port.getName());
-            if (configured != null) {
+            if (configured != null && !configured.isBlank()) {
                 return configured;
             }
         }
@@ -5925,11 +6026,17 @@ public class PathmindVisualEditorScreen extends Screen {
         if (port == null || port.getName() == null || currentSettings == null) {
             return;
         }
+        String normalizedValue = value == null ? "" : value;
         Map<String, String> values = getPresetInputValues(true);
         if (values == null) {
             return;
         }
-        values.put(port.getName(), value == null ? "" : value);
+        if (normalizedValue.isBlank()) {
+            values.remove(port.getName());
+        } else {
+            values.put(port.getName(), normalizedValue);
+        }
+        syncPresetInputValueToWorkspace(port, normalizedValue);
         SettingsManager.save(currentSettings);
     }
 
@@ -5973,6 +6080,18 @@ public class PathmindVisualEditorScreen extends Screen {
                 field.setVisible(false);
                 field.setEditable(false);
             }
+        }
+    }
+
+    private void focusPresetInputField(TextFieldWidget targetField) {
+        for (TextFieldWidget field : presetInputFields.values()) {
+            if (field == null) {
+                continue;
+            }
+            boolean focused = field == targetField;
+            field.setFocused(focused);
+            field.setVisible(focused);
+            field.setEditable(focused);
         }
     }
 

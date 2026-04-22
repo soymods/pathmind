@@ -226,7 +226,7 @@ public enum NodeType {
     public boolean isDraggableFromSidebar() {
         if (this == STOP || this == PLACE_HAND || this == RUN_PRESET || this == TEMPLATE || this == CUSTOM_NODE
             || this == STICKY_NOTE || this == PARAM_VILLAGER_TRADE || this == SENSOR_VILLAGER_TRADE
-            || this == DROP_SLOT || this == PARAM_ROTATION) {
+            || this == DROP_SLOT || this == PARAM_ROTATION || this == PARAM_PLACE_TARGET) {
             return false;
         }
         return true;

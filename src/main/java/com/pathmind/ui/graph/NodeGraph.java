@@ -3725,63 +3725,54 @@ public class NodeGraph {
                         boolean showAmountPlaceholder = false;
                         boolean showTradePlaceholder = false;
                         if (isPlayerParam) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty()
-                                : value.isEmpty() || (!param.isUserEdited() && "Self".equalsIgnoreCase(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && "Self".equalsIgnoreCase(value)));
                             showPlayerPlaceholder = showPlaceholder;
                         }
                         if (isMessageParam) {
                             showMessagePlaceholder = false;
                         }
                         if (isSeedParam) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty()
-                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value)));
                             showSeedPlaceholder = showPlaceholder;
                         }
                         if (isGuiParam) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty() || "Any".equalsIgnoreCase(value)
-                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value)));
                             showGuiPlaceholder = showPlaceholder;
                         }
                         if (isMouseButtonParam) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty()
-                                : value.isEmpty() || (!param.isUserEdited() && isDefaultMouseButtonValue(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && isDefaultMouseButtonValue(value)));
                             showMouseButtonPlaceholder = showPlaceholder;
                         }
                         if (isAmountParam) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty()
-                                : value.isEmpty() || (!param.isUserEdited() && "0".equalsIgnoreCase(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && "0".equalsIgnoreCase(value)));
                             showAmountPlaceholder = showPlaceholder;
                         }
-                        if (isTradeInlinePlaceholder(node, param, editingThis)) {
+                        if (!editingThis && isTradeInlinePlaceholder(node, param, false)) {
                             showTradePlaceholder = true;
                         }
                         if (isBlockItemParameter(node, i)) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty() || isAnyBlockItemValue(value)
-                                : value.isEmpty() || (!param.isUserEdited() && isAnyBlockItemValue(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && isAnyBlockItemValue(value)));
                             showBlockItemPlaceholder = showPlaceholder;
                         }
                         if (isFabricEventSensorParameter(node, i)) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty() || "Any".equalsIgnoreCase(value)
-                                : value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value)));
                             showFabricEventPlaceholder = showPlaceholder;
                         }
                         if (isDirectionParameter(node, i)) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty()
-                                : value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value)));
                             showDirectionPlaceholder = showPlaceholder;
                         }
                         if (isBlockFaceParameter(node, i)) {
-                            boolean showPlaceholder = editingThis
-                                ? value.isEmpty()
-                                : value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value));
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value)));
                             showBlockFacePlaceholder = showPlaceholder;
                         }
                         if (!editingThis
@@ -4354,6 +4345,9 @@ public class NodeGraph {
     }
 
     private String getParameterLabelText(Node node, NodeParameter parameter, TextRenderer textRenderer, int maxWidth) {
+        if (isStandaloneParameterNode(node)) {
+            return "";
+        }
         String displayName = node.getParameterDisplayName(parameter);
         if (displayName == null || displayName.isEmpty()) {
             return "";
@@ -4365,11 +4359,19 @@ public class NodeGraph {
         return trimTextToWidth(label, textRenderer, maxWidth);
     }
 
+    private boolean isStandaloneParameterNode(Node node) {
+        if (node == null || node.getType() == null) {
+            return false;
+        }
+        return node.getType().name().startsWith("PARAM_") && node.getParameters().size() <= 1;
+    }
+
     private boolean shouldLeftAlignParameterValue(Node node) {
         if (node == null) {
             return false;
         }
-        return node.getType() == NodeType.PARAM_BLOCK
+        return isStandaloneParameterNode(node)
+            || node.getType() == NodeType.PARAM_BLOCK
             || node.getType() == NodeType.PARAM_INVENTORY_SLOT;
     }
 

@@ -21520,7 +21520,7 @@ public class Node {
         return switch (attribute) {
             case NAME -> evaluateStringAttribute(stack.getName().getString(), expectedValue);
             case CUSTOM_NAME -> evaluateStringAttribute(getItemCustomName(stack), expectedValue);
-            case HAS_CUSTOM_NAME -> evaluateBooleanAttribute(stack.getCustomName() != null, expectedValue);
+            case HAS_CUSTOM_NAME -> evaluateBooleanAttribute(stack.get(DataComponentTypes.CUSTOM_NAME) != null, expectedValue);
             case ITEM_ID -> evaluateStringAttribute(getItemId(stack), expectedValue);
             case COUNT -> evaluateNumericAttribute(stack.getCount(), expectedValue);
             case MAX_COUNT -> evaluateNumericAttribute(stack.getMaxCount(), expectedValue);

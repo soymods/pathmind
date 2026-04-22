@@ -165,6 +165,7 @@ public enum NodeMode {
                 return new NodeMode[]{
                     STOP_NORMAL, STOP_CANCEL, STOP_FORCE
                 };
+            case WAIT:
             case PARAM_DURATION:
                 return new NodeMode[]{
                     WAIT_SECONDS, WAIT_TICKS, WAIT_MINUTES, WAIT_HOURS
@@ -211,6 +212,7 @@ public enum NodeMode {
                 return FARM_RANGE;
             case STOP:
                 return STOP_NORMAL;
+            case WAIT:
             case PARAM_DURATION:
                 return WAIT_SECONDS;
             case SENSOR_POSITION_OF:

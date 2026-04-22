@@ -15,6 +15,7 @@ import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BlockSelection;
@@ -2618,6 +2619,22 @@ public class NodeGraph {
         }
         return cameraY + Math.round(screenY / scale);
     }
+
+    private int screenToUiX(int screenX) {
+        float scale = getZoomScale();
+        if (scale == 0.0f) {
+            scale = 1.0f;
+        }
+        return Math.round(screenX / scale);
+    }
+
+    private int screenToUiY(int screenY) {
+        float scale = getZoomScale();
+        if (scale == 0.0f) {
+            scale = 1.0f;
+        }
+        return Math.round(screenY / scale);
+    }
     
     // Convert world coordinates to screen coordinates
     public int worldToScreenX(int worldX) {
@@ -3536,19 +3553,34 @@ public class NodeGraph {
                         int fieldWidth = getParameterFieldWidth(node);
                         int fieldHeight = getParameterFieldHeight();
                         int fieldRight = fieldLeft + fieldWidth;
+                        int worldMouseX = screenToWorldX(mouseX);
+                        int worldMouseY = screenToWorldY(mouseY);
 
                         int fieldBackground = isOverSidebar
                             ? UITheme.BACKGROUND_SECONDARY
                             : UITheme.BACKGROUND_SIDEBAR;
-                        int fieldBorder = isOverSidebar
-                            ? UITheme.BORDER_SUBTLE
-                            : UITheme.BORDER_DEFAULT;
+                        int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
+                        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+                        int activeFieldBorder = getSelectedNodeAccentColor();
+                        boolean hovered = !isOverSidebar
+                            && worldMouseX >= getParameterFieldLeft(node)
+                            && worldMouseX <= getParameterFieldLeft(node) + fieldWidth
+                            && worldMouseY >= fieldTop + cameraY
+                            && worldMouseY <= fieldTop + cameraY + fieldHeight;
+                        float progress = getTextFieldHighlightProgress(node.getId() + "#modeInline", hovered, false);
+                        int backgroundColor = isOverSidebar
+                            ? fieldBackground
+                            : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+                        int modeFieldBorderColor = isOverSidebar
+                            ? fieldBorder
+                            : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
 
-                        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
-                        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+                        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, backgroundColor);
+                        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, modeFieldBorderColor);
 
                         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-                        int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+                        int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY
+                            : AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, progress);
                         String labelText = "Mode:";
                         int labelX = fieldLeft + 4;
                         int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
@@ -3590,16 +3622,15 @@ public class NodeGraph {
                         int fieldWidth = getParameterFieldWidth(node);
                         int fieldHeight = getParameterFieldHeight();
                         int fieldRight = fieldLeft + fieldWidth;
+                        int worldMouseX = screenToWorldX(mouseX);
+                        int worldMouseY = screenToWorldY(mouseY);
 
                         int fieldBackground = isOverSidebar
                             ? UITheme.BACKGROUND_SECONDARY
                             : UITheme.BACKGROUND_SIDEBAR;
-                        int fieldBorder = isOverSidebar
-                            ? UITheme.BORDER_SUBTLE
-                            : UITheme.BORDER_DEFAULT;
-
-                        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
-                        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+                        int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
+                        int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+                        int activeFieldBorder = getSelectedNodeAccentColor();
 
                         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
                         int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
@@ -3753,6 +3784,34 @@ public class NodeGraph {
                             && parameterDropdownOpen
                             && parameterDropdownNode == node
                             && parameterDropdownIndex == i;
+                        boolean hovered = !isOverSidebar
+                            && worldMouseX >= fieldLeft + cameraX
+                            && worldMouseX <= fieldLeft + cameraX + fieldWidth
+                            && worldMouseY >= fieldTop + cameraY
+                            && worldMouseY <= fieldTop + cameraY + fieldHeight;
+                        float progress = getTextFieldHighlightProgress(
+                            node.getId() + "#param:" + i,
+                            hovered,
+                            editingThis || inlineDropdownOpen
+                        );
+                        int backgroundColor = isOverSidebar
+                            ? fieldBackground
+                            : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+                        int parameterFieldBorderColor = isOverSidebar
+                            ? fieldBorder
+                            : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
+                        if (inlineDropdownOpen && !isOverSidebar) {
+                            parameterFieldBorderColor = getSelectedNodeAccentColor();
+                        }
+
+                        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, backgroundColor);
+                        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, parameterFieldBorderColor);
+
+                        labelColor = isOverSidebar ? labelColor
+                            : AnimationHelper.lerpColor(labelColor, UITheme.TEXT_HEADER, progress * 0.6f);
+                        valueColor = isOverSidebar ? valueColor
+                            : AnimationHelper.lerpColor(valueColor, UITheme.TEXT_HEADER, progress);
+
                         String arrow = inlineDropdown ? (inlineDropdownOpen ? "v" : "^") : "";
                         int arrowWidth = inlineDropdown ? textRenderer.getWidth(arrow) : 0;
                         if (inlineDropdown) {
@@ -3840,7 +3899,7 @@ public class NodeGraph {
                         }
                     }
                     if (node.hasAmountInputField()) {
-                        renderAmountInputField(context, textRenderer, node, isOverSidebar);
+                        renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     }
                     if (node.hasPopupEditButton()) {
                         renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -3848,16 +3907,16 @@ public class NodeGraph {
                 }
             } else {
                 if (node.hasStopTargetInputField()) {
-                    renderStopTargetInputField(context, textRenderer, node, isOverSidebar);
+                    renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasSchematicDropdownField()) {
-                    renderSchematicDropdownField(context, textRenderer, node, isOverSidebar);
+                    renderSchematicDropdownField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasVariableInputField()) {
-                    renderVariableInputField(context, textRenderer, node, isOverSidebar);
+                    renderVariableInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.showsModeFieldAboveParameterSlot()) {
-                    renderModeField(context, textRenderer, node, isOverSidebar);
+                    renderModeField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasParameterSlot()) {
                     int slotCount = node.getParameterSlotCount();
@@ -3868,15 +3927,15 @@ public class NodeGraph {
                         renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     }
                     if (node.hasAmountInputField()) {
-                        renderAmountInputField(context, textRenderer, node, isOverSidebar);
+                        renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     }
                 } else if (node.hasCoordinateInputFields()) {
                     renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 } else if (node.hasAmountInputField()) {
-                    renderAmountInputField(context, textRenderer, node, isOverSidebar);
+                    renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasMessageInputFields()) {
-                    renderMessageInputFields(context, textRenderer, node, isOverSidebar);
+                    renderMessageInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
@@ -3953,7 +4012,8 @@ public class NodeGraph {
         return PARAMETER_INPUT_HEIGHT;
     }
 
-    private void renderModeField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private void renderModeField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                 int mouseX, int mouseY) {
         if (node == null || !node.showsModeFieldAboveParameterSlot()) {
             return;
         }
@@ -3961,30 +4021,72 @@ public class NodeGraph {
         int fieldTop = node.getModeFieldTop() - cameraY;
         int fieldWidth = node.getModeFieldWidth();
         int fieldHeight = node.getModeFieldHeight();
-        int fieldRight = fieldLeft + fieldWidth;
+        String labelText = node.getModeFieldLabelText();
+        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
+        renderDropdownSelectorField(
+            context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+            fieldLeft, fieldTop, fieldWidth, fieldHeight,
+            labelText, true, modeValue
+        );
+    }
 
+    private void renderDropdownSelectorField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                             int mouseX, int mouseY, int fieldLeft, int fieldTop, int fieldWidth,
+                                             int fieldHeight, String label, boolean includeValue, String value) {
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int worldFieldLeft = fieldLeft + cameraX;
+        int worldFieldTop = fieldTop + cameraY;
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= worldFieldLeft
+            && worldMouseX <= worldFieldLeft + fieldWidth
+            && worldMouseY >= worldFieldTop
+            && worldMouseY <= worldFieldTop + fieldHeight;
+        boolean open = modeDropdownOpen && modeDropdownNode == node;
+
+        float hoverProgress = getAnimatedHoverProgress(node.getId() + "#selector:" + fieldLeft + ":" + fieldTop, hovered || open);
         int fieldBackground = isOverSidebar
             ? UITheme.BACKGROUND_SECONDARY
-            : UITheme.BACKGROUND_SIDEBAR;
+            : AnimationHelper.lerpColor(UITheme.BACKGROUND_SIDEBAR, UITheme.BACKGROUND_TERTIARY, hoverProgress);
         int fieldBorder = isOverSidebar
             ? UITheme.BORDER_SUBTLE
-            : UITheme.BORDER_DEFAULT;
+            : AnimationHelper.lerpColor(UITheme.BORDER_DEFAULT, UITheme.BORDER_HIGHLIGHT, hoverProgress);
+        int textColor = isOverSidebar
+            ? UITheme.TEXT_TERTIARY
+            : AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, hoverProgress);
+        int labelColor = includeValue && !isOverSidebar && !(hovered || open)
+            ? UITheme.NODE_LABEL_COLOR
+            : textColor;
 
-        context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, fieldBackground);
+        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldTop + fieldHeight, fieldBackground);
         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
 
-        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        String labelText = node.getModeFieldLabelText();
-        int labelX = fieldLeft + 4;
-        int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
-        drawNodeText(context, textRenderer, Text.literal(labelText), labelX, labelY, labelColor);
+        int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
+        int textX = fieldLeft + 4;
+        int chevronCenterX = fieldLeft + fieldWidth - 8;
+        int chevronCenterY = fieldTop + fieldHeight / 2;
 
-        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
-        int valueStartX = labelX + textRenderer.getWidth(labelText) + 6;
-        int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
-        String displayValue = trimTextToWidth(modeValue, textRenderer, maxValueWidth);
-        drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, labelY, valueColor);
+        if (includeValue) {
+            drawNodeText(context, textRenderer, Text.literal(label), textX, textY, labelColor);
+            int valueStartX = textX + textRenderer.getWidth(label) + 6;
+            int maxValueWidth = Math.max(0, chevronCenterX - 5 - valueStartX);
+            String displayValue = trimTextToWidth(value != null ? value : "", textRenderer, maxValueWidth);
+            drawNodeText(context, textRenderer, Text.literal(displayValue), valueStartX, textY, textColor);
+        } else {
+            int maxLabelWidth = Math.max(0, fieldWidth - 20);
+            String displayLabel = trimTextToWidth(label != null ? label : "", textRenderer, maxLabelWidth);
+            drawNodeText(context, textRenderer, Text.literal(displayLabel), textX, textY, textColor);
+        }
+
+        UIStyleHelper.drawChevron(context, chevronCenterX, chevronCenterY, open, textColor);
+    }
+
+    private float getAnimatedHoverProgress(Object key, boolean highlighted) {
+        return HoverAnimator.getProgress(key, highlighted, UITheme.HOVER_ANIM_MS);
+    }
+
+    private float getTextFieldHighlightProgress(Object key, boolean hovered, boolean active) {
+        return active ? 1f : getAnimatedHoverProgress(key, hovered);
     }
 
     private void renderDirectionModeTabs(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
@@ -4121,8 +4223,19 @@ public class NodeGraph {
         return trimTextToWidth(label, textRenderer, maxWidth);
     }
 
+    private boolean shouldLeftAlignParameterValue(Node node) {
+        if (node == null) {
+            return false;
+        }
+        return node.getType() == NodeType.PARAM_BLOCK
+            || node.getType() == NodeType.PARAM_INVENTORY_SLOT;
+    }
+
     private int getParameterValueStartX(Node node, NodeParameter parameter, TextRenderer textRenderer) {
         int fieldLeft = getParameterFieldLeft(node);
+        if (shouldLeftAlignParameterValue(node)) {
+            return fieldLeft + 4;
+        }
         int fieldWidth = getParameterFieldWidth(node);
         int maxLabelWidth = Math.max(0, fieldWidth - 40);
         String label = getParameterLabelText(node, parameter, textRenderer, maxLabelWidth);
@@ -4838,6 +4951,8 @@ public class NodeGraph {
         int spacing = node.getCoordinateFieldSpacing();
         int startX = node.getCoordinateFieldStartX() - cameraX;
         boolean captureActive = isScreenCoordinateCaptureActiveFor(node);
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
 
         for (int i = 0; i < axes.length; i++) {
             int fieldX = startX + i * (fieldWidth + spacing);
@@ -4854,9 +4969,18 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Text.literal(axisLabel), labelX, labelY, labelColor);
 
             int inputBottom = inputTop + fieldHeight;
-            int backgroundColor = editingAxis ? activeFieldBackground : fieldBackground;
-            int borderColor = editingAxis ? activeFieldBorder : fieldBorder;
-            int valueColor = editingAxis ? activeTextColor : textColor;
+            boolean hovered = !isOverSidebar
+                && worldMouseX >= fieldX + cameraX
+                && worldMouseX <= fieldX + cameraX + fieldWidth
+                && worldMouseY >= inputTop + cameraY
+                && worldMouseY <= inputTop + cameraY + fieldHeight;
+            float progress = getTextFieldHighlightProgress(node.getId() + "#coord:" + i, hovered, editingAxis);
+            int backgroundColor = isOverSidebar ? (editingAxis ? activeFieldBackground : fieldBackground)
+                : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+            int borderColor = isOverSidebar ? (editingAxis ? activeFieldBorder : fieldBorder)
+                : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
+            int valueColor = isOverSidebar ? (editingAxis ? activeTextColor : textColor)
+                : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
             if (captureActive && !editingAxis) {
                 borderColor = getSelectedNodeAccentColor();
                 valueColor = UITheme.TEXT_TERTIARY;
@@ -4937,7 +5061,8 @@ public class NodeGraph {
         }
     }
 
-    private void renderAmountInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private void renderAmountInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                        int mouseX, int mouseY) {
         int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
@@ -4958,29 +5083,20 @@ public class NodeGraph {
         int fieldHeight = node.getAmountFieldHeight();
         int fieldLeft = node.getAmountFieldLeft() - cameraX;
         int fieldWidth = node.getAmountFieldWidth();
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
 
         if ((node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) && node.supportsModeSelection()) {
             int dropdownLeft = fieldLeft;
             int dropdownTop = labelTop;
             int dropdownWidth = fieldWidth;
             int dropdownHeight = labelHeight;
-            int dropdownRight = dropdownLeft + dropdownWidth;
-            int dropdownBottom = dropdownTop + dropdownHeight;
-
-            int dropdownBackground = isOverSidebar
-                ? UITheme.BACKGROUND_SECONDARY
-                : UITheme.BACKGROUND_SIDEBAR;
-            int dropdownBorder = isOverSidebar
-                ? UITheme.BORDER_SUBTLE
-                : UITheme.BORDER_DEFAULT;
-
-            context.fill(dropdownLeft, dropdownTop, dropdownRight, dropdownBottom, dropdownBackground);
-            DrawContextBridge.drawBorderInLayer(context, dropdownLeft, dropdownTop, dropdownWidth, dropdownHeight, dropdownBorder);
-
             String unitLabel = node.getAmountFieldLabel();
-            int labelY = dropdownTop + Math.max(0, (dropdownHeight - textRenderer.fontHeight) / 2);
-            int dropdownTextColor = UITheme.TEXT_HEADER;
-            drawNodeText(context, textRenderer, Text.literal(unitLabel), dropdownLeft + 4, labelY, dropdownTextColor);
+            renderDropdownSelectorField(
+                context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+                dropdownLeft, dropdownTop, dropdownWidth, dropdownHeight,
+                unitLabel, false, null
+            );
         } else {
             int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
             drawNodeText(context, textRenderer, Text.literal(node.getAmountFieldLabel()), fieldLeft + 2, labelY, baseLabelColor);
@@ -4988,9 +5104,26 @@ public class NodeGraph {
 
         int fieldBottom = fieldTop + fieldHeight;
         int disabledBg = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.BUTTON_DEFAULT_BG;
-        int backgroundColor = (editing && amountEnabled) ? activeFieldBackground : (amountEnabled ? fieldBackground : disabledBg);
-        int borderColor = (editing && amountEnabled) ? activeFieldBorder : fieldBorder;
-        int valueColor = (editing && amountEnabled) ? activeTextColor : (amountEnabled ? textColor : UITheme.TEXT_SECONDARY);
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= node.getAmountFieldLeft()
+            && worldMouseX <= node.getAmountFieldLeft() + fieldWidth
+            && worldMouseY >= node.getAmountFieldInputTop()
+            && worldMouseY <= node.getAmountFieldInputTop() + fieldHeight;
+        float progress = amountEnabled
+            ? getTextFieldHighlightProgress(node.getId() + "#amount", hovered, editing)
+            : 0f;
+        int backgroundColor = amountEnabled
+            ? (isOverSidebar ? (editing ? activeFieldBackground : fieldBackground)
+                : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress))
+            : disabledBg;
+        int borderColor = amountEnabled
+            ? (isOverSidebar ? (editing ? activeFieldBorder : fieldBorder)
+                : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress))
+            : fieldBorder;
+        int valueColor = amountEnabled
+            ? (isOverSidebar ? ((editing && amountEnabled) ? activeTextColor : textColor)
+                : AnimationHelper.lerpColor(textColor, activeTextColor, progress))
+            : UITheme.TEXT_SECONDARY;
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
@@ -5259,7 +5392,8 @@ public class NodeGraph {
         context.disableScissor();
     }
 
-    private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                          int mouseX, int mouseY) {
         int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
@@ -5283,6 +5417,8 @@ public class NodeGraph {
             int fieldHeight = node.getMessageFieldHeight();
             int fieldLeft = node.getMessageFieldLeft() - cameraX;
             int fieldWidth = node.getMessageFieldWidth();
+            int worldMouseX = screenToWorldX(mouseX);
+            int worldMouseY = screenToWorldY(mouseY);
 
             boolean editingThis = editing && messageEditingIndex == i;
             int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.fontHeight) / 2);
@@ -5290,9 +5426,18 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Text.literal(label), fieldLeft + 2, labelY, baseLabelColor);
 
             int fieldBottom = fieldTop + fieldHeight;
-            int backgroundColor = editingThis ? activeFieldBackground : fieldBackground;
-            int borderColor = editingThis ? activeFieldBorder : fieldBorder;
-            int valueColor = editingThis ? activeTextColor : textColor;
+            boolean hovered = !isOverSidebar
+                && worldMouseX >= node.getMessageFieldLeft()
+                && worldMouseX <= node.getMessageFieldLeft() + fieldWidth
+                && worldMouseY >= node.getMessageFieldInputTop(i)
+                && worldMouseY <= node.getMessageFieldInputTop(i) + fieldHeight;
+            float progress = getTextFieldHighlightProgress(node.getId() + "#message:" + i, hovered, editingThis);
+            int backgroundColor = isOverSidebar ? (editingThis ? activeFieldBackground : fieldBackground)
+                : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+            int borderColor = isOverSidebar ? (editingThis ? activeFieldBorder : fieldBorder)
+                : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
+            int valueColor = isOverSidebar ? (editingThis ? activeTextColor : textColor)
+                : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
 
             context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
             DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
@@ -6160,7 +6305,7 @@ public class NodeGraph {
         if (lockedCustomNode) {
             renderLockedCustomNodeBinding(context, textRenderer, node, isOverSidebar);
         } else {
-            renderStopTargetInputField(context, textRenderer, node, isOverSidebar);
+            renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
 
         int previewLeft = getTemplatePreviewLeft(node) - cameraX;
@@ -6513,10 +6658,11 @@ public class NodeGraph {
         return false;
     }
 
-    private void renderStopTargetInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private void renderStopTargetInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                            int mouseX, int mouseY) {
         boolean isRunPresetNode = isPresetSelectorNode(node);
         if (isRunPresetNode) {
-            renderPresetSelectorField(context, textRenderer, node, isOverSidebar);
+            renderPresetSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
             return;
         }
         int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
@@ -6553,9 +6699,20 @@ public class NodeGraph {
 
         int fieldBottom = fieldTop + fieldHeight;
         boolean activeVisual = isRunPresetNode ? presetDropdownOpenForNode : editing;
-        int backgroundColor = activeVisual ? activeFieldBackground : fieldBackground;
-        int borderColor = activeVisual ? activeFieldBorder : fieldBorder;
-        int valueColor = editing ? activeTextColor : textColor;
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= node.getStopTargetFieldLeft()
+            && worldMouseX <= node.getStopTargetFieldLeft() + fieldWidth
+            && worldMouseY >= node.getStopTargetFieldInputTop()
+            && worldMouseY <= node.getStopTargetFieldInputTop() + fieldHeight;
+        float progress = getTextFieldHighlightProgress(node.getId() + "#stopTarget", hovered, activeVisual);
+        int backgroundColor = isOverSidebar ? (activeVisual ? activeFieldBackground : fieldBackground)
+            : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+        int borderColor = isOverSidebar ? (activeVisual ? activeFieldBorder : fieldBorder)
+            : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
+        int valueColor = isOverSidebar ? (editing ? activeTextColor : textColor)
+            : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
 
         if (isRunPresetNode) {
             int labelY = fieldTop - textRenderer.fontHeight - 2;
@@ -6649,7 +6806,8 @@ public class NodeGraph {
         }
     }
 
-    private void renderPresetSelectorField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private void renderPresetSelectorField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                           int mouseX, int mouseY) {
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
@@ -6667,8 +6825,26 @@ public class NodeGraph {
         int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
         int fieldWidth = node.getStopTargetFieldWidth();
         int fieldBottom = fieldTop + fieldHeight;
-        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, fieldBackground);
-        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, fieldBorder);
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= node.getStopTargetFieldLeft()
+            && worldMouseX <= node.getStopTargetFieldLeft() + fieldWidth
+            && worldMouseY >= node.getStopTargetFieldInputTop()
+            && worldMouseY <= node.getStopTargetFieldInputTop() + fieldHeight;
+        float hoverProgress = getAnimatedHoverProgress(node.getId() + "#presetSelector", hovered || open);
+        int animatedFieldBackground = isOverSidebar
+            ? fieldBackground
+            : AnimationHelper.lerpColor(fieldBackground, UITheme.BACKGROUND_TERTIARY, hoverProgress);
+        int animatedFieldBorder = isOverSidebar
+            ? fieldBorder
+            : AnimationHelper.lerpColor(fieldBorder, UITheme.BORDER_HIGHLIGHT, hoverProgress);
+        int animatedTextColor = isOverSidebar
+            ? textColor
+            : AnimationHelper.lerpColor(textColor, UITheme.TEXT_HEADER, hoverProgress);
+
+        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, animatedFieldBackground);
+        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, animatedFieldBorder);
 
         String inlineLabel = "Preset:";
         int labelX = fieldLeft + 4;
@@ -6689,7 +6865,7 @@ public class NodeGraph {
         }
 
         String display = value;
-        int valueDrawColor = textColor;
+        int valueDrawColor = animatedTextColor;
         if (!editing && display.isEmpty()) {
             display = "preset";
             valueDrawColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
@@ -6714,10 +6890,13 @@ public class NodeGraph {
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
         }
-
+        int chevronCenterX = fieldLeft + fieldWidth - 8;
+        int chevronCenterY = fieldTop + fieldHeight / 2;
+        UIStyleHelper.drawChevron(context, chevronCenterX, chevronCenterY, open, animatedTextColor);
     }
 
-    private void renderVariableInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private void renderVariableInputField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                          int mouseX, int mouseY) {
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
         int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_HIGHLIGHT;
@@ -6735,11 +6914,22 @@ public class NodeGraph {
         int fieldHeight = node.getVariableFieldHeight();
         int fieldLeft = node.getVariableFieldLeft() - cameraX;
         int fieldWidth = node.getVariableFieldWidth();
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
 
         int fieldBottom = fieldTop + fieldHeight;
-        int backgroundColor = editing ? activeFieldBackground : fieldBackground;
-        int borderColor = editing ? activeFieldBorder : fieldBorder;
-        int valueColor = editing ? activeTextColor : textColor;
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= node.getVariableFieldLeft()
+            && worldMouseX <= node.getVariableFieldLeft() + fieldWidth
+            && worldMouseY >= node.getVariableFieldInputTop()
+            && worldMouseY <= node.getVariableFieldInputTop() + fieldHeight;
+        float progress = getTextFieldHighlightProgress(node.getId() + "#variable", hovered, editing);
+        int backgroundColor = isOverSidebar ? (editing ? activeFieldBackground : fieldBackground)
+            : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+        int borderColor = isOverSidebar ? (editing ? activeFieldBorder : fieldBorder)
+            : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
+        int valueColor = isOverSidebar ? (editing ? activeTextColor : textColor)
+            : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
 
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
@@ -6818,7 +7008,8 @@ public class NodeGraph {
         }
     }
 
-    private void renderSchematicDropdownField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
+    private void renderSchematicDropdownField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
+                                              int mouseX, int mouseY) {
         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
@@ -6834,12 +7025,24 @@ public class NodeGraph {
         int fieldHeight = node.getSchematicFieldHeight();
         int fieldLeft = node.getSchematicFieldLeft() - cameraX;
         int fieldWidth = node.getSchematicFieldWidth();
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= node.getSchematicFieldLeft()
+            && worldMouseX <= node.getSchematicFieldLeft() + fieldWidth
+            && worldMouseY >= node.getSchematicFieldInputTop()
+            && worldMouseY <= node.getSchematicFieldInputTop() + fieldHeight;
+        float hoverProgress = getAnimatedHoverProgress(node.getId() + "#schematicSelector", hovered || open);
 
         drawNodeText(context, textRenderer, Text.literal("Schematic"), fieldLeft, labelTop + (labelHeight - textRenderer.fontHeight) / 2, labelColor);
 
         int fieldBottom = fieldTop + fieldHeight;
-        int backgroundColor = open ? activeFieldBackground : fieldBackground;
-        int borderColor = open ? activeFieldBorder : fieldBorder;
+        int backgroundColor = isOverSidebar
+            ? fieldBackground
+            : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, hoverProgress);
+        int borderColor = isOverSidebar
+            ? fieldBorder
+            : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, hoverProgress);
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, backgroundColor);
         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, borderColor);
 
@@ -6856,12 +7059,14 @@ public class NodeGraph {
         String display = trimTextToWidth(value, textRenderer, fieldWidth - 16);
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, textColor);
+        int animatedTextColor = isOverSidebar
+            ? textColor
+            : AnimationHelper.lerpColor(textColor, UITheme.TEXT_HEADER, hoverProgress);
+        drawNodeText(context, textRenderer, Text.literal(display), textX, textY, (value.equals("schematic") ? textColor : animatedTextColor));
 
-        int arrowX = fieldLeft + fieldWidth - 10;
-        int arrowY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2 + 1;
-        String arrow = open ? ">" : "v";
-        drawNodeText(context, textRenderer, Text.literal(arrow), arrowX, arrowY, UITheme.TEXT_PRIMARY);
+        int chevronCenterX = fieldLeft + fieldWidth - 8;
+        int chevronCenterY = fieldTop + fieldHeight / 2;
+        UIStyleHelper.drawChevron(context, chevronCenterX, chevronCenterY, open, animatedTextColor);
     }
 
     private void renderSchematicDropdownList(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
@@ -10866,10 +11071,12 @@ public class NodeGraph {
             }
             return true;
         }
+        int transformedX = screenToUiX(x);
+        int transformedY = screenToUiY(y);
         int fieldLeft = parameterDropdownFieldX;
         int fieldTop = parameterDropdownFieldY;
-        if (x >= fieldLeft && x <= fieldLeft + parameterDropdownFieldWidth
-            && y >= fieldTop && y <= fieldTop + parameterDropdownFieldHeight) {
+        if (transformedX >= fieldLeft && transformedX <= fieldLeft + parameterDropdownFieldWidth
+            && transformedY >= fieldTop && transformedY <= fieldTop + parameterDropdownFieldHeight) {
             if (!isEditingParameterField()
                 && parameterDropdownNode != null
                 && isBooleanLiteralParameter(parameterDropdownNode, parameterDropdownIndex)) {
@@ -11015,10 +11222,12 @@ public class NodeGraph {
             }
             return true;
         }
+        int transformedX = screenToUiX(x);
+        int transformedY = screenToUiY(y);
         int fieldLeft = modeDropdownFieldX;
         int fieldTop = modeDropdownFieldY;
-        if (x >= fieldLeft && x <= fieldLeft + modeDropdownFieldWidth
-            && y >= fieldTop && y <= fieldTop + modeDropdownFieldHeight) {
+        if (transformedX >= fieldLeft && transformedX <= fieldLeft + modeDropdownFieldWidth
+            && transformedY >= fieldTop && transformedY <= fieldTop + modeDropdownFieldHeight) {
             closeModeDropdown();
             return true;
         }

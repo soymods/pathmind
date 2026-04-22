@@ -2,6 +2,8 @@ package com.pathmind.ui.control;
 
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.animation.HoverAnimator;
+import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.DropdownLayoutHelper;
@@ -124,8 +126,10 @@ public class InventorySlotSelector {
 
         boolean hoverButton = mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
                               mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
-        int buttonBg = hoverButton ? UITheme.BUTTON_DEFAULT_BG : UITheme.BACKGROUND_SECONDARY;
-        int borderColor = dropdownOpen ? UITheme.ACCENT_DEFAULT : (hoverButton ? UITheme.TEXT_SECONDARY : UITheme.BORDER_SUBTLE);
+        float hoverProgress = dropdownOpen ? 1f : HoverAnimator.getProgress(this, hoverButton, UITheme.HOVER_ANIM_MS);
+        int buttonBg = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, UITheme.BACKGROUND_TERTIARY, hoverProgress);
+        int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, UITheme.BORDER_HIGHLIGHT, hoverProgress);
+        int textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, hoverProgress);
         context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, applyAlpha(buttonBg, alpha));
         DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonWidth, buttonHeight, applyAlpha(borderColor, alpha));
         context.drawTextWithShadow(
@@ -133,15 +137,9 @@ public class InventorySlotSelector {
             Text.literal(mode.displayName),
             buttonX + MODE_BUTTON_TEXT_PADDING,
             buttonY + 6,
-            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
+            applyAlpha(textColor, alpha)
         );
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal("▼"),
-            buttonX + buttonWidth - 12,
-            buttonY + 6,
-            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
-        );
+        UIStyleHelper.drawChevron(context, buttonX + buttonWidth - 9, buttonY + buttonHeight / 2, dropdownOpen, applyAlpha(textColor, alpha));
         sectionY += MODE_BUTTON_HEIGHT + SECTION_SPACING;
 
         int gridHeight = renderGrid(context, textRenderer, sectionY, width, mouseX, mouseY, alpha);
@@ -281,7 +279,7 @@ public class InventorySlotSelector {
 
             int bg = option == mode ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_SIDEBAR;
             if (hovered) {
-                bg = adjustColor(bg, 1.2f);
+                bg = UITheme.BACKGROUND_TERTIARY;
             }
             context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, alpha));
             context.drawTextWithShadow(

@@ -569,19 +569,21 @@ public class PathmindVisualEditorScreen extends Screen {
         validationPanelAnimation.tick();
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
+        int chromeMouseX = controlsDisabled ? Integer.MIN_VALUE : mouseX;
+        int chromeMouseY = controlsDisabled ? Integer.MIN_VALUE : mouseY;
         if (controlsDisabled && validationPanelOpen) {
             validationPanelOpen = false;
             clearPresetInputFieldFocus();
         }
-        renderZoomControls(context, mouseX, mouseY, controlsDisabled);
+        renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
         if (shouldShowExecutionControls()) {
-            renderStopButton(context, mouseX, mouseY, controlsDisabled);
-            renderPlayButton(context, mouseX, mouseY, controlsDisabled);
+            renderStopButton(context, chromeMouseX, chromeMouseY, false);
+            renderPlayButton(context, chromeMouseX, chromeMouseY, false);
         }
         renderValidationPanel(context, mouseX, mouseY, validationResult);
-        renderValidationButton(context, mouseX, mouseY, controlsDisabled, validationResult);
-        renderSettingsButton(context, mouseX, mouseY, controlsDisabled);
+        renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
+        renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
 
         if (controlsDisabled) {
             DrawContextBridge.startNewRootLayer(context);
@@ -1490,6 +1492,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 if (nodeGraph.handleBooleanLiteralDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
+                if (nodeGraph.handleModeFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.selectNode(clickedNode);
                     return true;
                 }

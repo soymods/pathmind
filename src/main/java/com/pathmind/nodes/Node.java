@@ -1608,6 +1608,9 @@ public class Node {
         if (type == NodeType.CHANGE_VARIABLE) {
             return true;
         }
+        if (type == NodeType.WAIT) {
+            return true;
+        }
         if (type == NodeType.PARAM_DURATION) {
             return true;
         }

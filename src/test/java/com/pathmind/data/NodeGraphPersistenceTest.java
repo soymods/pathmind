@@ -43,9 +43,8 @@ class NodeGraphPersistenceTest {
         assertTrue(repeat.attachActionNode(message));
 
         Node waitWithParameter = new Node(NodeType.WAIT, 160, 60);
-        Node durationParameter = new Node(NodeType.PARAM_DURATION, 0, 0);
-        durationParameter.getParameter("Duration").setStringValue("5");
-        assertTrue(waitWithParameter.attachParameter(durationParameter, 0));
+        waitWithParameter.setMode(com.pathmind.nodes.NodeMode.WAIT_MINUTES);
+        waitWithParameter.getParameter("Duration").setStringValue("5");
 
         Node template = new Node(NodeType.TEMPLATE, 200, 70);
         template.setTemplateName("Reusable");
@@ -57,7 +56,7 @@ class NodeGraphPersistenceTest {
         ));
 
         List<Node> nodes = List.of(
-            start, wait, controlWaitUntil, sensor, repeat, message, waitWithParameter, durationParameter, template
+            start, wait, controlWaitUntil, sensor, repeat, message, waitWithParameter, template
         );
         List<NodeConnection> connections = List.of(
             new NodeConnection(start, wait, 0, 0),
@@ -90,14 +89,28 @@ class NodeGraphPersistenceTest {
         assertEquals(restoredRepeat, restoredRepeat.getAttachedActionNode().getParentActionControl());
         assertEquals(List.of("Hello", "Release"), restoredRepeat.getAttachedActionNode().getMessageLines());
         assertTrue(restoredRepeat.getAttachedActionNode().isMessageClientSide());
-        assertEquals(NodeType.PARAM_DURATION, restoredWaitWithParameter.getAttachedParameter(0).getType());
-        assertEquals("5", restoredWaitWithParameter.getAttachedParameter(0).getParameter("Duration").getStringValue());
+        assertNull(restoredWaitWithParameter.getAttachedParameter(0));
+        assertEquals("5", restoredWaitWithParameter.getParameter("Duration").getStringValue());
+        assertEquals(com.pathmind.nodes.NodeMode.WAIT_MINUTES, restoredWaitWithParameter.getMode());
         assertEquals("Reusable", restoredTemplate.getTemplateName());
         assertEquals(3, restoredTemplate.getTemplateVersion());
         assertTrue(restoredTemplate.isCustomNodeInstance());
         assertNotNull(restoredTemplate.getTemplateGraphData());
         assertEquals(1, restoredTemplate.getTemplateGraphData().getNodes().size());
         assertEquals(connections.size(), restoredConnections.size());
+    }
+
+    @Test
+    void waitNodeSupportsSameModeSelectionAsDurationParameter() {
+        Node wait = new Node(NodeType.WAIT, 10, 20);
+
+        assertTrue(wait.supportsModeSelection());
+        assertEquals(com.pathmind.nodes.NodeMode.WAIT_SECONDS, com.pathmind.nodes.NodeMode.getDefaultModeForNodeType(NodeType.WAIT));
+        assertEquals(
+            List.of(com.pathmind.nodes.NodeMode.WAIT_SECONDS, com.pathmind.nodes.NodeMode.WAIT_TICKS,
+                com.pathmind.nodes.NodeMode.WAIT_MINUTES, com.pathmind.nodes.NodeMode.WAIT_HOURS),
+            List.of(com.pathmind.nodes.NodeMode.getModesForNodeType(NodeType.WAIT))
+        );
     }
 
     @Test
@@ -144,13 +157,11 @@ class NodeGraphPersistenceTest {
         assertTrue(repeat.attachActionNode(message));
 
         Node wait = new Node(NodeType.WAIT, 200, 60);
-        Node duration = new Node(NodeType.PARAM_DURATION, 0, 0);
-        duration.getParameter("Duration").setStringValue("3");
-        assertTrue(wait.attachParameter(duration, 0));
+        wait.getParameter("Duration").setStringValue("3");
 
         Path savePath = tempDir.resolve("legacy-layout-graph.json");
         assertTrue(NodeGraphPersistence.saveNodeGraphToPath(
-            List.of(controlWaitUntil, sensor, repeat, message, wait, duration),
+            List.of(controlWaitUntil, sensor, repeat, message, wait),
             List.of(),
             savePath
         ));
@@ -176,66 +187,54 @@ class NodeGraphPersistenceTest {
         Node restoredRepeat = byId.get(repeat.getId());
         Node restoredMessage = byId.get(message.getId());
         Node restoredWait = byId.get(wait.getId());
-        Node restoredDuration = byId.get(duration.getId());
-
         assertNotNull(restoredControl);
         assertNotNull(restoredSensor);
         assertNotNull(restoredRepeat);
         assertNotNull(restoredMessage);
         assertNotNull(restoredWait);
-        assertNotNull(restoredDuration);
 
         assertEquals(restoredControl, restoredSensor.getParentControl());
         assertEquals(restoredSensor, restoredControl.getAttachedSensor());
         assertEquals(restoredRepeat, restoredMessage.getParentActionControl());
         assertEquals(restoredMessage, restoredRepeat.getAttachedActionNode());
-        assertEquals(restoredWait, restoredDuration.getParentParameterHost());
-        assertEquals(restoredDuration, restoredWait.getAttachedParameter(0));
+        assertEquals("3", restoredWait.getParameter("Duration").getStringValue());
+        assertNull(restoredWait.getAttachedParameter(0));
     }
 
     @Test
-    void convertToNodesDoesNotGuessAttachmentsWhenStructuredMetadataExists() {
-        Node wait = new Node(NodeType.WAIT, 200, 60);
-        Node duration = new Node(NodeType.PARAM_DURATION, 0, 0);
-        duration.getParameter("Duration").setStringValue("3");
-        assertTrue(wait.attachParameter(duration, 0));
+    void convertToNodesAbsorbsLegacyWaitDurationAttachments() {
+        NodeGraphData.NodeData waitNode = new NodeGraphData.NodeData(
+            "wait-1",
+            NodeType.WAIT,
+            null,
+            200,
+            60,
+            List.of(new NodeGraphData.ParameterData("Duration", "0.0", "DOUBLE"))
+        );
+        waitNode.setParameterAttachments(new java.util.ArrayList<>(List.of(new NodeGraphData.ParameterAttachmentData(0, "duration-1"))));
+        waitNode.setAttachedParameterId("duration-1");
 
-        Node controlWaitUntil = new Node(NodeType.CONTROL_WAIT_UNTIL, 40, 30);
-        Node sensor = new Node(NodeType.SENSOR_IS_DAYTIME, 0, 0);
-        assertTrue(controlWaitUntil.attachSensor(sensor));
+        NodeGraphData.NodeData durationNode = new NodeGraphData.NodeData(
+            "duration-1",
+            NodeType.PARAM_DURATION,
+            com.pathmind.nodes.NodeMode.WAIT_MINUTES,
+            0,
+            0,
+            List.of(new NodeGraphData.ParameterData("Duration", "3", "DOUBLE"))
+        );
+        durationNode.setParentParameterHostId("wait-1");
 
-        Path savePath = tempDir.resolve("mixed-attachment-metadata.json");
-        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(List.of(wait, duration, controlWaitUntil, sensor), List.of(), savePath));
-
-        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
-        assertNotNull(loaded);
-
-        for (NodeGraphData.NodeData nodeData : loaded.getNodes()) {
-            if (wait.getId().equals(nodeData.getId())) {
-                nodeData.setParameterAttachments(List.of());
-                nodeData.setAttachedParameterId(null);
-            }
-            if (duration.getId().equals(nodeData.getId())) {
-                nodeData.setParentParameterHostId(null);
-            }
-        }
-
-        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(loaded);
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(
+            new NodeGraphData(List.of(waitNode, durationNode), List.of())
+        );
         Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
 
-        Node restoredWait = byId.get(wait.getId());
-        Node restoredDuration = byId.get(duration.getId());
-        Node restoredControl = byId.get(controlWaitUntil.getId());
-        Node restoredSensor = byId.get(sensor.getId());
-
+        Node restoredWait = byId.get("wait-1");
         assertNotNull(restoredWait);
-        assertNotNull(restoredDuration);
-        assertNotNull(restoredControl);
-        assertNotNull(restoredSensor);
+        assertEquals("3", restoredWait.getParameter("Duration").getStringValue());
+        assertEquals(com.pathmind.nodes.NodeMode.WAIT_MINUTES, restoredWait.getMode());
         assertNull(restoredWait.getAttachedParameter(0));
-        assertNull(restoredDuration.getParentParameterHost());
-        assertEquals(restoredSensor, restoredControl.getAttachedSensor());
-        assertEquals(restoredControl, restoredSensor.getParentControl());
+        assertFalse(byId.containsKey("duration-1"));
     }
 
     @Test

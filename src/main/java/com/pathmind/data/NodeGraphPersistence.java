@@ -361,6 +361,8 @@ public class NodeGraphPersistence {
             }
         }
 
+        absorbLegacyWaitDurationAttachments(data, nodes, nodeMap);
+
         if (requiresLegacyAttachmentRecovery(data)) {
             recoverMissingNestedAttachments(nodes);
         }
@@ -390,6 +392,95 @@ public class NodeGraphPersistence {
         }
 
         return nodes;
+    }
+
+    private static void absorbLegacyWaitDurationAttachments(NodeGraphData data, List<Node> nodes, Map<String, Node> nodeMap) {
+        if (data == null) {
+            return;
+        }
+        List<Node> legacyDurationNodes = new ArrayList<>();
+        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
+            if (nodeData == null || nodeData.getType() != NodeType.WAIT) {
+                continue;
+            }
+
+            String durationNodeId = null;
+            List<NodeGraphData.ParameterAttachmentData> attachments = nodeData.getParameterAttachments();
+            if (attachments != null) {
+                for (NodeGraphData.ParameterAttachmentData attachment : attachments) {
+                    if (attachment != null && attachment.getSlotIndex() == 0) {
+                        durationNodeId = attachment.getParameterNodeId();
+                        break;
+                    }
+                }
+            }
+            if (durationNodeId == null || durationNodeId.isBlank()) {
+                durationNodeId = nodeData.getAttachedParameterId();
+            }
+            if (durationNodeId == null || durationNodeId.isBlank()) {
+                continue;
+            }
+
+            Node node = nodeMap.get(nodeData.getId());
+            Node attached = nodeMap.get(durationNodeId);
+            NodeGraphData.NodeData attachedNodeData = null;
+            for (NodeGraphData.NodeData candidate : data.getNodes()) {
+                if (candidate != null && durationNodeId.equals(candidate.getId())) {
+                    attachedNodeData = candidate;
+                    break;
+                }
+            }
+            if (node == null) {
+                continue;
+            }
+            if (attached == null || attached.getType() != NodeType.PARAM_DURATION) {
+                if (attachedNodeData == null || attachedNodeData.getType() != NodeType.PARAM_DURATION) {
+                    continue;
+                }
+            }
+
+            String value = null;
+            if (attachedNodeData != null && attachedNodeData.getParameters() != null) {
+                for (NodeGraphData.ParameterData parameterData : attachedNodeData.getParameters()) {
+                    if (parameterData != null && "Duration".equals(parameterData.getName())) {
+                        value = parameterData.getValue();
+                        break;
+                    }
+                }
+            }
+            if (value == null && attached != null) {
+                NodeParameter legacyDuration = attached.getParameter("Duration");
+                value = legacyDuration != null ? legacyDuration.getStringValue() : null;
+            }
+            if (value != null) {
+                node.setParameterValueAndPropagate("Duration", value);
+            }
+
+            com.pathmind.nodes.NodeMode legacyMode = attachedNodeData != null ? attachedNodeData.getMode() : null;
+            if (legacyMode == null && attached != null) {
+                legacyMode = attached.getMode();
+            }
+            if (legacyMode != null) {
+                node.setMode(legacyMode);
+                if (value != null) {
+                    node.setParameterValueAndPropagate("Duration", value);
+                }
+            }
+
+            if (attached == null) {
+                continue;
+            }
+            legacyDurationNodes.add(attached);
+        }
+
+        if (legacyDurationNodes.isEmpty()) {
+            return;
+        }
+
+        nodes.removeAll(legacyDurationNodes);
+        for (Node legacyDurationNode : legacyDurationNodes) {
+            nodeMap.remove(legacyDurationNode.getId());
+        }
     }
 
     private static boolean requiresLegacyAttachmentRecovery(NodeGraphData data) {

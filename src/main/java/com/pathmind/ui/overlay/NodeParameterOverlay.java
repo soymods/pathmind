@@ -458,7 +458,7 @@ public class NodeParameterOverlay {
                 continue;
             }
             if (usesSimpleDropdownForIndex(i)) {
-                renderSimpleDropdownField(context, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight, i, popupAlpha);
+                renderSimpleDropdownField(context, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight, i, mouseX, mouseY, popupAlpha);
                 if (openSimpleDropdownIndex == i) {
                     openSimpleDropdownFieldX = fieldX;
                     openSimpleDropdownFieldY = fieldY;
@@ -469,14 +469,17 @@ public class NodeParameterOverlay {
             }
 
             boolean isFocused = i == focusedFieldIndex;
+            boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
+                mouseY >= Math.max(fieldY, contentTop) && mouseY <= Math.min(fieldY + fieldHeight, contentBottom);
             int bgColor;
             int borderColor;
             if (isFocused) {
                 bgColor = UITheme.BACKGROUND_SECONDARY;
                 borderColor = UITheme.ACCENT_DEFAULT;
             } else {
-                bgColor = UITheme.BACKGROUND_SIDEBAR;
-                borderColor = UITheme.BORDER_HIGHLIGHT;
+                float hoverProgress = HoverAnimator.getProgress("overlay-field-" + i, hovered, UITheme.HOVER_ANIM_MS);
+                bgColor = AnimationHelper.lerpColor(UITheme.BACKGROUND_SIDEBAR, UITheme.BACKGROUND_TERTIARY, hoverProgress);
+                borderColor = AnimationHelper.lerpColor(UITheme.BORDER_HIGHLIGHT, UITheme.BUTTON_HOVER_OUTLINE, hoverProgress);
             }
 
             context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, applyPopupAlpha(bgColor, popupAlpha));
@@ -1504,10 +1507,14 @@ public class NodeParameterOverlay {
     }
 
     private void renderSimpleDropdownField(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY,
-                                           int fieldWidth, int fieldHeight, int paramIndex, float popupAlpha) {
+                                           int fieldWidth, int fieldHeight, int paramIndex, int mouseX, int mouseY, float popupAlpha) {
         boolean open = openSimpleDropdownIndex == paramIndex;
-        int bgColor = open ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
-        int borderColor = open ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_HIGHLIGHT;
+        boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth
+            && mouseY >= fieldY && mouseY <= fieldY + fieldHeight;
+        float hoverProgress = open ? 1f : HoverAnimator.getProgress("overlay-simple-dropdown-" + paramIndex, hovered, UITheme.HOVER_ANIM_MS);
+        int bgColor = AnimationHelper.lerpColor(UITheme.BACKGROUND_SIDEBAR, UITheme.BACKGROUND_SECONDARY, hoverProgress);
+        int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_HIGHLIGHT, UITheme.ACCENT_DEFAULT, hoverProgress);
+        int textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, hoverProgress);
         context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, applyPopupAlpha(bgColor, popupAlpha));
         DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, applyPopupAlpha(borderColor, popupAlpha));
 
@@ -1518,15 +1525,9 @@ public class NodeParameterOverlay {
             Text.literal(trimDisplayString(textRenderer, display, fieldWidth - 20)),
             fieldX + 4,
             fieldY + 6,
-            applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
+            applyPopupAlpha(textColor, popupAlpha)
         );
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(open ? "^" : "v"),
-            fieldX + fieldWidth - 12,
-            fieldY + 6,
-            applyPopupAlpha(UITheme.TEXT_TERTIARY, popupAlpha)
-        );
+        UIStyleHelper.drawChevron(context, fieldX + fieldWidth - 9, fieldY + fieldHeight / 2, open, applyPopupAlpha(textColor, popupAlpha));
     }
 
     private void renderSimpleDropdownList(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY,

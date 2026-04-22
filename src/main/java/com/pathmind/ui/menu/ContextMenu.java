@@ -18,6 +18,7 @@ import java.util.List;
  */
 public class ContextMenu {
     private static final String SEARCH_LABEL = "Search Nodes...";
+    private static final String STICKY_NOTE_LABEL = "New Sticky Note";
     private static final int MENU_WIDTH = UITheme.CONTEXT_MENU_WIDTH;
     private static final int ITEM_HEIGHT = UITheme.CONTEXT_MENU_ITEM_HEIGHT;
     private static final int PADDING = UITheme.CONTEXT_MENU_PADDING;
@@ -37,6 +38,7 @@ public class ContextMenu {
     private float scale;
 
     private boolean searchHovered;
+    private boolean stickyNoteHovered;
     private NodeCategory hoveredCategory;
     private ContextMenuSubmenu activeSubmenu;
 
@@ -46,6 +48,7 @@ public class ContextMenu {
         this.popupAnimation = new PopupAnimationHandler();
         this.isOpen = false;
         this.searchHovered = false;
+        this.stickyNoteHovered = false;
         this.hoveredCategory = null;
         this.activeSubmenu = null;
         this.scale = 1.0f;
@@ -82,6 +85,7 @@ public class ContextMenu {
     public void close() {
         this.isOpen = false;
         this.searchHovered = false;
+        this.stickyNoteHovered = false;
         this.hoveredCategory = null;
         this.activeSubmenu = null;
         this.popupAnimation.hide();
@@ -123,7 +127,7 @@ public class ContextMenu {
 
         int transformedMouseX = toMenuSpaceX(mouseX);
         int transformedMouseY = toMenuSpaceY(mouseY);
-        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
+        int menuHeight = getMenuHeight();
         if (ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, menuY, MENU_WIDTH, menuHeight)) {
             return true;
         }
@@ -137,6 +141,7 @@ public class ContextMenu {
     public void updateHover(int mouseX, int mouseY) {
         if (!isOpen) {
             searchHovered = false;
+            stickyNoteHovered = false;
             hoveredCategory = null;
             activeSubmenu = null;
             return;
@@ -144,7 +149,7 @@ public class ContextMenu {
 
         int transformedMouseX = toMenuSpaceX(mouseX);
         int transformedMouseY = toMenuSpaceY(mouseY);
-        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
+        int menuHeight = getMenuHeight();
 
         if (activeSubmenu != null) {
             positionActiveSubmenu();
@@ -165,6 +170,8 @@ public class ContextMenu {
 
         int itemY = menuY + PADDING;
         searchHovered = ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT);
+        itemY += ITEM_HEIGHT;
+        stickyNoteHovered = ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT);
         itemY += ITEM_HEIGHT;
         NodeCategory newHovered = null;
 
@@ -212,7 +219,7 @@ public class ContextMenu {
             }
         }
 
-        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
+        int menuHeight = getMenuHeight();
 
         // Check if click is in menu bounds
         if (!ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, menuY, MENU_WIDTH, menuHeight)) {
@@ -224,6 +231,10 @@ public class ContextMenu {
         int searchItemY = menuY + PADDING;
         if (ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, searchItemY, MENU_WIDTH, ITEM_HEIGHT)) {
             return ContextMenuSelection.openSearch();
+        }
+        int stickyNoteItemY = searchItemY + ITEM_HEIGHT;
+        if (ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, stickyNoteItemY, MENU_WIDTH, ITEM_HEIGHT)) {
+            return ContextMenuSelection.createStickyNote();
         }
 
         return null;
@@ -251,7 +262,7 @@ public class ContextMenu {
             return;
         }
 
-        int menuHeight = PADDING * 2 + ((categories.size() + 1) * ITEM_HEIGHT);
+        int menuHeight = getMenuHeight();
 
         var matrices = context.getMatrices();
         MatrixStackBridge.push(matrices);
@@ -274,6 +285,14 @@ public class ContextMenu {
         int iconX = menuX + MENU_WIDTH - SEARCH_ICON_X_OFFSET;
         int iconY = itemY + (ITEM_HEIGHT - 8) / 2;
         ContextMenuRenderer.renderMagnifyingGlass(context, iconX, iconY, iconColor);
+        itemY += ITEM_HEIGHT;
+
+        ContextMenuRenderer.renderMenuItem(context, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT, stickyNoteHovered);
+        int noteTextX = menuX + 8;
+        int noteTextY = itemY + (ITEM_HEIGHT - textRenderer.fontHeight) / 2;
+        context.drawTextWithShadow(textRenderer, net.minecraft.text.Text.literal(STICKY_NOTE_LABEL), noteTextX, noteTextY, UITheme.CONTEXT_MENU_TEXT);
+        ContextMenuRenderer.renderSeparator(context, menuX + 4, itemY - 1, MENU_WIDTH - 8);
+        ContextMenuRenderer.renderSeparator(context, menuX + 4, itemY + ITEM_HEIGHT - 1, MENU_WIDTH - 8);
         itemY += ITEM_HEIGHT;
 
         for (NodeCategory category : categories) {
@@ -334,6 +353,10 @@ public class ContextMenu {
 
     private int toScreenX(int x) {
         return Math.round(menuX + (x - menuX) * scale);
+    }
+
+    private int getMenuHeight() {
+        return PADDING * 2 + ((categories.size() + 2) * ITEM_HEIGHT);
     }
 
 }

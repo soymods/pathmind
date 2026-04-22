@@ -144,6 +144,7 @@ public enum NodeType {
     RUN_PRESET("pathmind.node.type.runPreset", 0xFF607D8B, "pathmind.node.type.runPreset.desc"),
     CUSTOM_NODE("pathmind.node.type.customNode", 0xFF26A69A, "pathmind.node.type.customNode.desc"),
     WAIT("pathmind.node.type.wait", 0xFF607D8B, "pathmind.node.type.wait.desc"),
+    STICKY_NOTE("pathmind.node.type.stickyNote", 0xFFEBCB5B, "pathmind.node.type.stickyNote.desc"),
     MESSAGE("pathmind.node.type.message", 0xFF9E9E9E, "pathmind.node.type.message.desc"),
     TEMPLATE("pathmind.node.type.template", 0xFF26A69A, "pathmind.node.type.template.desc"),
     STOP_CHAIN("pathmind.node.type.stopChain", 0xFFE53935, "pathmind.node.type.stopChain.desc"),
@@ -223,7 +224,7 @@ public enum NodeType {
 
     public boolean isDraggableFromSidebar() {
         if (this == STOP || this == PLACE_HAND || this == RUN_PRESET || this == TEMPLATE || this == CUSTOM_NODE
-            || this == PARAM_VILLAGER_TRADE || this == SENSOR_VILLAGER_TRADE
+            || this == STICKY_NOTE || this == PARAM_VILLAGER_TRADE || this == SENSOR_VILLAGER_TRADE
             || this == DROP_SLOT || this == PARAM_ROTATION) {
             return false;
         }

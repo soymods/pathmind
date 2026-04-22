@@ -289,6 +289,11 @@ public class Node {
     private static final int EVENT_NAME_FIELD_TOP_MARGIN = 6;
     private static final int EVENT_NAME_FIELD_HEIGHT = 16;
     private static final int EVENT_NAME_FIELD_BOTTOM_MARGIN = 6;
+    private static final int STICKY_NOTE_MIN_WIDTH = 120;
+    private static final int STICKY_NOTE_MIN_HEIGHT = 84;
+    private static final int STICKY_NOTE_HEADER_HEIGHT = 18;
+    private static final int STICKY_NOTE_TEXT_MARGIN = 8;
+    private static final int STICKY_NOTE_HANDLE_SIZE = 8;
     private static final int BOOK_PAGE_MAX_CHARS = 256;
     private static final double PARAMETER_SEARCH_RADIUS = 64.0;
     private static final Method CLIENT_WORLD_GET_ENTITY_BY_UUID = resolveClientWorldGetEntityByUuid();
@@ -343,6 +348,9 @@ public class Node {
     private boolean messageClientSide;
     private String bookText;
     private final List<String> bookPages;
+    private String stickyNoteText;
+    private int stickyNoteWidthOverride;
+    private int stickyNoteHeightOverride;
     private int messageFieldContentWidthOverride;
     private int parameterFieldWidthOverride;
     private int coordinateFieldWidthOverride;
@@ -391,6 +399,9 @@ public class Node {
         this.messageClientSide = false;
         this.bookText = "";
         this.bookPages = new ArrayList<>();
+        this.stickyNoteText = "";
+        this.stickyNoteWidthOverride = STICKY_NOTE_MIN_WIDTH + 32;
+        this.stickyNoteHeightOverride = STICKY_NOTE_MIN_HEIGHT + 20;
         this.messageFieldContentWidthOverride = 0;
         this.parameterFieldWidthOverride = 0;
         this.coordinateFieldWidthOverride = 0;
@@ -724,6 +735,10 @@ public class Node {
         return isSensorType(type);
     }
 
+    public boolean isStickyNote() {
+        return type == NodeType.STICKY_NOTE;
+    }
+
     private boolean isBooleanNotOperator() {
         return type == NodeType.OPERATOR_BOOLEAN_NOT;
     }
@@ -1054,7 +1069,7 @@ public class Node {
     }
 
     public int getInputSocketCount() {
-        if (type == NodeType.START || type == NodeType.EVENT_FUNCTION || isSensorNode() || isParameterNode()) {
+        if (type == NodeType.START || type == NodeType.EVENT_FUNCTION || isSensorNode() || isParameterNode() || isStickyNote()) {
             return 0;
         }
         if (type == NodeType.CONTROL_JOIN_ANY || type == NodeType.CONTROL_JOIN_ALL) {
@@ -1064,7 +1079,7 @@ public class Node {
     }
 
     public int getOutputSocketCount() {
-        if (isSensorNode() || isParameterNode()) {
+        if (isSensorNode() || isParameterNode() || isStickyNote()) {
             return 0;
         }
         if (type == NodeType.STOP_ALL) {
@@ -4567,6 +4582,59 @@ public class Node {
         return type == NodeType.MESSAGE;
     }
 
+    public String getStickyNoteText() {
+        return isStickyNote() ? (stickyNoteText == null ? "" : stickyNoteText) : "";
+    }
+
+    public void setStickyNoteText(String stickyNoteText) {
+        if (!isStickyNote()) {
+            return;
+        }
+        this.stickyNoteText = stickyNoteText == null ? "" : stickyNoteText;
+        recalculateDimensions();
+    }
+
+    public int getStickyNoteWidthOverride() {
+        return isStickyNote() ? stickyNoteWidthOverride : 0;
+    }
+
+    public int getStickyNoteHeightOverride() {
+        return isStickyNote() ? stickyNoteHeightOverride : 0;
+    }
+
+    public void setStickyNoteSize(int width, int height) {
+        if (!isStickyNote()) {
+            return;
+        }
+        stickyNoteWidthOverride = Math.max(STICKY_NOTE_MIN_WIDTH, width);
+        stickyNoteHeightOverride = Math.max(STICKY_NOTE_MIN_HEIGHT, height);
+        recalculateDimensions();
+    }
+
+    public int getStickyNoteHeaderHeight() {
+        return isStickyNote() ? STICKY_NOTE_HEADER_HEIGHT : 0;
+    }
+
+    public int getStickyNoteBodyLeft() {
+        return x + STICKY_NOTE_TEXT_MARGIN;
+    }
+
+    public int getStickyNoteBodyTop() {
+        return y + STICKY_NOTE_HEADER_HEIGHT + STICKY_NOTE_TEXT_MARGIN;
+    }
+
+    public int getStickyNoteBodyWidth() {
+        return Math.max(1, width - STICKY_NOTE_TEXT_MARGIN * 2);
+    }
+
+    public int getStickyNoteBodyHeight() {
+        return Math.max(1, height - STICKY_NOTE_HEADER_HEIGHT - STICKY_NOTE_TEXT_MARGIN * 2);
+    }
+
+    public int getStickyNoteResizeHandleSize() {
+        return STICKY_NOTE_HANDLE_SIZE;
+    }
+
     public String getTemplateName() {
         if (!usesTemplateBacking()) {
             return "";
@@ -5071,6 +5139,11 @@ public class Node {
         if (type == NodeType.START) {
             this.width = START_END_SIZE;
             this.height = START_END_SIZE;
+            return;
+        }
+        if (isStickyNote()) {
+            this.width = Math.max(STICKY_NOTE_MIN_WIDTH, stickyNoteWidthOverride);
+            this.height = Math.max(STICKY_NOTE_MIN_HEIGHT, stickyNoteHeightOverride);
             return;
         }
         if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {

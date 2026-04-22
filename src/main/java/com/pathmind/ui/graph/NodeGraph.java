@@ -13,6 +13,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.menu.ContextMenuSelection;
+import com.pathmind.ui.menu.ContextMenuRenderer;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
@@ -80,6 +81,7 @@ public class NodeGraph {
     private static final int TEMPLATE_PREVIEW_TOP = 42;
     private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
     private static final int VIEWPORT_CULL_MARGIN = 64;
+    private static final int STICKY_NOTE_MAX_CHARS = 4096;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
@@ -89,6 +91,12 @@ public class NodeGraph {
     private int draggingNodeStartX;
     private int draggingNodeStartY;
     private boolean draggingNodeDetached;
+    private Node resizingStickyNote;
+    private StickyNoteResizeCorner stickyNoteResizeCorner;
+    private int stickyNoteResizeStartX;
+    private int stickyNoteResizeStartY;
+    private int stickyNoteResizeStartWidth;
+    private int stickyNoteResizeStartHeight;
     private NodeGraphData pendingDragUndoSnapshot = null;
     private boolean dragOperationChanged = false;
     
@@ -188,6 +196,12 @@ public class NodeGraph {
     private int messageSelectionStart = -1;
     private int messageSelectionEnd = -1;
     private int messageSelectionAnchor = -1;
+    private Node stickyNoteEditingNode = null;
+    private String stickyNoteEditBuffer = "";
+    private String stickyNoteEditOriginalValue = "";
+    private long stickyNoteCaretLastToggleTime = 0L;
+    private boolean stickyNoteCaretVisible = true;
+    private int stickyNoteCaretPosition = 0;
     private Node eventNameEditingNode = null;
     private String eventNameEditBuffer = "";
     private String eventNameEditOriginalValue = "";
@@ -303,6 +317,13 @@ public class NodeGraph {
     private boolean multiDragActive = false;
     private final Map<Node, DragStartInfo> multiDragStartPositions = new HashMap<>();
     private boolean selectionDeletionPreviewActive = false;
+
+    private enum StickyNoteResizeCorner {
+        TOP_LEFT,
+        TOP_RIGHT,
+        BOTTOM_LEFT,
+        BOTTOM_RIGHT
+    }
 
     public enum ZoomLevel {
         FOCUSED(1.0f, true),
@@ -1243,6 +1264,17 @@ public class NodeGraph {
             if (newNode.hasBookTextInput() && nodeData.getBookText() != null) {
                 newNode.setBookText(nodeData.getBookText());
             }
+            if (newNode.isStickyNote()) {
+                newNode.setStickyNoteText(nodeData.getStickyNoteText());
+                Integer stickyNoteWidth = nodeData.getStickyNoteWidth();
+                Integer stickyNoteHeight = nodeData.getStickyNoteHeight();
+                if (stickyNoteWidth != null || stickyNoteHeight != null) {
+                    newNode.setStickyNoteSize(
+                        stickyNoteWidth != null ? stickyNoteWidth : newNode.getWidth(),
+                        stickyNoteHeight != null ? stickyNoteHeight : newNode.getHeight()
+                    );
+                }
+            }
             if (newNode.getType() == NodeType.SENSOR_KEY_PRESSED) {
                 Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
                 newNode.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
@@ -1355,6 +1387,15 @@ public class NodeGraph {
                 nodeData.setBookText(node.getBookText());
             } else {
                 nodeData.setBookText(null);
+            }
+            if (node.isStickyNote()) {
+                nodeData.setStickyNoteText(node.getStickyNoteText());
+                nodeData.setStickyNoteWidth(node.getStickyNoteWidthOverride());
+                nodeData.setStickyNoteHeight(node.getStickyNoteHeightOverride());
+            } else {
+                nodeData.setStickyNoteText(null);
+                nodeData.setStickyNoteWidth(null);
+                nodeData.setStickyNoteHeight(null);
             }
             if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
                 nodeData.setTemplateName(node.getTemplateName());
@@ -1511,6 +1552,7 @@ public class NodeGraph {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopMessageEditing(true);
+        stopStickyNoteEditing(true);
         stopParameterEditing(true);
         stopStopTargetEditing(true);
         stopVariableEditing(true);
@@ -1563,6 +1605,7 @@ public class NodeGraph {
         stopAmountEditing(true);
         stopStopTargetEditing(true);
         stopVariableEditing(true);
+        stopStickyNoteEditing(true);
         stopVariableEditing(true);
         stopEventNameEditing(true);
         stopParameterEditing(true);
@@ -1607,6 +1650,11 @@ public class NodeGraph {
     public void updateDrag(int mouseX, int mouseY) {
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
+
+        if (resizingStickyNote != null && stickyNoteResizeCorner != null) {
+            updateStickyNoteResize(worldMouseX, worldMouseY);
+            return;
+        }
 
         if (draggingNode != null) {
             int newX = worldMouseX - draggingNode.getDragOffsetX();
@@ -1965,6 +2013,11 @@ public class NodeGraph {
 
     public void stopDragging() {
         Node rootToPromote = null;
+        if (resizingStickyNote != null) {
+            rootToPromote = resizingStickyNote;
+            resizingStickyNote = null;
+            stickyNoteResizeCorner = null;
+        }
         if (draggingNode != null) {
             Node node = draggingNode;
             if (multiDragActive) {
@@ -2048,6 +2101,8 @@ public class NodeGraph {
         }
         draggingNode = null;
         draggingNodeDetached = false;
+        resizingStickyNote = null;
+        stickyNoteResizeCorner = null;
         pendingDragUndoSnapshot = null;
         dragOperationChanged = false;
         if (multiDragActive) {
@@ -3038,6 +3093,11 @@ public class NodeGraph {
         // Use screen coordinates (with camera offset) for this check
         boolean isOverSidebar = isNodeOverSidebarForRender(node, x, width);
 
+        if (node.isStickyNote()) {
+            renderStickyNote(context, textRenderer, node, x, y, width, height, isOverSidebar);
+            return;
+        }
+
         NodeStyle nodeStyle = getNodeStyle(node);
         boolean simpleStyle = nodeStyle == NodeStyle.MINIMAL;
         boolean isStopControl = node.isStopControlNode();
@@ -4010,6 +4070,91 @@ public class NodeGraph {
 
     private int getParameterFieldHeight() {
         return PARAMETER_INPUT_HEIGHT;
+    }
+
+    private void renderStickyNote(DrawContext context, TextRenderer textRenderer, Node node, int x, int y, int width, int height,
+                                  boolean isOverSidebar) {
+        int paperColor = isOverSidebar ? UITheme.NODE_DIMMED_BG : 0xFFF3E28A;
+        int headerColor = isOverSidebar ? UITheme.NODE_HEADER_DIMMED : 0xFFE2C65A;
+        int borderColor = node.isSelected() ? getSelectedNodeAccentColor() : (isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFFC2A748);
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : 0xFF3F3420;
+
+        context.fill(x, y, x + width, y + height, paperColor);
+        context.fill(x + 1, y + 1, x + width - 1, y + node.getStickyNoteHeaderHeight(), headerColor);
+        DrawContextBridge.drawBorderInLayer(context, x, y, width, height, borderColor);
+
+        int bodyLeft = node.getStickyNoteBodyLeft() - cameraX;
+        int bodyTop = node.getStickyNoteBodyTop() - cameraY;
+        int maxLines = Math.max(1, node.getStickyNoteBodyHeight() / Math.max(1, textRenderer.fontHeight + 1));
+        List<String> lines = getStickyNoteDisplayLines(node, textRenderer, maxLines);
+        for (int i = 0; i < lines.size(); i++) {
+            int lineY = bodyTop + i * (textRenderer.fontHeight + 1);
+            if (lineY + textRenderer.fontHeight > y + height - 4) {
+                break;
+            }
+            drawNodeText(context, textRenderer, lines.get(i), bodyLeft, lineY, textColor);
+        }
+
+        if (stickyNoteEditingNode == node && stickyNoteCaretVisible) {
+            updateStickyNoteCaretBlink();
+            int caretLine = 0;
+            int caretColumn = 0;
+            int remaining = MathHelper.clamp(stickyNoteCaretPosition, 0, stickyNoteEditBuffer.length());
+            String[] rawLines = stickyNoteEditBuffer.split("\\n", -1);
+            for (int i = 0; i < rawLines.length; i++) {
+                String rawLine = rawLines[i] == null ? "" : rawLines[i];
+                if (remaining <= rawLine.length()) {
+                    caretLine = i;
+                    caretColumn = remaining;
+                    break;
+                }
+                remaining -= rawLine.length() + 1;
+                caretLine = i;
+                caretColumn = rawLine.length();
+            }
+            int caretY = bodyTop + caretLine * (textRenderer.fontHeight + 1);
+            int caretX = bodyLeft + textRenderer.getWidth(rawLines[Math.min(caretLine, rawLines.length - 1)].substring(0, Math.min(caretColumn, rawLines[Math.min(caretLine, rawLines.length - 1)].length())));
+            UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretY + textRenderer.fontHeight - 1, x + width - 6, 0xFF000000);
+        }
+
+        if (node.isSelected()) {
+            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.TOP_LEFT, borderColor);
+            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.TOP_RIGHT, borderColor);
+            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.BOTTOM_LEFT, borderColor);
+            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.BOTTOM_RIGHT, borderColor);
+        }
+    }
+
+    private List<String> getStickyNoteDisplayLines(Node node, TextRenderer textRenderer, int maxLines) {
+        String source = stickyNoteEditingNode == node ? stickyNoteEditBuffer : node.getStickyNoteText();
+        List<String> lines = new ArrayList<>();
+        int maxWidth = Math.max(1, node.getStickyNoteBodyWidth());
+        String[] rawLines = (source == null ? "" : source).split("\\n", -1);
+        for (String rawLine : rawLines) {
+            String safeLine = rawLine == null ? "" : rawLine;
+            lines.add(trimTextToWidth(safeLine, textRenderer, maxWidth));
+            if (lines.size() >= maxLines) {
+                return lines;
+            }
+        }
+        if (lines.isEmpty()) {
+            lines.add("");
+        }
+        return lines;
+    }
+
+    private void renderStickyNoteResizeHandle(DrawContext context, Node node, StickyNoteResizeCorner corner, int color) {
+        int size = node.getStickyNoteResizeHandleSize();
+        int left = switch (corner) {
+            case TOP_LEFT, BOTTOM_LEFT -> node.getX() - cameraX - size / 2;
+            case TOP_RIGHT, BOTTOM_RIGHT -> node.getX() + node.getWidth() - cameraX - size / 2;
+        };
+        int top = switch (corner) {
+            case TOP_LEFT, TOP_RIGHT -> node.getY() - cameraY - size / 2;
+            case BOTTOM_LEFT, BOTTOM_RIGHT -> node.getY() + node.getHeight() - cameraY - size / 2;
+        };
+        context.fill(left, top, left + size, top + size, UITheme.TEXT_PRIMARY);
+        DrawContextBridge.drawBorderInLayer(context, left, top, size, size, color);
     }
 
     private void renderModeField(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
@@ -7358,6 +7503,7 @@ public class NodeGraph {
         stopStopTargetEditing(true);
         stopVariableEditing(true);
         stopMessageEditing(true);
+        stopStickyNoteEditing(true);
         stopParameterEditing(true);
         stopEventNameEditing(true);
         screenCoordinateCaptureNode = node;
@@ -7727,6 +7873,7 @@ public class NodeGraph {
         stopStopTargetEditing(true);
         stopVariableEditing(true);
         stopMessageEditing(true);
+        stopStickyNoteEditing(true);
         stopParameterEditing(true);
         stopEventNameEditing(true);
 
@@ -7971,6 +8118,7 @@ public class NodeGraph {
         stopParameterEditing(true);
         stopEventNameEditing(true);
         stopVariableEditing(true);
+        stopStickyNoteEditing(true);
 
         stopTargetEditingNode = node;
         NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
@@ -8051,6 +8199,7 @@ public class NodeGraph {
         stopMessageEditing(true);
         stopParameterEditing(true);
         stopEventNameEditing(true);
+        stopStickyNoteEditing(true);
 
         variableEditingNode = node;
         String keyName = node.getVariableFieldParameterKey();
@@ -8344,6 +8493,265 @@ public class NodeGraph {
         return insertStopTargetText(String.valueOf(chr), textRenderer);
     }
 
+    public boolean isEditingStickyNote() {
+        return stickyNoteEditingNode != null;
+    }
+
+    private void updateStickyNoteCaretBlink() {
+        long now = System.currentTimeMillis();
+        if (now - stickyNoteCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
+            stickyNoteCaretVisible = !stickyNoteCaretVisible;
+            stickyNoteCaretLastToggleTime = now;
+        }
+    }
+
+    private void resetStickyNoteCaretBlink() {
+        stickyNoteCaretVisible = true;
+        stickyNoteCaretLastToggleTime = System.currentTimeMillis();
+    }
+
+    public void startStickyNoteEditing(Node node) {
+        if (node == null || !node.isStickyNote()) {
+            stopStickyNoteEditing(false);
+            return;
+        }
+        if (stickyNoteEditingNode == node) {
+            return;
+        }
+
+        stopCoordinateEditing(true);
+        stopAmountEditing(true);
+        stopStopTargetEditing(true);
+        stopVariableEditing(true);
+        stopEventNameEditing(true);
+        stopParameterEditing(true);
+        stopStickyNoteEditing(true);
+        stopMessageEditing(true);
+
+        stickyNoteEditingNode = node;
+        stickyNoteEditBuffer = node.getStickyNoteText();
+        stickyNoteEditOriginalValue = stickyNoteEditBuffer;
+        stickyNoteCaretPosition = stickyNoteEditBuffer.length();
+        resetStickyNoteCaretBlink();
+    }
+
+    public void stopStickyNoteEditing(boolean commit) {
+        if (!isEditingStickyNote()) {
+            return;
+        }
+        if (commit) {
+            stickyNoteEditingNode.setStickyNoteText(stickyNoteEditBuffer);
+            if (!Objects.equals(stickyNoteEditOriginalValue, stickyNoteEditBuffer)) {
+                markWorkspaceDirty();
+            }
+        } else {
+            stickyNoteEditingNode.setStickyNoteText(stickyNoteEditOriginalValue);
+        }
+        stickyNoteEditingNode = null;
+        stickyNoteEditBuffer = "";
+        stickyNoteEditOriginalValue = "";
+        stickyNoteCaretPosition = 0;
+        stickyNoteCaretVisible = true;
+    }
+
+    public boolean isPointInsideStickyNoteTextArea(Node node, int screenX, int screenY) {
+        if (node == null || !node.isStickyNote()) {
+            return false;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        return worldX >= node.getStickyNoteBodyLeft()
+            && worldX <= node.getStickyNoteBodyLeft() + node.getStickyNoteBodyWidth()
+            && worldY >= node.getStickyNoteBodyTop()
+            && worldY <= node.getStickyNoteBodyTop() + node.getStickyNoteBodyHeight();
+    }
+
+    public boolean handleStickyNoteResizeHandleClick(Node node, int screenX, int screenY) {
+        if (node == null || !node.isStickyNote()) {
+            return false;
+        }
+        StickyNoteResizeCorner corner = getStickyNoteResizeCornerAt(node, screenX, screenY);
+        if (corner == null) {
+            return false;
+        }
+        stopStickyNoteEditing(true);
+        if (suppressUndoCapture) {
+            pendingDragUndoSnapshot = null;
+        } else {
+            pendingDragUndoSnapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
+        }
+        dragOperationChanged = false;
+        resizingStickyNote = node;
+        stickyNoteResizeCorner = corner;
+        stickyNoteResizeStartX = node.getX();
+        stickyNoteResizeStartY = node.getY();
+        stickyNoteResizeStartWidth = node.getWidth();
+        stickyNoteResizeStartHeight = node.getHeight();
+        return true;
+    }
+
+    private StickyNoteResizeCorner getStickyNoteResizeCornerAt(Node node, int screenX, int screenY) {
+        if (node == null || !node.isStickyNote()) {
+            return null;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int size = node.getStickyNoteResizeHandleSize();
+        int half = size / 2;
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() - half, node.getY() - half, size, size)) {
+            return StickyNoteResizeCorner.TOP_LEFT;
+        }
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() + node.getWidth() - half, node.getY() - half, size, size)) {
+            return StickyNoteResizeCorner.TOP_RIGHT;
+        }
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() - half, node.getY() + node.getHeight() - half, size, size)) {
+            return StickyNoteResizeCorner.BOTTOM_LEFT;
+        }
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() + node.getWidth() - half, node.getY() + node.getHeight() - half, size, size)) {
+            return StickyNoteResizeCorner.BOTTOM_RIGHT;
+        }
+        return null;
+    }
+
+    private void updateStickyNoteResize(int worldMouseX, int worldMouseY) {
+        if (resizingStickyNote == null || stickyNoteResizeCorner == null) {
+            return;
+        }
+        int left = stickyNoteResizeStartX;
+        int top = stickyNoteResizeStartY;
+        int right = stickyNoteResizeStartX + stickyNoteResizeStartWidth;
+        int bottom = stickyNoteResizeStartY + stickyNoteResizeStartHeight;
+
+        switch (stickyNoteResizeCorner) {
+            case TOP_LEFT -> {
+                left = Math.min(worldMouseX, right - 120);
+                top = Math.min(worldMouseY, bottom - 84);
+            }
+            case TOP_RIGHT -> {
+                right = Math.max(worldMouseX, left + 120);
+                top = Math.min(worldMouseY, bottom - 84);
+            }
+            case BOTTOM_LEFT -> {
+                left = Math.min(worldMouseX, right - 120);
+                bottom = Math.max(worldMouseY, top + 84);
+            }
+            case BOTTOM_RIGHT -> {
+                right = Math.max(worldMouseX, left + 120);
+                bottom = Math.max(worldMouseY, top + 84);
+            }
+        }
+
+        int newWidth = right - left;
+        int newHeight = bottom - top;
+        if (left != resizingStickyNote.getX() || top != resizingStickyNote.getY()
+            || newWidth != resizingStickyNote.getWidth() || newHeight != resizingStickyNote.getHeight()) {
+            dragOperationChanged = true;
+        }
+        resizingStickyNote.setPosition(left, top);
+        resizingStickyNote.setStickyNoteSize(newWidth, newHeight);
+    }
+
+    public boolean handleStickyNoteKeyPressed(int keyCode, int modifiers) {
+        if (!isEditingStickyNote()) {
+            return false;
+        }
+        boolean controlHeld = isTextShortcutDown(modifiers);
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (stickyNoteCaretPosition > 0 && !stickyNoteEditBuffer.isEmpty()) {
+                    stickyNoteEditBuffer = stickyNoteEditBuffer.substring(0, stickyNoteCaretPosition - 1)
+                        + stickyNoteEditBuffer.substring(stickyNoteCaretPosition);
+                    stickyNoteCaretPosition--;
+                    resetStickyNoteCaretBlink();
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (stickyNoteCaretPosition < stickyNoteEditBuffer.length()) {
+                    stickyNoteEditBuffer = stickyNoteEditBuffer.substring(0, stickyNoteCaretPosition)
+                        + stickyNoteEditBuffer.substring(stickyNoteCaretPosition + 1);
+                    resetStickyNoteCaretBlink();
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                stickyNoteCaretPosition = Math.max(0, stickyNoteCaretPosition - 1);
+                resetStickyNoteCaretBlink();
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                stickyNoteCaretPosition = Math.min(stickyNoteEditBuffer.length(), stickyNoteCaretPosition + 1);
+                resetStickyNoteCaretBlink();
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                stickyNoteCaretPosition = 0;
+                resetStickyNoteCaretBlink();
+                return true;
+            case GLFW.GLFW_KEY_END:
+                stickyNoteCaretPosition = stickyNoteEditBuffer.length();
+                resetStickyNoteCaretBlink();
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+                return insertStickyNoteText("\n");
+            case GLFW.GLFW_KEY_ESCAPE:
+                stopStickyNoteEditing(true);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    stickyNoteCaretPosition = stickyNoteEditBuffer.length();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    setClipboardText(stickyNoteEditBuffer);
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    setClipboardText(stickyNoteEditBuffer);
+                    stickyNoteEditBuffer = "";
+                    stickyNoteCaretPosition = 0;
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    return insertStickyNoteText(getClipboardText());
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    public boolean handleStickyNoteCharTyped(char chr, int modifiers) {
+        if (!isEditingStickyNote()) {
+            return false;
+        }
+        if (chr == '\r') {
+            return false;
+        }
+        return insertStickyNoteText(String.valueOf(chr));
+    }
+
+    private boolean insertStickyNoteText(String text) {
+        if (!isEditingStickyNote() || text == null || text.isEmpty()) {
+            return false;
+        }
+        int allowed = STICKY_NOTE_MAX_CHARS - stickyNoteEditBuffer.length();
+        if (allowed <= 0) {
+            return true;
+        }
+        String safe = text.length() > allowed ? text.substring(0, allowed) : text;
+        stickyNoteEditBuffer = stickyNoteEditBuffer.substring(0, stickyNoteCaretPosition)
+            + safe
+            + stickyNoteEditBuffer.substring(stickyNoteCaretPosition);
+        stickyNoteCaretPosition += safe.length();
+        resetStickyNoteCaretBlink();
+        return true;
+    }
+
     public boolean isEditingMessageField() {
         return messageEditingNode != null && messageEditingIndex >= 0;
     }
@@ -8466,6 +8874,7 @@ public class NodeGraph {
         stopMessageEditing(true);
         stopEventNameEditing(true);
         stopParameterEditing(true);
+        stopStickyNoteEditing(true);
 
         eventNameEditingNode = node;
         NodeParameter nameParam = node.getParameter("Name");
@@ -8686,6 +9095,7 @@ public class NodeGraph {
         stopMessageEditing(true);
         stopVariableEditing(true);
         stopEventNameEditing(true);
+        stopStickyNoteEditing(true);
 
         parameterEditingNode = node;
         parameterEditingIndex = index;

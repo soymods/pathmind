@@ -305,6 +305,8 @@
   "pathmind.node.type.stop.desc": "Stops the current pathfinding task",
   "pathmind.node.type.stopAll": "Stop All",
   "pathmind.node.type.stopAll.desc": "Stops all running node trees",
+  "pathmind.node.type.stickyNote": "Sticky Note",
+  "pathmind.node.type.stickyNote.desc": "A freeform note you can place in the workspace",
   "pathmind.node.type.stopChain": "Stop",
   "pathmind.node.type.stopChain.desc": "Stops the current node tree",
   "pathmind.node.type.surface": "Surface",

@@ -1373,6 +1373,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (selection != null && selection.shouldOpenSearch()) {
                     nodeGraph.closeContextMenu();
                     openNodeSearch((int) mouseX, (int) mouseY);
+                } else if (selection != null && selection.shouldCreateStickyNote()) {
+                    nodeGraph.addNodeFromContextMenu(NodeType.STICKY_NOTE);
+                    nodeGraph.closeContextMenu();
                 } else if (selection != null && selection.getNodeType() != null) {
                     // Create node at the stored right-click position
                     nodeGraph.addNodeFromContextMenu(selection.getNodeType());
@@ -1515,6 +1518,17 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleStickyNoteResizeHandleClick(clickedNode, (int) mouseX, (int) mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    return true;
+                }
+
+                if (nodeGraph.isPointInsideStickyNoteTextArea(clickedNode, (int) mouseX, (int) mouseY)) {
+                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.startStickyNoteEditing(clickedNode);
+                    return true;
+                }
+
                 int coordinateAxis = nodeGraph.getCoordinateFieldAxisAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (coordinateAxis != -1) {
                     nodeGraph.selectNode(clickedNode);
@@ -1609,6 +1623,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopStopTargetEditing(true);
                 nodeGraph.stopVariableEditing(true);
                 nodeGraph.stopMessageEditing(true);
+                nodeGraph.stopStickyNoteEditing(true);
                 nodeGraph.stopParameterEditing(true);
                 nodeGraph.stopEventNameEditing(true);
 
@@ -1680,6 +1695,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     nodeGraph.stopStopTargetEditing(true);
                     nodeGraph.stopVariableEditing(true);
                     nodeGraph.stopMessageEditing(true);
+                    nodeGraph.stopStickyNoteEditing(true);
                     nodeGraph.stopParameterEditing(true);
                     nodeGraph.stopEventNameEditing(true);
                     nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
@@ -2219,6 +2235,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleStickyNoteKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
         if (nodeGraph.handleParameterKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -2353,6 +2373,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleEventNameCharTyped(chr, modifiers)) {
+            return true;
+        }
+
+        if (nodeGraph.handleStickyNoteCharTyped(chr, modifiers)) {
             return true;
         }
 

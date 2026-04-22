@@ -252,6 +252,17 @@ public class NodeGraphPersistence {
             if (node.hasBookTextInput() && nodeData.getBookText() != null) {
                 node.setBookText(nodeData.getBookText());
             }
+            if (node.isStickyNote()) {
+                node.setStickyNoteText(nodeData.getStickyNoteText());
+                Integer stickyNoteWidth = nodeData.getStickyNoteWidth();
+                Integer stickyNoteHeight = nodeData.getStickyNoteHeight();
+                if (stickyNoteWidth != null || stickyNoteHeight != null) {
+                    node.setStickyNoteSize(
+                        stickyNoteWidth != null ? stickyNoteWidth : node.getWidth(),
+                        stickyNoteHeight != null ? stickyNoteHeight : node.getHeight()
+                    );
+                }
+            }
             if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
                 node.setTemplateName(nodeData.getTemplateName());
                 node.setTemplateVersion(nodeData.getTemplateVersion() != null ? nodeData.getTemplateVersion() : 0);
@@ -803,6 +814,15 @@ public class NodeGraphPersistence {
                 nodeData.setBookText(node.getBookText());
             } else {
                 nodeData.setBookText(null);
+            }
+            if (node.isStickyNote()) {
+                nodeData.setStickyNoteText(node.getStickyNoteText());
+                nodeData.setStickyNoteWidth(node.getStickyNoteWidthOverride());
+                nodeData.setStickyNoteHeight(node.getStickyNoteHeightOverride());
+            } else {
+                nodeData.setStickyNoteText(null);
+                nodeData.setStickyNoteWidth(null);
+                nodeData.setStickyNoteHeight(null);
             }
             if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
                 nodeData.setTemplateName(node.getTemplateName());

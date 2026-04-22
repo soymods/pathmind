@@ -125,6 +125,9 @@ public class NodeGraphData {
         private List<String> messageLines;
         private Boolean messageClientSide;
         private String bookText;
+        private String stickyNoteText;
+        private Integer stickyNoteWidth;
+        private Integer stickyNoteHeight;
         private Boolean gotoAllowBreakWhileExecuting;
         private Boolean gotoAllowPlaceWhileExecuting;
         private Boolean keyPressedActivatesInGuis;
@@ -232,6 +235,30 @@ public class NodeGraphData {
 
         public void setBookText(String bookText) {
             this.bookText = bookText;
+        }
+
+        public String getStickyNoteText() {
+            return stickyNoteText;
+        }
+
+        public void setStickyNoteText(String stickyNoteText) {
+            this.stickyNoteText = stickyNoteText;
+        }
+
+        public Integer getStickyNoteWidth() {
+            return stickyNoteWidth;
+        }
+
+        public void setStickyNoteWidth(Integer stickyNoteWidth) {
+            this.stickyNoteWidth = stickyNoteWidth;
+        }
+
+        public Integer getStickyNoteHeight() {
+            return stickyNoteHeight;
+        }
+
+        public void setStickyNoteHeight(Integer stickyNoteHeight) {
+            this.stickyNoteHeight = stickyNoteHeight;
         }
 
         public Boolean getGotoAllowBreakWhileExecuting() {

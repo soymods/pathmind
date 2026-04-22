@@ -94,36 +94,41 @@ public class Sidebar {
     
     private void initializeCategoryNodes() {
         for (NodeCategory category : NodeCategory.values()) {
+            List<NodeGroup> groups = createGroupsForCategory(category);
             List<NodeType> nodes = new ArrayList<>();
-
-            if (category == NodeCategory.CUSTOM) {
-                groupedCategoryNodes.put(category, java.util.Collections.emptyList());
-            } else if (category == NodeCategory.PARAMETERS) {
-                List<NodeGroup> parameterGroups = createParameterGroups();
-                groupedCategoryNodes.put(category, parameterGroups);
-                for (NodeGroup group : parameterGroups) {
-                    nodes.addAll(group.getNodes());
-                }
-            } else if (category == NodeCategory.SENSORS) {
-                List<NodeGroup> sensorGroups = createSensorGroups();
-                groupedCategoryNodes.put(category, sensorGroups);
-                for (NodeGroup group : sensorGroups) {
-                    nodes.addAll(group.getNodes());
-                }
-            } else {
-                for (NodeType nodeType : NodeType.values()) {
-                    if (nodeType == NodeType.PARAM_PLACE_TARGET) {
-                        continue;
-                    }
-                    if (nodeType.getCategory() == category && shouldIncludeNode(nodeType)) {
-                        nodes.add(nodeType);
-                    }
-                }
+            for (NodeGroup group : groups) {
+                nodes.addAll(group.getNodes());
             }
-
+            groupedCategoryNodes.put(category, groups);
             categoryNodes.put(category, nodes);
         }
         refreshCustomNodes();
+    }
+
+    private List<NodeGroup> createGroupsForCategory(NodeCategory category) {
+        if (category == null || category == NodeCategory.CUSTOM) {
+            return java.util.Collections.emptyList();
+        }
+        switch (category) {
+            case FLOW:
+                return createFlowGroups();
+            case CONTROL:
+                return createControlGroups();
+            case WORLD:
+                return createWorldGroups();
+            case PLAYER:
+                return createPlayerGroups();
+            case INTERFACE:
+                return createInterfaceGroups();
+            case DATA:
+                return createDataGroups();
+            case SENSORS:
+                return createSensorGroups();
+            case PARAMETERS:
+                return createParameterGroups();
+            default:
+                return java.util.Collections.emptyList();
+        }
     }
 
     private void refreshCustomNodes() {
@@ -136,11 +141,184 @@ public class Sidebar {
         }
     }
 
+    private List<NodeGroup> createFlowGroups() {
+        List<NodeGroup> groups = new ArrayList<>();
+        groups.add(createGroup(
+            "Entry Points",
+            NodeType.START,
+            NodeType.START_CHAIN,
+            NodeType.EVENT_FUNCTION,
+            NodeType.EVENT_CALL
+        ));
+        groups.add(createGroup(
+            "Timing & Stops",
+            NodeType.WAIT,
+            NodeType.STOP_CHAIN,
+            NodeType.STOP_ALL
+        ));
+        groups.add(createGroup(
+            "Presets",
+            NodeType.RUN_PRESET,
+            NodeType.TEMPLATE
+        ));
+        return groups;
+    }
+
+    private List<NodeGroup> createControlGroups() {
+        List<NodeGroup> groups = new ArrayList<>();
+        groups.add(createGroup(
+            "Branching & Loops",
+            NodeType.CONTROL_IF,
+            NodeType.CONTROL_IF_ELSE,
+            NodeType.CONTROL_REPEAT,
+            NodeType.CONTROL_REPEAT_UNTIL,
+            NodeType.CONTROL_FOREVER
+        ));
+        groups.add(createGroup(
+            "Parallel",
+            NodeType.CONTROL_FORK,
+            NodeType.CONTROL_JOIN_ANY,
+            NodeType.CONTROL_JOIN_ALL
+        ));
+        groups.add(createGroup(
+            "Conditions & Waiting",
+            NodeType.CONTROL_WAIT_UNTIL
+        ));
+        return groups;
+    }
+
+    private List<NodeGroup> createWorldGroups() {
+        List<NodeGroup> groups = new ArrayList<>();
+        groups.add(createGroup(
+            "Navigation",
+            NodeType.GOTO,
+            NodeType.GOAL,
+            NodeType.PATH,
+            NodeType.INVERT,
+            NodeType.COME,
+            NodeType.SURFACE,
+            NodeType.STOP
+        ));
+        groups.add(createGroup(
+            "Exploration",
+            NodeType.EXPLORE,
+            NodeType.FOLLOW
+        ));
+        groups.add(createGroup(
+            "Gathering",
+            NodeType.COLLECT,
+            NodeType.FARM,
+            NodeType.TUNNEL
+        ));
+        groups.add(createGroup(
+            "Building & Crafting",
+            NodeType.BUILD,
+            NodeType.PLACE,
+            NodeType.CRAFT
+        ));
+        return groups;
+    }
+
+    private List<NodeGroup> createPlayerGroups() {
+        List<NodeGroup> groups = new ArrayList<>();
+        groups.add(createGroup(
+            "Movement",
+            NodeType.WALK,
+            NodeType.JUMP,
+            NodeType.CRAWL,
+            NodeType.CROUCH,
+            NodeType.SPRINT,
+            NodeType.FLY
+        ));
+        groups.add(createGroup(
+            "View & Input",
+            NodeType.LOOK,
+            NodeType.PRESS_KEY
+        ));
+        groups.add(createGroup(
+            "Interaction",
+            NodeType.USE,
+            NodeType.INTERACT,
+            NodeType.BREAK,
+            NodeType.PLACE_HAND
+        ));
+        groups.add(createGroup(
+            "Combat & Trading",
+            NodeType.SWING,
+            NodeType.TRADE
+        ));
+        return groups;
+    }
+
+    private List<NodeGroup> createInterfaceGroups() {
+        List<NodeGroup> groups = new ArrayList<>();
+        groups.add(createGroup(
+            "Inventory",
+            NodeType.HOTBAR,
+            NodeType.MOVE_ITEM,
+            NodeType.DROP_ITEM,
+            NodeType.CLICK_SLOT,
+            NodeType.OPEN_INVENTORY,
+            NodeType.EQUIP_HAND,
+            NodeType.EQUIP_ARMOR
+        ));
+        groups.add(createGroup(
+            "Screens & UI",
+            NodeType.CLICK_SCREEN,
+            NodeType.CLOSE_GUI,
+            NodeType.UI_UTILS
+        ));
+        groups.add(createGroup(
+            "Writing & Output",
+            NodeType.MESSAGE,
+            NodeType.WRITE_BOOK,
+            NodeType.WRITE_SIGN
+        ));
+        return groups;
+    }
+
+    private List<NodeGroup> createDataGroups() {
+        List<NodeGroup> groups = new ArrayList<>();
+        groups.add(createGroup(
+            "Variables",
+            NodeType.VARIABLE,
+            NodeType.SET_VARIABLE,
+            NodeType.CHANGE_VARIABLE
+        ));
+        groups.add(createGroup(
+            "Lists",
+            NodeType.CREATE_LIST,
+            NodeType.ADD_TO_LIST,
+            NodeType.REMOVE_FIRST_FROM_LIST,
+            NodeType.REMOVE_LAST_FROM_LIST,
+            NodeType.REMOVE_LIST_ITEM,
+            NodeType.REMOVE_FROM_LIST,
+            NodeType.LIST_ITEM,
+            NodeType.LIST_LENGTH
+        ));
+        groups.add(createGroup(
+            "Comparison & Boolean",
+            NodeType.OPERATOR_EQUALS,
+            NodeType.OPERATOR_NOT,
+            NodeType.OPERATOR_BOOLEAN_NOT,
+            NodeType.OPERATOR_BOOLEAN_OR,
+            NodeType.OPERATOR_BOOLEAN_AND,
+            NodeType.OPERATOR_BOOLEAN_XOR,
+            NodeType.OPERATOR_GREATER,
+            NodeType.OPERATOR_LESS
+        ));
+        groups.add(createGroup(
+            "Math & Random",
+            NodeType.OPERATOR_MOD,
+            NodeType.OPERATOR_RANDOM
+        ));
+        return groups;
+    }
+
     private List<NodeGroup> createParameterGroups() {
         List<NodeGroup> groups = new ArrayList<>();
-        groups.add(new NodeGroup(
+        groups.add(createGroup(
             "Spatial Data",
-            baritoneAvailable,
             NodeType.PARAM_COORDINATE,
             NodeType.PARAM_ROTATION,
             NodeType.PARAM_DIRECTION,
@@ -149,9 +327,8 @@ public class Sidebar {
             NodeType.PARAM_DISTANCE,
             NodeType.PARAM_CLOSEST
         ));
-        groups.add(new NodeGroup(
+        groups.add(createGroup(
             "Targets & Objects",
-            baritoneAvailable,
             NodeType.PARAM_BLOCK,
             NodeType.PARAM_ITEM,
             NodeType.PARAM_ENTITY,
@@ -159,23 +336,20 @@ public class Sidebar {
             NodeType.PARAM_WAYPOINT,
             NodeType.PARAM_SCHEMATIC
         ));
-        groups.add(new NodeGroup(
-            "Inventory & Equipment",
-            baritoneAvailable,
+        groups.add(createGroup(
+            "Inventory & GUI",
             NodeType.PARAM_INVENTORY_SLOT,
             NodeType.PARAM_HAND,
             NodeType.PARAM_GUI
         ));
-        groups.add(new NodeGroup(
-            "Input",
-            baritoneAvailable,
+        groups.add(createGroup(
+            "Input & Text",
             NodeType.PARAM_KEY,
             NodeType.PARAM_MOUSE_BUTTON,
             NodeType.PARAM_MESSAGE
         ));
-        groups.add(new NodeGroup(
-            "Utility Data",
-            baritoneAvailable,
+        groups.add(createGroup(
+            "Utility Values",
             NodeType.PARAM_DURATION,
             NodeType.PARAM_AMOUNT,
             NodeType.PARAM_BOOLEAN
@@ -185,66 +359,75 @@ public class Sidebar {
 
     private List<NodeGroup> createSensorGroups() {
         List<NodeGroup> groups = new ArrayList<>();
-        groups.add(new NodeGroup(
+        groups.add(createGroup(
             "Player State",
-            baritoneAvailable,
             NodeType.SENSOR_IS_SWIMMING,
             NodeType.SENSOR_IS_IN_LAVA,
             NodeType.SENSOR_IS_UNDERWATER,
             NodeType.SENSOR_IS_ON_GROUND,
             NodeType.SENSOR_IS_FALLING,
-            NodeType.SENSOR_LOOK_DIRECTION,
+            NodeType.SENSOR_HEALTH_BELOW,
+            NodeType.SENSOR_HUNGER_BELOW,
             NodeType.SENSOR_CURRENT_HAND
         ));
-        groups.add(new NodeGroup(
-            "Input",
-            baritoneAvailable,
+        groups.add(createGroup(
+            "Events & Input",
             NodeType.SENSOR_KEY_PRESSED,
             NodeType.SENSOR_CHAT_MESSAGE,
             NodeType.SENSOR_JOINED_SERVER,
             NodeType.SENSOR_FABRIC_EVENT
         ));
-        groups.add(new NodeGroup(
-            "Position & Blocks",
-            baritoneAvailable,
+        groups.add(createGroup(
+            "Spatial & Targeting",
             NodeType.SENSOR_POSITION_OF,
             NodeType.SENSOR_DISTANCE_BETWEEN,
+            NodeType.SENSOR_LOOK_DIRECTION,
             NodeType.SENSOR_TARGETED_BLOCK,
-            NodeType.SENSOR_TARGETED_BLOCK_FACE,
-            NodeType.SENSOR_AT_COORDINATES,
+            NodeType.SENSOR_TARGETED_ENTITY,
             NodeType.SENSOR_TOUCHING_BLOCK
         ));
-        groups.add(new NodeGroup(
-            "Entities & Visibility",
-            baritoneAvailable,
-            NodeType.SENSOR_TARGETED_ENTITY,
+        groups.add(createGroup(
+            "Blocks, Faces & Visibility",
+            NodeType.SENSOR_AT_COORDINATES,
+            NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_TOUCHING_ENTITY,
             NodeType.SENSOR_ATTRIBUTE_DETECTION,
             NodeType.SENSOR_IS_RENDERED,
             NodeType.SENSOR_IS_VISIBLE
         ));
-        groups.add(new NodeGroup(
+        groups.add(createGroup(
             "Inventory & Items",
-            baritoneAvailable,
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
-            NodeType.SENSOR_IN_STOCK,
             NodeType.SENSOR_GUI_FILLED
         ));
-        groups.add(new NodeGroup(
-            "Player Stats",
-            baritoneAvailable,
-            NodeType.SENSOR_HEALTH_BELOW,
-            NodeType.SENSOR_HUNGER_BELOW
+        groups.add(createGroup(
+            "Trading",
+            NodeType.SENSOR_VILLAGER_TRADE,
+            NodeType.SENSOR_IN_STOCK
         ));
-        groups.add(new NodeGroup(
-            "Environment & Weather",
-            baritoneAvailable,
+        groups.add(createGroup(
+            "World & Weather",
             NodeType.SENSOR_IS_DAYTIME,
             NodeType.SENSOR_IS_RAINING
         ));
         return groups;
+    }
+
+    private NodeGroup createGroup(String title, NodeType... nodeTypes) {
+        List<NodeType> nodes = new ArrayList<>();
+        if (nodeTypes != null) {
+            for (NodeType type : nodeTypes) {
+                if (type == null || type == NodeType.PARAM_PLACE_TARGET) {
+                    continue;
+                }
+                if (shouldIncludeNode(type)) {
+                    nodes.add(type);
+                }
+            }
+        }
+        return new NodeGroup(title, nodes);
     }
 
     private boolean shouldIncludeNode(NodeType nodeType) {
@@ -967,16 +1150,11 @@ public class Sidebar {
         private final String title;
         private final List<NodeType> nodes;
 
-        NodeGroup(String title, boolean includeBaritoneNodes, NodeType... nodeTypes) {
+        NodeGroup(String title, List<NodeType> nodeTypes) {
             this.title = title;
             this.nodes = new ArrayList<>();
             if (nodeTypes != null) {
-                for (NodeType type : nodeTypes) {
-                    if (type != null && type.isDraggableFromSidebar()
-                        && (includeBaritoneNodes || !type.requiresBaritone())) {
-                        this.nodes.add(type);
-                    }
-                }
+                this.nodes.addAll(nodeTypes);
             }
         }
 

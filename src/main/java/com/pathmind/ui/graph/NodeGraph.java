@@ -2766,9 +2766,6 @@ public class NodeGraph {
         if (node == null) {
             return false;
         }
-        if (node.getType().getCategory() == NodeCategory.LOGIC) {
-            return true;
-        }
         return node.hasAttachedSensor() || node.hasAttachedActionNode() || node.hasAttachedParameter();
     }
     

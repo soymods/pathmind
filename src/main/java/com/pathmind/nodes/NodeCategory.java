@@ -6,16 +6,14 @@ import net.minecraft.text.Text;
  * Enum representing different categories of nodes for sidebar organization.
  */
 public enum NodeCategory {
-    EVENTS("pathmind.node.category.events", 0xFFE91E63, "pathmind.node.category.events.desc", "★"),
-    LOGIC("pathmind.node.category.logic", 0xFFFFC107, "pathmind.node.category.logic.desc", "🧠"),
-    MOVEMENT("pathmind.node.category.movement", 0xFF00BCD4, "pathmind.node.category.movement.desc", "⇄"),
-    INTERACTION("pathmind.node.category.interaction", 0xFF7E57C2, "pathmind.node.category.interaction.desc", "✋"),
-    GUI("pathmind.node.category.gui", 0xFF8D6E63, "pathmind.node.category.gui.desc", "🖥"),
+    FLOW("pathmind.node.category.flow", 0xFFE91E63, "pathmind.node.category.flow.desc", "★"),
+    CONTROL("pathmind.node.category.control", 0xFFFFC107, "pathmind.node.category.control.desc", "🧠"),
+    WORLD("pathmind.node.category.world", 0xFF00BCD4, "pathmind.node.category.world.desc", "⇄"),
+    PLAYER("pathmind.node.category.player", 0xFF7E57C2, "pathmind.node.category.player.desc", "✋"),
+    INTERFACE("pathmind.node.category.interface", 0xFF607D8B, "pathmind.node.category.interface.desc", "🖥"),
+    DATA("pathmind.node.category.data", 0xFFFF9800, "pathmind.node.category.data.desc", "Σ"),
     SENSORS("pathmind.node.category.sensors", 0xFF64B5F6, "pathmind.node.category.sensors.desc", "📡"),
-    OPERATORS("pathmind.node.category.operators", 0xFF00C853, "pathmind.node.category.operators.desc", "="),
-    VARIABLES("pathmind.node.category.variables", 0xFFFF9800, "pathmind.node.category.variables.desc", "V"),
     PARAMETERS("pathmind.node.category.parameters", 0xFF8BC34A, "pathmind.node.category.parameters.desc", "🧩"),
-    UTILITY("pathmind.node.category.utility", 0xFF9E9E9E, "pathmind.node.category.utility.desc", "⚙"),
     CUSTOM("pathmind.node.category.custom", 0xFF26A69A, "pathmind.node.category.custom.desc", "◈");
 
     private final String translationKey;

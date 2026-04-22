@@ -238,33 +238,15 @@ public enum NodeType {
     public NodeCategory getCategory() {
         switch (this) {
             case START:
+            case START_CHAIN:
             case EVENT_FUNCTION:
             case EVENT_CALL:
-            case START_CHAIN:
-                return NodeCategory.EVENTS;
-            case VARIABLE:
-            case SET_VARIABLE:
-            case CHANGE_VARIABLE:
-            case CREATE_LIST:
-            case ADD_TO_LIST:
-            case REMOVE_FIRST_FROM_LIST:
-            case REMOVE_LAST_FROM_LIST:
-            case REMOVE_LIST_ITEM:
-            case REMOVE_FROM_LIST:
-            case LIST_ITEM:
-            case LIST_LENGTH:
-                return NodeCategory.VARIABLES;
-            case OPERATOR_EQUALS:
-            case OPERATOR_NOT:
-            case OPERATOR_BOOLEAN_NOT:
-            case OPERATOR_BOOLEAN_OR:
-            case OPERATOR_BOOLEAN_AND:
-            case OPERATOR_BOOLEAN_XOR:
-            case OPERATOR_GREATER:
-            case OPERATOR_LESS:
-            case OPERATOR_MOD:
-            case OPERATOR_RANDOM:
-                return NodeCategory.OPERATORS;
+            case RUN_PRESET:
+            case WAIT:
+            case TEMPLATE:
+            case STOP_CHAIN:
+            case STOP_ALL:
+                return NodeCategory.FLOW;
             case CONTROL_REPEAT:
             case CONTROL_REPEAT_UNTIL:
             case CONTROL_WAIT_UNTIL:
@@ -274,7 +256,7 @@ public enum NodeType {
             case CONTROL_FORK:
             case CONTROL_JOIN_ANY:
             case CONTROL_JOIN_ALL:
-                return NodeCategory.LOGIC;
+                return NodeCategory.CONTROL;
             case SENSOR_TOUCHING_BLOCK:
             case SENSOR_TOUCHING_ENTITY:
             case SENSOR_AT_COORDINATES:
@@ -316,21 +298,21 @@ public enum NodeType {
             case SURFACE:
             case EXPLORE:
             case FOLLOW:
-            case WALK:
-            case JUMP:
-            case CRAWL:
-            case CROUCH:
-            case SPRINT:
-            case FLY:
-                return NodeCategory.MOVEMENT;
             case COLLECT:
             case BUILD:
             case TUNNEL:
             case FARM:
             case PLACE:
             case CRAFT:
-                return NodeCategory.INTERACTION;
+            case STOP:
+                return NodeCategory.WORLD;
             case LOOK:
+            case WALK:
+            case JUMP:
+            case CRAWL:
+            case CROUCH:
+            case SPRINT:
+            case FLY:
             case SWING:
             case USE:
             case INTERACT:
@@ -338,7 +320,7 @@ public enum NodeType {
             case PLACE_HAND:
             case TRADE:
             case PRESS_KEY:
-                return NodeCategory.INTERACTION;
+                return NodeCategory.PLAYER;
             case HOTBAR:
             case DROP_ITEM:
             case DROP_SLOT:
@@ -351,18 +333,34 @@ public enum NodeType {
             case WRITE_SIGN:
             case EQUIP_ARMOR:
             case EQUIP_HAND:
-                return NodeCategory.GUI;
+            case UI_UTILS:
+            case MESSAGE:
+            case STICKY_NOTE:
+                return NodeCategory.INTERFACE;
+            case VARIABLE:
+            case SET_VARIABLE:
+            case CHANGE_VARIABLE:
+            case CREATE_LIST:
+            case ADD_TO_LIST:
+            case REMOVE_FIRST_FROM_LIST:
+            case REMOVE_LAST_FROM_LIST:
+            case REMOVE_LIST_ITEM:
+            case REMOVE_FROM_LIST:
+            case LIST_ITEM:
+            case LIST_LENGTH:
+            case OPERATOR_EQUALS:
+            case OPERATOR_NOT:
+            case OPERATOR_BOOLEAN_NOT:
+            case OPERATOR_BOOLEAN_OR:
+            case OPERATOR_BOOLEAN_AND:
+            case OPERATOR_BOOLEAN_XOR:
+            case OPERATOR_GREATER:
+            case OPERATOR_LESS:
+            case OPERATOR_MOD:
+            case OPERATOR_RANDOM:
+                return NodeCategory.DATA;
             case CUSTOM_NODE:
                 return NodeCategory.CUSTOM;
-            case RUN_PRESET:
-            case WAIT:
-            case MESSAGE:
-            case TEMPLATE:
-            case UI_UTILS:
-                return NodeCategory.UTILITY;
-            case STOP_CHAIN:
-            case STOP_ALL:
-                return NodeCategory.EVENTS;
             case PARAM_COORDINATE:
             case PARAM_BLOCK:
             case PARAM_ITEM:
@@ -389,7 +387,7 @@ public enum NodeType {
             case PARAM_MESSAGE:
                 return NodeCategory.PARAMETERS;
             default:
-                return NodeCategory.UTILITY;
+                return NodeCategory.INTERFACE;
         }
     }
     

@@ -192,6 +192,7 @@ public class Sidebar {
         groups.add(createGroup(
             "Navigation",
             NodeType.GOTO,
+            NodeType.TRAVEL,
             NodeType.GOAL,
             NodeType.PATH,
             NodeType.INVERT,

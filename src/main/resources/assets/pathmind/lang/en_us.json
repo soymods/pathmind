@@ -131,6 +131,8 @@
   "pathmind.node.type.goal.desc": "Sets a goal at specified coordinates",
   "pathmind.node.type.goto": "Goto",
   "pathmind.node.type.goto.desc": "Moves to specified coordinates",
+  "pathmind.node.type.travel": "Travel",
+  "pathmind.node.type.travel.desc": "Moves to specified coordinates using Pathmind Nav",
   "pathmind.node.type.hotbar": "Hotbar Slot",
   "pathmind.node.type.hotbar.desc": "Selects a hotbar slot",
   "pathmind.node.type.interact": "Interact",

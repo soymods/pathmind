@@ -269,7 +269,7 @@ public class NodeGraphPersistence {
                 node.setCustomNodeInstance(Boolean.TRUE.equals(nodeData.getCustomNodeInstance()));
                 node.setTemplateGraphData(nodeData.getTemplateGraph());
             }
-            if (node.getType() == NodeType.GOTO) {
+            if (node.getType() == NodeType.GOTO || node.getType() == NodeType.TRAVEL) {
                 node.setGotoAllowBreakWhileExecuting(Boolean.TRUE.equals(nodeData.getGotoAllowBreakWhileExecuting()));
                 node.setGotoAllowPlaceWhileExecuting(Boolean.TRUE.equals(nodeData.getGotoAllowPlaceWhileExecuting()));
             }
@@ -835,7 +835,7 @@ public class NodeGraphPersistence {
                 nodeData.setCustomNodeInstance(null);
                 nodeData.setTemplateGraph(null);
             }
-            if (node.getType() == NodeType.GOTO) {
+            if (node.getType() == NodeType.GOTO || node.getType() == NodeType.TRAVEL) {
                 nodeData.setGotoAllowBreakWhileExecuting(node.isGotoAllowBreakWhileExecuting());
                 nodeData.setGotoAllowPlaceWhileExecuting(node.isGotoAllowPlaceWhileExecuting());
             } else {

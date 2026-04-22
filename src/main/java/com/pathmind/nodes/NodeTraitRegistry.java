@@ -259,6 +259,16 @@ public final class NodeTraitRegistry {
             NodeValueTrait.DIRECTION,
             NodeValueTrait.LIST_ITEM
         ));
+        accepted.put(NodeType.TRAVEL, EnumSet.of(
+            NodeValueTrait.COORDINATE,
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.ROTATION,
+            NodeValueTrait.DIRECTION,
+            NodeValueTrait.LIST_ITEM
+        ));
         accepted.put(NodeType.GOAL, EnumSet.of(
             NodeValueTrait.COORDINATE,
             NodeValueTrait.BLOCK,

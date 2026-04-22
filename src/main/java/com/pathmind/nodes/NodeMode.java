@@ -111,6 +111,7 @@ public enum NodeMode {
     public static NodeMode[] getModesForNodeType(NodeType nodeType) {
         switch (nodeType) {
             case GOTO:
+            case TRAVEL:
                 return new NodeMode[]{
                     GOTO_XYZ, GOTO_XZ, GOTO_Y, GOTO_BLOCK
                 };
@@ -189,6 +190,7 @@ public enum NodeMode {
     public static NodeMode getDefaultModeForNodeType(NodeType nodeType) {
         switch (nodeType) {
             case GOTO:
+            case TRAVEL:
                 return GOTO_XYZ;
             case GOAL:
                 return GOAL_XYZ;

@@ -1,5 +1,6 @@
 package com.pathmind.nodes;
 
+import com.pathmind.execution.PathmindNavigator;
 import net.minecraft.text.Text;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -997,7 +998,7 @@ public class Node {
     }
 
     public boolean isGotoAllowBreakWhileExecuting() {
-        if (type != NodeType.GOTO) {
+        if (type != NodeType.GOTO && type != NodeType.TRAVEL) {
             return false;
         }
         com.pathmind.data.SettingsManager.Settings settings = com.pathmind.data.SettingsManager.getCurrent();
@@ -1005,14 +1006,14 @@ public class Node {
     }
 
     public void setGotoAllowBreakWhileExecuting(boolean gotoAllowBreakWhileExecuting) {
-        if (type != NodeType.GOTO) {
+        if (type != NodeType.GOTO && type != NodeType.TRAVEL) {
             return;
         }
         this.gotoAllowBreakWhileExecuting = gotoAllowBreakWhileExecuting;
     }
 
     public boolean isGotoAllowPlaceWhileExecuting() {
-        if (type != NodeType.GOTO) {
+        if (type != NodeType.GOTO && type != NodeType.TRAVEL) {
             return false;
         }
         com.pathmind.data.SettingsManager.Settings settings = com.pathmind.data.SettingsManager.getCurrent();
@@ -1020,7 +1021,7 @@ public class Node {
     }
 
     public void setGotoAllowPlaceWhileExecuting(boolean gotoAllowPlaceWhileExecuting) {
-        if (type != NodeType.GOTO) {
+        if (type != NodeType.GOTO && type != NodeType.TRAVEL) {
             return;
         }
         this.gotoAllowPlaceWhileExecuting = gotoAllowPlaceWhileExecuting;
@@ -2791,13 +2792,14 @@ public class Node {
         }
         switch (type) {
             case GOTO:
+            case TRAVEL:
             case GOAL:
             case BUILD:
             case EXPLORE:
             case FOLLOW:
             case PATH:
             case INTERACT:
-                if (type == NodeType.GOTO || type == NodeType.GOAL) {
+                if (type == NodeType.GOTO || type == NodeType.TRAVEL || type == NodeType.GOAL) {
                     return EnumSet.of(ParameterUsage.POSITION, ParameterUsage.LOOK_ORIENTATION);
                 }
                 return EnumSet.of(ParameterUsage.POSITION);
@@ -5813,7 +5815,7 @@ public class Node {
             handled = true;
         }
 
-        if (!handled && type == NodeType.GOTO) {
+        if (!handled && (type == NodeType.GOTO || type == NodeType.TRAVEL)) {
             NodeType parameterType = parameterNode.getType();
             if (parameterType == NodeType.PARAM_ENTITY
                 || parameterType == NodeType.PARAM_PLAYER
@@ -6265,7 +6267,7 @@ public class Node {
                     }
                 }
 
-                if (type == NodeType.GOTO || type == NodeType.GOAL) {
+                if (type == NodeType.GOTO || type == NodeType.TRAVEL || type == NodeType.GOAL) {
                     if (mode != NodeMode.GOTO_XYZ && mode != NodeMode.GOTO_XZ
                         && mode != NodeMode.GOAL_XYZ && mode != NodeMode.GOAL_XZ) {
                         return Optional.empty();
@@ -7714,6 +7716,9 @@ public class Node {
             // Generalized nodes
             case GOTO:
                 executeGotoCommand(future);
+                break;
+            case TRAVEL:
+                executeTravelCommand(future);
                 break;
             case GOAL:
                 executeGoalCommand(future);
@@ -9278,6 +9283,95 @@ public class Node {
             default:
                 future.completeExceptionally(new RuntimeException("Unknown GOTO mode: " + mode));
                 break;
+        }
+    }
+
+    private void executeTravelCommand(CompletableFuture<Void> future) {
+        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        if (mode == null) {
+            future.completeExceptionally(new RuntimeException("No mode set for TRAVEL node"));
+            return;
+        }
+
+        BlockPos targetPos = resolveTravelTarget(future);
+        if (future.isDone()) {
+            return;
+        }
+        if (targetPos == null) {
+            future.completeExceptionally(new RuntimeException("No target resolved for TRAVEL node"));
+            return;
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null) {
+            future.completeExceptionally(new RuntimeException("Pathmind Nav unavailable"));
+            return;
+        }
+        if (isPlayerAtCoordinates(targetPos.getX(), targetPos.getY(), targetPos.getZ())) {
+            future.complete(null);
+            return;
+        }
+
+        PathmindNavigator navigator = PathmindNavigator.getInstance();
+        boolean previousBreakAllowed = navigator.isBlockBreakingAllowed();
+        boolean previousPlaceAllowed = navigator.isBlockPlacingAllowed();
+        navigator.setBlockBreakingAllowed(isGotoAllowBreakWhileExecuting());
+        navigator.setBlockPlacingAllowed(isGotoAllowPlaceWhileExecuting());
+
+        if (!navigator.startGoto(targetPos, "Node Travel", future)) {
+            navigator.setBlockBreakingAllowed(previousBreakAllowed);
+            navigator.setBlockPlacingAllowed(previousPlaceAllowed);
+            future.completeExceptionally(new RuntimeException("Could not start Pathmind Nav"));
+            return;
+        }
+
+        future.whenComplete((result, throwable) -> {
+            navigator.setBlockBreakingAllowed(previousBreakAllowed);
+            navigator.setBlockPlacingAllowed(previousPlaceAllowed);
+        });
+    }
+
+    private BlockPos resolveTravelTarget(CompletableFuture<Void> future) {
+        boolean[] handled = new boolean[1];
+        BlockPos attachedTarget = resolveGotoFallbackTargetFromAttachedParameter(future, handled);
+        if (handled[0]) {
+            return attachedTarget;
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        switch (mode) {
+            case GOTO_XYZ: {
+                int x = getIntParameter("X", 0);
+                int y = getIntParameter("Y", 64);
+                int z = getIntParameter("Z", 0);
+                return new BlockPos(x, y, z);
+            }
+            case GOTO_XZ: {
+                if (client == null || client.player == null) {
+                    future.completeExceptionally(new RuntimeException("Player unavailable for TRAVEL XZ target"));
+                    return null;
+                }
+                int x = getIntParameter("X", 0);
+                int z = getIntParameter("Z", 0);
+                return new BlockPos(x, client.player.getBlockY(), z);
+            }
+            case GOTO_Y: {
+                if (client == null || client.player == null) {
+                    future.completeExceptionally(new RuntimeException("Player unavailable for TRAVEL Y target"));
+                    return null;
+                }
+                int y = getIntParameter("Y", 64);
+                BlockPos playerPos = client.player.getBlockPos();
+                return new BlockPos(playerPos.getX(), y, playerPos.getZ());
+            }
+            case GOTO_BLOCK: {
+                return resolveGotoFallbackTargetFromBlockId(getStringParameter("Block", null), future);
+            }
+            default:
+                future.completeExceptionally(new RuntimeException("Unknown TRAVEL mode: " + mode));
+                return null;
         }
     }
 

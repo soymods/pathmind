@@ -2379,7 +2379,7 @@ public class ExecutionManager {
             if (node.hasBookTextInput()) {
                 nodeData.setBookText(node.getBookText());
             }
-            if (node.getType() == NodeType.GOTO) {
+            if (node.getType() == NodeType.GOTO || node.getType() == NodeType.TRAVEL) {
                 nodeData.setGotoAllowBreakWhileExecuting(node.isGotoAllowBreakWhileExecuting());
                 nodeData.setGotoAllowPlaceWhileExecuting(node.isGotoAllowPlaceWhileExecuting());
             }

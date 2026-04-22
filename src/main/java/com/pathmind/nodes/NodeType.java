@@ -40,6 +40,7 @@ public enum NodeType {
 
     // Navigation Commands
     GOTO("pathmind.node.type.goto", 0xFF00BCD4, "pathmind.node.type.goto.desc"),
+    TRAVEL("pathmind.node.type.travel", 0xFF26C6DA, "pathmind.node.type.travel.desc"),
     GOAL("pathmind.node.type.goal", 0xFF2196F3, "pathmind.node.type.goal.desc"),
     PATH("pathmind.node.type.path", 0xFF03DAC6, "pathmind.node.type.path.desc"),
     INVERT("pathmind.node.type.invert", 0xFFFF5722, "pathmind.node.type.invert.desc"),
@@ -291,6 +292,7 @@ public enum NodeType {
             case SENSOR_ATTRIBUTE_DETECTION:
                 return NodeCategory.SENSORS;
             case GOTO:
+            case TRAVEL:
             case GOAL:
             case PATH:
             case INVERT:
@@ -399,6 +401,7 @@ public enum NodeType {
             case EVENT_FUNCTION:
             case EVENT_CALL:
             case GOTO:
+            case TRAVEL:
             case GOAL:
             case COLLECT:
             case PLACE:
@@ -514,6 +517,8 @@ public enum NodeType {
             case PARAM_WAYPOINT:
             case PARAM_SCHEMATIC:
                 return true;
+            case TRAVEL:
+                return false;
             default:
                 return false;
         }

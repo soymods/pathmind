@@ -71,6 +71,16 @@ val legacyInputVersions = setOf(
     "1.21.8"
 )
 val usesLegacyInputApis = requestedMinecraftVersion in legacyInputVersions
+val oldLegacyRenderVersions = setOf(
+    "1.21",
+    "1.21.1",
+    "1.21.2",
+    "1.21.3",
+    "1.21.4"
+)
+val usesOldLegacyRenderApis = requestedMinecraftVersion in oldLegacyRenderVersions
+val transitionalLegacyRenderVersions = setOf("1.21.5")
+val usesTransitionalLegacyRenderApis = requestedMinecraftVersion in transitionalLegacyRenderVersions
 val midInputVersions = setOf("1.21.9", "1.21.10")
 val usesMidInputApis = requestedMinecraftVersion in midInputVersions
 loom {
@@ -161,6 +171,13 @@ sourceSets {
             setSrcDirs(listOf("src/main/java"))
             if (usesLegacyInputApis) {
                 srcDir("src/legacy/java")
+                if (usesOldLegacyRenderApis) {
+                    srcDir("src/legacy-old/java")
+                } else if (usesTransitionalLegacyRenderApis) {
+                    srcDir("src/legacy-transitional/java")
+                } else {
+                    srcDir("src/legacy-late/java")
+                }
             } else if (usesMidInputApis) {
                 srcDir("src/mid/java")
             } else {

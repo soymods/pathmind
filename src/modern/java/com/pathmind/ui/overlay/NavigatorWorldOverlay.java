@@ -20,7 +20,6 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFC857;
     private static final int STEP_COLOR = 0xFF7FD36B;
-    private static final int VISITED_STEP_COLOR = 0xFF3E8E7E;
     private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final int PLACE_COLOR = 0xFFC47BFF;
     private static final float PATH_LINE_WIDTH = 2.5F;
@@ -55,7 +54,7 @@ public final class NavigatorWorldOverlay {
             renderStepMarkers(snapshot.path(), snapshot.visitedPathIndex());
             renderBreakTargets(snapshot.breakTargets());
             renderPlaceTargets(snapshot.placeTargets());
-            renderPath(snapshot.path(), goalPos);
+            renderPath(snapshot.path(), goalPos, snapshot.visitedPathIndex());
             renderGoal(goalPos);
         } catch (Throwable ignored) {
             // Never fail the world renderer because of a debug-style overlay.
@@ -86,7 +85,7 @@ public final class NavigatorWorldOverlay {
         }
     }
 
-    private static void renderPath(List<BlockPos> path, BlockPos goalPos) {
+    private static void renderPath(List<BlockPos> path, BlockPos goalPos, int pathIndex) {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientPlayerEntity player = client != null ? client.player : null;
         if (player == null || goalPos == null) {
@@ -96,7 +95,9 @@ public final class NavigatorWorldOverlay {
         List<Vec3d> renderPoints = new java.util.ArrayList<>((path == null ? 0 : path.size()) + 2);
         renderPoints.add(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()));
         if (path != null) {
-            for (BlockPos node : path) {
+            int startIndex = Math.max(0, Math.min(pathIndex, path.size()));
+            for (int i = startIndex; i < path.size(); i++) {
+                BlockPos node = path.get(i);
                 renderPoints.add(pathPoint(node));
             }
         }
@@ -124,10 +125,12 @@ public final class NavigatorWorldOverlay {
             if (step == null) {
                 continue;
             }
+            if (i < Math.max(0, pathIndex)) {
+                continue;
+            }
             Vec3d center = Vec3d.ofCenter(step);
             Box marker = Box.of(center.add(0.0D, 0.15D, 0.0D), 0.34D, 0.34D, 0.34D);
-            int color = i < Math.max(0, pathIndex) ? VISITED_STEP_COLOR : STEP_COLOR;
-            renderBoxOutline(marker, color, STEP_STROKE_WIDTH);
+            renderBoxOutline(marker, STEP_COLOR, STEP_STROKE_WIDTH);
         }
     }
 

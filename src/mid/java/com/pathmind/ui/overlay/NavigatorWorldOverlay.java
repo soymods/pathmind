@@ -25,7 +25,6 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFA52B;
     private static final int STEP_COLOR = 0xFF7FD36B;
-    private static final int VISITED_STEP_COLOR = 0xFF3E8E7E;
     private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final int PLACE_COLOR = 0xFFC47BFF;
     private static final double DASH_LENGTH = 0.42D;
@@ -82,7 +81,7 @@ public final class NavigatorWorldOverlay {
             renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.visitedPathIndex(), cameraPos);
             renderBreakTargets(matrices, consumers, snapshot.breakTargets(), cameraPos);
             renderPlaceTargets(matrices, consumers, snapshot.placeTargets(), cameraPos);
-            renderPath(matrices, consumers, player, snapshot.path(), goalPos, cameraPos);
+            renderPath(matrices, consumers, player, snapshot.path(), goalPos, snapshot.visitedPathIndex(), cameraPos);
             renderGoal(matrices, consumers, goalPos, cameraPos);
         } catch (Throwable ignored) {
             // Never fail the world renderer because of overlay drawing.
@@ -125,6 +124,7 @@ public final class NavigatorWorldOverlay {
         ClientPlayerEntity player,
         List<BlockPos> path,
         BlockPos goalPos,
+        int pathIndex,
         Vec3d cameraPos
     ) {
         if (player == null || goalPos == null) {
@@ -134,7 +134,9 @@ public final class NavigatorWorldOverlay {
         List<Vec3d> points = new ArrayList<>((path == null ? 0 : path.size()) + 2);
         points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraPos));
         if (path != null) {
-            for (BlockPos node : path) {
+            int startIndex = Math.max(0, Math.min(pathIndex, path.size()));
+            for (int i = startIndex; i < path.size(); i++) {
+                BlockPos node = path.get(i);
                 points.add(cameraRelative(pathPoint(node), cameraPos));
             }
         }
@@ -226,9 +228,11 @@ public final class NavigatorWorldOverlay {
             if (step == null) {
                 continue;
             }
+            if (i < Math.max(0, pathIndex)) {
+                continue;
+            }
             Box marker = Box.of(cameraRelative(pathPoint(step), cameraPos), 0.34D, 0.34D, 0.34D);
-            int color = i < Math.max(0, pathIndex) ? VISITED_STEP_COLOR : STEP_COLOR;
-            renderBoxOutline(matrices, consumers, marker, color);
+            renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
         }
     }
 

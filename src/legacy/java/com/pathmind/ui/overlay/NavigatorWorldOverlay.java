@@ -25,7 +25,6 @@ public final class NavigatorWorldOverlay {
     private static final int CANDIDATE_PATH_COLOR = 0x6687AFC2;
     private static final int GOAL_COLOR = 0xFFFFA52B;
     private static final int STEP_COLOR = 0xFF7FD36B;
-    private static final int VISITED_STEP_COLOR = 0xFF3E8E7E;
     private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final int PLACE_COLOR = 0xFFC47BFF;
     private static final double DASH_LENGTH = 0.42D;
@@ -101,7 +100,7 @@ public final class NavigatorWorldOverlay {
             renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.visitedPathIndex(), cameraX, cameraY, cameraZ);
             renderBreakTargets(matrices, consumers, snapshot.breakTargets(), cameraX, cameraY, cameraZ);
             renderPlaceTargets(matrices, consumers, snapshot.placeTargets(), cameraX, cameraY, cameraZ);
-            renderPath(matrices, consumers, snapshot.path(), goalPos, cameraX, cameraY, cameraZ);
+            renderPath(matrices, consumers, snapshot.path(), goalPos, snapshot.visitedPathIndex(), cameraX, cameraY, cameraZ);
             renderGoal(matrices, consumers, goalPos, cameraX, cameraY, cameraZ);
         } catch (Throwable ignored) {
             // Never fail the debug renderer because of Pathmind indicators.
@@ -116,6 +115,7 @@ public final class NavigatorWorldOverlay {
         VertexConsumerProvider.Immediate consumers,
         List<BlockPos> path,
         BlockPos goalPos,
+        int pathIndex,
         double cameraX,
         double cameraY,
         double cameraZ
@@ -129,7 +129,9 @@ public final class NavigatorWorldOverlay {
         List<Vec3d> points = new ArrayList<>((path == null ? 0 : path.size()) + 2);
         points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraX, cameraY, cameraZ));
         if (path != null) {
-            for (BlockPos node : path) {
+            int startIndex = Math.max(0, Math.min(pathIndex, path.size()));
+            for (int i = startIndex; i < path.size(); i++) {
+                BlockPos node = path.get(i);
                 points.add(cameraRelative(pathPoint(node), cameraX, cameraY, cameraZ));
             }
         }
@@ -264,9 +266,11 @@ public final class NavigatorWorldOverlay {
             if (step == null) {
                 continue;
             }
+            if (i < Math.max(0, pathIndex)) {
+                continue;
+            }
             Box marker = Box.of(cameraRelative(pathPoint(step), cameraX, cameraY, cameraZ), 0.34D, 0.34D, 0.34D);
-            int color = i < Math.max(0, pathIndex) ? VISITED_STEP_COLOR : STEP_COLOR;
-            renderBoxOutline(matrices, consumers, marker, color);
+            renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
         }
     }
 

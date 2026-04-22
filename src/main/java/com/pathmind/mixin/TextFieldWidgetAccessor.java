@@ -30,7 +30,4 @@ public interface TextFieldWidgetAccessor {
 
     @Accessor("editable")
     boolean pathmind$isEditable();
-
-    @Accessor("textShadow")
-    boolean pathmind$getTextShadow();
 }

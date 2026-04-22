@@ -63,10 +63,11 @@ public final class PathmindNavigator {
     private static final double WAYPOINT_NEAR_DISTANCE_SQ = 0.90D;
     private static final float MAX_YAW_STEP = 14.0F;
     private static final float MAX_PITCH_STEP = 8.0F;
+    private static final float JUMP_YAW_ALIGNMENT_DEGREES = 18.0F;
     private static final long STUCK_TIMEOUT_MS = 1500L;
     private static final long REPLAN_COOLDOWN_MS = 450L;
     private static final long JUMP_RETRY_COOLDOWN_MS = 250L;
-    private static final long JUMP_COMMIT_WINDOW_MS = 900L;
+    private static final long JUMP_COMMIT_WINDOW_MS = 1250L;
     private static final long JUMP_RECOVERY_GRACE_MS = 700L;
     private static final long TRAPPED_RECOVERY_COMMIT_MS = 10000L;
     private static final long FAILED_MOVE_MEMORY_MS = 7000L;
@@ -80,6 +81,7 @@ public final class PathmindNavigator {
     private static final long LOCAL_RECOVERY_COOLDOWN_MS = 550L;
     private static final int MAX_LOCAL_RECOVERY_ATTEMPTS = 2;
     private static final long PATH_DECISION_VISIBILITY_MS = 1400L;
+    private static final long WAYPOINT_ACQUIRE_SETTLE_MS = 300L;
     private static final double PROGRESS_EPSILON_SQ = 0.01D;
     private static final double MOVEMENT_EPSILON_SQ = 0.0025D;
     private static final double COUNTERMOVEMENT_DISTANCE = 0.9D;
@@ -101,6 +103,9 @@ public final class PathmindNavigator {
     private static final int MAX_GOAL_CANDIDATES = 10;
     private static final int MAX_VISIBLE_CANDIDATE_PATHS = 3;
     private static final int MAX_GOAL_PATH_ATTEMPTS = 6;
+    private static final int PROACTIVE_REPLAN_LOOKAHEAD_STEPS = 6;
+    private static final int MAX_SNAPSHOT_PATH_POINTS = 96;
+    private static final int MAX_SNAPSHOT_CANDIDATE_POINTS = 64;
     private static final long PATHFIND_TIME_BUDGET_MS = 220L;
     private static final long COARSE_PATHFIND_TIME_BUDGET_MS = 180L;
     private static final int COARSE_MAX_EXPANSIONS = 90000;
@@ -163,6 +168,7 @@ public final class PathmindNavigator {
     private List<PlannedPrimitive> currentPlan = List.of();
     private List<List<BlockPos>> candidatePaths = List.of();
     private long candidatePathsVisibleUntilMs;
+    private long lastWaypointAdvanceAtMs;
     private int pathIndex;
     private int furthestVisitedPathIndex;
     private BlockPos activeWaypoint;
@@ -326,6 +332,7 @@ public final class PathmindNavigator {
         this.currentPlan = List.of();
         this.candidatePaths = List.of();
         this.candidatePathsVisibleUntilMs = 0L;
+        this.lastWaypointAdvanceAtMs = this.startedAtMs;
         this.pathIndex = 0;
         this.furthestVisitedPathIndex = 0;
         this.activeWaypoint = null;
@@ -423,11 +430,18 @@ public final class PathmindNavigator {
             Vec3d playerPos = new Vec3d(client.player.getX(), client.player.getY(), client.player.getZ());
             distance = playerPos.distanceTo(target);
         }
-        List<BlockPos> pathCopy = currentPath.isEmpty() ? List.of() : List.copyOf(currentPath);
+        int snapshotStart = currentPath.isEmpty()
+            ? 0
+            : Math.max(0, Math.min(furthestVisitedPathIndex, currentPath.size() - 1));
+        List<BlockPos> pathCopy = currentPath.isEmpty()
+            ? List.of()
+            : copyPathWindow(currentPath, snapshotStart, MAX_SNAPSHOT_PATH_POINTS);
         boolean showCandidatePaths = state == State.PREVIEW || System.currentTimeMillis() <= candidatePathsVisibleUntilMs;
         List<List<BlockPos>> candidateCopies = !showCandidatePaths || candidatePaths.isEmpty()
             ? List.of()
-            : candidatePaths.stream().map(List::copyOf).toList();
+            : candidatePaths.stream()
+                .map(path -> copyPathWindow(path, 0, MAX_SNAPSHOT_CANDIDATE_POINTS))
+                .toList();
         List<BlockPos> breakTargets = List.of();
         List<BlockPos> placeTargets = List.of();
         if (client != null && client.world != null) {
@@ -460,8 +474,8 @@ public final class PathmindNavigator {
             targetPos,
             resolvedGoal,
             activeWaypoint,
-            pathIndex,
-            furthestVisitedPathIndex,
+            Math.max(0, pathIndex - snapshotStart),
+            0,
             breakTargets,
             placeTargets,
             commandLabel,
@@ -471,6 +485,18 @@ public final class PathmindNavigator {
             pathCopy,
             candidateCopies
         );
+    }
+
+    private List<BlockPos> copyPathWindow(List<BlockPos> path, int startIndex, int maxPoints) {
+        if (path == null || path.isEmpty() || maxPoints <= 0) {
+            return List.of();
+        }
+        int start = Math.max(0, Math.min(startIndex, path.size()));
+        int end = Math.min(path.size(), start + maxPoints);
+        if (start >= end) {
+            return List.of();
+        }
+        return List.copyOf(path.subList(start, end));
     }
 
     public synchronized DebugInfo getDebugInfo() {
@@ -698,6 +724,7 @@ public final class PathmindNavigator {
         this.committedPathGoalPos = this.resolvedGoalPos != null ? this.resolvedGoalPos.toImmutable() : this.targetPos;
         this.committedPathStartPos = start != null ? start.toImmutable() : null;
         this.pathIndex = chooseInitialPathIndex(this.currentPath, start, this.targetPos);
+        this.lastWaypointAdvanceAtMs = System.currentTimeMillis();
         this.furthestVisitedPathIndex = Math.max(-1, this.pathIndex - 1);
         this.activeWaypoint = this.currentPath.get(this.pathIndex);
         this.plannedBreakTargets = buildPathBreakPlan(client.world, this.currentPath, this.pathIndex);
@@ -779,6 +806,7 @@ public final class PathmindNavigator {
                 committedPathGoalPos = computation.resolvedGoalPos() != null ? computation.resolvedGoalPos().toImmutable() : resolvedGoalPos;
                 committedPathStartPos = playerFootPos != null ? playerFootPos.toImmutable() : null;
                 pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
+                lastWaypointAdvanceAtMs = now;
                 furthestVisitedPathIndex = Math.max(-1, pathIndex - 1);
                 activeWaypoint = currentPath.get(pathIndex);
                 plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
@@ -799,6 +827,13 @@ public final class PathmindNavigator {
 
         BlockPos waypoint = chooseActiveWaypoint(world, player, playerFootPos);
         if (waypoint == null) {
+            releaseMovementKeys(client);
+            synchronized (this) {
+                if (!currentPath.isEmpty() && now - lastWaypointAdvanceAtMs <= WAYPOINT_ACQUIRE_SETTLE_MS) {
+                    lastAdvanceDecision = "hold:settle_for_next_waypoint";
+                    return;
+                }
+            }
             BlockPos fallbackResolvedGoal;
             synchronized (this) {
                 fallbackResolvedGoal = resolvedGoalPos != null ? resolvedGoalPos.toImmutable() : null;
@@ -810,6 +845,12 @@ public final class PathmindNavigator {
                 releaseMovementKeys(client);
                 complete(State.ARRIVED);
                 return;
+            }
+            synchronized (this) {
+                if (now - lastPlanAtMs < REPLAN_COOLDOWN_MS) {
+                    lastAdvanceDecision = "hold:recovery_replan_cooldown";
+                    return;
+                }
             }
             PathComputation recovery = findPath(world, playerFootPos, target);
             if (!recovery.path().isEmpty()) {
@@ -835,6 +876,7 @@ public final class PathmindNavigator {
                         committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().toImmutable() : resolvedGoalPos;
                         committedPathStartPos = playerFootPos != null ? playerFootPos.toImmutable() : null;
                         pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
+                        lastWaypointAdvanceAtMs = now;
                         furthestVisitedPathIndex = Math.max(-1, pathIndex - 1);
                         activeWaypoint = currentPath.get(pathIndex);
                         plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
@@ -1195,7 +1237,14 @@ public final class PathmindNavigator {
                 return false;
             }
             boolean committedGoalValid = isPathGoalStillValid(currentPath, committedPathGoalLocked(target));
+            boolean routeReachesRequestedTarget = isPathGoalStillValid(currentPath, target);
             boolean nearCommittedRoute = isPlayerNearPath(start) || isPlayerNearCommittedPathStart(start);
+            if (!routeReachesRequestedTarget
+                && nearCommittedRoute
+                && shouldProactivelyRefreshRouteLocked(target, now)) {
+                lastReplanDecision = "replan:refresh_partial_route";
+                return true;
+            }
             if (committedGoalValid && nearCommittedRoute && isWaypointActionable(world, activeWaypoint)) {
                 lastReplanDecision = "keep:committed_route_valid";
                 return false;
@@ -1219,6 +1268,26 @@ public final class PathmindNavigator {
             lastReplanDecision = "keep:default";
             return false;
         }
+    }
+
+    private boolean shouldProactivelyRefreshRouteLocked(BlockPos target, long now) {
+        if (target == null || currentPath.isEmpty() || pathIndex < 0) {
+            return false;
+        }
+        if (now - lastPlanAtMs < REPLAN_COOLDOWN_MS) {
+            return false;
+        }
+        if (pathIndex <= 0 && furthestVisitedPathIndex <= 0) {
+            return false;
+        }
+        int remaining = Math.max(0, currentPath.size() - pathIndex - 1);
+        if (remaining > PROACTIVE_REPLAN_LOOKAHEAD_STEPS) {
+            return false;
+        }
+        BlockPos pathEnd = currentPath.get(currentPath.size() - 1);
+        return pathEnd == null
+            || horizontalDistanceSq(pathEnd, target) > 4.0D
+            || Math.abs(pathEnd.getY() - target.getY()) > MAX_DROP_DOWN;
     }
 
     private BlockPos committedPathGoalLocked(BlockPos fallbackTarget) {
@@ -1370,10 +1439,17 @@ public final class PathmindNavigator {
             BlockPos candidateEnd = candidatePath.get(candidatePath.size() - 1);
             double currentGoalDistance = goalDistanceScore(currentEnd, committedGoal);
             double candidateGoalDistance = goalDistanceScore(candidateEnd, committedGoal);
+            boolean extendingPartialRoute = !isPathGoalStillValid(currentPath, target)
+                && isMeaningfulPartialRouteExtension(currentEnd, candidateEnd, target, candidatePath.size());
             if (hasEquivalentActiveOpening(activeWaypoint, candidatePath)
-                && candidateGoalDistance >= currentGoalDistance - 1.0D) {
+                && candidateGoalDistance >= currentGoalDistance - 1.0D
+                && !extendingPartialRoute) {
                 lastReplaceDecision = "keep:equivalent_active_opening";
                 return true;
+            }
+            if (extendingPartialRoute) {
+                lastReplaceDecision = "replace:extend_partial_route";
+                return false;
             }
             if (candidateGoalDistance >= currentGoalDistance + 0.75D) {
                 lastReplaceDecision = "keep:candidate_farther_goal";
@@ -1467,6 +1543,21 @@ public final class PathmindNavigator {
             }
         }
         return false;
+    }
+
+    private boolean isMeaningfulPartialRouteExtension(
+        BlockPos currentEnd,
+        BlockPos candidateEnd,
+        BlockPos committedGoal,
+        int candidatePathSize
+    ) {
+        if (currentEnd == null || candidateEnd == null || committedGoal == null) {
+            return false;
+        }
+        double currentGoalDistance = goalDistanceScore(currentEnd, committedGoal);
+        double candidateGoalDistance = goalDistanceScore(candidateEnd, committedGoal);
+        return candidateGoalDistance <= currentGoalDistance - 2.0D
+            || (candidateGoalDistance < currentGoalDistance && candidatePathSize >= currentPath.size() + 3);
     }
 
     private double goalDistanceScore(BlockPos pos, BlockPos goal) {
@@ -1969,6 +2060,7 @@ public final class PathmindNavigator {
                     committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().toImmutable() : resolvedGoalPos;
                     committedPathStartPos = playerFootPos != null ? playerFootPos.toImmutable() : null;
                     pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
+                    lastWaypointAdvanceAtMs = now;
                     furthestVisitedPathIndex = Math.max(-1, pathIndex - 1);
                     activeWaypoint = currentPath.get(pathIndex);
                     plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
@@ -2266,6 +2358,10 @@ public final class PathmindNavigator {
                 plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
             }
             activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
+            chooseForwardResyncIndexLocked(world, playerFootPos);
+            activeWaypoint = currentPath.get(pathIndex);
+            plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
+            activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
             BlockPos committedGoal = committedPathGoalPos != null ? committedPathGoalPos : targetPos;
             if (world != null
                 && playerFootPos != null
@@ -2340,6 +2436,7 @@ public final class PathmindNavigator {
                     routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
                 }
                 pathIndex = Math.max(pathIndex, reachedIndex);
+                lastWaypointAdvanceAtMs = now;
                 furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, reachedIndex);
                 lastAdvanceDecision = "advance:reached_index=" + reachedIndex;
             }
@@ -2347,6 +2444,7 @@ public final class PathmindNavigator {
                 BlockPos waypoint = currentPath.get(pathIndex);
                 if (waypoint == null) {
                     pathIndex++;
+                    lastWaypointAdvanceAtMs = now;
                     furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex);
                     lastProgressAtMs = now;
                     routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
@@ -2360,6 +2458,7 @@ public final class PathmindNavigator {
                         && horizontalDistanceSq(playerFootPos, next) <= WAYPOINT_REACHED_DISTANCE_SQ
                         && Math.abs(next.getY() - playerFootPos.getY()) <= 1) {
                         pathIndex++;
+                        lastWaypointAdvanceAtMs = now;
                         furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex);
                         lastProgressAtMs = now;
                         routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
@@ -2374,6 +2473,7 @@ public final class PathmindNavigator {
                     return waypoint;
                 }
                 pathIndex++;
+                lastWaypointAdvanceAtMs = now;
                 furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex);
                 lastProgressAtMs = now;
                 routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
@@ -2403,6 +2503,47 @@ public final class PathmindNavigator {
             }
         }
         return best;
+    }
+
+    private void chooseForwardResyncIndexLocked(World world, BlockPos playerFootPos) {
+        if (world == null || playerFootPos == null || currentPath.isEmpty()) {
+            return;
+        }
+        int boundedIndex = Math.max(furthestVisitedPathIndex, Math.min(pathIndex, currentPath.size() - 1));
+        BlockPos currentStep = currentPath.get(boundedIndex);
+        if (currentStep == null) {
+            return;
+        }
+        double currentDistance = horizontalDistanceSq(playerFootPos, currentStep);
+        int bestIndex = boundedIndex;
+        double bestScore = currentDistance;
+        int end = Math.min(currentPath.size() - 1, boundedIndex + 4);
+        for (int i = boundedIndex + 1; i <= end; i++) {
+            BlockPos step = currentPath.get(i);
+            if (step == null) {
+                continue;
+            }
+            if (horizontalDistanceSq(playerFootPos, step) > 16.0D || Math.abs(step.getY() - playerFootPos.getY()) > 2) {
+                continue;
+            }
+            if (!isWaypointActionable(world, step)) {
+                continue;
+            }
+            double score = horizontalDistanceSq(playerFootPos, step) + ((i - boundedIndex) * 0.15D);
+            if (score + 0.75D < bestScore) {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+        if (bestIndex > boundedIndex
+            && (currentDistance > 4.0D
+            || currentStep.getY() > playerFootPos.getY()
+            || !isWaypointActionable(world, currentStep))) {
+            pathIndex = bestIndex;
+            lastWaypointAdvanceAtMs = System.currentTimeMillis();
+            furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, bestIndex - 1);
+            lastAdvanceDecision = "resync:forward_index=" + bestIndex + " waypoint=" + formatDebugPos(currentPath.get(bestIndex));
+        }
     }
 
     private boolean shouldAdvancePastWaypoint(Vec3d playerPos, BlockPos playerFootPos, BlockPos waypoint, Vec3d waypointCenter) {
@@ -4360,18 +4501,30 @@ public final class PathmindNavigator {
             return false;
         }
         if (stepX != 0 && stepZ != 0) {
-            if (Math.abs(waypoint.getX() - from.getX()) >= Math.abs(waypoint.getZ() - from.getZ())) {
-                stepZ = 0;
-            } else {
-                stepX = 0;
-            }
+            BlockPos xFront = new BlockPos(from.getX() + stepX, from.getY(), from.getZ());
+            BlockPos zFront = new BlockPos(from.getX(), from.getY(), from.getZ() + stepZ);
+            boolean xBlocked = isMovementObstructed(world, xFront);
+            boolean zBlocked = isMovementObstructed(world, zFront);
+            return xBlocked
+                && zBlocked
+                && !requiresBreakingForWaypoint(world, waypoint)
+                && !requiresInteractableTraversal(world, from, waypoint)
+                && !hasPathOpenableAhead(world, from, waypoint);
         }
         BlockPos front = new BlockPos(from.getX() + stepX, from.getY(), from.getZ() + stepZ);
-        BlockPos frontHead = front.up();
-        return (hasCollision(world, front) || hasCollision(world, frontHead))
+        return isMovementObstructed(world, front)
             && !requiresBreakingForWaypoint(world, waypoint)
             && !requiresInteractableTraversal(world, from, waypoint)
             && !hasPathOpenableAhead(world, from, waypoint);
+    }
+
+    private boolean isMovementObstructed(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return false;
+        }
+        BlockPos head = pos.up();
+        return (hasCollision(world, pos) || hasCollision(world, head))
+            && (!canOccupy(world, pos) || !canOccupy(world, head));
     }
 
     private boolean canAttemptJump(World world, BlockPos from, BlockPos waypoint) {
@@ -4406,6 +4559,7 @@ public final class PathmindNavigator {
     }
 
     private Vec3d resolveWaypointAimPoint(
+        World world,
         BlockPos playerFootPos,
         BlockPos waypoint,
         BlockPos climbAnchor,
@@ -4418,6 +4572,10 @@ public final class PathmindNavigator {
         }
         double aimX = horizontalAim.getX() + 0.5D;
         double aimZ = horizontalAim.getZ() + 0.5D;
+        Vec3d cornerAim = resolveCornerApproachAimPoint(world, playerFootPos, waypoint, climbAnchor, plannedPrimitive, playerY);
+        if (cornerAim != null) {
+            return cornerAim;
+        }
         if (playerFootPos != null
             && waypoint != null
             && plannedPrimitive != null
@@ -4431,6 +4589,48 @@ public final class PathmindNavigator {
             }
         }
         return new Vec3d(aimX, playerY, aimZ);
+    }
+
+    private Vec3d resolveCornerApproachAimPoint(
+        World world,
+        BlockPos playerFootPos,
+        BlockPos waypoint,
+        BlockPos climbAnchor,
+        PlannedPrimitive plannedPrimitive,
+        double playerY
+    ) {
+        if (world == null || playerFootPos == null || waypoint == null || climbAnchor != null || plannedPrimitive == null) {
+            return null;
+        }
+        if (primitiveRequiresBreak(plannedPrimitive)
+            || primitiveRequiresPlace(plannedPrimitive)
+            || isJumpPrimitive(plannedPrimitive)
+            || isPillarPrimitive(plannedPrimitive)
+            || isClimbPrimitive(plannedPrimitive)
+            || isSwimPrimitive(plannedPrimitive)
+            || isInteractablePrimitive(plannedPrimitive)) {
+            return null;
+        }
+        int stepX = Integer.compare(waypoint.getX(), playerFootPos.getX());
+        int stepZ = Integer.compare(waypoint.getZ(), playerFootPos.getZ());
+        if (stepX == 0 || stepZ == 0) {
+            return null;
+        }
+        if (Math.abs(waypoint.getY() - playerFootPos.getY()) > 1) {
+            return null;
+        }
+        BlockPos xFront = new BlockPos(playerFootPos.getX() + stepX, playerFootPos.getY(), playerFootPos.getZ());
+        BlockPos zFront = new BlockPos(playerFootPos.getX(), playerFootPos.getY(), playerFootPos.getZ() + stepZ);
+        boolean xBlocked = isMovementObstructed(world, xFront);
+        boolean zBlocked = isMovementObstructed(world, zFront);
+        if (xBlocked == zBlocked) {
+            return null;
+        }
+        BlockPos approach = xBlocked ? zFront : xFront;
+        if (!canOccupy(world, approach) || !canOccupy(world, approach.up())) {
+            return null;
+        }
+        return new Vec3d(approach.getX() + 0.5D, playerY, approach.getZ() + 0.5D);
     }
 
     private BlockPos resolveMinedAscentAdvanceBlock(BlockPos from, BlockPos waypoint) {
@@ -5178,7 +5378,9 @@ public final class PathmindNavigator {
         double dz = targetCenter.z - currentPos.z;
         double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
         float targetYaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        player.setYaw(stepAngle(player.getYaw(), targetYaw, MAX_YAW_STEP));
+        float nextYaw = stepAngle(player.getYaw(), targetYaw, MAX_YAW_STEP);
+        float jumpYawError = Math.abs(MathHelper.wrapDegrees(targetYaw - nextYaw));
+        player.setYaw(nextYaw);
         player.setHeadYaw(player.getYaw());
         player.setBodyYaw(player.getYaw());
 
@@ -5195,6 +5397,7 @@ public final class PathmindNavigator {
                 && recoveryTarget.getY() > playerFootPos.getY()
                 && horizontalDistance <= 1.6D
                 && !blocked
+                && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES
                 && canAttemptJump(world, playerFootPos, recoveryTarget);
             client.options.jumpKey.setPressed(false);
             if (canHop) {
@@ -5269,7 +5472,14 @@ public final class PathmindNavigator {
         FollowSegmentType segmentType = climbNode ? FollowSegmentType.CLIMB : (verticalDropStep ? FollowSegmentType.DROP : FollowSegmentType.GROUND);
         BlockPos segmentTarget = climbNode ? (climbAnchor != null ? climbAnchor : waypoint) : waypoint;
 
-        Vec3d waypointCenter = resolveWaypointAimPoint(playerFootPos, waypoint, climbNode ? climbAnchor : null, plannedPrimitive, player.getY());
+        Vec3d waypointCenter = resolveWaypointAimPoint(
+            world,
+            playerFootPos,
+            waypoint,
+            climbNode ? climbAnchor : null,
+            plannedPrimitive,
+            player.getY()
+        );
         double waypointDx = waypointCenter.x - currentPos.x;
         double waypointDz = waypointCenter.z - currentPos.z;
         double waypointHorizontalDistance = Math.sqrt(waypointDx * waypointDx + waypointDz * waypointDz);
@@ -5280,6 +5490,7 @@ public final class PathmindNavigator {
         float targetYaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(waypointDz, waypointDx)) - 90.0D));
         float desiredPitch = (float) -Math.toDegrees(Math.atan2(waypointVerticalDelta, Math.max(0.0001D, waypointHorizontalDistance)));
         float nextYaw = stepAngle(player.getYaw(), targetYaw, MAX_YAW_STEP);
+        float jumpYawError = Math.abs(MathHelper.wrapDegrees(targetYaw - nextYaw));
         float nextPitch = stepAngle(player.getPitch(), MathHelper.clamp(desiredPitch, -35.0F, 35.0F), MAX_PITCH_STEP);
         player.setYaw(nextYaw);
         player.setHeadYaw(nextYaw);
@@ -5490,6 +5701,7 @@ public final class PathmindNavigator {
             && (miningAdvanceJumpStep || millisSinceJump >= JUMP_RETRY_COOLDOWN_MS)
             && !breakRequiredStep
             && !placeRequiredStep
+            && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES
             && (isJumpPrimitive(plannedPrimitive)
             || miningAdvanceJumpStep
             || (plannedPrimitive == null && (!interactableStep && waypoint.getY() > playerFootPos.getY()))

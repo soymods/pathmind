@@ -9,8 +9,11 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.MathHelper;
 
+import java.lang.reflect.Field;
+
 public class PathmindTextField extends TextFieldWidget {
     private static final int SELECTION_COLOR = 0x664F86C6;
+    private static final Field TEXT_SHADOW_FIELD = findTextShadowField();
 
     private final TextRenderer pathmindTextRenderer;
 
@@ -67,7 +70,7 @@ public class PathmindTextField extends TextFieldWidget {
     private void renderText(DrawContext context, TextFieldWidgetAccessor accessor, int innerX, int textY, int innerWidth,
                             int textColor, String visibleText) {
         if (!visibleText.isEmpty()) {
-            if (accessor.pathmind$getTextShadow()) {
+            if (usesTextShadow()) {
                 context.drawTextWithShadow(this.pathmindTextRenderer, visibleText, innerX, textY, textColor);
             } else {
                 context.drawText(this.pathmindTextRenderer, visibleText, innerX, textY, textColor, false);
@@ -114,5 +117,26 @@ public class PathmindTextField extends TextFieldWidget {
             return;
         }
         UIStyleHelper.drawTextCaret(context, caretX, textY, textY + this.pathmindTextRenderer.fontHeight, fieldRight, 0xFFFFFFFF);
+    }
+
+    private boolean usesTextShadow() {
+        if (TEXT_SHADOW_FIELD == null) {
+            return false;
+        }
+        try {
+            return TEXT_SHADOW_FIELD.getBoolean(this);
+        } catch (IllegalAccessException ignored) {
+            return false;
+        }
+    }
+
+    private static Field findTextShadowField() {
+        try {
+            Field field = TextFieldWidget.class.getDeclaredField("textShadow");
+            field.setAccessible(true);
+            return field;
+        } catch (NoSuchFieldException ignored) {
+            return null;
+        }
     }
 }

@@ -95,6 +95,34 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void functionCallsResolveFreshHandlerCloneEachTime() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node call = new Node(NodeType.EVENT_CALL, 100, 0);
+        call.getParameter("Name").setStringValue("recurse");
+        Node function = new Node(NodeType.EVENT_FUNCTION, 200, 0);
+        function.getParameter("Name").setStringValue("recurse");
+
+        NodeConnection startToCall = new NodeConnection(start, call, 0, 0);
+        NodeConnection functionToCall = new NodeConnection(function, call, 0, 0);
+        manager.setWorkspaceGraph(List.of(start, call, function), List.of(startToCall, functionToCall));
+
+        Method resolver = ExecutionManager.class.getDeclaredMethod("resolveFunctionInvocationHandlers", String.class);
+        resolver.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        List<Node> firstHandlers = (List<Node>) resolver.invoke(manager, "recurse");
+        @SuppressWarnings("unchecked")
+        List<Node> secondHandlers = (List<Node>) resolver.invoke(manager, "recurse");
+
+        assertEquals(1, firstHandlers.size());
+        assertEquals(1, secondHandlers.size());
+        assertEquals(NodeType.EVENT_FUNCTION, firstHandlers.get(0).getType());
+        assertEquals(NodeType.EVENT_FUNCTION, secondHandlers.get(0).getType());
+        assertNotEquals(firstHandlers.get(0).getId(), secondHandlers.get(0).getId());
+    }
+
+    @Test
     void repeatCountResolvesGlobalRuntimeVariableNames() throws Exception {
         Node repeat = new Node(NodeType.CONTROL_REPEAT, 0, 0);
         repeat.getParameter("Count").setStringValue("~length");

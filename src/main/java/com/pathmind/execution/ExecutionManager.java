@@ -55,7 +55,6 @@ public class ExecutionManager {
     private List<NodeConnection> workspaceConnections;
     private final Set<ConnectionKey> activeConnectionLookup;
     private final Map<String, Node> outputNodeLookup;
-    private final Set<String> executingEvents;
     private volatile boolean cancelRequested;
     private final Map<Node, ChainController> activeChains;
     private final Map<String, RuntimeVariable> globalRuntimeVariables;
@@ -265,7 +264,6 @@ public class ExecutionManager {
         this.activeConnections = new ArrayList<>();
         this.workspaceNodes = new ArrayList<>();
         this.workspaceConnections = new ArrayList<>();
-        this.executingEvents = ConcurrentHashMap.newKeySet();
         this.cancelRequested = false;
         this.activeChains = new ConcurrentHashMap<>();
         this.globalRuntimeVariables = new ConcurrentHashMap<>();
@@ -935,7 +933,6 @@ public class ExecutionManager {
         this.activeConnections.clear();
         this.activeConnectionLookup.clear();
         this.outputNodeLookup.clear();
-        this.executingEvents.clear();
         this.eventConnectionOwners.clear();
         this.activeEventFunctionNodes.clear();
         this.activeExecutionNodes.clear();
@@ -1502,24 +1499,8 @@ public class ExecutionManager {
             return CompletableFuture.completedFuture(null);
         }
 
-        if (!executingEvents.add(eventName)) {
-            LOGGER.debug("Skipping recursive event call for {}", eventName);
-            return CompletableFuture.completedFuture(null);
-        }
-
-        List<Node> handlers = new ArrayList<>();
-        for (Node candidate : activeNodes) {
-            if (candidate.getType() == NodeType.EVENT_FUNCTION) {
-                NodeParameter candidateParam = candidate.getParameter("Name");
-                String candidateName = normalizeEventName(candidateParam != null ? candidateParam.getStringValue() : null);
-                if (!candidateName.isEmpty() && candidateName.equals(eventName)) {
-                    handlers.add(candidate);
-                }
-            }
-        }
-
+        List<Node> handlers = resolveFunctionInvocationHandlers(eventName);
         if (handlers.isEmpty()) {
-            executingEvents.remove(eventName);
             return CompletableFuture.completedFuture(null);
         }
 
@@ -1537,13 +1518,52 @@ public class ExecutionManager {
         }
 
         if (handlerFutures.isEmpty()) {
-            executingEvents.remove(eventName);
             return CompletableFuture.completedFuture(null);
         }
 
         CompletableFuture<Void> handlersComplete = CompletableFuture.allOf(
             handlerFutures.toArray(new CompletableFuture[0]));
-        return handlersComplete.whenComplete((ignored, throwable) -> executingEvents.remove(eventName));
+        return handlersComplete;
+    }
+
+    private List<Node> resolveFunctionInvocationHandlers(String eventName) {
+        if (eventName == null || eventName.isEmpty()) {
+            return List.of();
+        }
+
+        List<Node> sourceNodes = (workspaceNodes != null && !workspaceNodes.isEmpty()) ? workspaceNodes : activeNodes;
+        List<NodeConnection> sourceConnections = (workspaceConnections != null && !workspaceConnections.isEmpty())
+            ? workspaceConnections
+            : activeConnections;
+        if (sourceNodes == null || sourceNodes.isEmpty() || sourceConnections == null) {
+            return List.of();
+        }
+
+        List<NodeConnection> filteredConnections = filterConnections(sourceConnections);
+        List<Node> handlers = new ArrayList<>();
+        for (Node candidate : sourceNodes) {
+            if (candidate == null || candidate.getType() != NodeType.EVENT_FUNCTION) {
+                continue;
+            }
+
+            NodeParameter candidateParam = candidate.getParameter("Name");
+            String candidateName = normalizeEventName(candidateParam != null ? candidateParam.getStringValue() : null);
+            if (!candidateName.equals(eventName)) {
+                continue;
+            }
+
+            BranchData handlerBranch = buildBranchData(candidate, sourceNodes, filteredConnections);
+            BranchLaunchData launchData = createBranchLaunchData(handlerBranch, candidate);
+            if (launchData == null) {
+                LOGGER.debug("Skipping function handler clone for {}", eventName);
+                continue;
+            }
+
+            mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
+            handlers.add(launchData.rootNode);
+        }
+
+        return handlers;
     }
 
     private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller, int executionId,
@@ -1726,7 +1746,6 @@ public class ExecutionManager {
             activeConnections.clear();
             activeConnectionLookup.clear();
             outputNodeLookup.clear();
-            executingEvents.clear();
             eventConnectionOwners.clear();
             activeEventFunctionNodes.clear();
             activeExecutionNodes.clear();
@@ -2235,6 +2254,7 @@ public class ExecutionManager {
             return null;
         }
 
+        assignRuntimeNodeIds(isolatedBranchData.nodes);
         return new BranchLaunchData(isolatedBranchData, isolatedStartNode);
     }
 
@@ -2253,6 +2273,7 @@ public class ExecutionManager {
             return null;
         }
 
+        assignRuntimeNodeIds(isolatedBranchData.nodes);
         return new BranchLaunchData(isolatedBranchData, isolatedRootNode);
     }
 
@@ -2275,7 +2296,6 @@ public class ExecutionManager {
         }
 
         List<NodeConnection> clonedConnections = NodeGraphPersistence.convertToConnections(snapshot, nodeMap);
-        assignRuntimeNodeIds(clonedNodes);
         return new BranchData(clonedNodes, clonedConnections);
     }
 

@@ -3696,9 +3696,6 @@ public class NodeGraph {
                         String labelText = getParameterLabelText(node, param, textRenderer, maxLabelWidth);
                         int labelX = fieldLeft + 4;
                         int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
-                        if (!labelText.isEmpty()) {
-                            drawNodeText(context, textRenderer, Text.literal(labelText), labelX, labelY, labelColor);
-                        }
 
                         int valueStartX = getParameterValueStartX(node, param, textRenderer) - cameraX;
                         int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
@@ -3859,6 +3856,9 @@ public class NodeGraph {
                             : AnimationHelper.lerpColor(labelColor, UITheme.TEXT_HEADER, progress * 0.6f);
                         valueColor = isOverSidebar ? valueColor
                             : AnimationHelper.lerpColor(valueColor, UITheme.TEXT_HEADER, progress);
+                        if (!labelText.isEmpty()) {
+                            drawNodeText(context, textRenderer, Text.literal(labelText), labelX, labelY, labelColor);
+                        }
 
                         String arrow = inlineDropdown ? (inlineDropdownOpen ? "v" : "^") : "";
                         int arrowWidth = inlineDropdown ? textRenderer.getWidth(arrow) : 0;
@@ -4345,9 +4345,6 @@ public class NodeGraph {
     }
 
     private String getParameterLabelText(Node node, NodeParameter parameter, TextRenderer textRenderer, int maxWidth) {
-        if (isStandaloneParameterNode(node)) {
-            return "";
-        }
         String displayName = node.getParameterDisplayName(parameter);
         if (displayName == null || displayName.isEmpty()) {
             return "";
@@ -4367,12 +4364,7 @@ public class NodeGraph {
     }
 
     private boolean shouldLeftAlignParameterValue(Node node) {
-        if (node == null) {
-            return false;
-        }
-        return isStandaloneParameterNode(node)
-            || node.getType() == NodeType.PARAM_BLOCK
-            || node.getType() == NodeType.PARAM_INVENTORY_SLOT;
+        return false;
     }
 
     private int getParameterValueStartX(Node node, NodeParameter parameter, TextRenderer textRenderer) {

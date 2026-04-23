@@ -1511,8 +1511,11 @@ public class Node {
         return switch (type) {
             case LIST_ITEM -> {
                 ExecutionManager.RuntimeList runtimeList = resolveRuntimeList(this);
-                yield runtimeList != null && runtimeList.getElementType() != null
-                    ? runtimeList.getElementType()
+                NodeType elementType = runtimeList != null ? runtimeList.getElementType() : null;
+                yield elementType == NodeType.PARAM_GUI
+                    ? NodeType.PARAM_INVENTORY_SLOT
+                    : elementType != null
+                        ? elementType
                     : NodeType.LIST_ITEM;
             }
             case SENSOR_POSITION_OF -> isSensorPositionSingleAxisMode() ? NodeType.PARAM_AMOUNT : NodeType.PARAM_COORDINATE;
@@ -8579,7 +8582,8 @@ public class Node {
             if (guiMode != null && guiMode != GuiSelectionMode.PLAYER_INVENTORY && playerSlot) {
                 continue;
             }
-            entries.add((playerSlot ? LIST_SLOT_PLAYER_PREFIX : LIST_SLOT_GUI_PREFIX) + slotIndex);
+            int storedSlotIndex = playerSlot ? slot.getIndex() : slotIndex;
+            entries.add((playerSlot ? LIST_SLOT_PLAYER_PREFIX : LIST_SLOT_GUI_PREFIX) + storedSlotIndex);
         }
         return entries;
     }
@@ -9017,7 +9021,22 @@ public class Node {
         }
 
         if (elementType == NodeType.PARAM_GUI) {
-            return null;
+            ListSlotEntry slotEntry = parseListSlotEntry(entry);
+            if (slotEntry == null) {
+                return null;
+            }
+            Node snapshot = new Node(NodeType.PARAM_INVENTORY_SLOT, 0, 0);
+            snapshot.setSocketsHidden(true);
+            snapshot.setParameterValueAndPropagate("Slot", Integer.toString(slotEntry.slotIndex));
+            snapshot.setParameterValueAndPropagate(
+                "Mode",
+                InventorySlotModeHelper.buildStoredModeValue("player_inventory", slotEntry.selectionType == SlotSelectionType.PLAYER_INVENTORY)
+            );
+            if (data != null) {
+                data.slotIndex = slotEntry.slotIndex;
+                data.slotSelectionType = slotEntry.selectionType;
+            }
+            return snapshot;
         }
         return null;
     }
@@ -10725,14 +10744,14 @@ public class Node {
                 if (throwable != null) {
                     Throwable cause = throwable.getCause() != null ? throwable.getCause() : throwable;
                     if (!(cause instanceof InterruptedException)) {
-                        sendNodeErrorMessageOnClientThread(client, "Cannot craft " + itemDisplayName + ": " + cause.getMessage());
+                        sendNodeErrorMessage(client, "Cannot craft " + itemDisplayName + ": " + cause.getMessage());
                     }
                     future.complete(null);
                     return;
                 }
 
                 if (summary.failureMessage != null) {
-                    sendNodeErrorMessageOnClientThread(client, summary.failureMessage);
+                    sendNodeErrorMessage(client, summary.failureMessage);
                 }
 
                 future.complete(null);
@@ -11260,10 +11279,6 @@ public class Node {
                                                            NodeMode craftMode,
                                                            java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable) {
         List<Object> managers = getRecipeManagers(client);
-        if (managers.isEmpty()) {
-            return null;
-        }
-
         int totalEntries = 0;
         int craftingEntries = 0;
         int emptyOutputs = 0;
@@ -11330,7 +11345,84 @@ public class Node {
             }
         }
 
+        RecipeEntry<CraftingRecipe> recipeBookMatch = findCraftingRecipeInRecipeBookCollections(
+            client,
+            targetItem,
+            craftMode,
+            requiresCraftingTable,
+            handler,
+            ingredientRegistryManager,
+            serverRegistryManager,
+            clientRegistryManager
+        );
+        if (recipeBookMatch != null) {
+            return recipeBookMatch;
+        }
+
         logCraftDebug(targetItem, craftMode, managers.size(), totalEntries, craftingEntries, emptyOutputs, matchingOutputs, sampleOutputs, managerTypes);
+        return fallbackMatch;
+    }
+
+    private RecipeEntry<CraftingRecipe> findCraftingRecipeInRecipeBookCollections(net.minecraft.client.MinecraftClient client,
+                                                                                   Item targetItem,
+                                                                                   NodeMode craftMode,
+                                                                                   java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable,
+                                                                                   ScreenHandler handler,
+                                                                                   Object ingredientRegistryManager,
+                                                                                   Object serverRegistryManager,
+                                                                                   Object clientRegistryManager) {
+        if (client == null || client.player == null) {
+            return null;
+        }
+        if (!(client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook)) {
+            return null;
+        }
+        List<RecipeResultCollection> collections = clientRecipeBook.getOrderedResults();
+        if (collections == null || collections.isEmpty()) {
+            return null;
+        }
+
+        RecipeEntry<CraftingRecipe> fallbackMatch = null;
+        for (RecipeResultCollection collection : collections) {
+            if (collection == null) {
+                continue;
+            }
+            List<?> entries = RecipeCompatibilityBridge.getAllRecipesFromCollection(collection);
+            if (entries == null || entries.isEmpty()) {
+                continue;
+            }
+            for (Object entry : entries) {
+                if (!(entry instanceof RecipeEntry<?> recipeEntry) || !(recipeEntry.value() instanceof CraftingRecipe craftingRecipe)) {
+                    continue;
+                }
+
+                ItemStack result = getRecipeOutput(craftingRecipe, serverRegistryManager);
+                if (result.isEmpty() && clientRegistryManager != serverRegistryManager) {
+                    result = getRecipeOutput(craftingRecipe, clientRegistryManager);
+                }
+                if (result.isEmpty() || !result.isOf(targetItem)) {
+                    continue;
+                }
+
+                if (craftMode == NodeMode.CRAFT_PLAYER_GUI && !recipeFitsPlayerGrid(craftingRecipe)) {
+                    if (requiresCraftingTable != null) {
+                        requiresCraftingTable.set(true);
+                    }
+                    continue;
+                }
+
+                @SuppressWarnings("unchecked")
+                RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) recipeEntry;
+                if (fallbackMatch == null) {
+                    fallbackMatch = castEntry;
+                }
+
+                List<GridIngredient> gridIngredients = resolveGridIngredients(craftingRecipe, craftMode, ingredientRegistryManager);
+                if (canSatisfyGridIngredients(handler, gridIngredients, ingredientRegistryManager)) {
+                    return castEntry;
+                }
+            }
+        }
         return fallbackMatch;
     }
 
@@ -11394,7 +11486,7 @@ public class Node {
             return RecipeCompatibilityBridge.getShapedWidth(display) <= 2
                 && RecipeCompatibilityBridge.getShapedHeight(display) <= 2;
         }
-        if (display != null && display.getClass().getName().contains("ShapelessCraftingRecipeDisplay")) {
+        if (RecipeCompatibilityBridge.isShapelessCraftingDisplay(display)) {
             List<?> slots = RecipeCompatibilityBridge.getDisplayIngredientSlots(display);
             int count = countDisplayIngredients(slots, registryManager);
             return count > 0 && count <= 4;
@@ -11877,6 +11969,7 @@ public class Node {
         if (cachedRecipe == null || cachedRecipe.grid == null) {
             return result;
         }
+        boolean legacyZeroBasedSlots = isLegacyZeroBasedCachedRecipe(cachedRecipe);
         for (CachedGridIngredient cachedIngredient : cachedRecipe.grid) {
             if (cachedIngredient == null || cachedIngredient.itemIds == null || cachedIngredient.itemIds.isEmpty()) {
                 continue;
@@ -11885,9 +11978,50 @@ public class Node {
             if (RecipeCompatibilityBridge.isIngredientEmpty(ingredient)) {
                 continue;
             }
-            result.add(new GridIngredient(cachedIngredient.slotIndex, ingredient, false));
+            int slotIndex = normalizeCachedRecipeSlotIndex(cachedIngredient.slotIndex, legacyZeroBasedSlots);
+            result.add(new GridIngredient(slotIndex, ingredient, false));
         }
         return result;
+    }
+
+    private boolean isLegacyZeroBasedCachedRecipe(CachedRecipe cachedRecipe) {
+        if (cachedRecipe == null || cachedRecipe.grid == null || cachedRecipe.grid.isEmpty()) {
+            return false;
+        }
+        for (CachedGridIngredient ingredient : cachedRecipe.grid) {
+            if (ingredient != null && ingredient.slotIndex == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int normalizeCachedRecipeSlotIndex(int slotIndex, boolean legacyZeroBasedSlots) {
+        if (!legacyZeroBasedSlots) {
+            return slotIndex;
+        }
+        return slotIndex + 1;
+    }
+
+    static List<Integer> normalizeCachedRecipeSlotIndexesForTests(List<Integer> slotIndexes) {
+        if (slotIndexes == null || slotIndexes.isEmpty()) {
+            return List.of();
+        }
+        boolean legacyZeroBasedSlots = false;
+        for (Integer slotIndex : slotIndexes) {
+            if (slotIndex != null && slotIndex.intValue() == 0) {
+                legacyZeroBasedSlots = true;
+                break;
+            }
+        }
+        List<Integer> normalized = new ArrayList<>(slotIndexes.size());
+        for (Integer slotIndex : slotIndexes) {
+            if (slotIndex == null) {
+                continue;
+            }
+            normalized.add(legacyZeroBasedSlots ? slotIndex.intValue() + 1 : slotIndex.intValue());
+        }
+        return normalized;
     }
 
     private String getCachedRecipeSignature(CachedRecipe recipe) {
@@ -11990,6 +12124,12 @@ public class Node {
                 Path parent = path.getParent();
                 if (parent != null && !Files.exists(parent)) {
                     Files.createDirectories(parent);
+                }
+                book.schemaVersion = RECIPE_CACHE_VERSION;
+                try {
+                    book.gameVersion = client.getGameVersion();
+                } catch (RuntimeException ignored) {
+                    book.gameVersion = null;
                 }
                 String json = RECIPE_CACHE_GSON.toJson(book);
                 Files.writeString(path, json, StandardCharsets.UTF_8);
@@ -12164,14 +12304,15 @@ public class Node {
         }
         for (java.lang.reflect.Field field : getAllFields(manager.getClass())) {
             try {
-                if (!field.canAccess(manager)) {
+                Object accessTarget = java.lang.reflect.Modifier.isStatic(field.getModifiers()) ? null : manager;
+                if (!field.canAccess(accessTarget)) {
                     try {
                         field.setAccessible(true);
                     } catch (RuntimeException ignored) {
                         continue;
                     }
                 }
-                Object value = field.get(manager);
+                Object value = field.get(accessTarget);
                 if (value == null || seen.containsKey(value)) {
                     continue;
                 }
@@ -12455,7 +12596,7 @@ public class Node {
         if (RecipeCompatibilityBridge.isShapedCraftingDisplay(display)) {
             return resolveShapedDisplayGridIngredients(display, craftMode, registryManager);
         }
-        if (display != null && display.getClass().getName().contains("ShapelessCraftingRecipeDisplay")) {
+        if (RecipeCompatibilityBridge.isShapelessCraftingDisplay(display)) {
             return resolveShapelessDisplayGridIngredients(display, craftMode, registryManager);
         }
         return Collections.emptyList();
@@ -12771,10 +12912,38 @@ public class Node {
                     return;
                 }
 
+                ItemStack sourceBefore = safeCopySlotStack(handler, sourceSlot);
+                ItemStack targetBefore = safeCopySlotStack(handler, targetSlot);
                 interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, client.player);
                 interactionManager.clickSlot(handler.syncId, targetSlot, 1, SlotActionType.PICKUP, client.player);
                 interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, client.player);
-                placed.set(true);
+
+                ItemStack sourceAfter = safeCopySlotStack(handler, sourceSlot);
+                ItemStack targetAfter = safeCopySlotStack(handler, targetSlot);
+                ItemStack cursorAfter = handler.getCursorStack() == null ? ItemStack.EMPTY : handler.getCursorStack().copy();
+                if (stackMatchesIngredient(targetAfter, ingredient.ingredient(), registryManager)) {
+                    placed.set(true);
+                    return;
+                }
+
+                LOGGER.warn(
+                    "Crafting '{}' failed to place ingredient. mode={}, handler={}, logicalSlot={}, sourceSlot={}, targetSlot={}, sourceBefore={}, sourceAfter={}, targetBefore={}, targetAfter={}, cursorAfter={}",
+                    itemDisplayName,
+                    craftMode,
+                    handler.getClass().getSimpleName(),
+                    ingredient.slotIndex(),
+                    sourceSlot,
+                    targetSlot,
+                    describeItemStack(sourceBefore),
+                    describeItemStack(sourceAfter),
+                    describeItemStack(targetBefore),
+                    describeItemStack(targetAfter),
+                    describeItemStack(cursorAfter)
+                );
+                errorRef.set(
+                    "Cannot craft " + itemDisplayName + ": failed to place ingredient into grid slot "
+                        + ingredient.slotIndex() + "."
+                );
             });
 
             if (errorRef.get() != null) {
@@ -12855,23 +13024,23 @@ public class Node {
             return new CraftingAttemptResult(producedRef.get(), errorRef.get());
         }
 
-        logCraftingOutputFailure(client, itemDisplayName, craftMode, gridIngredients, plannedSourceSlots);
-        return new CraftingAttemptResult(0, "Cannot craft " + itemDisplayName + ": missing required ingredients.");
+        String outputFailureMessage = logCraftingOutputFailure(client, itemDisplayName, craftMode, gridIngredients, plannedSourceSlots);
+        return new CraftingAttemptResult(0, outputFailureMessage);
     }
 
-    private void logCraftingOutputFailure(net.minecraft.client.MinecraftClient client,
-                                          String itemDisplayName,
-                                          NodeMode craftMode,
-                                          List<GridIngredient> gridIngredients,
-                                          List<Integer> plannedSourceSlots) {
+    private String logCraftingOutputFailure(net.minecraft.client.MinecraftClient client,
+                                            String itemDisplayName,
+                                            NodeMode craftMode,
+                                            List<GridIngredient> gridIngredients,
+                                            List<Integer> plannedSourceSlots) {
         if (client == null || client.player == null) {
-            return;
+            return "Cannot craft " + itemDisplayName + ": crafting failed before the result could be inspected.";
         }
 
         ScreenHandler handler = client.player.currentScreenHandler;
         if (handler == null) {
             LOGGER.warn("Crafting '{}' failed before output appeared: handler missing after placement.", itemDisplayName);
-            return;
+            return "Cannot craft " + itemDisplayName + ": crafting screen closed before the result appeared.";
         }
 
         String outputDescription = "missing";
@@ -12887,16 +13056,50 @@ public class Node {
         } catch (RuntimeException ignored) {
             outputDescription = "unavailable";
         }
+        String cursorDescription = describeItemStack(handler.getCursorStack());
 
         LOGGER.warn(
-            "Crafting '{}' produced no output after ingredient placement. mode={}, handler={}, outputSlot={}, sources={}, grid={}",
+            "Crafting '{}' produced no output after ingredient placement. mode={}, handler={}, outputSlot={}, cursor={}, sources={}, grid={}",
             itemDisplayName,
             craftMode,
             handler.getClass().getSimpleName(),
             outputDescription,
+            cursorDescription,
             plannedSourceSlots,
             describeCraftingGridIngredients(gridIngredients)
         );
+        return "Cannot craft " + itemDisplayName + ": ingredients were placed, but the result slot stayed "
+            + outputDescription + " (cursor " + cursorDescription + ").";
+    }
+
+    private ItemStack safeCopySlotStack(ScreenHandler handler, int slotIndex) {
+        if (handler == null || slotIndex < 0 || slotIndex >= handler.slots.size()) {
+            return ItemStack.EMPTY;
+        }
+        Slot slot = handler.getSlot(slotIndex);
+        if (slot == null || slot.getStack() == null) {
+            return ItemStack.EMPTY;
+        }
+        return slot.getStack().copy();
+    }
+
+    private boolean stackMatchesIngredient(ItemStack stack, Ingredient ingredient, Object registryManager) {
+        if (stack == null || stack.isEmpty() || ingredient == null) {
+            return false;
+        }
+        if (ingredient.test(stack)) {
+            return true;
+        }
+        return matchesCandidateStack(RecipeCompatibilityBridge.getIngredientStacks(ingredient, registryManager), stack);
+    }
+
+    private String describeItemStack(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "empty";
+        }
+        Identifier itemId = Registries.ITEM.getId(stack.getItem());
+        String id = itemId != null ? itemId.toString() : stack.getItem().toString();
+        return id + " x" + stack.getCount();
     }
 
     private List<Integer> planIngredientSourceSlots(ScreenHandler handler,
@@ -13762,6 +13965,7 @@ public class Node {
 
     private static class CachedRecipeBook {
         int schemaVersion = RECIPE_CACHE_VERSION;
+        String gameVersion;
         Map<String, List<CachedRecipe>> recipesByOutput = new HashMap<>();
     }
 
@@ -22079,6 +22283,10 @@ public class Node {
         if (entityComparison.isPresent()) {
             return entityComparison;
         }
+        Optional<Boolean> inventorySlotComparison = compareInventorySlotValues(left, leftValues, right, rightValues);
+        if (inventorySlotComparison.isPresent()) {
+            return inventorySlotComparison;
+        }
         Optional<Boolean> itemComparison = compareItemSelectionValues(leftValues, rightValues);
         if (itemComparison.isPresent()) {
             return itemComparison;
@@ -22252,6 +22460,107 @@ public class Node {
             return Optional.of(leftCount.get().intValue() == rightCount.get().intValue());
         }
         return Optional.of(true);
+    }
+
+    private Optional<Boolean> compareInventorySlotValues(Node left, Map<String, String> leftValues,
+                                                         Node right, Map<String, String> rightValues) {
+        boolean leftIsSlot = isInventorySlotComparableNode(left, leftValues);
+        boolean rightIsSlot = isInventorySlotComparableNode(right, rightValues);
+        if (!leftIsSlot && !rightIsSlot) {
+            return Optional.empty();
+        }
+
+        if (leftIsSlot && rightIsSlot) {
+            Integer leftSlot = resolveComparableSlotIndex(leftValues);
+            Integer rightSlot = resolveComparableSlotIndex(rightValues);
+            if (leftSlot == null || rightSlot == null) {
+                return Optional.empty();
+            }
+            return Optional.of(
+                leftSlot.intValue() == rightSlot.intValue()
+                    && resolveComparableSlotSelectionType(leftValues) == resolveComparableSlotSelectionType(rightValues)
+            );
+        }
+
+        Map<String, String> slotValues = leftIsSlot ? leftValues : rightValues;
+        Map<String, String> itemValues = leftIsSlot ? rightValues : leftValues;
+        List<String> itemSelections = resolveComparableItemSelections(itemValues);
+        if (itemSelections.isEmpty()) {
+            return Optional.empty();
+        }
+
+        ItemStack stack = resolveComparableInventorySlotStack(slotValues);
+        if (stack == null || stack.isEmpty()) {
+            return Optional.of(false);
+        }
+        if (!stackMatchesAnyItem(stack, itemSelections)) {
+            return Optional.of(false);
+        }
+
+        Optional<Integer> requiredCount = resolveComparableItemCount(itemValues);
+        if (requiredCount.isPresent()) {
+            return Optional.of(stack.getCount() == requiredCount.get().intValue());
+        }
+        return Optional.of(true);
+    }
+
+    private boolean isInventorySlotComparableNode(Node node, Map<String, String> values) {
+        if (node != null && node.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+            return true;
+        }
+        return resolveComparableSlotIndex(values) != null;
+    }
+
+    private Integer resolveComparableSlotIndex(Map<String, String> values) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        Integer slot = parseIntOrNull(getRuntimeValue(values, "slot"));
+        if (slot != null) {
+            return slot;
+        }
+        slot = parseIntOrNull(getRuntimeValue(values, "sourceslot"));
+        if (slot != null) {
+            return slot;
+        }
+        slot = parseIntOrNull(getRuntimeValue(values, "targetslot"));
+        if (slot != null) {
+            return slot;
+        }
+        slot = parseIntOrNull(getRuntimeValue(values, "firstslot"));
+        if (slot != null) {
+            return slot;
+        }
+        return parseIntOrNull(getRuntimeValue(values, "secondslot"));
+    }
+
+    private SlotSelectionType resolveComparableSlotSelectionType(Map<String, String> values) {
+        if (values == null || values.isEmpty()) {
+            return SlotSelectionType.PLAYER_INVENTORY;
+        }
+        Boolean isPlayer = InventorySlotModeHelper.extractPlayerSelectionFlag(getRuntimeValue(values, "mode"));
+        return Boolean.FALSE.equals(isPlayer) ? SlotSelectionType.GUI_CONTAINER : SlotSelectionType.PLAYER_INVENTORY;
+    }
+
+    private ItemStack resolveComparableInventorySlotStack(Map<String, String> values) {
+        Integer slotValue = resolveComparableSlotIndex(values);
+        if (slotValue == null) {
+            return null;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return null;
+        }
+        SlotResolution resolved = resolveInventorySlot(
+            client.player.currentScreenHandler,
+            client.player.getInventory(),
+            slotValue.intValue(),
+            resolveComparableSlotSelectionType(values)
+        );
+        if (resolved == null || resolved.slot == null) {
+            return null;
+        }
+        return resolved.slot.getStack();
     }
 
     private List<String> resolveComparableItemSelections(Map<String, String> values) {

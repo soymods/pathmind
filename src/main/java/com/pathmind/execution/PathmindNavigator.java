@@ -74,6 +74,8 @@ public final class PathmindNavigator {
     private static final long FAILED_BREAK_MEMORY_MS = 9000L;
     private static final long DROP_COMMIT_WINDOW_MS = 1500L;
     private static final long FAILED_DROP_MEMORY_MS = 9000L;
+    private static final long FAILED_PLACE_MEMORY_MS = 10000L;
+    private static final long FAILED_PILLAR_MEMORY_MS = 12000L;
     private static final long TRAPPED_RECOVERY_COMMIT_MS = 10000L;
     private static final long FAILED_MOVE_MEMORY_MS = 7000L;
     private static final long NO_MOVEMENT_REPLAN_MS = 900L;
@@ -230,6 +232,8 @@ public final class PathmindNavigator {
     private final Map<EdgeKey, Long> failedBreaks = new HashMap<>();
     private final Map<EdgeKey, Long> failedJumps = new HashMap<>();
     private final Map<EdgeKey, Long> failedDrops = new HashMap<>();
+    private final Map<EdgeKey, Long> failedPlaces = new HashMap<>();
+    private final Map<EdgeKey, Long> failedPillars = new HashMap<>();
     private String lastReplanReason = "none";
     private String lastStuckReason = "none";
     private String previousControllerMode = "none";
@@ -407,6 +411,8 @@ public final class PathmindNavigator {
         this.failedBreaks.clear();
         this.failedJumps.clear();
         this.failedDrops.clear();
+        this.failedPlaces.clear();
+        this.failedPillars.clear();
         this.lastReplanReason = "start goto";
         this.lastStuckReason = "none";
         this.previousControllerMode = this.controllerMode.name();
@@ -775,6 +781,8 @@ public final class PathmindNavigator {
         this.failedBreaks.clear();
         this.failedJumps.clear();
         this.failedDrops.clear();
+        this.failedPlaces.clear();
+        this.failedPillars.clear();
 
         BlockPos start = resolvePlayerFootPos(client.player);
         PathComputation computation = findPath(client.world, start, this.targetPos);
@@ -3565,7 +3573,8 @@ public final class PathmindNavigator {
         }
         return switch (primitive.searchType()) {
             case BREAK_FORWARD, MINE_ASCEND -> 0.45D;
-            case PLACE_FORWARD, PILLAR -> 0.35D;
+            case PLACE_FORWARD -> 0.55D;
+            case PILLAR -> 0.80D;
             case JUMP_ASCEND, DESCEND, CLIMB, SWIM, INTERACT -> 0.20D;
             case WALK -> 0.0D;
         };
@@ -3577,7 +3586,8 @@ public final class PathmindNavigator {
         }
         return switch (primitive.searchType()) {
             case BREAK_FORWARD, MINE_ASCEND -> PATH_BREAK_ROUTE_PENALTY;
-            case PLACE_FORWARD, PILLAR -> PATH_PLACE_ROUTE_PENALTY;
+            case PLACE_FORWARD -> PATH_PLACE_ROUTE_PENALTY;
+            case PILLAR -> PATH_PLACE_ROUTE_PENALTY + 120.0D;
             case WALK, INTERACT, JUMP_ASCEND, DESCEND, CLIMB, SWIM -> 0.0D;
         };
     }
@@ -3852,7 +3862,7 @@ public final class PathmindNavigator {
                 }
             }
             case PLACE_FORWARD -> {
-                if (interactable || hasBreaks || !requiresSupport) {
+                if (interactable || hasBreaks || !requiresSupport || isFailedPlace(from, candidate, now)) {
                     return null;
                 }
             }
@@ -4842,12 +4852,28 @@ public final class PathmindNavigator {
         }
     }
 
+    private void rememberFailedPlace(BlockPos from, BlockPos to, long now) {
+        rememberFailedMove(from, to, now);
+        if (from != null && to != null) {
+            failedPlaces.put(new EdgeKey(from.toImmutable(), to.toImmutable()), now + FAILED_PLACE_MEMORY_MS);
+        }
+    }
+
+    private void rememberFailedPillar(BlockPos from, BlockPos to, long now) {
+        rememberFailedMove(from, to, now);
+        if (from != null && to != null) {
+            failedPillars.put(new EdgeKey(from.toImmutable(), to.toImmutable()), now + FAILED_PILLAR_MEMORY_MS);
+        }
+    }
+
     private void pruneFailureMemory(long now) {
         failedNodes.entrySet().removeIf(entry -> entry.getValue() <= now);
         failedEdges.entrySet().removeIf(entry -> entry.getValue() <= now);
         failedBreaks.entrySet().removeIf(entry -> entry.getValue() <= now);
         failedJumps.entrySet().removeIf(entry -> entry.getValue() <= now);
         failedDrops.entrySet().removeIf(entry -> entry.getValue() <= now);
+        failedPlaces.entrySet().removeIf(entry -> entry.getValue() <= now);
+        failedPillars.entrySet().removeIf(entry -> entry.getValue() <= now);
     }
 
     private boolean isFailedNode(BlockPos pos, long now) {
@@ -4887,6 +4913,22 @@ public final class PathmindNavigator {
             return false;
         }
         Long expiresAt = failedDrops.get(new EdgeKey(from, to));
+        return expiresAt != null && expiresAt > now;
+    }
+
+    private boolean isFailedPlace(BlockPos from, BlockPos to, long now) {
+        if (from == null || to == null) {
+            return false;
+        }
+        Long expiresAt = failedPlaces.get(new EdgeKey(from, to));
+        return expiresAt != null && expiresAt > now;
+    }
+
+    private boolean isFailedPillar(BlockPos from, BlockPos to, long now) {
+        if (from == null || to == null) {
+            return false;
+        }
+        Long expiresAt = failedPillars.get(new EdgeKey(from, to));
         return expiresAt != null && expiresAt > now;
     }
 
@@ -5301,6 +5343,30 @@ public final class PathmindNavigator {
         }
 
         return true;
+    }
+
+    private boolean hasJumpUpOpportunity(World world, BlockPos from, BlockPos waypoint) {
+        if (world == null || from == null || waypoint == null) {
+            return false;
+        }
+        return (waypoint.getY() > from.getY() || shouldStepJump(world, from, waypoint))
+            && canAttemptJump(world, from, waypoint);
+    }
+
+    private BlockPos resolveJumpUpApproachTarget(World world, BlockPos from, BlockPos waypoint) {
+        if (world == null || from == null || waypoint == null) {
+            return waypoint;
+        }
+        int stepX = Integer.compare(waypoint.getX(), from.getX());
+        int stepZ = Integer.compare(waypoint.getZ(), from.getZ());
+        if (stepX == 0 && stepZ == 0) {
+            return waypoint;
+        }
+        BlockPos candidate = new BlockPos(from.getX() + stepX, from.getY() + 1, from.getZ() + stepZ);
+        if (canOccupy(world, candidate) && canOccupy(world, candidate.up())) {
+            return candidate;
+        }
+        return waypoint;
     }
 
     private Vec3d resolveWaypointAimPoint(
@@ -5955,7 +6021,11 @@ public final class PathmindNavigator {
             return false;
         }
 
-        rememberFailedBreak(playerFootPos, fallbackTarget, now);
+        if (requiresCommittedPlacement && !requiresCommittedMining) {
+            rememberFailedPlace(playerFootPos, fallbackTarget, now);
+        } else {
+            rememberFailedBreak(playerFootPos, fallbackTarget, now);
+        }
         recoverFromStuck(
             client,
             world,
@@ -5964,8 +6034,10 @@ public final class PathmindNavigator {
             target,
             currentPos,
             now,
-            timedOut ? "mine redirect" : "mine target invalidated",
-            timedOut ? "mine timeout" : "mine target invalid"
+            timedOut ? (requiresCommittedPlacement && !requiresCommittedMining ? "place redirect" : "mine redirect")
+                : (requiresCommittedPlacement && !requiresCommittedMining ? "place target invalidated" : "mine target invalidated"),
+            timedOut ? (requiresCommittedPlacement && !requiresCommittedMining ? "place timeout" : "mine timeout")
+                : (requiresCommittedPlacement && !requiresCommittedMining ? "place target invalid" : "mine target invalid")
         );
         return true;
     }
@@ -6443,7 +6515,9 @@ public final class PathmindNavigator {
             return false;
         }
 
-        Vec3d targetCenter = new Vec3d(recoveryTarget.getX() + 0.5D, player.getY(), recoveryTarget.getZ() + 0.5D);
+        boolean jumpOpportunity = hasJumpUpOpportunity(world, playerFootPos, recoveryTarget);
+        BlockPos jumpTarget = jumpOpportunity ? resolveJumpUpApproachTarget(world, playerFootPos, recoveryTarget) : recoveryTarget;
+        Vec3d targetCenter = new Vec3d(jumpTarget.getX() + 0.5D, player.getY(), jumpTarget.getZ() + 0.5D);
         Vec3d currentPos = new Vec3d(player.getX(), player.getY(), player.getZ());
         double dx = targetCenter.x - currentPos.x;
         double dz = targetCenter.z - currentPos.z;
@@ -6455,19 +6529,18 @@ public final class PathmindNavigator {
         player.setHeadYaw(player.getYaw());
         player.setBodyYaw(player.getYaw());
 
-        boolean blocked = isBlockedTowardWaypoint(world, playerFootPos, recoveryTarget);
+        boolean blocked = isBlockedTowardWaypoint(world, playerFootPos, recoveryTarget) && !jumpOpportunity;
         releaseMovementKeys(client);
         if (client.options.forwardKey != null) {
-            client.options.forwardKey.setPressed(!blocked && horizontalDistance > 0.2D);
+            client.options.forwardKey.setPressed((!blocked || jumpOpportunity) && horizontalDistance > 0.2D);
         }
         if (client.options.sprintKey != null) {
             client.options.sprintKey.setPressed(false);
         }
         if (client.options.jumpKey != null) {
             boolean canHop = player.isOnGround()
-                && recoveryTarget.getY() > playerFootPos.getY()
+                && jumpOpportunity
                 && horizontalDistance <= 1.6D
-                && !blocked
                 && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES
                 && canAttemptJump(world, playerFootPos, recoveryTarget);
             client.options.jumpKey.setPressed(false);
@@ -6475,10 +6548,10 @@ public final class PathmindNavigator {
                 player.jump();
                 synchronized (this) {
                     lastJumpAtMs = now;
-                    committedJumpWaypoint = recoveryTarget.toImmutable();
+                    committedJumpWaypoint = jumpTarget.toImmutable();
                     committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
                     controllerMode = ControllerMode.COMMIT_JUMP;
-                    controllerTarget = recoveryTarget.toImmutable();
+                    controllerTarget = jumpTarget.toImmutable();
                     controllerUntilMs = committedJumpUntilMs;
                     lastReplanReason = jumpReplanReason;
                     lastStuckReason = "recovering to path";
@@ -6616,7 +6689,10 @@ public final class PathmindNavigator {
             && !placeRequiredStep
             && !pillarStep
             && !verticalDropStep;
-        boolean blockedTowardWaypoint = isBlockedTowardWaypoint(world, playerFootPos, waypoint) && !miningAdvanceStep;
+        boolean jumpUpOpportunity = hasJumpUpOpportunity(world, playerFootPos, waypoint);
+        boolean blockedTowardWaypoint = isBlockedTowardWaypoint(world, playerFootPos, waypoint)
+            && !miningAdvanceStep
+            && !jumpUpOpportunity;
         boolean simpleMovementStep = plannedPrimitive != null && plannedPrimitive.isSimpleMovementStep();
         boolean applyCountermovement = !nearFinalGoal
             && !pillarStep
@@ -6738,7 +6814,7 @@ public final class PathmindNavigator {
             && (isJumpPrimitive(plannedPrimitive)
             || miningAdvanceJumpStep
             || (plannedPrimitive == null && (!interactableStep && waypoint.getY() > playerFootPos.getY()))
-            || (plannedPrimitive == null && shouldStepJump(world, playerFootPos, waypoint) && !interactableStep));
+            || (plannedPrimitive == null && jumpUpOpportunity && !interactableStep));
         if (wantsJump) {
             int jumpAttemptsAtWaypoint;
             synchronized (this) {
@@ -7022,9 +7098,11 @@ public final class PathmindNavigator {
             || pillarBase.getZ() != playerFootPos.getZ()
             || pillarBase.getY() < playerFootPos.getY() - 1
             || pillarBase.getY() > playerFootPos.getY()) {
+            rememberFailedPillar(playerFootPos, pillarTarget, now);
             return false;
         }
         if (!canContinuePillarTo(world, pillarBase, pillarTarget)) {
+            rememberFailedPillar(playerFootPos, pillarTarget, now);
             return false;
         }
         syncPathToPillarTarget(world, pillarTarget, now);
@@ -7112,6 +7190,7 @@ public final class PathmindNavigator {
                 noteControllerActivity(now);
                 return true;
             }
+            rememberFailedPillar(playerFootPos, pillarTarget, now);
         }
         if (pillarPhase == PillarPhase.ASCEND && player.isOnGround()) {
             synchronized (this) {
@@ -7513,7 +7592,10 @@ public final class PathmindNavigator {
             return null;
         }
         BlockPos immediateUp = playerFootPos.up();
-        return canPillarTo(world, playerFootPos, immediateUp) ? immediateUp.toImmutable() : null;
+        long now = System.currentTimeMillis();
+        return canPillarTo(world, playerFootPos, immediateUp) && !isFailedPillar(playerFootPos, immediateUp, now)
+            ? immediateUp.toImmutable()
+            : null;
     }
 
     private boolean shouldPreferFinalApproachController(World world, BlockPos playerFootPos) {
@@ -7542,30 +7624,52 @@ public final class PathmindNavigator {
         if (client == null || world == null || player == null || playerFootPos == null || routeTarget == null || client.options == null) {
             return;
         }
-        Vec3d frontCenter = new Vec3d(routeTarget.getX() + 0.5D, player.getY(), routeTarget.getZ() + 0.5D);
+        boolean jumpOpportunity = hasJumpUpOpportunity(world, playerFootPos, routeTarget);
+        BlockPos jumpTarget = jumpOpportunity ? resolveJumpUpApproachTarget(world, playerFootPos, routeTarget) : routeTarget;
+        Vec3d frontCenter = new Vec3d(jumpTarget.getX() + 0.5D, player.getY(), jumpTarget.getZ() + 0.5D);
         Vec3d currentPos = new Vec3d(player.getX(), player.getY(), player.getZ());
         double dx = frontCenter.x - currentPos.x;
         double dz = frontCenter.z - currentPos.z;
+        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
         float targetYaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        player.setYaw(stepAngle(player.getYaw(), targetYaw, MAX_YAW_STEP));
+        float nextYaw = stepAngle(player.getYaw(), targetYaw, MAX_YAW_STEP);
+        float jumpYawError = Math.abs(MathHelper.wrapDegrees(targetYaw - nextYaw));
+        player.setYaw(nextYaw);
         player.setHeadYaw(player.getYaw());
         player.setBodyYaw(player.getYaw());
 
+        boolean blocked = isBlockedTowardWaypoint(world, playerFootPos, routeTarget) && !jumpOpportunity;
         releaseMovementKeys(client);
         if (client.options.forwardKey != null) {
-            client.options.forwardKey.setPressed(true);
+            client.options.forwardKey.setPressed(!blocked && horizontalDistance > 0.2D || jumpOpportunity);
         }
         if (client.options.sprintKey != null) {
             client.options.sprintKey.setPressed(false);
         }
         if (client.options.jumpKey != null) {
+            boolean canHop = player.isOnGround()
+                && jumpOpportunity
+                && horizontalDistance <= 1.6D
+                && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES;
             client.options.jumpKey.setPressed(false);
+            if (canHop) {
+                player.jump();
+                synchronized (this) {
+                    lastJumpAtMs = now;
+                    committedJumpWaypoint = jumpTarget.toImmutable();
+                    committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
+                    lastReplanReason = "escape primitive jump";
+                    lastStuckReason = "jumping out";
+                }
+                noteControllerActivity(now);
+                return;
+            }
         }
 
         synchronized (this) {
             lastProgressAtMs = now;
             lastReplanReason = "escape primitive move";
-            lastStuckReason = "following excavation route";
+            lastStuckReason = blocked ? "escape step blocked" : "following excavation route";
         }
         noteControllerActivity(now);
     }

@@ -1392,48 +1392,70 @@ public final class RecipeCompatibilityBridge {
             return false;
         }
         String name = display.getClass().getName();
-        return name.contains("ShapedCraftingRecipeDisplay") || name.contains("ShapelessCraftingRecipeDisplay");
+        if (name.contains("ShapedCraftingRecipeDisplay")
+            || name.contains("ShapelessCraftingRecipeDisplay")
+            || name.endsWith("class_10300")
+            || name.endsWith("class_10301")) {
+            return true;
+        }
+        return hasAccessor(display.getClass(), "comp_3258")
+            && (hasAccessor(display.getClass(), "comp_3270")
+                || hasAccessor(display.getClass(), "comp_3271")
+                || hasAccessor(display.getClass(), "result"));
     }
 
     public static boolean isShapedCraftingDisplay(Object display) {
         if (display == null) {
             return false;
         }
-        return display.getClass().getName().contains("ShapedCraftingRecipeDisplay");
+        String name = display.getClass().getName();
+        if (name.contains("ShapedCraftingRecipeDisplay") || name.endsWith("class_10300")) {
+            return true;
+        }
+        return hasAccessor(display.getClass(), "comp_3268")
+            || hasAccessor(display.getClass(), "comp_3269")
+            || (hasAccessor(display.getClass(), "width") && hasAccessor(display.getClass(), "height"));
+    }
+
+    public static boolean isShapelessCraftingDisplay(Object display) {
+        if (display == null) {
+            return false;
+        }
+        return isShapelessDisplay(display);
     }
 
     public static Object getDisplayFromEntry(Object entry) {
         if (entry == null) {
             return null;
         }
-        return reflectNoArgMethod(entry, "display");
+        return accessValue(entry, "display", "comp_3263", "recipeDisplay", "comp_3227");
     }
 
     public static Object getResultSlotDisplay(Object display) {
         if (display == null) {
             return null;
         }
-        return reflectNoArgMethod(display, "result");
+        return accessValue(display, "result", "comp_3258");
     }
 
     public static int getShapedWidth(Object display) {
-        return reflectIntMethod(display, "width", 0);
+        return reflectIntMethod(display, 0, "width", "comp_3268");
     }
 
     public static int getShapedHeight(Object display) {
-        return reflectIntMethod(display, "height", 0);
+        return reflectIntMethod(display, 0, "height", "comp_3269");
     }
 
     public static List<?> getDisplayIngredientSlots(Object display) {
         if (display == null) {
             return Collections.emptyList();
         }
-        Object result = reflectNoArgMethod(display, "ingredients");
-        if (result instanceof List<?> list) {
-            return list;
+        List<?> result = extractDisplayEntries(display, "ingredients", "comp_3270", "comp_3271");
+        if (result != null) {
+            return result;
         }
-        result = reflectNoArgMethod(display, "comp_3271");
-        if (result instanceof List<?> list) {
+        Object value = accessValue(display, "ingredients", "comp_3270", "comp_3271");
+        if (value instanceof List<?> list) {
             return list;
         }
         return Collections.emptyList();
@@ -1443,8 +1465,15 @@ public final class RecipeCompatibilityBridge {
         if (collection == null) {
             return Collections.emptyList();
         }
-        Object result = reflectNoArgMethod(collection, "getAllRecipes");
+        Object result = accessValue(collection, "getAllRecipes", "method_2650", "entries", "field_54835");
         if (result instanceof List<?> list) {
+            return list;
+        }
+        if (result instanceof Iterable<?> iterable) {
+            List<Object> list = new ArrayList<>();
+            for (Object entry : iterable) {
+                list.add(entry);
+            }
             return list;
         }
         return Collections.emptyList();
@@ -1463,17 +1492,22 @@ public final class RecipeCompatibilityBridge {
         }
     }
 
-    private static int reflectIntMethod(Object target, String methodName, int defaultValue) {
+    private static int reflectIntMethod(Object target, int defaultValue, String... methodNames) {
         if (target == null) {
             return defaultValue;
         }
-        try {
-            Method method = target.getClass().getMethod(methodName);
-            method.setAccessible(true);
-            Object result = method.invoke(target);
-            return result instanceof Number num ? num.intValue() : defaultValue;
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-            return defaultValue;
+        for (String methodName : methodNames) {
+            try {
+                Method method = target.getClass().getMethod(methodName);
+                method.setAccessible(true);
+                Object result = method.invoke(target);
+                if (result instanceof Number num) {
+                    return num.intValue();
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try next accessor.
+            }
         }
+        return defaultValue;
     }
 }

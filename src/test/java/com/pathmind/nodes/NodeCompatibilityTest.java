@@ -1,13 +1,19 @@
 package com.pathmind.nodes;
 
+import com.pathmind.execution.ExecutionManager;
+import com.pathmind.util.RecipeCompatibilityBridge;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeCompatibilityTest {
@@ -146,6 +152,38 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void cachedRecipeSlotNormalizationUpgradesLegacyZeroBasedSlots() {
+        assertEquals(List.of(1, 2, 4), Node.normalizeCachedRecipeSlotIndexesForTests(List.of(0, 1, 3)));
+        assertEquals(List.of(1, 2, 3, 4), Node.normalizeCachedRecipeSlotIndexesForTests(List.of(1, 2, 3, 4)));
+    }
+
+    @Test
+    void recipeDisplayBridgeSupportsObfuscatedEntryAndDisplayAccessors() {
+        DummyShapedDisplay display = new DummyShapedDisplay();
+        DummyDisplayEntry entry = new DummyDisplayEntry(display);
+        DummyRecipeCollection collection = new DummyRecipeCollection(List.of(entry));
+
+        assertSame(display, RecipeCompatibilityBridge.getDisplayFromEntry(entry));
+        assertTrue(RecipeCompatibilityBridge.isCraftingDisplay(display));
+        assertTrue(RecipeCompatibilityBridge.isShapedCraftingDisplay(display));
+        assertFalse(RecipeCompatibilityBridge.isShapelessCraftingDisplay(display));
+        assertEquals(2, RecipeCompatibilityBridge.getShapedWidth(display));
+        assertEquals(1, RecipeCompatibilityBridge.getShapedHeight(display));
+        assertEquals(display.comp_3270(), RecipeCompatibilityBridge.getDisplayIngredientSlots(display));
+        assertEquals(List.of(entry), RecipeCompatibilityBridge.getAllRecipesFromCollection(collection));
+    }
+
+    @Test
+    void recipeDisplayBridgeRecognizesObfuscatedShapelessDisplays() {
+        DummyShapelessDisplay display = new DummyShapelessDisplay();
+
+        assertTrue(RecipeCompatibilityBridge.isCraftingDisplay(display));
+        assertFalse(RecipeCompatibilityBridge.isShapedCraftingDisplay(display));
+        assertTrue(RecipeCompatibilityBridge.isShapelessCraftingDisplay(display));
+        assertEquals(display.comp_3271(), RecipeCompatibilityBridge.getDisplayIngredientSlots(display));
+    }
+
+    @Test
     void lookAcceptsAmountParameter() {
         Node look = new Node(NodeType.LOOK, 0, 0);
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
@@ -259,6 +297,96 @@ class NodeCompatibilityTest {
         assertFalse(equals.evaluateSensor());
     }
 
+    private static final class DummyDisplayEntry {
+        private final Object display;
+
+        private DummyDisplayEntry(Object display) {
+            this.display = display;
+        }
+
+        public Object comp_3263() {
+            return display;
+        }
+    }
+
+    private static final class DummyRecipeCollection {
+        private final List<Object> field_54835;
+
+        private DummyRecipeCollection(List<Object> entries) {
+            this.field_54835 = new ArrayList<>(entries);
+        }
+    }
+
+    private static final class DummyShapedDisplay {
+        private final List<Object> slots = List.of("stone", "stone", "stone");
+
+        public int comp_3268() {
+            return 2;
+        }
+
+        public int comp_3269() {
+            return 1;
+        }
+
+        public List<Object> comp_3270() {
+            return slots;
+        }
+
+        public Object comp_3258() {
+            return "result";
+        }
+    }
+
+    private static final class DummyShapelessDisplay {
+        private final List<Object> ingredients = List.of("a", "b");
+
+        public List<Object> comp_3271() {
+            return ingredients;
+        }
+
+        public Object comp_3258() {
+            return "result";
+        }
+    }
+
+    @Test
+    void guiListItemsResolveAsInventorySlots() {
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node start = new Node(NodeType.START, 0, 0);
+        Node listItem = new Node(NodeType.LIST_ITEM, 0, 0);
+        listItem.setOwningStartNode(start);
+        listItem.getParameter("List").setStringValue("inventory");
+        listItem.getParameter("Index").setStringValue("1");
+
+        registerRuntimeList(start);
+        manager.setRuntimeList(start, "inventory", new ExecutionManager.RuntimeList(NodeType.PARAM_GUI, List.of("player:9")));
+
+        assertEquals(NodeType.PARAM_INVENTORY_SLOT, listItem.getResolvedValueType());
+        assertEquals("9", listItem.exportParameterValues().get("Slot"));
+    }
+
+    @Test
+    void equalsTreatsInventorySlotsWithSameContextAsEqualAcrossModes() {
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node start = new Node(NodeType.START, 0, 0);
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node listItem = new Node(NodeType.LIST_ITEM, 0, 0);
+        Node slot = new Node(NodeType.PARAM_INVENTORY_SLOT, 0, 0);
+
+        listItem.setOwningStartNode(start);
+        listItem.getParameter("List").setStringValue("inventory");
+        listItem.getParameter("Index").setStringValue("1");
+        registerRuntimeList(start);
+        manager.setRuntimeList(start, "inventory", new ExecutionManager.RuntimeList(NodeType.PARAM_GUI, List.of("player:9")));
+
+        slot.getParameter("Slot").setStringValue("9");
+        slot.getParameter("Mode").setStringValue("barrel|player");
+
+        assertTrue(equals.attachParameter(listItem, 0));
+        assertTrue(equals.attachParameter(slot, 1));
+        assertTrue(equals.evaluateSensor());
+    }
+
     @Test
     void equalsFailsWhenCoordinateAndGroupContainsMismatch() {
         Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
@@ -293,5 +421,25 @@ class NodeCompatibilityTest {
         coordinate.getParameter("Y").setStringValue(Integer.toString(y));
         coordinate.getParameter("Z").setStringValue(Integer.toString(z));
         return coordinate;
+    }
+
+    private void registerRuntimeList(Node start) {
+        try {
+            ExecutionManager manager = ExecutionManager.getInstance();
+            Class<?> controllerClass = List.of(ExecutionManager.class.getDeclaredClasses()).stream()
+                .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
+                .findFirst()
+                .orElseThrow();
+            Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
+            constructor.setAccessible(true);
+            Object controller = constructor.newInstance(start, 1);
+            Field activeChainsField = ExecutionManager.class.getDeclaredField("activeChains");
+            activeChainsField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            Map<Node, Object> activeChains = (Map<Node, Object>) activeChainsField.get(manager);
+            activeChains.put(start, controller);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError(ex);
+        }
     }
 }

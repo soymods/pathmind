@@ -162,7 +162,7 @@ public class PathmindClientMod implements ClientModInitializer {
                 nodeErrorNotificationOverlay.clear();
             }
             Node.resetRecipeCacheWarmup();
-            recipeCacheWarmed = Node.hasUsableRecipeCache(client);
+            recipeCacheWarmed = false;
             recipeCacheWarmupCooldownTicks = 0;
             fireFabricEvent(EVT_CLIENT_PLAY_JOIN);
         });
@@ -443,30 +443,62 @@ public class PathmindClientMod implements ClientModInitializer {
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
             }
+            recipeCacheWarmed = false;
             return;
         }
-        if (recipeCacheWarmed) {
-            if (nodeErrorNotificationOverlay != null) {
+        boolean cacheReady = Node.hasUsableRecipeCache(client);
+        boolean warmupInProgress = Node.isRecipeCacheWarmupInProgress(client);
+        if (cacheReady && !warmupInProgress) {
+            if (!recipeCacheWarmed && nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
+                nodeErrorNotificationOverlay.show("Recipe cache ready.", com.pathmind.ui.theme.UITheme.ACCENT_SKY);
+            } else if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
             }
+            recipeCacheWarmed = true;
+            recipeCacheWarmupCooldownTicks = 0;
+            return;
+        }
+
+        recipeCacheWarmed = false;
+        if (nodeErrorNotificationOverlay != null) {
+            String message = "Building recipe cache\nPreparing singleplayer recipes...";
+            nodeErrorNotificationOverlay.showProgress(
+                RECIPE_CACHE_NOTIFICATION_KEY,
+                message,
+                com.pathmind.ui.theme.UITheme.ACCENT_SKY,
+                0.0f
+            );
+        }
+        if (client.getServer() == null) {
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.showProgress(
+                    RECIPE_CACHE_NOTIFICATION_KEY,
+                    "Building recipe cache\nPreparing singleplayer recipes...",
+                    com.pathmind.ui.theme.UITheme.ACCENT_SKY,
+                    0.0f
+                );
+            }
+            recipeCacheWarmupCooldownTicks = 20;
             return;
         }
         if (recipeCacheWarmupCooldownTicks > 0) {
             recipeCacheWarmupCooldownTicks--;
             return;
         }
-        if (client.getServer() == null) {
-            recipeCacheWarmupCooldownTicks = 20;
-            return;
-        }
+
         boolean cached = Node.warmRecipeCache(client);
         Node.RecipeCacheWarmupProgress progress = Node.getRecipeCacheWarmupProgress(client);
-        if (progress != null && nodeErrorNotificationOverlay != null) {
+        if (nodeErrorNotificationOverlay != null) {
+            String message = progress != null
+                ? "Building recipe cache\n" + progress.completed() + " / " + progress.total()
+                : "Building recipe cache\nPreparing singleplayer recipes...";
+            float fraction = progress != null ? progress.fraction() : 0.0f;
             nodeErrorNotificationOverlay.showProgress(
                 RECIPE_CACHE_NOTIFICATION_KEY,
-                "Caching recipes\n" + progress.completed() + " / " + progress.total(),
+                message,
                 com.pathmind.ui.theme.UITheme.ACCENT_SKY,
-                progress.fraction()
+                fraction
             );
         }
         if (cached) {
@@ -476,11 +508,8 @@ public class PathmindClientMod implements ClientModInitializer {
                 nodeErrorNotificationOverlay.show("Recipe cache ready.", com.pathmind.ui.theme.UITheme.ACCENT_SKY);
             }
             LOGGER.debug("Pathmind recipe cache populated from singleplayer recipes.");
-        } else if (!Node.isRecipeCacheWarmupInProgress(client)) {
+        } else if (!Node.isRecipeCacheWarmupInProgress(client) && !Node.hasUsableRecipeCache(client)) {
             recipeCacheWarmupCooldownTicks = 100;
-            if (nodeErrorNotificationOverlay != null) {
-                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
-            }
             LOGGER.debug("Pathmind recipe cache warmup attempted but no recipes found.");
         }
     }

@@ -1845,7 +1845,7 @@ public class NodeGraph {
     }
 
     private boolean trySetParameterDropTarget(Node candidate, int worldMouseX, int worldMouseY, boolean excludeCandidateNode) {
-        Node hoveredNode = getNodeAtWorld(worldMouseX, worldMouseY);
+        Node hoveredNode = getNodeAtWorldExcluding(worldMouseX, worldMouseY, excludeCandidateNode ? candidate : null);
         for (Node current = hoveredNode; current != null; current = getParentForNode(current)) {
             if (excludeCandidateNode && current == candidate) {
                 continue;
@@ -1856,8 +1856,17 @@ public class NodeGraph {
                 parameterDropSlotIndex = slotIndex;
                 return true;
             }
+            if (current == hoveredNode
+                && current.getParentParameterHost() != null
+                && current.canAcceptParameter()
+                && current.containsPoint(worldMouseX, worldMouseY)) {
+                // When the cursor is over a nested parameter host, do not let an
+                // ancestor host steal the drop and replace the nested node.
+                return false;
+            }
         }
-        for (Node node : nodes) {
+        for (int i = nodes.size() - 1; i >= 0; i--) {
+            Node node = nodes.get(i);
             if (excludeCandidateNode && node == candidate) {
                 continue;
             }
@@ -1869,6 +1878,59 @@ public class NodeGraph {
             }
         }
         return false;
+    }
+
+    private Node getNodeAtWorldExcluding(int worldX, int worldY, Node excluded) {
+        Set<Node> processedRoots = new HashSet<>();
+        for (int i = nodes.size() - 1; i >= 0; i--) {
+            Node node = nodes.get(i);
+            Node root = getRootNode(node);
+            if (root == null || processedRoots.contains(root)) {
+                continue;
+            }
+            processedRoots.add(root);
+            Node hit = findNodeInHierarchyAtExcluding(root, worldX, worldY, excluded);
+            if (hit != null) {
+                return hit;
+            }
+        }
+        return null;
+    }
+
+    private Node findNodeInHierarchyAtExcluding(Node node, int worldX, int worldY, Node excluded) {
+        if (node == null) {
+            return null;
+        }
+
+        Map<Integer, Node> parameterMap = node.getAttachedParameters();
+        if (parameterMap != null && !parameterMap.isEmpty()) {
+            List<Integer> keys = new ArrayList<>(parameterMap.keySet());
+            keys.sort(Collections.reverseOrder());
+            for (Integer key : keys) {
+                Node hit = findNodeInHierarchyAtExcluding(parameterMap.get(key), worldX, worldY, excluded);
+                if (hit != null) {
+                    return hit;
+                }
+            }
+        }
+
+        Node sensorChild = node.getAttachedSensor();
+        Node hit = findNodeInHierarchyAtExcluding(sensorChild, worldX, worldY, excluded);
+        if (hit != null) {
+            return hit;
+        }
+
+        Node actionChild = node.getAttachedActionNode();
+        hit = findNodeInHierarchyAtExcluding(actionChild, worldX, worldY, excluded);
+        if (hit != null) {
+            return hit;
+        }
+
+        if (node != excluded && node.containsPoint(worldX, worldY)) {
+            return node;
+        }
+
+        return null;
     }
 
     private int findPreferredParameterSlot(Node host, Node candidate, int worldMouseX, int worldMouseY, boolean allowBodyFallback) {

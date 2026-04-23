@@ -7030,7 +7030,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY);
         int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
         int contentBottom = clearCacheButtonBounds[1] + clearCacheButtonBounds[3];
-        return Math.max(0, contentBottom - bodyBottom + 8);
+        return Math.max(0, contentBottom - bodyBottom + 24);
     }
 
     private void renderSettingsPopupScrollbar(DrawContext context, int popupX, int popupY, int popupWidth, int popupHeight, int maxScroll) {

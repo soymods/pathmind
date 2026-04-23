@@ -82,9 +82,15 @@ public class NodeGraph {
     private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
     private static final int VIEWPORT_CULL_MARGIN = 64;
     private static final int STICKY_NOTE_MAX_CHARS = 4096;
+    private static final int DENSE_VIEW_VISIBLE_NODE_THRESHOLD = 120;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
+    private final List<Node> cachedRootNodes;
+    private final Map<Node, SelectionBounds> cachedHierarchyBounds;
+    private final Map<Node, Integer> cachedHierarchyNodeCounts;
+    private final Set<SocketKey> connectedInputSockets;
+    private final Set<SocketKey> connectedOutputSockets;
     private Node selectedNode;
     private final LinkedHashSet<Node> selectedNodes;
     private Node draggingNode;
@@ -155,6 +161,10 @@ public class NodeGraph {
     private static final long DOUBLE_CLICK_THRESHOLD = 300; // milliseconds
     private int sidebarWidthForRendering = 180;
     private boolean executionEnabled = true;
+    private boolean hierarchyGeometryDirty = true;
+    private boolean connectionIndexDirty = true;
+    private boolean denseViewportMode = false;
+    private int visibleNodeCountForFrame = 0;
 
     private String activePreset;
     private final Set<Node> cascadeDeletionPreviewNodes;
@@ -380,6 +390,33 @@ public class NodeGraph {
         }
     }
 
+    private static final class SocketKey {
+        private final Node node;
+        private final int socketIndex;
+
+        private SocketKey(Node node, int socketIndex) {
+            this.node = node;
+            this.socketIndex = socketIndex;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof SocketKey)) {
+                return false;
+            }
+            SocketKey other = (SocketKey) obj;
+            return node == other.node && socketIndex == other.socketIndex;
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * System.identityHashCode(node) + socketIndex;
+        }
+    }
+
     private static final class DragStartInfo {
         private final int x;
         private final int y;
@@ -529,6 +566,11 @@ public class NodeGraph {
     public NodeGraph() {
         this.nodes = new ArrayList<>();
         this.connections = new ArrayList<>();
+        this.cachedRootNodes = new ArrayList<>();
+        this.cachedHierarchyBounds = new HashMap<>();
+        this.cachedHierarchyNodeCounts = new HashMap<>();
+        this.connectedInputSockets = new HashSet<>();
+        this.connectedOutputSockets = new HashSet<>();
         this.selectedNode = null;
         this.selectedNodes = new LinkedHashSet<>();
         this.draggingNode = null;
@@ -546,6 +588,7 @@ public class NodeGraph {
         // Clear any existing nodes
         nodes.clear();
         connections.clear();
+        invalidateRenderCaches();
         nextStartNodeNumber = 1;
         
         // Calculate workspace area
@@ -623,6 +666,7 @@ public class NodeGraph {
             assignNewStartNodeNumber(node);
         }
         nodes.add(node);
+        invalidateHierarchyCache();
     }
 
     public void removeNode(Node node) {
@@ -769,6 +813,7 @@ public class NodeGraph {
         if (draggingNode == node) {
             draggingNode = null;
         }
+        invalidateRenderCaches();
     }
 
     public Node getNodeAt(int x, int y) {
@@ -778,6 +823,7 @@ public class NodeGraph {
     }
 
     private Node getNodeAtWorld(int worldX, int worldY) {
+        rebuildHierarchyCacheIfNeeded();
         Set<Node> processedRoots = new HashSet<>();
         for (int i = nodes.size() - 1; i >= 0; i--) {
             Node node = nodes.get(i);
@@ -786,6 +832,9 @@ public class NodeGraph {
                 continue;
             }
             processedRoots.add(root);
+            if (!intersectsViewport(cachedHierarchyBounds.get(root))) {
+                continue;
+            }
             Node hit = findNodeInHierarchyAt(root, worldX, worldY);
             if (hit != null) {
                 return hit;
@@ -926,6 +975,60 @@ public class NodeGraph {
         return calculateBounds(hierarchyNodes);
     }
 
+    private void invalidateHierarchyCache() {
+        hierarchyGeometryDirty = true;
+    }
+
+    private void invalidateConnectionIndex() {
+        connectionIndexDirty = true;
+    }
+
+    private void invalidateRenderCaches() {
+        invalidateHierarchyCache();
+        invalidateConnectionIndex();
+    }
+
+    private void rebuildHierarchyCacheIfNeeded() {
+        if (!hierarchyGeometryDirty) {
+            return;
+        }
+
+        cachedRootNodes.clear();
+        cachedHierarchyBounds.clear();
+        cachedHierarchyNodeCounts.clear();
+
+        Set<Node> seenRoots = new LinkedHashSet<>();
+        for (Node node : nodes) {
+            Node root = getRootNode(node);
+            if (root == null || !seenRoots.add(root)) {
+                continue;
+            }
+
+            List<Node> hierarchyNodes = new ArrayList<>();
+            collectHierarchyNodes(root, hierarchyNodes, new HashSet<>());
+            cachedRootNodes.add(root);
+            cachedHierarchyBounds.put(root, calculateBounds(hierarchyNodes));
+            cachedHierarchyNodeCounts.put(root, hierarchyNodes.size());
+        }
+
+        hierarchyGeometryDirty = false;
+    }
+
+    private void rebuildConnectionIndexIfNeeded() {
+        if (!connectionIndexDirty) {
+            return;
+        }
+
+        connectedInputSockets.clear();
+        connectedOutputSockets.clear();
+        for (NodeConnection connection : connections) {
+            connectedInputSockets.add(new SocketKey(connection.getInputNode(), connection.getInputSocket()));
+            connectedOutputSockets.add(new SocketKey(connection.getOutputNode(), connection.getOutputSocket()));
+        }
+
+        connectionIndexDirty = false;
+    }
+
     private void collectHierarchyNodes(Node node, List<Node> collected, Set<Node> visited) {
         if (node == null || !visited.add(node)) {
             return;
@@ -961,14 +1064,31 @@ public class NodeGraph {
         if (bounds == null) {
             return false;
         }
+        int viewportWidth = getViewportWorldWidth();
+        int viewportHeight = getViewportWorldHeight();
+        if (viewportWidth <= 0 || viewportHeight <= 0) {
+            return true;
+        }
         int viewportLeft = cameraX - VIEWPORT_CULL_MARGIN;
         int viewportTop = cameraY - VIEWPORT_CULL_MARGIN;
-        int viewportRight = cameraX + getViewportWorldWidth() + VIEWPORT_CULL_MARGIN;
-        int viewportBottom = cameraY + getViewportWorldHeight() + VIEWPORT_CULL_MARGIN;
+        int viewportRight = cameraX + viewportWidth + VIEWPORT_CULL_MARGIN;
+        int viewportBottom = cameraY + viewportHeight + VIEWPORT_CULL_MARGIN;
         return bounds.maxX >= viewportLeft
             && bounds.minX <= viewportRight
             && bounds.maxY >= viewportTop
             && bounds.minY <= viewportBottom;
+    }
+
+    private boolean intersectsViewport(Node node) {
+        if (node == null) {
+            return false;
+        }
+        return intersectsViewport(new SelectionBounds(
+            node.getX(),
+            node.getY(),
+            node.getX() + node.getWidth(),
+            node.getY() + node.getHeight()
+        ));
     }
 
     private void addNodeToSelection(Node node) {
@@ -1644,7 +1764,9 @@ public class NodeGraph {
                 }
             }
         }
-        
+        if (disconnectedConnection != null) {
+            invalidateConnectionIndex();
+        }
     }
 
     public void updateDrag(int mouseX, int mouseY) {
@@ -1684,6 +1806,7 @@ public class NodeGraph {
                     }
                     member.setPosition(start.x + deltaX, start.y + deltaY);
                 }
+                invalidateHierarchyCache();
                 draggingNode.setSocketsHidden(false);
                 resetDropTargets();
             } else {
@@ -1707,6 +1830,7 @@ public class NodeGraph {
                     }
 
                     draggingNode.setPosition(newX, newY);
+                    invalidateHierarchyCache();
 
                     boolean hideSockets = false;
                     resetDropTargets();
@@ -1758,33 +1882,19 @@ public class NodeGraph {
             hoveredNode = null;
             hoveredSocket = -1;
 
-            for (Node node : nodes) {
-                if (node == connectionSourceNode) continue;
-                if (!node.shouldRenderSockets()) continue;
-
-                // Check input sockets if dragging from output
-                if (isOutputSocket) {
-                    for (int i = 0; i < node.getInputSocketCount(); i++) {
-                        if (node.isSocketClicked(worldMouseX, worldMouseY, i, true)) {
-                            hoveredNode = node;
-                            hoveredSocket = i;
-                            hoveredSocketIsInput = true;
-                            break;
-                        }
-                    }
-                } else {
-                    // Check output sockets if dragging from input
-                    for (int i = 0; i < node.getOutputSocketCount(); i++) {
-                        if (node.isSocketClicked(worldMouseX, worldMouseY, i, false)) {
-                            hoveredNode = node;
-                            hoveredSocket = i;
-                            hoveredSocketIsInput = false;
-                            break;
-                        }
+            if (denseViewportMode) {
+                Node hoveredCandidate = getNodeAtWorldExcluding(worldMouseX, worldMouseY, connectionSourceNode);
+                for (Node current = hoveredCandidate; current != null; current = getParentForNode(current)) {
+                    if (updateConnectionSnapForNode(current, worldMouseX, worldMouseY)) {
+                        break;
                     }
                 }
-                
-                if (hoveredNode != null) break;
+            } else {
+                for (Node node : nodes) {
+                    if (updateConnectionSnapForNode(node, worldMouseX, worldMouseY)) {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -1870,6 +1980,9 @@ public class NodeGraph {
             if (excludeCandidateNode && node == candidate) {
                 continue;
             }
+            if (!intersectsViewport(node)) {
+                continue;
+            }
             int slotIndex = findPreferredParameterSlot(node, candidate, worldMouseX, worldMouseY, false);
             if (slotIndex >= 0) {
                 parameterDropTarget = node;
@@ -1881,6 +1994,7 @@ public class NodeGraph {
     }
 
     private Node getNodeAtWorldExcluding(int worldX, int worldY, Node excluded) {
+        rebuildHierarchyCacheIfNeeded();
         Set<Node> processedRoots = new HashSet<>();
         for (int i = nodes.size() - 1; i >= 0; i--) {
             Node node = nodes.get(i);
@@ -1889,6 +2003,9 @@ public class NodeGraph {
                 continue;
             }
             processedRoots.add(root);
+            if (!intersectsViewport(cachedHierarchyBounds.get(root))) {
+                continue;
+            }
             Node hit = findNodeInHierarchyAtExcluding(root, worldX, worldY, excluded);
             if (hit != null) {
                 return hit;
@@ -1968,6 +2085,9 @@ public class NodeGraph {
             if (!node.canAcceptSensor() || node == candidateToExclude) {
                 continue;
             }
+            if (!intersectsViewport(node)) {
+                continue;
+            }
             if (node.isPointInsideSensorSlot(worldMouseX, worldMouseY)) {
                 sensorDropTarget = node;
                 return true;
@@ -2017,6 +2137,9 @@ public class NodeGraph {
                 if (!node.canAcceptActionNode()) {
                     continue;
                 }
+                if (!intersectsViewport(node)) {
+                    continue;
+                }
                 if (!node.canAcceptActionNode(newNode)) {
                     continue;
                 }
@@ -2036,6 +2159,7 @@ public class NodeGraph {
     }
     
     public void updateMouseHover(int mouseX, int mouseY) {
+        rebuildHierarchyCacheIfNeeded();
         // Reset hover state
         hoveredSocketNode = null;
         hoveredSocketIndex = -1;
@@ -2044,6 +2168,9 @@ public class NodeGraph {
 
         // Check for start button hover
         for (Node node : nodes) {
+            if (!intersectsViewport(node)) {
+                continue;
+            }
             if (node.getType() == NodeType.START && isMouseOverStartButton(node, mouseX, mouseY)) {
                 hoveringStartButton = true;
                 hoveredStartNode = node;
@@ -2060,26 +2187,19 @@ public class NodeGraph {
         int worldMouseY = screenToWorldY(mouseY);
 
         // Check for socket hover
-        for (Node node : nodes) {
-            if (!node.shouldRenderSockets()) {
-                continue;
-            }
-            // Check input sockets
-            for (int i = 0; i < node.getInputSocketCount(); i++) {
-                if (node.isSocketClicked(worldMouseX, worldMouseY, i, true)) {
-                    hoveredSocketNode = node;
-                    hoveredSocketIndex = i;
-                    hoveredSocketIsInput = true;
+        if (denseViewportMode) {
+            Node hoveredCandidate = getNodeAtWorld(worldMouseX, worldMouseY);
+            for (Node current = hoveredCandidate; current != null; current = getParentForNode(current)) {
+                if (updateHoveredSocketForNode(current, worldMouseX, worldMouseY, false, false)) {
                     return;
                 }
             }
-
-            // Check output sockets
-            for (int i = 0; i < node.getOutputSocketCount(); i++) {
-                if (node.isSocketClicked(worldMouseX, worldMouseY, i, false)) {
-                    hoveredSocketNode = node;
-                    hoveredSocketIndex = i;
-                    hoveredSocketIsInput = false;
+        } else {
+            for (Node node : nodes) {
+                if (!intersectsViewport(node)) {
+                    continue;
+                }
+                if (updateHoveredSocketForNode(node, worldMouseX, worldMouseY, false, false)) {
                     return;
                 }
             }
@@ -2241,6 +2361,65 @@ public class NodeGraph {
 
         draggingNodeDetached = true;
         dragOperationChanged = true;
+        invalidateHierarchyCache();
+    }
+
+    private boolean updateHoveredSocketForNode(Node node, int worldMouseX, int worldMouseY, boolean inputsOnly, boolean outputsOnly) {
+        if (node == null || !node.shouldRenderSockets()) {
+            return false;
+        }
+
+        if (!outputsOnly) {
+            for (int i = 0; i < node.getInputSocketCount(); i++) {
+                if (node.isSocketClicked(worldMouseX, worldMouseY, i, true)) {
+                    hoveredSocketNode = node;
+                    hoveredSocketIndex = i;
+                    hoveredSocketIsInput = true;
+                    return true;
+                }
+            }
+        }
+
+        if (!inputsOnly) {
+            for (int i = 0; i < node.getOutputSocketCount(); i++) {
+                if (node.isSocketClicked(worldMouseX, worldMouseY, i, false)) {
+                    hoveredSocketNode = node;
+                    hoveredSocketIndex = i;
+                    hoveredSocketIsInput = false;
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private boolean updateConnectionSnapForNode(Node node, int worldMouseX, int worldMouseY) {
+        if (node == null || node == connectionSourceNode || !node.shouldRenderSockets()) {
+            return false;
+        }
+
+        if (isOutputSocket) {
+            for (int i = 0; i < node.getInputSocketCount(); i++) {
+                if (node.isSocketClicked(worldMouseX, worldMouseY, i, true)) {
+                    hoveredNode = node;
+                    hoveredSocket = i;
+                    hoveredSocketIsInput = true;
+                    return true;
+                }
+            }
+        } else {
+            for (int i = 0; i < node.getOutputSocketCount(); i++) {
+                if (node.isSocketClicked(worldMouseX, worldMouseY, i, false)) {
+                    hoveredNode = node;
+                    hoveredSocket = i;
+                    hoveredSocketIsInput = false;
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
     
     public void stopDraggingConnection() {
@@ -2306,6 +2485,7 @@ public class NodeGraph {
     private void restoreDisconnectedConnection() {
         if (disconnectedConnection != null) {
             connections.add(disconnectedConnection);
+            invalidateConnectionIndex();
         }
     }
 
@@ -2521,6 +2701,7 @@ public class NodeGraph {
             nodeY = snapToGrid(nodeY);
         }
         node.setPosition(nodeX, nodeY);
+        invalidateHierarchyCache();
     }
 
     /**
@@ -2937,21 +3118,23 @@ public class NodeGraph {
         if (!onlyDragged) {
             updateCascadeDeletionPreview();
         }
+        rebuildHierarchyCacheIfNeeded();
+        visibleNodeCountForFrame = 0;
+        for (Node root : cachedRootNodes) {
+            if (intersectsViewport(cachedHierarchyBounds.get(root))) {
+                visibleNodeCountForFrame += cachedHierarchyNodeCounts.getOrDefault(root, 0);
+            }
+        }
+        denseViewportMode = visibleNodeCountForFrame >= DENSE_VIEW_VISIBLE_NODE_THRESHOLD;
         boolean renderConnectionsOnTop = shouldRenderConnectionsOnTop();
         if (!renderConnectionsOnTop) {
             renderConnections(context, onlyDragged);
         }
 
-        Set<Node> processedRoots = new HashSet<>();
         Set<Node> renderedNodes = new HashSet<>();
 
-        for (Node node : nodes) {
-            Node root = getRootNode(node);
-            if (root == null || processedRoots.contains(root)) {
-                continue;
-            }
-            processedRoots.add(root);
-            if (!intersectsViewport(calculateHierarchyBounds(root))) {
+        for (Node root : cachedRootNodes) {
+            if (!intersectsViewport(cachedHierarchyBounds.get(root))) {
                 markHierarchyRendered(root, renderedNodes);
                 continue;
             }
@@ -2970,7 +3153,8 @@ public class NodeGraph {
         }
 
         MatrixStackBridge.pop(matrices);
-
+        denseViewportMode = false;
+        visibleNodeCountForFrame = 0;
     }
 
     private boolean shouldRenderConnectionsOnTop() {
@@ -3052,7 +3236,9 @@ public class NodeGraph {
             return;
         }
 
-        renderNode(context, textRenderer, node, mouseX, mouseY, delta);
+        if (intersectsViewport(node) || hierarchyActive) {
+            renderNode(context, textRenderer, node, mouseX, mouseY, delta);
+        }
         renderedNodes.add(node);
 
         Node actionChild = node.getAttachedActionNode();
@@ -3142,6 +3328,9 @@ public class NodeGraph {
         if (node == null) {
             return false;
         }
+        if (denseViewportMode) {
+            return false;
+        }
         if (node.shouldRenderInlineParameters()) {
             return true;
         }
@@ -3153,6 +3342,20 @@ public class NodeGraph {
             && node.getType() != NodeType.SENSOR_POSITION_OF
             && node.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
             && node.getType() != NodeType.SENSOR_SLOT_ITEM_COUNT;
+    }
+
+    private boolean shouldRenderNodeSockets(Node node) {
+        if (node == null || !node.shouldRenderSockets()) {
+            return false;
+        }
+        if (!denseViewportMode) {
+            return true;
+        }
+        return node.isSelected()
+            || node.isDragging()
+            || node == connectionSourceNode
+            || node == hoveredSocketNode
+            || node == hoveredNode;
     }
 
     private void renderNode(DrawContext context, TextRenderer textRenderer, Node node, int mouseX, int mouseY, float delta) {
@@ -3282,7 +3485,7 @@ public class NodeGraph {
             );
         }
 
-        if (node.shouldRenderSockets()) {
+        if (shouldRenderNodeSockets(node)) {
             // Render input sockets
             for (int i = 0; i < node.getInputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && hoveredSocketIsInput);
@@ -8710,6 +8913,7 @@ public class NodeGraph {
         }
         resizingStickyNote.setPosition(left, top);
         resizingStickyNote.setStickyNoteSize(newWidth, newHeight);
+        invalidateHierarchyCache();
     }
 
     public boolean handleStickyNoteKeyPressed(int keyCode, int modifiers) {
@@ -13370,18 +13574,9 @@ public class NodeGraph {
     }
 
     private boolean isSocketConnected(Node node, int socketIndex, boolean isInput) {
-        for (NodeConnection connection : connections) {
-            if (isInput) {
-                if (connection.getInputNode() == node && connection.getInputSocket() == socketIndex) {
-                    return true;
-                }
-            } else {
-                if (connection.getOutputNode() == node && connection.getOutputSocket() == socketIndex) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        rebuildConnectionIndexIfNeeded();
+        SocketKey key = new SocketKey(node, socketIndex);
+        return isInput ? connectedInputSockets.contains(key) : connectedOutputSockets.contains(key);
     }
 
     private boolean isSocketActive(Node node, int socketIndex, boolean isInput) {
@@ -13412,8 +13607,10 @@ public class NodeGraph {
 
     private void renderConnections(DrawContext context, boolean onlyDragged) {
         ExecutionManager manager = ExecutionManager.getInstance();
-        boolean animateConnections = manager.isExecuting();
+        boolean animateConnections = manager.isExecuting() && !denseViewportMode;
         long animationTimestamp = System.currentTimeMillis();
+        int viewportWidth = getViewportWorldWidth();
+        int viewportHeight = getViewportWorldHeight();
 
         if (!onlyDragged) {
             for (NodeConnection connection : connections) {
@@ -13428,25 +13625,25 @@ public class NodeGraph {
                 int outputY = outputNode.getSocketY(connection.getOutputSocket(), false) - cameraY;
                 int inputX = inputNode.getSocketX(true) - cameraX;
                 int inputY = inputNode.getSocketY(connection.getInputSocket(), true) - cameraY;
-                int viewportWidth = getViewportWorldWidth();
-                int viewportHeight = getViewportWorldHeight();
                 int minX = Math.min(outputX, inputX) - VIEWPORT_CULL_MARGIN;
                 int maxX = Math.max(outputX, inputX) + VIEWPORT_CULL_MARGIN;
                 int minY = Math.min(outputY, inputY) - VIEWPORT_CULL_MARGIN;
                 int maxY = Math.max(outputY, inputY) + VIEWPORT_CULL_MARGIN;
-                if (maxX < 0 || minX > viewportWidth || maxY < 0 || minY > viewportHeight) {
+                if (viewportWidth > 0 && viewportHeight > 0
+                    && (maxX < 0 || minX > viewportWidth || maxY < 0 || minY > viewportHeight)) {
                     continue;
                 }
 
                 int color = outputNode.getOutputSocketColor(connection.getOutputSocket());
-                if (shouldGrayOutConnection(outputNode, inputNode)) {
+                if (!denseViewportMode && shouldGrayOutConnection(outputNode, inputNode)) {
                     color = toGrayscale(color, 0.65f);
                 }
 
-                // Simple bezier-like curve
                 if (animateConnections && manager.shouldAnimateConnection(connection)) {
                     renderAnimatedConnectionCurve(context, outputX, outputY, inputX, inputY,
                             color, animationTimestamp);
+                } else if (denseViewportMode) {
+                    renderDenseConnectionCurve(context, outputX, outputY, inputX, inputY, color);
                 } else {
                     renderConnectionCurve(context, outputX, outputY, inputX, inputY,
                             color);
@@ -13483,6 +13680,8 @@ public class NodeGraph {
                 if (animateConnections) {
                     renderAnimatedConnectionCurve(context, sourceX, sourceY, targetX, targetY,
                             color, animationTimestamp);
+                } else if (denseViewportMode) {
+                    renderDenseConnectionCurve(context, sourceX, sourceY, targetX, targetY, color);
                 } else {
                     renderConnectionCurve(context, sourceX, sourceY, targetX, targetY,
                             color);
@@ -13635,6 +13834,11 @@ public class NodeGraph {
         context.drawHorizontalLine(Math.min(midX, x2), Math.max(midX, x2), y2, color);
     }
 
+    private void renderDenseConnectionCurve(DrawContext context, int x1, int y1, int x2, int y2, int color) {
+        context.drawHorizontalLine(Math.min(x1, x2), Math.max(x1, x2), y1, color);
+        context.drawVerticalLine(x2, Math.min(y1, y2), Math.max(y1, y2), color);
+    }
+
     public List<Node> getNodes() {
         return nodes;
     }
@@ -13748,7 +13952,11 @@ public class NodeGraph {
     }
 
     private Node findStartNodeAt(int mouseX, int mouseY) {
+        rebuildHierarchyCacheIfNeeded();
         for (Node node : nodes) {
+            if (!intersectsViewport(node)) {
+                continue;
+            }
             if (node.getType() == NodeType.START && isMouseOverStartButton(node, mouseX, mouseY)) {
                 return node;
             }
@@ -13876,6 +14084,7 @@ public class NodeGraph {
     public void markWorkspaceDirty() {
         workspaceDirty = true;
         invalidateValidation();
+        invalidateRenderCaches();
         save();
     }
 
@@ -13989,6 +14198,7 @@ public class NodeGraph {
 
         nodes.clear();
         connections.clear();
+        invalidateRenderCaches();
         nextStartNodeNumber = 1;
         clearSelection();
         draggingNode = null;
@@ -14016,6 +14226,7 @@ public class NodeGraph {
     private boolean applyLoadedData(NodeGraphData data) {
         nodes.clear();
         connections.clear();
+        invalidateRenderCaches();
         clearSelection();
         draggingNode = null;
         selectionDeletionPreviewActive = false;

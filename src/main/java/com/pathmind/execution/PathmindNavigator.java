@@ -197,6 +197,7 @@ public final class PathmindNavigator {
     private long lastInteractAtMs;
     private BlockPos activeBreakTarget;
     private MiningAscentPhase activeMiningAscentPhase = MiningAscentPhase.CLEARANCE;
+    private PillarPhase activePillarPhase = PillarPhase.CENTER;
     private List<BlockPos> plannedBreakTargets = List.of();
     private BlockPos committedEscapeTarget;
     private long committedEscapeUntilMs;
@@ -6997,6 +6998,11 @@ public final class PathmindNavigator {
             velocity.z * 0.25D + MathHelper.clamp(dz * 0.18D, -0.08D, 0.08D)
         );
 
+        PillarPhase pillarPhase = resolvePillarPhase(world, player, pillarBase, pillarTarget, dx, dz);
+        synchronized (this) {
+            activePillarPhase = pillarPhase;
+        }
+
         if (client.options != null) {
             if (client.options.sprintKey != null) {
                 client.options.sprintKey.setPressed(false);
@@ -7017,33 +7023,30 @@ public final class PathmindNavigator {
                 client.options.sneakKey.setPressed(true);
             }
             if (client.options.jumpKey != null) {
-                client.options.jumpKey.setPressed(player.getY() < pillarTarget.getY());
+                client.options.jumpKey.setPressed(pillarPhase == PillarPhase.ASCEND);
             }
         }
 
-        boolean blockUnderfoot = hasCollision(world, pillarBase);
-        if (blockUnderfoot) {
+        if (pillarPhase == PillarPhase.SUPPORT_READY) {
             synchronized (this) {
-                if ("placed".equals(lastPlaceResult) || "pillar place".equals(lastReplanReason)) {
-                    controllerUntilMs = 0L;
-                    lastReplanReason = "pillar support ready";
-                    lastStuckReason = "advance on support";
-                }
+                controllerUntilMs = 0L;
+                lastReplanReason = "pillar support ready";
+                lastStuckReason = "advance on support";
+                lastPlaceTarget = pillarBase.toImmutable();
+                lastPlaceResult = "placed";
             }
             return false;
         }
-        boolean airbornePlacementWindow = !player.isOnGround() && player.getVelocity().y <= 0.45D;
-        boolean canAttemptPlacement = !blockUnderfoot
-            && airbornePlacementWindow
-            && Math.abs(dx) <= 0.22D
-            && Math.abs(dz) <= 0.22D;
         synchronized (this) {
             lastPlaceTarget = pillarBase.toImmutable();
-            lastPlaceResult = canAttemptPlacement
-                ? "ready"
-                : (!airbornePlacementWindow ? "waiting apex" : "centering");
+            lastPlaceResult = switch (pillarPhase) {
+                case PLACE -> "ready";
+                case ASCEND -> "waiting apex";
+                case CENTER -> "centering";
+                case SUPPORT_READY -> "placed";
+            };
         }
-        if (canAttemptPlacement) {
+        if (pillarPhase == PillarPhase.PLACE) {
             if (client.options != null) {
                 if (client.options.jumpKey != null) {
                     client.options.jumpKey.setPressed(false);
@@ -7063,7 +7066,7 @@ public final class PathmindNavigator {
                 return true;
             }
         }
-        if (player.isOnGround()) {
+        if (pillarPhase == PillarPhase.ASCEND && player.isOnGround()) {
             synchronized (this) {
                 lastJumpAtMs = now;
                 committedJumpWaypoint = null;
@@ -7074,6 +7077,31 @@ public final class PathmindNavigator {
         }
         noteControllerActivity(now);
         return true;
+    }
+
+    private PillarPhase resolvePillarPhase(
+        World world,
+        ClientPlayerEntity player,
+        BlockPos pillarBase,
+        BlockPos pillarTarget,
+        double dx,
+        double dz
+    ) {
+        if (world == null || player == null || pillarBase == null || pillarTarget == null) {
+            return PillarPhase.CENTER;
+        }
+        if (hasCollision(world, pillarBase)) {
+            return PillarPhase.SUPPORT_READY;
+        }
+        boolean centered = Math.abs(dx) <= 0.22D && Math.abs(dz) <= 0.22D;
+        boolean airbornePlacementWindow = !player.isOnGround() && player.getVelocity().y <= 0.45D;
+        if (centered && airbornePlacementWindow) {
+            return PillarPhase.PLACE;
+        }
+        if (player.getY() < pillarTarget.getY()) {
+            return PillarPhase.ASCEND;
+        }
+        return PillarPhase.CENTER;
     }
 
     private boolean tryPlacePillarBlock(
@@ -8909,6 +8937,13 @@ public final class PathmindNavigator {
         CLEARANCE,
         ADVANCE,
         JUMP
+    }
+
+    private enum PillarPhase {
+        CENTER,
+        ASCEND,
+        PLACE,
+        SUPPORT_READY
     }
 
     private enum SearchPrimitiveType {

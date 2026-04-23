@@ -58,6 +58,21 @@ public class NodeGraphPersistence {
         return writeNodeGraphDataToPath(data, savePath);
     }
 
+    public static boolean saveNodeGraphDataForPreset(String presetName, NodeGraphData data) {
+        if (presetName == null || presetName.isBlank() || data == null) {
+            return false;
+        }
+        cachePresetGraph(presetName, data);
+        return writeNodeGraphDataToPath(data, PresetManager.getPresetPath(presetName));
+    }
+
+    public static boolean saveNodeGraphDataToPath(NodeGraphData data, Path savePath) {
+        if (data == null || savePath == null) {
+            return false;
+        }
+        return writeNodeGraphDataToPath(data, savePath);
+    }
+
     /**
      * Load the node graph from disk
      */

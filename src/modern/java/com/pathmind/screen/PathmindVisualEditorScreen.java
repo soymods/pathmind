@@ -6,6 +6,7 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
+import com.pathmind.data.WorkspaceFileAccess;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
@@ -229,6 +230,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private Path lastImportExportPath;
     private String importExportStatus = "";
     private int importExportStatusColor = UITheme.TEXT_SECONDARY;
+    private boolean importExportBusy = false;
 
     private boolean presetDropdownOpen = false;
     private final AnimatedValue presetDropdownAnimation = AnimatedValue.forHover();
@@ -2194,7 +2196,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
 
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            if (!importExportBusy && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)) {
                 attemptImport();
                 return true;
             }
@@ -3357,8 +3359,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int exportX = importX + buttonWidth + 8;
         int cancelX = popupX + scaledWidth - buttonWidth - 20;
 
-        boolean importHovered = isPointInRect(mouseX, mouseY, importX, buttonY, buttonWidth, buttonHeight);
-        boolean exportHovered = isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
+        boolean importHovered = !importExportBusy && isPointInRect(mouseX, mouseY, importX, buttonY, buttonWidth, buttonHeight);
+        boolean exportHovered = !importExportBusy && isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
 
         drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered,
@@ -3646,12 +3648,12 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (isPointInRect(mouseXi, mouseYi, importX, buttonY, buttonWidth, buttonHeight)) {
+        if (!importExportBusy && isPointInRect(mouseXi, mouseYi, importX, buttonY, buttonWidth, buttonHeight)) {
             attemptImport();
             return true;
         }
 
-        if (isPointInRect(mouseXi, mouseYi, exportX, buttonY, buttonWidth, buttonHeight)) {
+        if (!importExportBusy && isPointInRect(mouseXi, mouseYi, exportX, buttonY, buttonWidth, buttonHeight)) {
             attemptExport();
             return true;
         }
@@ -3907,6 +3909,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownOpen = false;
         importExportPopupAnimation.show();
         clearImportExportStatus();
+        importExportBusy = false;
         if (lastImportExportPath == null) {
             lastImportExportPath = NodeGraphPersistence.getDefaultSavePath();
         }
@@ -3922,43 +3925,60 @@ public class PathmindVisualEditorScreen extends Screen {
                 : Optional.ofNullable(NodeGraphPersistence.getDefaultSavePath())
                     .map(Path::toString)
                     .orElse("");
+        importExportBusy = true;
+        setImportExportStatus("Waiting for import file...", UITheme.TEXT_SECONDARY);
+        WorkspaceFileAccess.supplyAsync(() -> openWorkspaceImportDialog(defaultPath))
+            .whenComplete((selection, throwable) -> runOnClientThread(() -> {
+                if (throwable != null) {
+                    importExportBusy = false;
+                    setImportExportStatus("Failed to open import dialog.", UITheme.STATE_ERROR);
+                    return;
+                }
+                if (selection == null) {
+                    importExportBusy = false;
+                    setImportExportStatus("Import cancelled.", UITheme.TEXT_SECONDARY);
+                    return;
+                }
+                try {
+                    Path path = Paths.get(selection.trim());
+                    beginImportFromPath(path);
+                } catch (InvalidPathException ex) {
+                    importExportBusy = false;
+                    setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
+                }
+            }));
+    }
 
-        String selection;
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
-            selection = TinyFileDialogs.tinyfd_openFileDialog(
-                    "Import Workspace",
-                    defaultPath,
-                    filters,
-                    filters != null ? "JSON Files" : null,
-                    false
-            );
-        }
-
-        if (selection == null) {
-            setImportExportStatus("Import cancelled.", UITheme.TEXT_SECONDARY);
-            return;
-        }
-
+    private void beginImportFromPath(Path path) {
         try {
-            Path path = Paths.get(selection.trim());
             lastImportExportPath = path;
             Path fileName = path.getFileName();
             String fileLabel = fileName != null ? fileName.toString() : path.toString();
-            Optional<String> importedPreset = PresetManager.importPresetFromFile(path);
-            if (importedPreset.isPresent()) {
-                switchPreset(importedPreset.get());
-                movePresetTabToEnd(importedPreset.get());
-                refreshMissingBaritonePopup();
-                refreshMissingUiUtilsPopup();
-                updateImportExportPathFromPreset();
+            String currentPresetName = activePresetName;
+            NodeGraphData currentPresetSnapshot = nodeGraph.exportGraphDataSnapshot();
+            setImportExportStatus("Importing workspace...", UITheme.TEXT_SECONDARY);
+            WorkspaceFileAccess.supplyAsync(() -> {
+                if (currentPresetSnapshot != null && currentPresetName != null && !currentPresetName.isBlank()) {
+                    NodeGraphPersistence.saveNodeGraphDataForPreset(currentPresetName, currentPresetSnapshot);
+                }
+                Optional<String> importedPreset = PresetManager.importPresetFromFile(path);
+                if (importedPreset.isEmpty()) {
+                    return ImportOperationResult.failed(fileLabel);
+                }
+                NodeGraphData importedData = NodeGraphPersistence.loadNodeGraphForPreset(importedPreset.get());
+                return ImportOperationResult.succeeded(fileLabel, importedPreset.get(), importedData);
+            }).whenComplete((result, throwable) -> runOnClientThread(() -> {
+                importExportBusy = false;
+                if (throwable != null || result == null || !result.success) {
+                    setImportExportStatus("Failed to import workspace from " + fileLabel + ".", UITheme.STATE_ERROR);
+                    return;
+                }
+                applyImportedPreset(result.presetName, result.importedData);
                 setImportExportStatus(
-                        "Imported workspace \"" + fileLabel + "\" as preset \"" + importedPreset.get() + "\".",
-                        UITheme.STATE_SUCCESS
+                    "Imported workspace \"" + result.fileLabel + "\" as preset \"" + result.presetName + "\".",
+                    UITheme.STATE_SUCCESS
                 );
-            } else {
-                setImportExportStatus("Failed to import workspace from " + fileLabel + ".", UITheme.STATE_ERROR);
-            }
+            }));
         } catch (InvalidPathException ex) {
             setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
         }
@@ -3968,35 +3988,133 @@ public class PathmindVisualEditorScreen extends Screen {
         Path defaultSavePath = Optional.ofNullable(lastImportExportPath)
                 .orElseGet(NodeGraphPersistence::getDefaultSavePath);
         String defaultPathString = defaultSavePath != null ? defaultSavePath.toString() : "workspace.json";
+        importExportBusy = true;
+        setImportExportStatus("Waiting for export path...", UITheme.TEXT_SECONDARY);
+        WorkspaceFileAccess.supplyAsync(() -> openWorkspaceExportDialog(defaultPathString))
+            .whenComplete((selection, throwable) -> runOnClientThread(() -> {
+                if (throwable != null) {
+                    importExportBusy = false;
+                    setImportExportStatus("Failed to open export dialog.", UITheme.STATE_ERROR);
+                    return;
+                }
+                if (selection == null) {
+                    importExportBusy = false;
+                    setImportExportStatus("Export cancelled.", UITheme.TEXT_SECONDARY);
+                    return;
+                }
+                try {
+                    Path path = Paths.get(selection.trim());
+                    beginExportToPath(path);
+                } catch (InvalidPathException ex) {
+                    importExportBusy = false;
+                    setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
+                }
+            }));
+    }
 
-        String selection;
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
-            selection = TinyFileDialogs.tinyfd_saveFileDialog(
-                    "Export Workspace",
-                    defaultPathString,
-                    filters,
-                    filters != null ? "JSON Files" : null
-            );
-        }
-
-        if (selection == null) {
-            setImportExportStatus("Export cancelled.", UITheme.TEXT_SECONDARY);
-            return;
-        }
-
+    private void beginExportToPath(Path path) {
         try {
-            Path path = Paths.get(selection.trim());
-            boolean success = nodeGraph.exportToPath(path);
-            if (success) {
-                lastImportExportPath = path;
-                Path fileName = path.getFileName();
-                setImportExportStatus("Exported workspace to " + (fileName != null ? fileName.toString() : path.toString()), UITheme.STATE_SUCCESS);
-            } else {
-                setImportExportStatus("Failed to export workspace.", UITheme.STATE_ERROR);
-            }
+            NodeGraphData snapshot = nodeGraph.exportGraphDataSnapshot();
+            setImportExportStatus("Exporting workspace...", UITheme.TEXT_SECONDARY);
+            WorkspaceFileAccess.supplyExportAsync(() -> NodeGraphPersistence.saveNodeGraphDataToPath(snapshot, path))
+                .whenComplete((success, throwable) -> runOnClientThread(() -> {
+                    importExportBusy = false;
+                    if (throwable != null || !Boolean.TRUE.equals(success)) {
+                        setImportExportStatus("Failed to export workspace.", UITheme.STATE_ERROR);
+                        return;
+                    }
+                    lastImportExportPath = path;
+                    Path fileName = path.getFileName();
+                    setImportExportStatus("Exported workspace to " + (fileName != null ? fileName.toString() : path.toString()), UITheme.STATE_SUCCESS);
+                }));
         } catch (InvalidPathException ex) {
             setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
+        }
+    }
+
+    private String openWorkspaceImportDialog(String defaultPath) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
+            return TinyFileDialogs.tinyfd_openFileDialog(
+                "Import Workspace",
+                defaultPath,
+                filters,
+                filters != null ? "JSON Files" : null,
+                false
+            );
+        }
+    }
+
+    private String openWorkspaceExportDialog(String defaultPath) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
+            return TinyFileDialogs.tinyfd_saveFileDialog(
+                "Export Workspace",
+                defaultPath,
+                filters,
+                filters != null ? "JSON Files" : null
+            );
+        }
+    }
+
+    private void applyImportedPreset(String presetName, NodeGraphData importedData) {
+        if (presetName == null || presetName.isBlank()) {
+            return;
+        }
+        PresetManager.setActivePreset(presetName);
+        refreshAvailablePresets();
+        movePresetTabToEnd(presetName);
+        nodeGraph.setActivePreset(activePresetName);
+        dismissParameterOverlay();
+        isDraggingFromSidebar = false;
+        draggingNodeType = null;
+        draggingSidebarNode = null;
+        clearPopupAnimation.hide();
+        closeSettingsPopup();
+        presetDropdownOpen = false;
+
+        if (!nodeGraph.applyGraphDataSnapshot(importedData, false)) {
+            nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+        }
+        resetWorkspaceTabsFromCurrentGraph();
+        refreshMissingBaritonePopup();
+        refreshMissingUiUtilsPopup();
+        nodeGraph.restoreSessionViewportState();
+        updateImportExportPathFromPreset();
+    }
+
+    private void runOnClientThread(Runnable task) {
+        MinecraftClient minecraftClient = this.client;
+        if (minecraftClient == null || task == null) {
+            return;
+        }
+        minecraftClient.execute(() -> {
+            if (this.client == null) {
+                return;
+            }
+            task.run();
+        });
+    }
+
+    private static final class ImportOperationResult {
+        private final boolean success;
+        private final String fileLabel;
+        private final String presetName;
+        private final NodeGraphData importedData;
+
+        private ImportOperationResult(boolean success, String fileLabel, String presetName, NodeGraphData importedData) {
+            this.success = success;
+            this.fileLabel = fileLabel;
+            this.presetName = presetName;
+            this.importedData = importedData;
+        }
+
+        private static ImportOperationResult succeeded(String fileLabel, String presetName, NodeGraphData importedData) {
+            return new ImportOperationResult(true, fileLabel, presetName, importedData);
+        }
+
+        private static ImportOperationResult failed(String fileLabel) {
+            return new ImportOperationResult(false, fileLabel, null, null);
         }
     }
 

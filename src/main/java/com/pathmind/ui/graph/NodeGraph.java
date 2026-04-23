@@ -3146,12 +3146,6 @@ public class NodeGraph {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_BG, 0.75f) : UITheme.NODE_EVENT_CALL_BG;
         } else if (node.getType() == NodeType.VARIABLE) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_BORDER, 0.75f) : UITheme.NODE_VARIABLE_BORDER; // Darker orange for variables
-        } else if (node.getType() == NodeType.OPERATOR_EQUALS
-            || node.getType() == NodeType.OPERATOR_NOT
-            || node.getType() == NodeType.OPERATOR_BOOLEAN_OR
-            || node.getType() == NodeType.OPERATOR_BOOLEAN_AND
-            || node.getType() == NodeType.OPERATOR_BOOLEAN_XOR) {
-            borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_BORDER, 0.75f) : UITheme.NODE_OPERATOR_BORDER; // Darker green for operators
         } else if (isStopControl) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_STOP_BORDER, 0.75f) : UITheme.NODE_STOP_BORDER;
         } else if (simpleStyle) {
@@ -3478,10 +3472,11 @@ public class NodeGraph {
                 UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
             }
         } else if (!simpleStyle && isComparisonOperator(node)) {
-            int baseColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_BG, 0.7f) : UITheme.NODE_OPERATOR_BG;
+            int accentColor = node.getType().getColor();
+            int baseColor = isOverSidebar ? toGrayscale(accentColor, 0.7f) : adjustColorBrightness(accentColor, 0.55f);
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
-            int titleColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_TITLE, 0.9f) : UITheme.NODE_OPERATOR_TITLE;
+            int titleColor = isOverSidebar ? toGrayscale(UITheme.TEXT_LABEL, 0.9f) : UITheme.TEXT_PRIMARY;
             if (titleColor != 0) {
                 // Intentionally skip title text for operator nodes to keep the symbol clean.
             }

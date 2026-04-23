@@ -1831,6 +1831,19 @@ public class NodeGraph {
         }
     }
 
+    public int[] getSidebarDragPreviewPosition(Node candidate, int worldMouseX, int worldMouseY) {
+        if (candidate == null) {
+            return new int[]{worldMouseX, worldMouseY};
+        }
+        int nodeX = worldMouseX - candidate.getWidth() / 2;
+        int nodeY = worldMouseY - candidate.getHeight() / 2;
+        if (InputCompatibilityBridge.hasShiftDown()) {
+            nodeX = snapToGrid(nodeX);
+            nodeY = snapToGrid(nodeY);
+        }
+        return new int[]{nodeX, nodeY};
+    }
+
     private boolean trySetParameterDropTarget(Node candidate, int worldMouseX, int worldMouseY, boolean excludeCandidateNode) {
         Node hoveredNode = getNodeAtWorld(worldMouseX, worldMouseY);
         for (Node current = hoveredNode; current != null; current = getParentForNode(current)) {

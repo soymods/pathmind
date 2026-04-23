@@ -906,16 +906,18 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int width = tempNode.getWidth();
         int height = tempNode.getHeight();
+        int worldMouseX = nodeGraph.screenToWorldX(mouseX);
+        int worldMouseY = nodeGraph.screenToWorldY(mouseY);
+        int[] previewPosition = nodeGraph.getSidebarDragPreviewPosition(tempNode, worldMouseX, worldMouseY);
+        int screenNodeX = nodeGraph.worldToScreenX(previewPosition[0]);
+        int screenNodeY = nodeGraph.worldToScreenY(previewPosition[1]);
 
         var matrices = context.getMatrices();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.scale(matrices, scale, scale);
 
-        // Convert screen space mouse to scaled space so preview matches workspace zoom.
-        int scaledMouseX = Math.round(mouseX / scale);
-        int scaledMouseY = Math.round(mouseY / scale);
-        int x = scaledMouseX - width / 2;
-        int y = scaledMouseY - height / 2;
+        int x = Math.round(screenNodeX / scale);
+        int y = Math.round(screenNodeY / scale);
 
         // Update temp node position for rendering
         tempNode.setPosition(x, y);

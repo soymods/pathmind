@@ -233,6 +233,9 @@ public final class PathmindNavigator {
     private String lastReplanReason = "none";
     private String lastStuckReason = "none";
     private String previousControllerMode = "none";
+    private String previousPrimitiveLabel = "none";
+    private String previousMiningAscentPhase = MiningAscentPhase.CLEARANCE.name();
+    private String previousPillarPhase = PillarPhase.CENTER.name();
     private BlockPos previousActiveWaypoint;
     private String previousReplanReason = "none";
     private String previousStuckReason = "none";
@@ -303,6 +306,9 @@ public final class PathmindNavigator {
         State state,
         String controllerMode,
         String previousControllerMode,
+        String primitive,
+        String miningAscentPhase,
+        String pillarPhase,
         String goalMode,
         String waterMode,
         boolean allowBlockBreaking,
@@ -319,6 +325,9 @@ public final class PathmindNavigator {
         String lastPlaceResult,
         String lastReplanReason,
         String previousReplanReason,
+        String lastReplanDecision,
+        String lastAdvanceDecision,
+        String lastReplaceDecision,
         String lastStuckReason,
         String previousStuckReason,
         List<String> recentEvents
@@ -401,6 +410,9 @@ public final class PathmindNavigator {
         this.lastReplanReason = "start goto";
         this.lastStuckReason = "none";
         this.previousControllerMode = this.controllerMode.name();
+        this.previousPrimitiveLabel = "none";
+        this.previousMiningAscentPhase = this.activeMiningAscentPhase.name();
+        this.previousPillarPhase = this.activePillarPhase.name();
         this.previousActiveWaypoint = null;
         this.previousReplanReason = this.lastReplanReason;
         this.previousStuckReason = this.lastStuckReason;
@@ -534,6 +546,9 @@ public final class PathmindNavigator {
             state,
             controllerMode.name(),
             previousControllerMode,
+            formatPlannedPrimitive(activePlannedPrimitive),
+            activeMiningAscentPhase.name(),
+            activePillarPhase.name(),
             goalMode.name(),
             waterMode.name(),
             allowBlockBreaking,
@@ -550,6 +565,9 @@ public final class PathmindNavigator {
             lastPlaceResult,
             lastReplanReason,
             previousReplanReason,
+            lastReplanDecision,
+            lastAdvanceDecision,
+            lastReplaceDecision,
             lastStuckReason,
             previousStuckReason,
             List.copyOf(debugEvents)
@@ -560,6 +578,9 @@ public final class PathmindNavigator {
         synchronized (this) {
             boolean changed = false;
             String controller = controllerMode != null ? controllerMode.name() : "none";
+            String primitive = formatPlannedPrimitive(activePlannedPrimitive);
+            String miningPhase = activeMiningAscentPhase != null ? activeMiningAscentPhase.name() : "none";
+            String pillarPhase = activePillarPhase != null ? activePillarPhase.name() : "none";
             String replan = lastReplanReason == null ? "none" : lastReplanReason;
             String stuck = lastStuckReason == null ? "none" : lastStuckReason;
             MinecraftClient client = MinecraftClient.getInstance();
@@ -576,6 +597,21 @@ public final class PathmindNavigator {
             if (!controller.equals(previousControllerMode)) {
                 appendDebugEventLocked("controller " + previousControllerMode + " -> " + controller);
                 previousControllerMode = controller;
+                changed = true;
+            }
+            if (!primitive.equals(previousPrimitiveLabel)) {
+                appendDebugEventLocked("primitive " + previousPrimitiveLabel + " -> " + primitive);
+                previousPrimitiveLabel = primitive;
+                changed = true;
+            }
+            if (!miningPhase.equals(previousMiningAscentPhase)) {
+                appendDebugEventLocked("miningPhase " + previousMiningAscentPhase + " -> " + miningPhase);
+                previousMiningAscentPhase = miningPhase;
+                changed = true;
+            }
+            if (!pillarPhase.equals(previousPillarPhase)) {
+                appendDebugEventLocked("pillarPhase " + previousPillarPhase + " -> " + pillarPhase);
+                previousPillarPhase = pillarPhase;
                 changed = true;
             }
             if (!java.util.Objects.equals(activeWaypoint, previousActiveWaypoint)) {
@@ -602,7 +638,9 @@ public final class PathmindNavigator {
                 appendDebugEventLocked(
                     "heartbeat controller=" + controller
                         + " waypoint=" + formatDebugPos(activeWaypoint)
-                        + " primitive=" + formatPlannedPrimitive(activePlannedPrimitive)
+                        + " primitive=" + primitive
+                        + " miningPhase=" + miningPhase
+                        + " pillarPhase=" + pillarPhase
                         + " target=" + formatDebugPos(targetPos)
                         + " replan=" + replan
                         + " replanDecision=" + lastReplanDecision
@@ -729,6 +767,9 @@ public final class PathmindNavigator {
         this.lastDistanceCheckpointAtMs = this.startedAtMs;
         this.lastReplanReason = "preview";
         this.lastStuckReason = "none";
+        this.previousPrimitiveLabel = "none";
+        this.previousMiningAscentPhase = this.activeMiningAscentPhase.name();
+        this.previousPillarPhase = this.activePillarPhase.name();
         this.failedEdges.clear();
         this.failedNodes.clear();
         this.failedBreaks.clear();
@@ -1093,6 +1134,8 @@ public final class PathmindNavigator {
         activeFollowSegment = FollowSegmentType.GROUND;
         activeFollowSegmentTarget = null;
         activePlannedPrimitive = null;
+        activeMiningAscentPhase = MiningAscentPhase.CLEARANCE;
+        activePillarPhase = PillarPhase.CENTER;
         activeFollowSegmentEnteredAtMs = 0L;
         activeFollowSegmentProgressAtMs = 0L;
         activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;
@@ -1158,6 +1201,8 @@ public final class PathmindNavigator {
         activeFollowSegment = FollowSegmentType.GROUND;
         activeFollowSegmentTarget = null;
         activePlannedPrimitive = null;
+        activeMiningAscentPhase = MiningAscentPhase.CLEARANCE;
+        activePillarPhase = PillarPhase.CENTER;
         activeFollowSegmentEnteredAtMs = 0L;
         activeFollowSegmentProgressAtMs = 0L;
         activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;
@@ -1222,6 +1267,8 @@ public final class PathmindNavigator {
         activeFollowSegment = FollowSegmentType.GROUND;
         activeFollowSegmentTarget = null;
         activePlannedPrimitive = null;
+        activeMiningAscentPhase = MiningAscentPhase.CLEARANCE;
+        activePillarPhase = PillarPhase.CENTER;
         activeFollowSegmentEnteredAtMs = 0L;
         activeFollowSegmentProgressAtMs = 0L;
         activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;

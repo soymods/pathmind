@@ -789,42 +789,58 @@ public class ExecutionManager {
         switch (nodeType) {
             case PARAM_COORDINATE -> {
                 String[] parts = safeValue.isEmpty() ? new String[0] : safeValue.split("\\s*,\\s*|\\s+");
-                values.put("X", parts.length > 0 ? parts[0] : "0");
-                values.put("Y", parts.length > 1 ? parts[1] : "64");
-                values.put("Z", parts.length > 2 ? parts[2] : "0");
+                putRuntimeValue(values, "X", parts.length > 0 ? parts[0] : "0");
+                putRuntimeValue(values, "Y", parts.length > 1 ? parts[1] : "64");
+                putRuntimeValue(values, "Z", parts.length > 2 ? parts[2] : "0");
             }
-            case PARAM_BLOCK -> values.put("Block", safeValue);
-            case PARAM_ITEM -> values.put("Item", safeValue);
-            case PARAM_VILLAGER_TRADE -> values.put("Item", safeValue);
-            case PARAM_ENTITY -> values.put("Entity", safeValue);
-            case PARAM_PLAYER -> values.put("Player", safeValue);
-            case PARAM_MESSAGE -> values.put("Text", safeValue);
-            case PARAM_WAYPOINT -> values.put("Waypoint", safeValue);
-            case PARAM_SCHEMATIC -> values.put("Schematic", safeValue);
-            case PARAM_INVENTORY_SLOT -> values.put("Slot", safeValue.isEmpty() ? "0" : safeValue);
-            case PARAM_DURATION -> values.put("Duration", safeValue.isEmpty() ? "0.0" : safeValue);
-            case PARAM_AMOUNT -> values.put("Amount", safeValue.isEmpty() ? "0.0" : safeValue);
+            case PARAM_BLOCK -> putRuntimeValue(values, "Block", safeValue);
+            case PARAM_ITEM -> putRuntimeValue(values, "Item", safeValue);
+            case PARAM_VILLAGER_TRADE -> putRuntimeValue(values, "Item", safeValue);
+            case PARAM_ENTITY -> putRuntimeValue(values, "Entity", safeValue);
+            case PARAM_PLAYER -> putRuntimeValue(values, "Player", safeValue);
+            case PARAM_MESSAGE -> putRuntimeValue(values, "Text", safeValue);
+            case PARAM_WAYPOINT -> putRuntimeValue(values, "Waypoint", safeValue);
+            case PARAM_SCHEMATIC -> putRuntimeValue(values, "Schematic", safeValue);
+            case PARAM_INVENTORY_SLOT -> putRuntimeValue(values, "Slot", safeValue.isEmpty() ? "0" : safeValue);
+            case PARAM_DURATION -> putRuntimeValue(values, "Duration", safeValue.isEmpty() ? "0.0" : safeValue);
+            case PARAM_AMOUNT -> putRuntimeValue(values, "Amount", safeValue.isEmpty() ? "0.0" : safeValue);
             case PARAM_BOOLEAN -> {
-                values.put("Mode", "literal");
-                values.put("Toggle", Boolean.toString(Boolean.parseBoolean(safeValue)));
-                values.put("Variable", "");
+                putRuntimeValue(values, "Mode", "literal");
+                putRuntimeValue(values, "Toggle", Boolean.toString(Boolean.parseBoolean(safeValue)));
+                putRuntimeValue(values, "Variable", "");
             }
-            case PARAM_HAND -> values.put("Hand", safeValue.isEmpty() ? "main" : safeValue);
-            case PARAM_GUI -> values.put("GUI", safeValue);
-            case PARAM_KEY -> values.put("Key", safeValue);
-            case PARAM_MOUSE_BUTTON -> values.put("MouseButton", safeValue);
-            case PARAM_RANGE -> values.put("Range", safeValue.isEmpty() ? "0" : safeValue);
-            case PARAM_DISTANCE -> values.put("Distance", safeValue.isEmpty() ? "0.0" : safeValue);
-            case PARAM_DIRECTION -> values.put("Direction", safeValue);
-            case PARAM_BLOCK_FACE -> values.put("Face", safeValue);
+            case PARAM_HAND -> putRuntimeValue(values, "Hand", safeValue.isEmpty() ? "main" : safeValue);
+            case PARAM_GUI -> putRuntimeValue(values, "GUI", safeValue);
+            case PARAM_KEY -> putRuntimeValue(values, "Key", safeValue);
+            case PARAM_MOUSE_BUTTON -> putRuntimeValue(values, "MouseButton", safeValue);
+            case PARAM_RANGE -> putRuntimeValue(values, "Range", safeValue.isEmpty() ? "0" : safeValue);
+            case PARAM_DISTANCE -> putRuntimeValue(values, "Distance", safeValue.isEmpty() ? "0.0" : safeValue);
+            case PARAM_DIRECTION -> putRuntimeValue(values, "Direction", safeValue);
+            case PARAM_BLOCK_FACE -> putRuntimeValue(values, "Face", safeValue);
             case PARAM_ROTATION -> {
                 String[] parts = safeValue.isEmpty() ? new String[0] : safeValue.split("\\s*,\\s*|\\s+");
-                values.put("Yaw", parts.length > 0 ? parts[0] : "0.0");
-                values.put("Pitch", parts.length > 1 ? parts[1] : "0.0");
+                putRuntimeValue(values, "Yaw", parts.length > 0 ? parts[0] : "0.0");
+                putRuntimeValue(values, "Pitch", parts.length > 1 ? parts[1] : "0.0");
             }
-            default -> values.put("Text", safeValue);
+            default -> putRuntimeValue(values, "Text", safeValue);
         }
         return values;
+    }
+
+    private void putRuntimeValue(Map<String, String> values, String key, String value) {
+        if (values == null || key == null) {
+            return;
+        }
+        String safeValue = value == null ? "" : value;
+        values.put(key, safeValue);
+        values.put(normalizeRuntimeValueKey(key), safeValue);
+    }
+
+    private String normalizeRuntimeValueKey(String key) {
+        if (key == null) {
+            return "";
+        }
+        return key.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
     
     /**

@@ -285,6 +285,31 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void equalsTreatsUppercaseOnlyStoredCoordinateAndCoordinateNodeAsEquivalent() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("target_pos_upper");
+
+        Node coordinate = new Node(NodeType.PARAM_COORDINATE, 0, 0);
+        coordinate.getParameter("X").setStringValue("10");
+        coordinate.getParameter("Y").setStringValue("64");
+        coordinate.getParameter("Z").setStringValue("-4");
+
+        assertTrue(equals.attachParameter(variable, 0));
+        assertTrue(equals.attachParameter(coordinate, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "target_pos_upper",
+            new ExecutionManager.RuntimeVariable(
+                NodeType.PARAM_COORDINATE,
+                Map.of("X", "10", "Y", "64", "Z", "-4")
+            )
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
     void equalsResolvesVariableAgainstVariable() {
         Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
         Node left = new Node(NodeType.VARIABLE, 0, 0);
@@ -347,6 +372,40 @@ class ExecutionManagerValidationTest {
         );
 
         assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void equalsResolvesUppercaseOnlyStoredItemAgainstSemanticallyEquivalentItemNode() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("stored_item_upper");
+        Node trade = new Node(NodeType.PARAM_VILLAGER_TRADE, 0, 0);
+        trade.getParameter("Item").setStringValue("emerald");
+
+        assertTrue(equals.attachParameter(variable, 0));
+        assertTrue(equals.attachParameter(trade, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "stored_item_upper",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_ITEM, Map.of("Item", "minecraft:emerald"))
+        );
+
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
+    void runtimeVariableInterpolationFormatsUppercaseOnlyStoredBlockValue() throws Exception {
+        Node message = new Node(NodeType.MESSAGE, 0, 0);
+        manager.setRuntimeVariableForAnyActiveChain(
+            "stored_block_upper",
+            new ExecutionManager.RuntimeVariable(NodeType.PARAM_BLOCK, Map.of("Block", "minecraft:stone"))
+        );
+
+        Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
+        resolveRuntimeVariablesInText.setAccessible(true);
+
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~stored_block_upper");
+        assertEquals("minecraft:stone", resolved);
     }
 
     @Test

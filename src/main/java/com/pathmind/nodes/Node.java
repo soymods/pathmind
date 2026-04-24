@@ -3036,6 +3036,9 @@ public class Node {
                 case UI_UTILS_SET_FORCE_DENY_RESOURCE_PACK:
                     parameters.add(new NodeParameter("Enabled", ParameterType.BOOLEAN, "true"));
                     break;
+                case UI_UTILS_ENABLE_DELAY_PACKETS:
+                case UI_UTILS_DISABLE_DELAY_PACKETS:
+                    break;
                 case UI_UTILS_FABRICATE_CLICK_SLOT:
                     parameters.add(createParameter(PARAM_ID_UI_CLICK_SYNC_ID, "SyncId", ParameterType.INTEGER, "-1"));
                     parameters.add(createParameter(PARAM_ID_UI_CLICK_REVISION, "Revision", ParameterType.INTEGER, "-1"));
@@ -10826,7 +10829,7 @@ public class Node {
                         break;
                     case UI_UTILS_SET_SEND_PACKETS: {
                         if (modernBackend) {
-                            throw new RuntimeException("UI Utils version does not support send packet toggles.");
+                            throw new RuntimeException("Set Send Packets is not supported by this UI Utils version.");
                         }
                         boolean enabled = parseNodeBoolean(this, "Enabled", true);
                         if (!com.pathmind.util.UiUtilsProxy.setSendPackets(enabled)) {
@@ -10835,19 +10838,16 @@ public class Node {
                         break;
                     }
                     case UI_UTILS_SET_DELAY_PACKETS: {
-                        if (modernBackend) {
-                            throw new RuntimeException("UI Utils version does not support delayed packets.");
-                        }
                         boolean enabled = parseNodeBoolean(this, "Enabled", true);
-                        Boolean wasEnabled = com.pathmind.util.UiUtilsProxy.getDelayPackets();
-                        if (!com.pathmind.util.UiUtilsProxy.setDelayPackets(enabled)) {
-                            throw new RuntimeException("Failed to update UI Utils delay packets setting.");
-                        }
-                        if (!enabled && Boolean.TRUE.equals(wasEnabled)) {
-                            flushUiUtilsDelayedPackets(client, true);
-                        }
+                        updateUiUtilsDelayPackets(client, modernBackend, enabled);
                         break;
                     }
+                    case UI_UTILS_ENABLE_DELAY_PACKETS:
+                        updateUiUtilsDelayPackets(client, modernBackend, true);
+                        break;
+                    case UI_UTILS_DISABLE_DELAY_PACKETS:
+                        updateUiUtilsDelayPackets(client, modernBackend, false);
+                        break;
                     case UI_UTILS_FLUSH_DELAYED_PACKETS:
                         if (modernBackend) {
                             throw new RuntimeException("UI Utils version does not support delayed packets.");
@@ -10974,6 +10974,19 @@ public class Node {
         }
         if (!com.pathmind.util.UiUtilsProxy.executeCommand(command)) {
             throw new RuntimeException("UI Utils command failed: " + command);
+        }
+    }
+
+    private void updateUiUtilsDelayPackets(net.minecraft.client.MinecraftClient client, boolean modernBackend, boolean enabled) {
+        if (modernBackend) {
+            throw new RuntimeException("UI Utils version does not support delayed packets.");
+        }
+        Boolean wasEnabled = com.pathmind.util.UiUtilsProxy.getDelayPackets();
+        if (!com.pathmind.util.UiUtilsProxy.setDelayPackets(enabled)) {
+            throw new RuntimeException("Failed to update UI Utils delay packets setting.");
+        }
+        if (!enabled && Boolean.TRUE.equals(wasEnabled)) {
+            flushUiUtilsDelayedPackets(client, true);
         }
     }
 
@@ -15560,6 +15573,19 @@ public class Node {
             String lower = values.get(lowerKey);
             if (lower != null && !lower.trim().isEmpty()) {
                 return lower.trim();
+            }
+        }
+        String normalizedKey = normalizeParameterKey(key);
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            if (entry == null || entry.getKey() == null) {
+                continue;
+            }
+            if (!normalizeParameterKey(entry.getKey()).equals(normalizedKey)) {
+                continue;
+            }
+            String candidate = entry.getValue();
+            if (candidate != null && !candidate.trim().isEmpty()) {
+                return candidate.trim();
             }
         }
         return "";

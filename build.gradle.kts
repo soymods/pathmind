@@ -71,6 +71,8 @@ val legacyInputVersions = setOf(
     "1.21.8"
 )
 val usesLegacyInputApis = requestedMinecraftVersion in legacyInputVersions
+val typedUseItemCallbackVersions = setOf("1.21", "1.21.1")
+val usesTypedUseItemCallback = requestedMinecraftVersion in typedUseItemCallbackVersions
 val oldLegacyRenderVersions = setOf(
     "1.21",
     "1.21.1",
@@ -79,6 +81,9 @@ val oldLegacyRenderVersions = setOf(
     "1.21.4"
 )
 val usesOldLegacyRenderApis = requestedMinecraftVersion in oldLegacyRenderVersions
+val preAllocatorLegacyRenderVersions = setOf("1.21", "1.21.1")
+val allocatorLightmapLegacyRenderVersions = setOf("1.21.2", "1.21.3")
+val allocatorNoLightmapLegacyRenderVersions = setOf("1.21.4")
 val transitionalLegacyRenderVersions = setOf("1.21.5")
 val usesTransitionalLegacyRenderApis = requestedMinecraftVersion in transitionalLegacyRenderVersions
 val midInputVersions = setOf("1.21.9", "1.21.10")
@@ -171,8 +176,21 @@ sourceSets {
             setSrcDirs(listOf("src/main/java"))
             if (usesLegacyInputApis) {
                 srcDir("src/legacy/java")
+                if (usesTypedUseItemCallback) {
+                    srcDir("src/legacy-typed-useitem/java")
+                } else {
+                    srcDir("src/legacy-action-useitem/java")
+                }
                 if (usesOldLegacyRenderApis) {
-                    srcDir("src/legacy-old/java")
+                    if (requestedMinecraftVersion in preAllocatorLegacyRenderVersions) {
+                        srcDir("src/legacy-old/java")
+                    } else if (requestedMinecraftVersion in allocatorLightmapLegacyRenderVersions) {
+                        srcDir("src/legacy-old-allocator/java")
+                    } else if (requestedMinecraftVersion in allocatorNoLightmapLegacyRenderVersions) {
+                        srcDir("src/legacy-old-allocator-nolightmap/java")
+                    } else {
+                        throw GradleException("No legacy old render source set configured for Minecraft $requestedMinecraftVersion")
+                    }
                 } else if (usesTransitionalLegacyRenderApis) {
                     srcDir("src/legacy-transitional/java")
                 } else {

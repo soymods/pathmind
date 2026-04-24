@@ -3981,6 +3981,7 @@ public class NodeGraph {
                         boolean isSeedParam = isSeedParameter(node, param);
                         boolean isGuiParam = isGuiParameter(node, param);
                         boolean isMouseButtonParam = isMouseButtonParameter(node, param);
+                        boolean isHandParam = isHandParameter(node, param);
                         boolean isAmountParam = isAmountParameter(node, param);
                         boolean isAttributeDetectionDropdownParam = isAttributeDetectionDropdownParameter(node, i);
                         boolean showPlayerPlaceholder = false;
@@ -3992,6 +3993,7 @@ public class NodeGraph {
                         boolean showBlockFacePlaceholder = false;
                         boolean showGuiPlaceholder = false;
                         boolean showMouseButtonPlaceholder = false;
+                        boolean showHandPlaceholder = false;
                         boolean showAmountPlaceholder = false;
                         boolean showTradePlaceholder = false;
                         if (isPlayerParam) {
@@ -4016,6 +4018,11 @@ public class NodeGraph {
                             boolean showPlaceholder = !editingThis
                                 && (value.isEmpty() || (!param.isUserEdited() && isDefaultMouseButtonValue(value)));
                             showMouseButtonPlaceholder = showPlaceholder;
+                        }
+                        if (isHandParam) {
+                            boolean showPlaceholder = !editingThis
+                                && (value.isEmpty() || (!param.isUserEdited() && isDefaultHandValue(value)));
+                            showHandPlaceholder = showPlaceholder;
                         }
                         if (isAmountParam) {
                             boolean showPlaceholder = !editingThis
@@ -4062,6 +4069,9 @@ public class NodeGraph {
                         if (!editingThis && isMouseButtonParam) {
                             value = formatMouseButtonValue(value);
                         }
+                        if (!editingThis && isHandParam) {
+                            value = formatHandValue(value);
+                        }
                         if (!editingThis && isAttributeDetectionDropdownParam) {
                             value = formatAttributeDetectionInlineValue(node, param, value);
                         }
@@ -4076,7 +4086,7 @@ public class NodeGraph {
                         }
                         if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
                             || showBlockItemPlaceholder || showFabricEventPlaceholder
-                            || showGuiPlaceholder || showMouseButtonPlaceholder || showAmountPlaceholder
+                            || showGuiPlaceholder || showMouseButtonPlaceholder || showHandPlaceholder || showAmountPlaceholder
                             || showDirectionPlaceholder || showBlockFacePlaceholder || showTradePlaceholder) {
                             if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
                                 value = "Any State";
@@ -4084,6 +4094,8 @@ public class NodeGraph {
                                 value = "Self";
                             } else if (showMouseButtonPlaceholder) {
                                 value = "Left";
+                            } else if (showHandPlaceholder) {
+                                value = "Main";
                             } else if (showTradePlaceholder) {
                                 value = "1";
                             } else if (showAmountPlaceholder) {
@@ -4097,7 +4109,7 @@ public class NodeGraph {
                             }
                             valueColor = UITheme.TEXT_TERTIARY;
                         }
-                        boolean inlineDropdown = isBooleanLiteralParameter(node, i) || isAttributeDetectionDropdownParam;
+                        boolean inlineDropdown = isInlineDropdownParameter(node, i);
                         boolean inlineDropdownOpen = inlineDropdown
                             && parameterDropdownOpen
                             && parameterDropdownNode == node
@@ -4200,6 +4212,7 @@ public class NodeGraph {
 
                         if (editingThis && (isBlockItemParameter(node, i)
                             || isMouseButtonParameter(node, param)
+                            || isHandParameter(node, param)
                             || isGuiParameter(node, param)
                             || isDirectionParameter(node, i)
                             || isAttributeDetectionDropdownParameter(node, i)
@@ -9428,6 +9441,7 @@ public class NodeGraph {
             || isAmountParameter(node, parameter)
             || isTradeInlineParameter(node, parameter)
             || isMouseButtonParameter(node, parameter)
+            || isHandParameter(node, parameter)
             || isGuiParameter(node, parameter)
             || isDirectionParameter(node, index)
             || isAttributeDetectionBooleanValueParameter(node, index)
@@ -9440,6 +9454,7 @@ public class NodeGraph {
                 || "Any State".equalsIgnoreCase(parameterEditBuffer)
                 || "North".equalsIgnoreCase(parameterEditBuffer)
                 || "True".equalsIgnoreCase(parameterEditBuffer)
+                || "Main".equalsIgnoreCase(parameterEditBuffer)
                 || isDefaultMouseButtonValue(parameterEditBuffer)
                 || "0".equals(parameterEditBuffer)
                 || (isTradeInlineParameter(node, parameter) && "1".equals(parameterEditBuffer))) {
@@ -9508,6 +9523,7 @@ public class NodeGraph {
             boolean isAttributeDetectionAttributeParam = isAttributeDetectionAttributeParameter(parameterEditingNode, parameterEditingIndex);
             boolean isAttributeDetectionBooleanValueParam = isAttributeDetectionBooleanValueParameter(parameterEditingNode, parameterEditingIndex);
             boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
+            boolean isHandParam = isHandParameter(parameterEditingNode, parameter);
             boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
             boolean isTradeInlineParam = isTradeInlineParameter(parameterEditingNode, parameter);
             boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
@@ -9555,6 +9571,28 @@ public class NodeGraph {
                 } else {
                     parameter.setStringValueFromUser(value);
                     parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
+                }
+            } else if (isHandParam) {
+                String trimmed = value.trim();
+                if (trimmed.isEmpty() || isDefaultHandValue(trimmed)) {
+                    appliedValue = "main";
+                    parameter.setStringValue(appliedValue);
+                    parameter.setUserEdited(false);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
+                } else {
+                    String normalized = trimmed.toLowerCase(Locale.ROOT);
+                    if ("offhand".equals(normalized)
+                        || "off_hand".equals(normalized)
+                        || "off-hand".equals(normalized)
+                        || "off hand".equals(normalized)) {
+                        normalized = "off";
+                    } else if ("main_hand".equals(normalized)
+                        || "main-hand".equals(normalized)
+                        || "main hand".equals(normalized)) {
+                        normalized = "main";
+                    }
+                    parameter.setStringValueFromUser(normalized);
+                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), normalized);
                 }
             } else if (isBlockFaceParam) {
                 String trimmed = value.trim();
@@ -9762,11 +9800,34 @@ public class NodeGraph {
         return mouseButtonParam != null;
     }
 
+    private boolean isHandParameter(Node node, NodeParameter parameter) {
+        if (node == null) {
+            return false;
+        }
+        if (node.getType() != NodeType.PARAM_HAND) {
+            return false;
+        }
+        if (parameter != null) {
+            return "Hand".equalsIgnoreCase(parameter.getName());
+        }
+        NodeParameter handParam = node.getParameter("Hand");
+        return handParam != null;
+    }
+
     private boolean isDefaultMouseButtonValue(String value) {
         return value == null
             || value.isEmpty()
             || "GLFW_MOUSE_BUTTON_LEFT".equalsIgnoreCase(value)
             || "LEFT".equalsIgnoreCase(value);
+    }
+
+    private boolean isDefaultHandValue(String value) {
+        return value == null
+            || value.isEmpty()
+            || "main".equalsIgnoreCase(value)
+            || "main_hand".equalsIgnoreCase(value)
+            || "main-hand".equalsIgnoreCase(value)
+            || "main hand".equalsIgnoreCase(value);
     }
 
     private String formatMouseButtonValue(String value) {
@@ -9784,6 +9845,24 @@ public class NodeGraph {
             case "GLFW_MOUSE_BUTTON_8", "BUTTON_8" -> "Button 8";
             default -> value;
         };
+    }
+
+    private String formatHandValue(String value) {
+        if (isDefaultHandValue(value)) {
+            return "Main";
+        }
+        if (value == null || value.isEmpty()) {
+            return "Main";
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if ("off".equals(normalized)
+            || "offhand".equals(normalized)
+            || "off_hand".equals(normalized)
+            || "off-hand".equals(normalized)
+            || "off hand".equals(normalized)) {
+            return "Off";
+        }
+        return value;
     }
 
     private boolean isDirectionParameter(Node node, int index) {
@@ -9840,6 +9919,15 @@ public class NodeGraph {
     private boolean isAttributeDetectionDropdownParameter(Node node, int index) {
         return isAttributeDetectionAttributeParameter(node, index)
             || isAttributeDetectionBooleanValueParameter(node, index);
+    }
+
+    private boolean isInlineDropdownParameter(Node node, int index) {
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        return isBooleanLiteralParameter(node, index)
+            || isAttributeDetectionDropdownParameter(node, index)
+            || isHandParameter(node, node.getParameters().get(index));
     }
 
     private boolean isBlockFaceParameter(Node node, int index) {
@@ -11360,6 +11448,12 @@ public class NodeGraph {
             result.add(new ParameterDropdownOption("Button 8", "Button 8"));
             return filterDropdownOptions(result, lowered);
         }
+        if (isHandParameter(node, null)) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption("Main", "main"));
+            result.add(new ParameterDropdownOption("Off", "off"));
+            return filterDropdownOptions(result, lowered);
+        }
         if (isDirectionParameter(node, index)) {
             List<ParameterDropdownOption> result = new ArrayList<>();
             result.add(new ParameterDropdownOption("North", "north"));
@@ -11561,6 +11655,7 @@ public class NodeGraph {
         if (!isBlockItemParameter(node, index)
             && !isGuiParameter(node, null)
             && !isMouseButtonParameter(node, null)
+            && !isHandParameter(node, null)
             && !isDirectionParameter(node, index)
             && !isBooleanLiteralParameter(node, index)
             && !isAttributeDetectionDropdownParameter(node, index)
@@ -11643,7 +11738,7 @@ public class NodeGraph {
             return false;
         }
         if (!isEditingParameterField()) {
-            if (parameterDropdownNode == null || !isBooleanLiteralParameter(parameterDropdownNode, parameterDropdownIndex)) {
+            if (parameterDropdownNode == null || !isInlineDropdownParameter(parameterDropdownNode, parameterDropdownIndex)) {
                 return false;
             }
             ParameterDropdownOption option = parameterDropdownOptions.get(optionIndex);
@@ -11665,11 +11760,14 @@ public class NodeGraph {
         boolean keepMouseButtonDefaultPlaceholder = isMouseButtonParameter(parameterEditingNode, null)
             && "Left".equalsIgnoreCase(option.value())
             && (segment.trimmedSegment == null || segment.trimmedSegment.trim().isEmpty());
+        boolean keepHandDefaultPlaceholder = isHandParameter(parameterEditingNode, null)
+            && "main".equalsIgnoreCase(option.value())
+            && (segment.trimmedSegment == null || segment.trimmedSegment.trim().isEmpty());
         boolean keepDirectionDefaultPlaceholder = isDirectionParameter(parameterEditingNode, parameterEditingIndex)
             && "north".equalsIgnoreCase(option.value());
         boolean keepBooleanDefaultPlaceholder = isBooleanLiteralParameter(parameterEditingNode, parameterEditingIndex)
             && "true".equalsIgnoreCase(option.value());
-        String replacement = (keepMouseButtonDefaultPlaceholder || keepDirectionDefaultPlaceholder || keepBooleanDefaultPlaceholder)
+        String replacement = (keepMouseButtonDefaultPlaceholder || keepHandDefaultPlaceholder || keepDirectionDefaultPlaceholder || keepBooleanDefaultPlaceholder)
             ? ""
             : segment.leadingWhitespace + option.value();
         parameterEditBuffer = prefix + replacement + suffix;
@@ -11691,8 +11789,8 @@ public class NodeGraph {
         return parameterDropdownFieldY + parameterDropdownFieldHeight;
     }
 
-    private void openBooleanLiteralDropdown(Node node, int index) {
-        if (node == null || !isBooleanLiteralParameter(node, index)) {
+    private void openInlineParameterDropdown(Node node, int index) {
+        if (node == null || !isInlineDropdownParameter(node, index)) {
             return;
         }
         closeModeDropdown();
@@ -11809,7 +11907,7 @@ public class NodeGraph {
             && transformedY >= fieldTop && transformedY <= fieldTop + parameterDropdownFieldHeight) {
             if (!isEditingParameterField()
                 && parameterDropdownNode != null
-                && isBooleanLiteralParameter(parameterDropdownNode, parameterDropdownIndex)) {
+                && isInlineDropdownParameter(parameterDropdownNode, parameterDropdownIndex)) {
                 closeParameterDropdown();
             }
             return true;
@@ -12990,8 +13088,8 @@ public class NodeGraph {
     public boolean handleBooleanLiteralDropdownClick(Node node, int mouseX, int mouseY) {
         if (parameterDropdownOpen && !isEditingParameterField()
             && parameterDropdownNode != null
-            && isBooleanLiteralParameter(parameterDropdownNode, parameterDropdownIndex)) {
-            if (isPointInsideBooleanLiteralField(parameterDropdownNode, parameterDropdownIndex, mouseX, mouseY)) {
+            && isInlineDropdownParameter(parameterDropdownNode, parameterDropdownIndex)) {
+            if (isPointInsideInlineDropdownField(parameterDropdownNode, parameterDropdownIndex, mouseX, mouseY)) {
                 closeParameterDropdown();
                 return true;
             }
@@ -13005,7 +13103,7 @@ public class NodeGraph {
                     continue;
                 }
                 int index = getParameterFieldIndexAt(candidate, mouseX, mouseY);
-                if (isBooleanLiteralParameter(candidate, index)) {
+                if (isInlineDropdownParameter(candidate, index)) {
                     node = candidate;
                     break;
                 }
@@ -13018,15 +13116,15 @@ public class NodeGraph {
             }
         }
         int index = getParameterFieldIndexAt(node, mouseX, mouseY);
-        if (!isBooleanLiteralParameter(node, index)) {
+        if (!isInlineDropdownParameter(node, index)) {
             return false;
         }
-        openBooleanLiteralDropdown(node, index);
+        openInlineParameterDropdown(node, index);
         return true;
     }
 
-    private boolean isPointInsideBooleanLiteralField(Node node, int index, int screenX, int screenY) {
-        if (!isBooleanLiteralParameter(node, index)) {
+    private boolean isPointInsideInlineDropdownField(Node node, int index, int screenX, int screenY) {
+        if (!isInlineDropdownParameter(node, index)) {
             return false;
         }
         int worldX = screenToWorldX(screenX);

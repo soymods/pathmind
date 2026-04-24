@@ -1383,14 +1383,20 @@ public class NodeParameterOverlay {
     }
 
     private boolean usesSimpleDropdownForIndex(int index) {
-        if (node.getType() != NodeType.PARAM_BLOCK_FACE) {
-            return false;
-        }
         if (index < 0 || index >= node.getParameters().size()) {
             return false;
         }
         NodeParameter param = node.getParameters().get(index);
-        return param != null && "Face".equalsIgnoreCase(param.getName());
+        if (param == null) {
+            return false;
+        }
+        if (node.getType() == NodeType.PARAM_BLOCK_FACE) {
+            return "Face".equalsIgnoreCase(param.getName());
+        }
+        if (node.getType() == NodeType.PARAM_HAND) {
+            return "Hand".equalsIgnoreCase(param.getName());
+        }
+        return false;
     }
 
     private int renderButtonSelector(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth,
@@ -1495,6 +1501,11 @@ public class NodeParameterOverlay {
     private List<String> getSimpleDropdownOptions(int index) {
         List<String> options = new ArrayList<>();
         if (!usesSimpleDropdownForIndex(index)) {
+            return options;
+        }
+        if (node.getType() == NodeType.PARAM_HAND) {
+            options.add("main");
+            options.add("off");
             return options;
         }
         options.add("north");

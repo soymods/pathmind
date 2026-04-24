@@ -4306,6 +4306,22 @@ public class Node {
                     values.put("SecondSlot", slot);
                     values.put(normalizeParameterKey("SecondSlot"), slot);
                 }
+                ItemStack resolvedStack = resolveComparableInventorySlotStack(values);
+                if (resolvedStack != null && !resolvedStack.isEmpty()) {
+                    Identifier itemId = Registries.ITEM.getId(resolvedStack.getItem());
+                    if (itemId != null) {
+                        String itemValue = itemId.toString();
+                        values.put("Item", itemValue);
+                        values.put(normalizeParameterKey("Item"), itemValue);
+                        values.put("Items", itemValue);
+                        values.put(normalizeParameterKey("Items"), itemValue);
+                    }
+                    String countValue = Integer.toString(resolvedStack.getCount());
+                    values.put("Count", countValue);
+                    values.put(normalizeParameterKey("Count"), countValue);
+                    values.put("Amount", countValue);
+                    values.put(normalizeParameterKey("Amount"), countValue);
+                }
                 break;
             }
             case PARAM_PLAYER: {
@@ -14060,7 +14076,10 @@ public class Node {
     }
 
     public static void resetRecipeCacheWarmup() {
-        recipeCacheWarmupState = null;
+        synchronized (RECIPE_CACHE_LOCK) {
+            cachedRecipeBook = null;
+            recipeCacheWarmupState = null;
+        }
     }
 
     public static boolean clearRecipeCache(net.minecraft.client.MinecraftClient client) {

@@ -439,7 +439,9 @@ public class PathmindClientMod implements ClientModInitializer {
     }
 
     private void handleRecipeCacheWarmup(MinecraftClient client) {
-        if (client == null || !client.isInSingleplayer()) {
+        // Integrated-server availability is the real prerequisite for recipe-cache warmup.
+        // Using it directly is more robust across version-specific singleplayer state handling.
+        if (client == null || client.getServer() == null) {
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
             }

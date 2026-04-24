@@ -158,6 +158,22 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void resetRecipeCacheWarmupClearsLoadedRecipeCacheBook() throws Exception {
+        Field cachedRecipeBookField = Node.class.getDeclaredField("cachedRecipeBook");
+        cachedRecipeBookField.setAccessible(true);
+
+        Class<?> cachedRecipeBookClass = Class.forName("com.pathmind.nodes.Node$CachedRecipeBook");
+        Constructor<?> constructor = cachedRecipeBookClass.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        Object cachedBook = constructor.newInstance();
+        cachedRecipeBookField.set(null, cachedBook);
+
+        Node.resetRecipeCacheWarmup();
+
+        assertNull(cachedRecipeBookField.get(null));
+    }
+
+    @Test
     void recipeDisplayBridgeSupportsObfuscatedEntryAndDisplayAccessors() {
         DummyShapedDisplay display = new DummyShapedDisplay();
         DummyDisplayEntry entry = new DummyDisplayEntry(display);

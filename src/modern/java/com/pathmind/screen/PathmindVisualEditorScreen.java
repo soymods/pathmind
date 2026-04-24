@@ -190,7 +190,7 @@ public class PathmindVisualEditorScreen extends Screen {
         NodeType.SENSOR_KEY_PRESSED,
         NodeType.CREATE_LIST
     };
-    private static final int NODE_DELAY_MIN_MS = 0;
+    private static final int NODE_DELAY_MIN_MS = 50;
     private static final int NODE_DELAY_MAX_MS = 500;
     private static final int TITLE_INTERACTION_PADDING = 4;
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
@@ -397,7 +397,12 @@ public class PathmindVisualEditorScreen extends Screen {
         this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
         this.showHudOverlays = currentSettings.showHudOverlays == null || currentSettings.showHudOverlays;
         this.skipPresetDeleteConfirm = currentSettings.skipPresetDeleteConfirm != null && currentSettings.skipPresetDeleteConfirm;
-        this.nodeDelayMs = currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150;
+        this.nodeDelayMs = MathHelper.clamp(
+            currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150,
+            NODE_DELAY_MIN_MS,
+            NODE_DELAY_MAX_MS
+        );
+        currentSettings.nodeDelayMs = this.nodeDelayMs;
     }
 
     private AccentOption getAccentOptionFromString(String color) {

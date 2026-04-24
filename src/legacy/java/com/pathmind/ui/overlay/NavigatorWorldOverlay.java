@@ -2,11 +2,8 @@ package com.pathmind.ui.overlay;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.pathmind.execution.PathmindNavigator;
-import com.pathmind.util.CameraCompatibilityBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.BufferBuilderStorage;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -14,7 +11,6 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
-import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
@@ -35,36 +31,6 @@ public final class NavigatorWorldOverlay {
     private static final double GOAL_INSET = 0.02D;
 
     private NavigatorWorldOverlay() {
-    }
-
-    public static void render(Matrix4f positionMatrix, Camera camera) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client != null ? client.player : null;
-        if (client == null || player == null || positionMatrix == null) {
-            return;
-        }
-
-        BufferBuilderStorage bufferBuilders = client.getBufferBuilders();
-        if (bufferBuilders == null) {
-            return;
-        }
-        VertexConsumerProvider.Immediate consumers = bufferBuilders.getEffectVertexConsumers();
-        if (consumers == null) {
-            return;
-        }
-
-        Vec3d cameraPos = CameraCompatibilityBridge.getPos(camera);
-        if (cameraPos == null && client.gameRenderer != null) {
-            cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
-        }
-        if (cameraPos == null) {
-            cameraPos = new Vec3d(player.getX(), player.getY(), player.getZ());
-        }
-
-        MatrixStack matrices = new MatrixStack();
-        matrices.loadIdentity();
-        matrices.multiplyPositionMatrix(positionMatrix);
-        render(matrices, consumers, cameraPos.x, cameraPos.y, cameraPos.z);
     }
 
     public static void render(

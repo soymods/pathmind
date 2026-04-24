@@ -1,21 +1,16 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.PathmindNavigator;
-import com.pathmind.util.CameraCompatibilityBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.BufferBuilderStorage;
-import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.VertexRendering;
 import net.minecraft.client.render.debug.DebugRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
-import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,17 +26,20 @@ public final class NavigatorWorldOverlay {
     private static final double DASH_GAP = 0.24D;
     private static final double DASH_CYCLE = DASH_LENGTH + DASH_GAP;
     private static final double ANIMATION_SPEED = 1.45D;
-    private static final double PATH_THICKNESS = 0.065D;
-    private static final double CANDIDATE_THICKNESS = 0.045D;
+    private static final double GOAL_HEIGHT = 2.0D;
     private static final double GOAL_INSET = 0.02D;
 
     private NavigatorWorldOverlay() {
     }
 
-    public static void render(Matrix4f positionMatrix, Camera camera) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client != null ? client.player : null;
-        if (client == null || player == null || positionMatrix == null) {
+    public static void render(
+        MatrixStack matrices,
+        VertexConsumerProvider.Immediate consumers,
+        double cameraX,
+        double cameraY,
+        double cameraZ
+    ) {
+        if (matrices == null || consumers == null) {
             return;
         }
 
@@ -55,28 +53,14 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
-        BufferBuilderStorage bufferBuilders = client.getBufferBuilders();
-        if (bufferBuilders == null) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        ClientPlayerEntity player = client != null ? client.player : null;
+        if (player == null) {
             return;
         }
 
-        VertexConsumerProvider.Immediate consumers = bufferBuilders.getEffectVertexConsumers();
-        if (consumers == null) {
-            return;
-        }
-
-        MatrixStack matrices = new MatrixStack();
-        matrices.loadIdentity();
-        Vec3d cameraPos = CameraCompatibilityBridge.getPos(camera);
-        if (cameraPos == null && client.gameRenderer != null) {
-            cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
-        }
-        if (cameraPos == null) {
-            cameraPos = new Vec3d(player.getX(), player.getY(), player.getZ());
-        }
-
+        Vec3d cameraPos = new Vec3d(cameraX, cameraY, cameraZ);
         try {
-            beginOverlayPass();
             renderCandidatePaths(matrices, consumers, player, snapshot.candidatePaths(), cameraPos);
             renderStepMarkers(matrices, consumers, snapshot.path(), snapshot.visitedPathIndex(), cameraPos);
             renderBreakTargets(matrices, consumers, snapshot.breakTargets(), cameraPos);
@@ -84,10 +68,7 @@ public final class NavigatorWorldOverlay {
             renderPath(matrices, consumers, player, snapshot.path(), goalPos, snapshot.visitedPathIndex(), cameraPos);
             renderGoal(matrices, consumers, goalPos, cameraPos);
         } catch (Throwable ignored) {
-            // Never fail the world renderer because of overlay drawing.
-        } finally {
-            endOverlayPass();
-            consumers.draw();
+            // Never fail the debug renderer because of overlay drawing.
         }
     }
 
@@ -114,7 +95,7 @@ public final class NavigatorWorldOverlay {
             for (BlockPos node : candidate) {
                 points.add(cameraRelative(pathPoint(node), cameraPos));
             }
-            renderDashedSegments(matrices, consumers, points, phase, CANDIDATE_PATH_COLOR, CANDIDATE_THICKNESS);
+            renderDashedSegments(matrices, consumers, points, phase, CANDIDATE_PATH_COLOR);
         }
     }
 
@@ -127,10 +108,6 @@ public final class NavigatorWorldOverlay {
         int pathIndex,
         Vec3d cameraPos
     ) {
-        if (player == null || goalPos == null) {
-            return;
-        }
-
         List<Vec3d> points = new ArrayList<>((path == null ? 0 : path.size()) + 2);
         points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraPos));
         if (path != null) {
@@ -147,7 +124,7 @@ public final class NavigatorWorldOverlay {
         if (points.size() < 2) {
             return;
         }
-        renderDashedSegments(matrices, consumers, points, animationPhase(), PATH_COLOR, PATH_THICKNESS);
+        renderDashedSegments(matrices, consumers, points, animationPhase(), PATH_COLOR);
     }
 
     private static void renderDashedSegments(
@@ -155,15 +132,14 @@ public final class NavigatorWorldOverlay {
         VertexConsumerProvider.Immediate consumers,
         List<Vec3d> points,
         double phase,
-        int color,
-        double thickness
+        int color
     ) {
         if (points.size() < 2) {
             return;
         }
 
         for (int i = 1; i < points.size(); i++) {
-            renderAnimatedSegment(matrices, consumers, points.get(i - 1), points.get(i), phase, color, thickness);
+            renderAnimatedSegment(matrices, consumers, points.get(i - 1), points.get(i), phase, color);
         }
     }
 
@@ -173,14 +149,14 @@ public final class NavigatorWorldOverlay {
         Vec3d start,
         Vec3d end,
         double phase,
-        int color,
-        double thickness
+        int color
     ) {
         double segmentLength = start.distanceTo(end);
         if (segmentLength <= 0.0001D) {
             return;
         }
 
+        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
         Vec3d direction = end.subtract(start).normalize();
         double offset = -phase;
         while (offset < segmentLength) {
@@ -189,7 +165,7 @@ public final class NavigatorWorldOverlay {
             if (dashEndDistance > dashStartDistance) {
                 Vec3d dashStart = start.add(direction.multiply(dashStartDistance));
                 Vec3d dashEnd = start.add(direction.multiply(dashEndDistance));
-                renderFilledPrism(matrices, consumers, dashBox(dashStart, dashEnd, thickness), color);
+                drawLine(matrices, lines, dashStart, dashEnd, color);
             }
             offset += DASH_CYCLE;
         }
@@ -206,11 +182,25 @@ public final class NavigatorWorldOverlay {
             goalPos.getY() - cameraPos.y,
             goalPos.getZ() + GOAL_INSET - cameraPos.z,
             goalPos.getX() + 1.0D - GOAL_INSET - cameraPos.x,
-            goalPos.getY() + 2.0D - cameraPos.y,
+            goalPos.getY() + GOAL_HEIGHT - cameraPos.y,
             goalPos.getZ() + 1.0D - GOAL_INSET - cameraPos.z
         );
-        renderFilledPrism(matrices, consumers, goalMarker, withAlpha(GOAL_COLOR, 0.26F));
-        DebugRenderer.drawBox(matrices, consumers, goalMarker, red(GOAL_COLOR), green(GOAL_COLOR), blue(GOAL_COLOR), 0.95F);
+        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
+
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.minY, goalMarker.minZ, goalMarker.minX, goalMarker.maxY, goalMarker.minZ);
+        renderGoalEdge(matrices, lines, goalMarker.maxX, goalMarker.minY, goalMarker.minZ, goalMarker.maxX, goalMarker.maxY, goalMarker.minZ);
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.minY, goalMarker.maxZ, goalMarker.minX, goalMarker.maxY, goalMarker.maxZ);
+        renderGoalEdge(matrices, lines, goalMarker.maxX, goalMarker.minY, goalMarker.maxZ, goalMarker.maxX, goalMarker.maxY, goalMarker.maxZ);
+
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.minY, goalMarker.minZ, goalMarker.maxX, goalMarker.minY, goalMarker.minZ);
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.minY, goalMarker.maxZ, goalMarker.maxX, goalMarker.minY, goalMarker.maxZ);
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.maxY, goalMarker.minZ, goalMarker.maxX, goalMarker.maxY, goalMarker.minZ);
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.maxY, goalMarker.maxZ, goalMarker.maxX, goalMarker.maxY, goalMarker.maxZ);
+
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.minY, goalMarker.minZ, goalMarker.minX, goalMarker.minY, goalMarker.maxZ);
+        renderGoalEdge(matrices, lines, goalMarker.maxX, goalMarker.minY, goalMarker.minZ, goalMarker.maxX, goalMarker.minY, goalMarker.maxZ);
+        renderGoalEdge(matrices, lines, goalMarker.minX, goalMarker.maxY, goalMarker.minZ, goalMarker.minX, goalMarker.maxY, goalMarker.maxZ);
+        renderGoalEdge(matrices, lines, goalMarker.maxX, goalMarker.maxY, goalMarker.minZ, goalMarker.maxX, goalMarker.maxY, goalMarker.maxZ);
     }
 
     private static void renderStepMarkers(
@@ -286,43 +276,28 @@ public final class NavigatorWorldOverlay {
         }
     }
 
-    private static void beginOverlayPass() {
-    }
-
-    private static void endOverlayPass() {
-    }
-
-    private static void renderFilledPrism(
+    private static void renderBoxOutline(
         MatrixStack matrices,
         VertexConsumerProvider.Immediate consumers,
-        Box box,
+        Box marker,
         int color
     ) {
-        VertexConsumer buffer = consumers.getBuffer(RenderLayer.getDebugFilledBox());
-        VertexRendering.drawFilledBox(
-            matrices,
-            buffer,
-            box.minX,
-            box.minY,
-            box.minZ,
-            box.maxX,
-            box.maxY,
-            box.maxZ,
-            red(color),
-            green(color),
-            blue(color),
-            alpha(color)
-        );
-    }
+        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
 
-    private static Box dashBox(Vec3d start, Vec3d end, double thickness) {
-        double minX = Math.min(start.x, end.x) - thickness;
-        double minY = Math.min(start.y, end.y) - thickness;
-        double minZ = Math.min(start.z, end.z) - thickness;
-        double maxX = Math.max(start.x, end.x) + thickness;
-        double maxY = Math.max(start.y, end.y) + thickness;
-        double maxZ = Math.max(start.z, end.z) + thickness;
-        return new Box(minX, minY, minZ, maxX, maxY, maxZ);
+        renderGoalEdge(matrices, lines, marker.minX, marker.minY, marker.minZ, marker.maxX, marker.minY, marker.minZ, color);
+        renderGoalEdge(matrices, lines, marker.minX, marker.minY, marker.maxZ, marker.maxX, marker.minY, marker.maxZ, color);
+        renderGoalEdge(matrices, lines, marker.minX, marker.maxY, marker.minZ, marker.maxX, marker.maxY, marker.minZ, color);
+        renderGoalEdge(matrices, lines, marker.minX, marker.maxY, marker.maxZ, marker.maxX, marker.maxY, marker.maxZ, color);
+
+        renderGoalEdge(matrices, lines, marker.minX, marker.minY, marker.minZ, marker.minX, marker.minY, marker.maxZ, color);
+        renderGoalEdge(matrices, lines, marker.maxX, marker.minY, marker.minZ, marker.maxX, marker.minY, marker.maxZ, color);
+        renderGoalEdge(matrices, lines, marker.minX, marker.maxY, marker.minZ, marker.minX, marker.maxY, marker.maxZ, color);
+        renderGoalEdge(matrices, lines, marker.maxX, marker.maxY, marker.minZ, marker.maxX, marker.maxY, marker.maxZ, color);
+
+        renderGoalEdge(matrices, lines, marker.minX, marker.minY, marker.minZ, marker.minX, marker.maxY, marker.minZ, color);
+        renderGoalEdge(matrices, lines, marker.maxX, marker.minY, marker.minZ, marker.maxX, marker.maxY, marker.minZ, color);
+        renderGoalEdge(matrices, lines, marker.minX, marker.minY, marker.maxZ, marker.minX, marker.maxY, marker.maxZ, color);
+        renderGoalEdge(matrices, lines, marker.maxX, marker.minY, marker.maxZ, marker.maxX, marker.maxY, marker.maxZ, color);
     }
 
     private static double animationPhase() {
@@ -334,41 +309,27 @@ public final class NavigatorWorldOverlay {
     }
 
     private static Vec3d cameraRelative(Vec3d point, Vec3d cameraPos) {
-        if (cameraPos == null) {
-            return point;
-        }
-        return new Vec3d(point.x - cameraPos.x, point.y - cameraPos.y, point.z - cameraPos.z);
+        return point.subtract(cameraPos);
     }
 
     private static boolean sameRenderPoint(Vec3d a, Vec3d b) {
         return a != null && b != null && a.squaredDistanceTo(b) <= 0.0001D;
     }
 
-    private static void renderBoxOutline(
+    private static void renderGoalEdge(
         MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        Box box,
-        int color
+        VertexConsumer lines,
+        double startX,
+        double startY,
+        double startZ,
+        double endX,
+        double endY,
+        double endZ
     ) {
-        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
-
-        drawLine(matrices, lines, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ, color);
-        drawLine(matrices, lines, box.minX, box.minY, box.maxZ, box.maxX, box.minY, box.maxZ, color);
-        drawLine(matrices, lines, box.minX, box.maxY, box.minZ, box.maxX, box.maxY, box.minZ, color);
-        drawLine(matrices, lines, box.minX, box.maxY, box.maxZ, box.maxX, box.maxY, box.maxZ, color);
-
-        drawLine(matrices, lines, box.minX, box.minY, box.minZ, box.minX, box.minY, box.maxZ, color);
-        drawLine(matrices, lines, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ, color);
-        drawLine(matrices, lines, box.minX, box.maxY, box.minZ, box.minX, box.maxY, box.maxZ, color);
-        drawLine(matrices, lines, box.maxX, box.maxY, box.minZ, box.maxX, box.maxY, box.maxZ, color);
-
-        drawLine(matrices, lines, box.minX, box.minY, box.minZ, box.minX, box.maxY, box.minZ, color);
-        drawLine(matrices, lines, box.maxX, box.minY, box.minZ, box.maxX, box.maxY, box.minZ, color);
-        drawLine(matrices, lines, box.minX, box.minY, box.maxZ, box.minX, box.maxY, box.maxZ, color);
-        drawLine(matrices, lines, box.maxX, box.minY, box.maxZ, box.maxX, box.maxY, box.maxZ, color);
+        renderGoalEdge(matrices, lines, startX, startY, startZ, endX, endY, endZ, GOAL_COLOR);
     }
 
-    private static void drawLine(
+    private static void renderGoalEdge(
         MatrixStack matrices,
         VertexConsumer lines,
         double startX,
@@ -379,9 +340,11 @@ public final class NavigatorWorldOverlay {
         double endZ,
         int color
     ) {
+        drawLine(matrices, lines, new Vec3d(startX, startY, startZ), new Vec3d(endX, endY, endZ), color);
+    }
+
+    private static void drawLine(MatrixStack matrices, VertexConsumer lines, Vec3d start, Vec3d end, int color) {
         MatrixStack.Entry entry = matrices.peek();
-        Vec3d start = new Vec3d(startX, startY, startZ);
-        Vec3d end = new Vec3d(endX, endY, endZ);
         Vec3d delta = end.subtract(start);
         double length = delta.length();
         float nx = 0.0F;
@@ -404,11 +367,6 @@ public final class NavigatorWorldOverlay {
         lines.vertex(entry, (float) end.x, (float) end.y, (float) end.z)
             .color(red, green, blue, alpha)
             .normal(entry, nx, ny, nz);
-    }
-
-    private static int withAlpha(int color, float alpha) {
-        int alphaByte = Math.max(0, Math.min(255, Math.round(alpha * 255.0F)));
-        return (alphaByte << 24) | (color & 0x00FFFFFF);
     }
 
     private static float red(int color) {

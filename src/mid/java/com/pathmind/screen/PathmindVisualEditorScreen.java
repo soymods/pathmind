@@ -2472,7 +2472,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 Text.literal("+"),
                 addTabX + PRESET_TAB_ADD_WIDTH / 2,
                 y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1,
-                applyAlpha(hovered ? getAccentColor() : 0xFFB8B8B8, plusAlpha)
+                applyAlpha(hovered ? getAccentColor() : UITheme.ICON_MUTED_BRIGHT, plusAlpha)
             );
         }
         renderInlinePresetRenameField(context, mouseX, mouseY, tabs, tabWidths, tabXs, y, dragIndex);
@@ -2662,14 +2662,14 @@ public class PathmindVisualEditorScreen extends Screen {
     private void drawPresetTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
         boolean active = label.equals(activePresetName);
         boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
-        int fill = active ? 0xFF3A3A3A : 0xFF2A2A2A;
+        int fill = active ? UITheme.BUTTON_ACTIVE_BG : UITheme.BUTTON_DEFAULT_BG;
         int border = active ? getAccentColor() : UITheme.BORDER_DEFAULT;
         if (!active && hovered) {
-            fill = 0xFF343434;
+            fill = UITheme.BUTTON_DEFAULT_HOVER;
             border = UITheme.BORDER_HIGHLIGHT;
         }
         if (dragging) {
-            fill = 0xFF3C3C3C;
+            fill = UITheme.TOOLBAR_BG_ACTIVE;
         }
 
         float appear = dragging ? 1f : getPresetTabAppearProgress(label);
@@ -2700,7 +2700,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
                 closeHitboxSize, closeHitboxSize
             );
-            int closeColor = closeHovered ? UITheme.STATE_ERROR : 0xFF9A9A9A;
+            int closeColor = closeHovered ? UITheme.STATE_ERROR : UITheme.ICON_MUTED;
             drawCloseXIcon(context, closeLeft, closeTop, PRESET_TAB_CLOSE_ICON_SIZE, applyAlpha(closeColor, appear));
         }
     }
@@ -3708,16 +3708,13 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPopupInputFrame(DrawContext context, int x, int y, int width, int height, int borderColor, PopupAnimationHandler animation) {
-        UIStyleHelper.drawBeveledPanel(
-            context,
-            x,
-            y,
-            width,
-            height,
+        UIStyleHelper.drawFieldFrame(context, x, y, width, height, new UIStyleHelper.FieldPalette(
             getPopupAnimatedColor(animation, UITheme.RENAME_INPUT_BG),
             getPopupAnimatedColor(animation, borderColor),
-            getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER)
-        );
+            getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER),
+            getPopupAnimatedColor(animation, UITheme.TEXT_PRIMARY),
+            getPopupAnimatedColor(animation, UITheme.TEXT_TERTIARY)
+        ));
     }
 
     private int getPopupAnimatedColor(PopupAnimationHandler animation, int baseColor) {
@@ -4200,16 +4197,8 @@ public class PathmindVisualEditorScreen extends Screen {
         // Use scissor to clip the dropdown content during animation
         context.enableScissor(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + animatedHeight);
 
-        UIStyleHelper.drawBeveledPanel(
-            context,
-            dropdownX,
-            optionStartY,
-            PRESET_DROPDOWN_WIDTH,
-            fullOptionsHeight,
-            UITheme.BACKGROUND_SECONDARY,
-            UITheme.BORDER_DEFAULT,
-            UITheme.PANEL_INNER_BORDER
-        );
+        UIStyleHelper.drawScrollContainer(context, dropdownX, optionStartY, PRESET_DROPDOWN_WIDTH, fullOptionsHeight,
+            UIStyleHelper.getScrollContainerPalette(getAccentColor(), animProgress, true, false));
 
         int startIndex = presetDropdownScrollOffset;
         int endIndex = Math.min(optionCount, startIndex + layout.visibleCount);
@@ -4218,8 +4207,8 @@ public class PathmindVisualEditorScreen extends Screen {
             if (index < availablePresets.size()) {
                 String preset = availablePresets.get(index);
                 boolean optionHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-                int optionColor = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-                context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, optionColor);
+                UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), optionHovered ? 1f : 0f, preset.equals(activePresetName), false);
+                UIStyleHelper.drawDropdownRow(context, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1, rowPalette);
                 int textColor = preset.equals(activePresetName) ? getAccentColor() : UITheme.TEXT_PRIMARY;
                 int textX = dropdownX + PRESET_TEXT_LEFT_PADDING;
                 int iconSpace = PRESET_DELETE_ICON_SIZE
@@ -4277,8 +4266,8 @@ public class PathmindVisualEditorScreen extends Screen {
             } else {
                 context.drawHorizontalLine(dropdownX + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 2, optionY, UITheme.BORDER_SUBTLE);
                 boolean createHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
-                int createColor = createHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-                context.fill(dropdownX + 1, optionY + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 1, optionY + PRESET_OPTION_HEIGHT, createColor);
+                UIStyleHelper.DropdownRowPalette createPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), createHovered ? 1f : 0f, false, false);
+                UIStyleHelper.drawDropdownRow(context, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1, createPalette);
                 int createTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
                 String createLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, "+ Create new preset", createTextWidth);
                 context.drawTextWithShadow(this.textRenderer, Text.literal(createLabel), dropdownX + PRESET_TEXT_LEFT_PADDING, optionY + 5, getAccentColor());
@@ -4580,13 +4569,12 @@ public class PathmindVisualEditorScreen extends Screen {
         MatrixStackBridge.scale(matrices, nodeSearchScale, nodeSearchScale);
         MatrixStackBridge.translate(matrices, -nodeSearchFieldX, -nodeSearchFieldY);
 
-        context.fill(nodeSearchFieldX, nodeSearchFieldY, nodeSearchFieldX + NODE_SEARCH_FIELD_WIDTH,
-            nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorder(context, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH,
-            NODE_SEARCH_FIELD_HEIGHT, UITheme.BORDER_SUBTLE);
+        boolean focused = nodeSearchField.isFocused();
+        UIStyleHelper.FieldPalette searchPalette = UIStyleHelper.getSearchFieldPalette(getAccentColor(), focused ? 1f : 0f, focused, false);
+        UIStyleHelper.drawFieldFrame(context, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, searchPalette);
         int iconX = nodeSearchFieldX + 6;
         int iconY = nodeSearchFieldY + (NODE_SEARCH_FIELD_HEIGHT - 9) / 2;
-        drawNodeSearchIcon(context, iconX, iconY, UITheme.TEXT_PRIMARY);
+        drawNodeSearchIcon(context, iconX, iconY, searchPalette.textColor());
         int textFieldHeight = Math.max(10, NODE_SEARCH_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
         nodeSearchField.setPosition(nodeSearchFieldX + 20, nodeSearchFieldY + TEXT_FIELD_VERTICAL_PADDING);
         nodeSearchField.setWidth(NODE_SEARCH_FIELD_WIDTH - 26);
@@ -4697,8 +4685,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int listY = nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT + NODE_SEARCH_DROPDOWN_TOP_GAP;
         int listWidth = NODE_SEARCH_FIELD_WIDTH;
         int listHeight = nodeSearchResults.size() * NODE_SEARCH_RESULT_HEIGHT;
-        context.fill(listX, listY, listX + listWidth, listY + listHeight, UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorder(context, listX, listY, listWidth, listHeight, UITheme.BORDER_DEFAULT);
+        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), 1f, true, false);
+        UIStyleHelper.drawScrollContainer(context, listX, listY, listWidth, listHeight, containerPalette);
 
         int hoveredIndex = getNodeSearchResultIndexAt(mouseX, mouseY);
         if (hoveredIndex >= 0) {
@@ -4709,12 +4697,13 @@ public class PathmindVisualEditorScreen extends Screen {
             NodeSearchResult result = nodeSearchResults.get(i);
             int rowTop = listY + i * NODE_SEARCH_RESULT_HEIGHT;
             boolean selected = i == nodeSearchHoverIndex;
+            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), selected ? 1f : 0f, selected, false);
             if (selected) {
-                context.fill(listX + 1, rowTop, listX + listWidth - 1, rowTop + NODE_SEARCH_RESULT_HEIGHT, UITheme.DROPDOWN_OPTION_HOVER);
+                UIStyleHelper.drawDropdownRow(context, listX + 1, rowTop, listWidth - 2, NODE_SEARCH_RESULT_HEIGHT, rowPalette);
             }
             int textY = rowTop + Math.max(0, (NODE_SEARCH_RESULT_HEIGHT - this.textRenderer.fontHeight) / 2);
             String label = trimToWidth(result.label, listWidth - (NODE_SEARCH_RESULT_TEXT_PADDING * 2) - 42);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(label), listX + NODE_SEARCH_RESULT_TEXT_PADDING, textY, UITheme.TEXT_PRIMARY);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(label), listX + NODE_SEARCH_RESULT_TEXT_PADDING, textY, selected ? rowPalette.textColor() : UITheme.TEXT_PRIMARY);
             String category = trimToWidth(result.categoryLabel, 36);
             int categoryWidth = this.textRenderer.getWidth(category);
             context.drawTextWithShadow(this.textRenderer, Text.literal(category),
@@ -5565,11 +5554,16 @@ public class PathmindVisualEditorScreen extends Screen {
             drawPublishArrowIcon(context, buttonX, buttonY, iconColor);
             return hovered;
         }
-        int idleBackground = mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.62f);
-        int hoverBackground = mixColor(UITheme.BACKGROUND_SECTION, UITheme.ACCENT_SKY, 0.78f);
+        int accentColor = getAccentColor();
+        int idleBackground = mixColor(UITheme.BACKGROUND_SECTION, accentColor, 0.46f);
+        int hoverBackground = mixColor(UITheme.BACKGROUND_SECTION, accentColor, 0.62f);
         int background = AnimationHelper.lerpColor(idleBackground, hoverBackground, hoverProgress);
-        int border = AnimationHelper.lerpColor(UITheme.ACCENT_SKY, UITheme.TEXT_EDITING_LABEL, hoverProgress);
-        int iconColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, hoverProgress);
+        int border = AnimationHelper.lerpColor(accentColor, UITheme.TEXT_HEADER, hoverProgress * 0.22f);
+        int iconColor = AnimationHelper.lerpColor(
+            AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, accentColor, 0.42f),
+            UITheme.TEXT_HEADER,
+            hoverProgress * 0.35f
+        );
         UIStyleHelper.drawToolbarButtonFrame(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE,
             background, border, UITheme.PANEL_INNER_BORDER);
         drawPublishArrowIcon(context, buttonX, buttonY, iconColor);
@@ -5890,14 +5884,8 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean hovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT);
         boolean focused = field.isFocused();
         float hoverProgress = getValidationInputFieldHoverProgress(port, hovered);
-        int bgNormal = focused ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-        int bgHover = focused ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION;
-        int borderNormal = focused ? getAccentColor() : UITheme.BORDER_SUBTLE;
-        int borderHover = getAccentColor();
-        int bg = AnimationHelper.lerpColor(bgNormal, bgHover, hoverProgress);
-        int border = AnimationHelper.lerpColor(borderNormal, borderHover, hoverProgress);
-        context.fill(fieldX, fieldY, fieldX + VALIDATION_INPUT_FIELD_WIDTH, fieldY + VALIDATION_INPUT_FIELD_HEIGHT, bg);
-        DrawContextBridge.drawBorder(context, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT, border);
+        UIStyleHelper.FieldPalette palette = UIStyleHelper.getSearchFieldPalette(getAccentColor(), hoverProgress, focused, false);
+        UIStyleHelper.drawFieldFrame(context, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT, palette);
         if (!focused && !valueText.equals(field.getText())) {
             field.setText(valueText);
         }
@@ -6601,10 +6589,13 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupTextWithEllipsis(context, label, labelX, labelY, maxLabelWidth,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
-        int valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(UITheme.DROPDOWN_OPTION_BG);
-        int valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE);
-        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
-        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+        UIStyleHelper.drawFieldFrame(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, new UIStyleHelper.FieldPalette(
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.DROPDOWN_OPTION_BG),
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER),
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER),
+            settingsPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY)
+        ));
         int valueTextX = valueBoxX + Math.max(4, (valueBoxWidth - valueTextWidth) / 2);
         int valueTextY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
         context.drawTextWithShadow(this.textRenderer, Text.literal(valueText), valueTextX, valueTextY,
@@ -6612,23 +6603,27 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
         boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
-        int trackColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-        int trackBorder = UITheme.BORDER_SUBTLE;
-        trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
-        trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
-        context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
-        DrawContextBridge.drawBorder(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, trackBorder);
+        UIStyleHelper.SliderPalette sliderPalette = UIStyleHelper.getSliderPalette(getAccentColor(), hovered ? 1f : 0f, false, false);
+        sliderPalette = new UIStyleHelper.SliderPalette(
+            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.trackColor()),
+            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.trackBorderColor()),
+            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.handleColor()),
+            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.handleBorderColor())
+        );
+        UIStyleHelper.drawSliderTrack(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, sliderPalette);
 
         int clamped = MathHelper.clamp(value, min, max);
         float t = max == min ? 0f : (clamped - min) / (float) (max - min);
         int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
         int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
-        int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
-        int handleBorder = (hovered || nodeDelayDragging) ? getAccentColor() : UITheme.BORDER_SUBTLE;
-        handleBorder = getPopupAnimatedColor(settingsPopupAnimation, handleBorder);
-        context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
-        DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
-            handleBorder);
+        UIStyleHelper.SliderPalette handlePalette = UIStyleHelper.getSliderPalette(getAccentColor(), hovered ? 1f : 0f, nodeDelayDragging, false);
+        handlePalette = new UIStyleHelper.SliderPalette(
+            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.trackColor()),
+            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.trackBorderColor()),
+            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.handleColor()),
+            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.handleBorderColor())
+        );
+        UIStyleHelper.drawSliderHandle(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT, handlePalette);
     }
 
     private void renderNodeDelayRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
@@ -7138,21 +7133,37 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean searchHovered = isPointInRect(mouseX, mouseY, searchBounds[0], searchBounds[1], searchBounds[2], searchBounds[3]);
         boolean searchFocused = settingsNodeSearchField != null && settingsNodeSearchField.isFocused();
         float searchHoverProgress = searchFocused ? 1f : getHoverProgress("settings-node-search-box", searchHovered);
+        UIStyleHelper.FieldPalette searchPalette = UIStyleHelper.getSearchFieldPalette(getAccentColor(), searchHoverProgress, searchFocused, false);
+        UIStyleHelper.ScrollContainerPalette selectorPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), 0f, true, false);
         settingsNodeSelectorScrollOffset = MathHelper.clamp(settingsNodeSelectorScrollOffset, 0, getSettingsNodeTypeSelectorMaxScroll(contentWidth));
-        UIStyleHelper.drawBeveledPanel(
+        UIStyleHelper.drawScrollContainer(
             context,
             selectorBounds[0],
             selectorBounds[1],
             selectorBounds[2],
             selectorBounds[3],
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BACKGROUND_SECONDARY),
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE),
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.PANEL_INNER_BORDER)
+            new UIStyleHelper.ScrollContainerPalette(
+                getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.backgroundColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.borderColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.innerBorderColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.trackColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.thumbColor())
+            )
         );
-        context.fill(searchBounds[0], searchBounds[1], searchBounds[0] + searchBounds[2], searchBounds[1] + searchBounds[3],
-            getPopupAnimatedColor(settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.BACKGROUND_TERTIARY, searchFocused ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION, searchHoverProgress)));
-        DrawContextBridge.drawBorder(context, searchBounds[0], searchBounds[1], searchBounds[2], searchBounds[3],
-            getPopupAnimatedColor(settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), searchHoverProgress)));
+        UIStyleHelper.drawFieldFrame(
+            context,
+            searchBounds[0],
+            searchBounds[1],
+            searchBounds[2],
+            searchBounds[3],
+            new UIStyleHelper.FieldPalette(
+                getPopupAnimatedColor(settingsPopupAnimation, searchPalette.backgroundColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, searchPalette.borderColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, searchPalette.innerBorderColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, searchPalette.textColor()),
+                getPopupAnimatedColor(settingsPopupAnimation, searchPalette.placeholderColor())
+            )
+        );
         if (settingsNodeSearchField != null) {
             int textFieldHeight = Math.max(10, SETTINGS_NODE_TYPE_SEARCH_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
             settingsNodeSearchField.setVisible(true);
@@ -7179,17 +7190,18 @@ public class PathmindVisualEditorScreen extends Screen {
             boolean hovered = isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
             boolean selected = type == selectedType;
             float hoverProgress = selected ? 1f : getHoverProgress("settings-node-selector:" + type.name(), hovered);
-            int bgColor = AnimationHelper.lerpColor(UITheme.DROPDOWN_OPTION_BG, selected ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.BORDER_SECTION, hoverProgress);
-            int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, selected ? getAccentColor() : UITheme.BORDER_SECTION, hoverProgress);
-            UIStyleHelper.drawBeveledPanel(
+            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), hoverProgress, selected, false);
+            UIStyleHelper.drawDropdownRow(
                 context,
                 bounds[0],
                 bounds[1],
                 bounds[2],
                 bounds[3],
-                getPopupAnimatedColor(settingsPopupAnimation, bgColor),
-                getPopupAnimatedColor(settingsPopupAnimation, borderColor),
-                getPopupAnimatedColor(settingsPopupAnimation, UITheme.PANEL_INNER_BORDER)
+                new UIStyleHelper.DropdownRowPalette(
+                    getPopupAnimatedColor(settingsPopupAnimation, rowPalette.backgroundColor()),
+                    getPopupAnimatedColor(settingsPopupAnimation, rowPalette.borderColor()),
+                    getPopupAnimatedColor(settingsPopupAnimation, rowPalette.textColor())
+                )
             );
 
             int labelColor = getPopupAnimatedColor(settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getAccentColor(), hoverProgress));
@@ -7835,29 +7847,23 @@ public class PathmindVisualEditorScreen extends Screen {
         languageDropdownAnimation.tick();
 
         float hoverProgress = languageDropdownOpen ? 1f : getHoverProgress("settings-language-dropdown-bg", hovered);
-        int bgColor = AnimationHelper.lerpColor(
-            languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG,
-            languageDropdownOpen ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER,
-            hoverProgress
-        );
-        bgColor = settingsPopupAnimation.getAnimatedPopupColor(bgColor);
-
-        int borderColor = getAnimatedBorderColor("settings-language-dropdown", hovered || languageDropdownOpen, UITheme.BORDER_DEFAULT, getAccentColor());
-        borderColor = settingsPopupAnimation.getAnimatedPopupColor(borderColor);
-        UIStyleHelper.drawBeveledPanel(
+        UIStyleHelper.FieldPalette fieldPalette = UIStyleHelper.getDropdownFieldPalette(getAccentColor(), hoverProgress, languageDropdownOpen, false);
+        UIStyleHelper.drawFieldFrame(
             context,
             x,
             y,
             width,
             20,
-            bgColor,
-            borderColor,
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+            new UIStyleHelper.FieldPalette(
+                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.backgroundColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.borderColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.innerBorderColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.textColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.placeholderColor())
+            )
         );
 
-        // Draw dropdown text
-        int labelColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getAccentColor(), hoverProgress);
-        labelColor = settingsPopupAnimation.getAnimatedPopupColor(labelColor);
+        int labelColor = settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.textColor());
         context.drawTextWithShadow(this.textRenderer, Text.literal(currentLang), x + 4, y + 6, labelColor);
 
         int arrowCenterX = x + width - 10;
@@ -7885,15 +7891,20 @@ public class PathmindVisualEditorScreen extends Screen {
         // Use scissor to clip the dropdown content during animation
         context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
 
-        UIStyleHelper.drawBeveledPanel(
+        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), animProgress, languageDropdownOpen, false);
+        UIStyleHelper.drawScrollContainer(
             context,
             x,
             dropdownY,
             width,
             fullOptionsHeight,
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY),
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+            new UIStyleHelper.ScrollContainerPalette(
+                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.backgroundColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.borderColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.innerBorderColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.trackColor()),
+                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.thumbColor())
+            )
         );
 
         // Draw each language option
@@ -7902,16 +7913,24 @@ public class PathmindVisualEditorScreen extends Screen {
             String langName = getLanguageDisplayName(lang);
             int optionY = dropdownY + (i * 20);
 
-            // Only allow hover detection when animation is complete
             boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
-            int optionBg = optionHovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-            optionBg = settingsPopupAnimation.getAnimatedPopupColor(optionBg);
-            context.fill(x + 1, optionY + 1, x + width - 1, optionY + 20, optionBg);
-
-            // Highlight current language with accent color
             String currentLang = this.client.getLanguageManager().getLanguage();
-            int textColor = lang.equals(currentLang) ? getAccentColor() : UITheme.TEXT_PRIMARY;
-            textColor = settingsPopupAnimation.getAnimatedPopupColor(textColor);
+            boolean selected = lang.equals(currentLang);
+            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), optionHovered ? 1f : 0f, selected, false);
+            UIStyleHelper.drawDropdownRow(
+                context,
+                x + 1,
+                optionY + 1,
+                width - 2,
+                19,
+                new UIStyleHelper.DropdownRowPalette(
+                    settingsPopupAnimation.getAnimatedPopupColor(rowPalette.backgroundColor()),
+                    settingsPopupAnimation.getAnimatedPopupColor(rowPalette.borderColor()),
+                    settingsPopupAnimation.getAnimatedPopupColor(rowPalette.textColor())
+                )
+            );
+
+            int textColor = settingsPopupAnimation.getAnimatedPopupColor(selected ? getAccentColor() : rowPalette.textColor());
             context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
         }
 

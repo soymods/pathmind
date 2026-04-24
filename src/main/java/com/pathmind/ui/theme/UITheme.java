@@ -308,6 +308,27 @@ public final class UITheme {
     /** Info state - blue */
     public static final int STATE_INFO = 0xFF1E88E5;
 
+    /** Marketplace like / favorite accent */
+    public static final int MARKETPLACE_LIKE = 0xFFE05454;
+
+    /** Marketplace saved / bookmark accent */
+    public static final int MARKETPLACE_SAVE = 0xFFE2B93B;
+
+    /** Marketplace private visibility accent */
+    public static final int MARKETPLACE_PRIVATE_VISIBILITY = 0xFFE0B84A;
+
+    /** Marketplace preview grid line */
+    public static final int MARKETPLACE_PREVIEW_GRID = 0x203D3D3D;
+
+    /** Marketplace preview dotted connector point */
+    public static final int MARKETPLACE_PREVIEW_DOT = 0x182E2E2E;
+
+    /** Marketplace preview dotted connector guide */
+    public static final int MARKETPLACE_PREVIEW_LINE = 0x102A2A2A;
+
+    /** Stop-node emphasis used in marketplace graph previews */
+    public static final int MARKETPLACE_STOP_NODE_BORDER = 0xFFE35B5B;
+
     // ═══════════════════════════════════════════════════════════════════════════
     // BUTTON COLORS
     // ═══════════════════════════════════════════════════════════════════════════
@@ -477,6 +498,12 @@ public final class UITheme {
 
     /** Icon detail shadow (high) */
     public static final int ICON_DETAIL_SHADE_HIGH = 0x88000000;
+
+    /** Muted icon color for secondary affordances */
+    public static final int ICON_MUTED = 0xFF9A9A9A;
+
+    /** Brighter muted icon color for add/create affordances */
+    public static final int ICON_MUTED_BRIGHT = 0xFFB8B8B8;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // INVENTORY SLOT CATEGORY COLORS

@@ -1512,11 +1512,21 @@ public class NodeParameterOverlay {
         boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth
             && mouseY >= fieldY && mouseY <= fieldY + fieldHeight;
         float hoverProgress = open ? 1f : HoverAnimator.getProgress("overlay-simple-dropdown-" + paramIndex, hovered, UITheme.HOVER_ANIM_MS);
-        int bgColor = AnimationHelper.lerpColor(UITheme.BACKGROUND_SIDEBAR, UITheme.BACKGROUND_SECONDARY, hoverProgress);
-        int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_HIGHLIGHT, UITheme.ACCENT_DEFAULT, hoverProgress);
-        int textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, hoverProgress);
-        context.fill(fieldX, fieldY, fieldX + fieldWidth, fieldY + fieldHeight, applyPopupAlpha(bgColor, popupAlpha));
-        DrawContextBridge.drawBorder(context, fieldX, fieldY, fieldWidth, fieldHeight, applyPopupAlpha(borderColor, popupAlpha));
+        UIStyleHelper.FieldPalette palette = UIStyleHelper.getDropdownFieldPalette(UITheme.ACCENT_DEFAULT, hoverProgress, open, false);
+        UIStyleHelper.drawFieldFrame(
+            context,
+            fieldX,
+            fieldY,
+            fieldWidth,
+            fieldHeight,
+            new UIStyleHelper.FieldPalette(
+                applyPopupAlpha(palette.backgroundColor(), popupAlpha),
+                applyPopupAlpha(palette.borderColor(), popupAlpha),
+                applyPopupAlpha(palette.innerBorderColor(), popupAlpha),
+                applyPopupAlpha(palette.textColor(), popupAlpha),
+                applyPopupAlpha(palette.placeholderColor(), popupAlpha)
+            )
+        );
 
         String value = paramIndex >= 0 && paramIndex < parameterValues.size() ? parameterValues.get(paramIndex) : "";
         String display = formatSimpleDropdownValue(value);
@@ -1525,9 +1535,9 @@ public class NodeParameterOverlay {
             Text.literal(trimDisplayString(textRenderer, display, fieldWidth - 20)),
             fieldX + 4,
             fieldY + 6,
-            applyPopupAlpha(textColor, popupAlpha)
+            applyPopupAlpha(palette.textColor(), popupAlpha)
         );
-        UIStyleHelper.drawChevron(context, fieldX + fieldWidth - 9, fieldY + fieldHeight / 2, open, applyPopupAlpha(textColor, popupAlpha));
+        UIStyleHelper.drawChevron(context, fieldX + fieldWidth - 9, fieldY + fieldHeight / 2, open, applyPopupAlpha(palette.textColor(), popupAlpha));
     }
 
     private void renderSimpleDropdownList(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY,
@@ -1548,23 +1558,48 @@ public class NodeParameterOverlay {
             return;
         }
 
-        context.fill(fieldX, listTop, fieldX + fieldWidth, listBottom, applyPopupAlpha(UITheme.BACKGROUND_SECONDARY, popupAlpha));
-        DrawContextBridge.drawBorder(context, fieldX, listTop, fieldWidth, actualHeight, applyPopupAlpha(UITheme.BORDER_HIGHLIGHT, popupAlpha));
+        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(UITheme.ACCENT_DEFAULT, 0f, openSimpleDropdownIndex >= 0, false);
+        UIStyleHelper.drawScrollContainer(
+            context,
+            fieldX,
+            listTop,
+            fieldWidth,
+            actualHeight,
+            new UIStyleHelper.ScrollContainerPalette(
+                applyPopupAlpha(containerPalette.backgroundColor(), popupAlpha),
+                applyPopupAlpha(containerPalette.borderColor(), popupAlpha),
+                applyPopupAlpha(containerPalette.innerBorderColor(), popupAlpha),
+                applyPopupAlpha(containerPalette.trackColor(), popupAlpha),
+                applyPopupAlpha(containerPalette.thumbColor(), popupAlpha)
+            )
+        );
 
         for (int i = 0; i < rowCount; i++) {
             int rowTop = listTop + i * rowHeight;
             int rowBottom = Math.min(rowTop + rowHeight, listBottom);
             boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth && mouseY >= rowTop && mouseY <= rowBottom;
             String value = options.get(i);
+            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(UITheme.ACCENT_DEFAULT, hovered ? 1f : 0f, false, false);
             if (hovered) {
-                context.fill(fieldX + 1, rowTop, fieldX + fieldWidth - 1, rowBottom, applyPopupAlpha(UITheme.BACKGROUND_TERTIARY, popupAlpha));
+                UIStyleHelper.drawDropdownRow(
+                    context,
+                    fieldX + 1,
+                    rowTop,
+                    fieldWidth - 2,
+                    Math.max(0, rowBottom - rowTop),
+                    new UIStyleHelper.DropdownRowPalette(
+                        applyPopupAlpha(rowPalette.backgroundColor(), popupAlpha),
+                        applyPopupAlpha(rowPalette.borderColor(), popupAlpha),
+                        applyPopupAlpha(rowPalette.textColor(), popupAlpha)
+                    )
+                );
             }
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(formatSimpleDropdownValue(value)),
                 fieldX + 4,
                 rowTop + 6,
-                applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
+                applyPopupAlpha(hovered ? rowPalette.textColor() : UITheme.TEXT_PRIMARY, popupAlpha)
             );
         }
     }

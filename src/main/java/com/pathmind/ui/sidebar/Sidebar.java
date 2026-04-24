@@ -728,14 +728,16 @@ public class Sidebar {
                                 Text.literal(line),
                                 contentTextX,
                                 groupTextY,
-                                UITheme.TEXT_TERTIARY
+                                getSidebarGroupHeaderColor(selectedCategory)
                             );
                             groupTextY += groupLineHeight;
                         }
 
                         contentY += groupInfo.getHeight();
 
-                        for (NodeType nodeType : group.getNodes()) {
+                        List<NodeType> groupNodes = group.getNodes();
+                        for (int nodeIndex = 0; nodeIndex < groupNodes.size(); nodeIndex++) {
+                            NodeType nodeType = groupNodes.get(nodeIndex);
                             if (contentY >= sidebarBottom) {
                                 break outer;
                             }
@@ -751,14 +753,23 @@ public class Sidebar {
                             int indicatorSize = 12;
                             int indicatorX = currentInnerSidebarWidth + 8;
                             int indicatorY = contentY + 3;
-                            UIStyleHelper.drawBeveledPanel(context, indicatorX, indicatorY, indicatorSize, indicatorSize, nodeType.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
+                            UIStyleHelper.drawBeveledPanel(
+                                context,
+                                indicatorX,
+                                indicatorY,
+                                indicatorSize,
+                                indicatorSize,
+                                getSidebarNodeIndicatorColor(selectedCategory, nodeType, nodeIndex),
+                                UITheme.BORDER_SUBTLE,
+                                UITheme.PANEL_INNER_BORDER
+                            );
 
                             context.drawTextWithShadow(
                                 textRenderer,
                                 Text.literal(nodeType.getDisplayName()),
                                 indicatorX + indicatorSize + 4,
                                 contentY + 4,
-                                UITheme.TEXT_PRIMARY
+                                getSidebarNodeTextColor(selectedCategory, nodeHovered)
                             );
 
                             contentY += NODE_HEIGHT;
@@ -769,7 +780,8 @@ public class Sidebar {
                 // Render nodes in selected category
                 List<NodeType> nodes = categoryNodes.get(selectedCategory);
                 if (nodes != null) {
-                    for (NodeType nodeType : nodes) {
+                    for (int nodeIndex = 0; nodeIndex < nodes.size(); nodeIndex++) {
+                        NodeType nodeType = nodes.get(nodeIndex);
                         if (contentY >= sidebarBottom) break; // Don't render beyond sidebar
                         
                         boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth &&
@@ -783,14 +795,23 @@ public class Sidebar {
                         int indicatorSize = 12;
                         int indicatorX = currentInnerSidebarWidth + 8; // Align with category title
                         int indicatorY = contentY + 3;
-                        UIStyleHelper.drawBeveledPanel(context, indicatorX, indicatorY, indicatorSize, indicatorSize, nodeType.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
+                        UIStyleHelper.drawBeveledPanel(
+                            context,
+                            indicatorX,
+                            indicatorY,
+                            indicatorSize,
+                            indicatorSize,
+                            getSidebarNodeIndicatorColor(selectedCategory, nodeType, nodeIndex),
+                            UITheme.BORDER_SUBTLE,
+                            UITheme.PANEL_INNER_BORDER
+                        );
 
                         context.drawTextWithShadow(
                             textRenderer,
                             Text.literal(nodeType.getDisplayName()),
                             indicatorX + indicatorSize + 4, // Position after the indicator with some spacing
                             contentY + 4,
-                            UITheme.TEXT_PRIMARY
+                            getSidebarNodeTextColor(selectedCategory, nodeHovered)
                         );
                         
                         contentY += NODE_HEIGHT;
@@ -1023,6 +1044,29 @@ public class Sidebar {
      */
     private int lightenColor(int color, float factor) {
         return AnimationHelper.brighten(color, factor);
+    }
+
+    private int getSidebarCategoryAccent(NodeCategory category) {
+        return category != null ? category.getColor() : UITheme.BORDER_DEFAULT;
+    }
+
+    private int getSidebarGroupHeaderColor(NodeCategory category) {
+        return AnimationHelper.lerpColor(UITheme.TEXT_TERTIARY, getSidebarCategoryAccent(category), 0.55f);
+    }
+
+    private int getSidebarNodeIndicatorColor(NodeCategory category, NodeType nodeType, int indexInGroup) {
+        if (nodeType == null) {
+            return getSidebarCategoryAccent(category);
+        }
+        if (indexInGroup == 0) {
+            return nodeType.getColor();
+        }
+        return getSidebarCategoryAccent(category);
+    }
+
+    private int getSidebarNodeTextColor(NodeCategory category, boolean hovered) {
+        int baseColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getSidebarCategoryAccent(category), 0.14f);
+        return hovered ? AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, 0.18f) : baseColor;
     }
 
     private List<String> wrapText(String text, TextRenderer textRenderer, int maxWidth) {

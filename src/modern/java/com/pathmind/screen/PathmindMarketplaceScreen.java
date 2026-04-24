@@ -374,7 +374,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 x + buttonWidth - SORT_BUTTON_HEIGHT + 2,
                 y + 3,
                 SORT_BUTTON_HEIGHT - 6,
-                0xFFFFFFFF
+                UITheme.TEXT_HEADER
             );
             return;
         }
@@ -563,7 +563,7 @@ public class PathmindMarketplaceScreen extends Screen {
         String likesLine = preset.getLikesCount() + " like";
         int statsRight = rect.x + rect.width - 8;
         int downloadsColor = UITheme.STATE_SUCCESS;
-        int likesColor = 0xFFE05454;
+        int likesColor = UITheme.MARKETPLACE_LIKE;
         int footerTop = previewY + previewHeight + 8;
         int statsLineY = footerTop + 3;
         int statsSecondLineY = footerTop + 14;
@@ -622,14 +622,14 @@ public class PathmindMarketplaceScreen extends Screen {
 
         int statsX = rect.x + rect.width - statsWidth - 8;
         context.drawTextWithShadow(this.textRenderer, Text.literal(author.totalDownloads() + " dl"), statsX, rect.y + 8, UITheme.STATE_SUCCESS);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(author.totalLikes() + " likes"), statsX, rect.y + 20, 0xFFE05454);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(author.totalLikes() + " likes"), statsX, rect.y + 20, UITheme.MARKETPLACE_LIKE);
     }
 
     private void renderAuthorDirectoryAvatar(DrawContext context, int x, int y, int size, AuthorSummary author) {
         UIStyleHelper.drawBeveledPanel(context, x, y, size, size, UITheme.BACKGROUND_PRIMARY, getAccentColor(), UITheme.PANEL_INNER_BORDER);
         Identifier avatarTexture = getOrRequestAuthorDirectoryAvatarTexture(author);
         if (avatarTexture != null) {
-            GuiTextureRenderer.drawIcon(context, avatarTexture, x + 2, y + 2, size - 4, 0xFFFFFFFF);
+            GuiTextureRenderer.drawIcon(context, avatarTexture, x + 2, y + 2, size - 4, UITheme.TEXT_HEADER);
             return;
         }
         String initials = fallback(author.displayName(), "?").trim();
@@ -640,7 +640,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void drawGraphPreview(DrawContext context, int x, int y, int width, int height, boolean popup) {
-        int gridColor = popup ? presetPopupAnimation.getAnimatedPopupColor(0x203D3D3D) : 0x203D3D3D;
+        int gridColor = popup ? presetPopupAnimation.getAnimatedPopupColor(UITheme.MARKETPLACE_PREVIEW_GRID) : UITheme.MARKETPLACE_PREVIEW_GRID;
         for (int lineX = x + 12; lineX < x + width - 8; lineX += 18) {
             context.drawVerticalLine(lineX, y + 6, y + height - 7, gridColor);
         }
@@ -774,7 +774,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int nodeWidth = Math.max(18, Math.round(node.getWidth() * scale));
         int nodeHeight = Math.max(14, Math.round(node.getHeight() * scale));
         int color = node.getType() != null ? node.getType().getColor() : UITheme.BORDER_DEFAULT;
-        int borderColor = node.isStopControlNode() ? 0xFFE35B5B : color;
+        int borderColor = node.isStopControlNode() ? UITheme.MARKETPLACE_STOP_NODE_BORDER : color;
         int backgroundColor = interactive ? UITheme.BACKGROUND_SECONDARY : AnimationHelper.darken(UITheme.BACKGROUND_SECONDARY, 0.94f);
         int resolvedBackground = popup ? presetPopupAnimation.getAnimatedPopupColor(backgroundColor) : backgroundColor;
         int resolvedBorder = popup ? presetPopupAnimation.getAnimatedPopupColor(borderColor) : borderColor;
@@ -906,8 +906,8 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void drawGalleryBackdrop(DrawContext context, int x, int y, int width, int height) {
-        int dotColor = 0x182E2E2E;
-        int lineColor = 0x102A2A2A;
+        int dotColor = UITheme.MARKETPLACE_PREVIEW_DOT;
+        int lineColor = UITheme.MARKETPLACE_PREVIEW_LINE;
         for (int lineX = x + 16; lineX < x + width; lineX += 40) {
             context.drawVerticalLine(lineX, y + 4, y + height - 5, lineColor);
         }
@@ -1079,7 +1079,7 @@ public class PathmindMarketplaceScreen extends Screen {
         badgeX += drawStatusBadge(context, badgeX, badgeY, compatibility.isFullyCompatible() ? "Compatible" : "Version Check",
             compatibility.summaryColor(), true) + 6;
         if (isPresetSavedLocally(popupPreset)) {
-            drawStatusBadge(context, badgeX, badgeY, "Saved", 0xFFE2B93B, true);
+            drawStatusBadge(context, badgeX, badgeY, "Saved", UITheme.MARKETPLACE_SAVE, true);
         }
         cursorY += 22;
 
@@ -2348,7 +2348,7 @@ public class PathmindMarketplaceScreen extends Screen {
             disabled
         );
         if (!disabled && easedHover > 0.001f) {
-            int glowColor = animation.getAnimatedPopupColor(AnimationHelper.lerpColor(getAccentColor(), 0xFFFFFFFF, 0.22f));
+            int glowColor = animation.getAnimatedPopupColor(AnimationHelper.lerpColor(getAccentColor(), UITheme.TEXT_HEADER, 0.22f));
             int alpha = Math.min(84, Math.round(72f * easedHover));
             context.fill(x - 1, y - 1, x + width + 1, y + height + 1, (alpha << 24) | (glowColor & 0x00FFFFFF));
         }
@@ -2799,7 +2799,7 @@ public class PathmindMarketplaceScreen extends Screen {
             triggerSavePulse(preset);
             if (popupPreset != null) {
                 popupStatusMessage = "Saved locally as \"" + importedPreset.get() + "\".";
-                popupStatusColor = 0xFFE2B93B;
+                popupStatusColor = UITheme.MARKETPLACE_SAVE;
             }
             if (activateAfterImport) {
                 PresetManager.setActivePreset(importedPreset.get());
@@ -3157,7 +3157,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 x + 3,
                 y + 3,
                 size - 6,
-                accountPopupAnimation.getAnimatedPopupColor(0xFFFFFFFF)
+                accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER)
             );
         } else {
             String initials = fallback(authSession == null ? null : authSession.getDisplayName(), "D").trim();
@@ -3173,7 +3173,7 @@ public class PathmindMarketplaceScreen extends Screen {
         UIStyleHelper.drawBeveledPanel(context, x, y, size, size, UITheme.BACKGROUND_PRIMARY, getAccentColor(), UITheme.PANEL_INNER_BORDER);
         Identifier avatarTexture = getOrRequestViewedAuthorAvatarTexture();
         if (avatarTexture != null) {
-            GuiTextureRenderer.drawIcon(context, avatarTexture, x + 2, y + 2, size - 4, 0xFFFFFFFF);
+            GuiTextureRenderer.drawIcon(context, avatarTexture, x + 2, y + 2, size - 4, UITheme.TEXT_HEADER);
             return;
         }
         String initials = fallback(viewedAuthorName, "?").trim();
@@ -3858,7 +3858,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void syncVisibilityToggleColors() {
-        int offColor = 0xFFE0B84A;
+        int offColor = UITheme.MARKETPLACE_PRIVATE_VISIBILITY;
         int onColor = getAccentColor();
         publishVisibilityToggle.setIndicatorColors(offColor, onColor);
         presetVisibilityToggle.setIndicatorColors(offColor, onColor);
@@ -3958,12 +3958,12 @@ public class PathmindMarketplaceScreen extends Screen {
         int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
         if (intensity > 0.001f) {
             int glowColor = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f);
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.35f);
             context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(intensity * 110)) << 24) | (glowColor & 0x00FFFFFF));
             color = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f);
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.22f))
+                : AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.22f);
         }
         drawDeleteIcon(context, x, y, color);
     }
@@ -3973,16 +3973,16 @@ public class PathmindMarketplaceScreen extends Screen {
         float hoverFlash = getIconHoverFlash("heart:" + (popup ? "popup:" : "card:") + preset.getId(), hovered);
         float intensity = Math.max(pulse, hoverFlash);
         boolean pending = isLikePending(preset);
-        int baseColor = pending ? UITheme.TEXT_TERTIARY : liked ? 0xFFE05454 : UITheme.TEXT_TERTIARY;
+        int baseColor = pending ? UITheme.TEXT_TERTIARY : liked ? UITheme.MARKETPLACE_LIKE : UITheme.TEXT_TERTIARY;
         int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
         if (intensity > 0.001f) {
             int glowColor = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f);
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.35f);
             context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(intensity * 110)) << 24) | (glowColor & 0x00FFFFFF));
             color = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f);
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.22f))
+                : AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.22f);
         }
         drawHeartIcon(context, x, y, color);
     }
@@ -3991,16 +3991,16 @@ public class PathmindMarketplaceScreen extends Screen {
         float pulse = getIconPulse(savePulseEndTimes, preset);
         float hoverFlash = getIconHoverFlash("bookmark:" + (popup ? "popup:" : "card:") + preset.getId(), hovered);
         float intensity = Math.max(pulse, hoverFlash);
-        int baseColor = saved ? 0xFFE2B93B : UITheme.TEXT_TERTIARY;
+        int baseColor = saved ? UITheme.MARKETPLACE_SAVE : UITheme.TEXT_TERTIARY;
         int color = popup ? presetPopupAnimation.getAnimatedPopupColor(baseColor) : baseColor;
         if (intensity > 0.001f) {
             int glowColor = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.35f);
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.35f))
+                : AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.35f);
             context.fill(x - 2, y - 2, x + 12, y + 13, (Math.min(120, Math.round(intensity * 110)) << 24) | (glowColor & 0x00FFFFFF));
             color = popup
-                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f))
-                : AnimationHelper.lerpColor(baseColor, 0xFFFFFFFF, intensity * 0.22f);
+                ? presetPopupAnimation.getAnimatedPopupColor(AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.22f))
+                : AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, intensity * 0.22f);
         }
         drawBookmarkIcon(context, x, y, color);
     }

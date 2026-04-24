@@ -485,6 +485,34 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void repeatUntilExitUsesPrimarySocketWhenNodeExposesSingleOutput() throws Exception {
+        Node repeatUntil = new Node(NodeType.CONTROL_REPEAT_UNTIL, 0, 0);
+
+        Method exitSocketResolver = ExecutionManager.class.getDeclaredMethod(
+            "getRepeatUntilExitOutputSocket", Node.class);
+        exitSocketResolver.setAccessible(true);
+
+        assertEquals(1, repeatUntil.getOutputSocketCount());
+        assertEquals(0, exitSocketResolver.invoke(manager, repeatUntil));
+    }
+
+    @Test
+    void repeatUntilExitUsesSecondarySocketWhenNodeExposesMultipleOutputs() throws Exception {
+        Node repeatUntil = new Node(NodeType.CONTROL_REPEAT_UNTIL, 0, 0) {
+            @Override
+            public int getOutputSocketCount() {
+                return 2;
+            }
+        };
+
+        Method exitSocketResolver = ExecutionManager.class.getDeclaredMethod(
+            "getRepeatUntilExitOutputSocket", Node.class);
+        exitSocketResolver.setAccessible(true);
+
+        assertEquals(1, exitSocketResolver.invoke(manager, repeatUntil));
+    }
+
+    @Test
     void branchLaunchClonesUseUniqueRuntimeIdsForForeverLoops() throws Exception {
         Node start = new Node(NodeType.START, 0, 0);
         start.setStartNodeNumber(1);

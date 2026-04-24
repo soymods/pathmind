@@ -1613,10 +1613,8 @@ public class ExecutionManager {
                             if (type == NodeType.CONTROL_REPEAT_UNTIL
                                 && controller.pendingRepeatUntilExitControl == currentNode) {
                                 controller.pendingRepeatUntilExitControl = null;
-                                NodeConnection exitConnection = getNextConnectedConnection(currentNode, activeConnections, 1);
-                                if (exitConnection == null) {
-                                    exitConnection = getNextConnectedConnection(currentNode, activeConnections, 0);
-                                }
+                                int exitSocket = getRepeatUntilExitOutputSocket(currentNode);
+                                NodeConnection exitConnection = getNextConnectedConnection(currentNode, activeConnections, exitSocket);
                                 if (exitConnection != null) {
                                     return runChain(exitConnection.getInputNode(), controller, executionId, repeatUntilGuard,
                                         exitConnection.getInputSocket());
@@ -1631,6 +1629,16 @@ public class ExecutionManager {
 
         if (nextSocket == Node.NO_OUTPUT) {
             return CompletableFuture.completedFuture(null);
+        }
+
+        if (currentType == NodeType.CONTROL_REPEAT_UNTIL && nextSocket != 0) {
+            return continueFromOutputSocket(
+                currentNode,
+                controller,
+                executionId,
+                repeatUntilGuard,
+                getRepeatUntilExitOutputSocket(currentNode)
+            );
         }
 
         if (currentType == NodeType.CONTROL_FORK) {
@@ -1694,6 +1702,13 @@ public class ExecutionManager {
             controller.joinBarrierInputs.remove(node);
             return true;
         }
+    }
+
+    private int getRepeatUntilExitOutputSocket(Node node) {
+        if (node == null) {
+            return 0;
+        }
+        return node.getOutputSocketCount() > 1 ? 1 : 0;
     }
 
     private CompletableFuture<Void> runEventHandler(Node handler, ChainController controller, int executionId, Node repeatUntilGuard) {

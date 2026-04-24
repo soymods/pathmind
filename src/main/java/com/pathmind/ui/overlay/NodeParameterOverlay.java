@@ -54,7 +54,6 @@ public class NodeParameterOverlay {
     private static final int KEY_SELECTOR_ROW_GAP = 6;
     private static final int KEY_SELECTOR_KEY_GAP = 4;
     private static final int KEY_SELECTOR_PADDING = 6;
-    private static final int SIMPLE_DROPDOWN_MAX_ROWS = 6;
 
     private static final KeySpec[][] KEY_SELECTOR_LAYOUT = new KeySpec[][]{
         new KeySpec[]{
@@ -187,7 +186,6 @@ public class NodeParameterOverlay {
     private long caretBlinkLastToggle = 0L;
     private boolean caretVisible = true;
     private boolean scissorEnabled = false;
-    private int openSimpleDropdownIndex = -1;
 
     public NodeParameterOverlay(Node node, int screenWidth, int screenHeight, int topBarHeight, Runnable onClose,
                                 Consumer<Node> onSave) {
@@ -411,10 +409,6 @@ public class NodeParameterOverlay {
         }
 
         int sectionY = contentTop - scrollOffset;
-        int openSimpleDropdownFieldX = 0;
-        int openSimpleDropdownFieldY = 0;
-        int openSimpleDropdownFieldWidth = 0;
-        int openSimpleDropdownContentBottom = contentBottom;
 
         if (isCombinedDirectionNode()) {
             int fieldX = popupX + 20;
@@ -457,16 +451,6 @@ public class NodeParameterOverlay {
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }
-            if (usesSimpleDropdownForIndex(i)) {
-                renderSimpleDropdownField(context, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight, i, mouseX, mouseY, popupAlpha);
-                if (openSimpleDropdownIndex == i) {
-                    openSimpleDropdownFieldX = fieldX;
-                    openSimpleDropdownFieldY = fieldY;
-                    openSimpleDropdownFieldWidth = fieldWidth;
-                }
-                sectionY = fieldY + fieldHeight + SECTION_SPACING;
-                continue;
-            }
 
             boolean isFocused = i == focusedFieldIndex;
             boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
@@ -498,7 +482,8 @@ public class NodeParameterOverlay {
                 displayText = baseValue;
                 textColor = UITheme.TEXT_PRIMARY;
             } else {
-                displayText = trimDisplayString(textRenderer, baseValue, fieldWidth - 8);
+                String renderedValue = formatOverlayDisplayValue(i, baseValue);
+                displayText = trimDisplayString(textRenderer, renderedValue, fieldWidth - 8);
                 textColor = UITheme.TEXT_PRIMARY;
             }
             int textX = fieldX + 4;
@@ -552,20 +537,6 @@ public class NodeParameterOverlay {
             }
 
             sectionY = fieldY + fieldHeight + SECTION_SPACING;
-        }
-
-        if (openSimpleDropdownIndex >= 0) {
-            renderSimpleDropdownList(
-                context,
-                textRenderer,
-                openSimpleDropdownFieldX,
-                openSimpleDropdownFieldY,
-                openSimpleDropdownFieldWidth,
-                openSimpleDropdownContentBottom,
-                mouseX,
-                mouseY,
-                popupAlpha
-            );
         }
 
         clearScissor(context);
@@ -886,39 +857,8 @@ public class NodeParameterOverlay {
                 continue;
             }
 
-            if (usesSimpleDropdownForIndex(i)) {
-                if (openSimpleDropdownIndex == i) {
-                    int listTop = fieldY + fieldHeight;
-                    int rowHeight = FIELD_HEIGHT;
-                    int optionCount = Math.min(SIMPLE_DROPDOWN_MAX_ROWS, getSimpleDropdownOptions(i).size());
-                    int listBottom = Math.min(listTop + optionCount * rowHeight, contentBottom);
-                    if (adjustedMouseX >= fieldX && adjustedMouseX <= fieldX + fieldWidth
-                        && adjustedMouseY >= Math.max(listTop, contentTop) && adjustedMouseY <= listBottom) {
-                        int clickedRow = (int) ((adjustedMouseY - listTop) / rowHeight);
-                        List<String> options = getSimpleDropdownOptions(i);
-                        if (clickedRow >= 0 && clickedRow < options.size()) {
-                            setParameterValue(i, options.get(clickedRow));
-                        }
-                        openSimpleDropdownIndex = -1;
-                        focusedFieldIndex = -1;
-                        return true;
-                    }
-                }
-
-                if (adjustedMouseX >= fieldX && adjustedMouseX <= fieldX + fieldWidth &&
-                    adjustedMouseY >= Math.max(fieldY, contentTop) && adjustedMouseY <= Math.min(fieldY + fieldHeight, contentBottom)) {
-                    openSimpleDropdownIndex = openSimpleDropdownIndex == i ? -1 : i;
-                    focusedFieldIndex = -1;
-                    return true;
-                }
-
-                labelY = fieldY + fieldHeight + SECTION_SPACING;
-                continue;
-            }
-
             if (adjustedMouseX >= fieldX && adjustedMouseX <= fieldX + fieldWidth &&
                 adjustedMouseY >= Math.max(fieldY, contentTop) && adjustedMouseY <= Math.min(fieldY + fieldHeight, contentBottom)) {
-                openSimpleDropdownIndex = -1;
                 focusField(i);
                 setCaretFromClick(i, adjustedMouseX, fieldX, fieldWidth, shiftClick);
                 return true;
@@ -926,8 +866,6 @@ public class NodeParameterOverlay {
 
             labelY = fieldY + fieldHeight + SECTION_SPACING;
         }
-
-        openSimpleDropdownIndex = -1;
 
         boolean insidePopupBounds = adjustedMouseX >= popupX && adjustedMouseX <= popupX + popupWidth &&
                                     adjustedMouseY >= popupY && adjustedMouseY <= popupY + popupHeight;
@@ -1109,7 +1047,6 @@ public class NodeParameterOverlay {
         if (villagerTradeSelector != null) {
             villagerTradeSelector.closeDropdown();
         }
-        openSimpleDropdownIndex = -1;
     }
 
     public void show() {
@@ -1117,7 +1054,6 @@ public class NodeParameterOverlay {
         pendingClose = false;
         focusedFieldIndex = -1;
         scrollOffset = 0;
-        openSimpleDropdownIndex = -1;
         updateButtonPositions();
     }
 
@@ -1352,8 +1288,7 @@ public class NodeParameterOverlay {
         for (int attempts = 0; attempts < total; attempts++) {
             startIndex = (startIndex + (backwards ? -1 : 1) + total) % total;
             if (shouldDisplayParameter(startIndex)
-                && !usesButtonSelectorForIndex(startIndex)
-                && !usesSimpleDropdownForIndex(startIndex)) {
+                && !usesButtonSelectorForIndex(startIndex)) {
                 focusField(startIndex);
                 return;
             }
@@ -1378,23 +1313,6 @@ public class NodeParameterOverlay {
         }
         if (node.getType() == NodeType.PARAM_MOUSE_BUTTON) {
             return "MouseButton".equalsIgnoreCase(param.getName());
-        }
-        return false;
-    }
-
-    private boolean usesSimpleDropdownForIndex(int index) {
-        if (index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        if (node.getType() == NodeType.PARAM_BLOCK_FACE) {
-            return "Face".equalsIgnoreCase(param.getName());
-        }
-        if (node.getType() == NodeType.PARAM_HAND) {
-            return "Hand".equalsIgnoreCase(param.getName());
         }
         return false;
     }
@@ -1498,131 +1416,47 @@ public class NodeParameterOverlay {
         return KEY_SELECTOR_LAYOUT;
     }
 
-    private List<String> getSimpleDropdownOptions(int index) {
-        List<String> options = new ArrayList<>();
-        if (!usesSimpleDropdownForIndex(index)) {
-            return options;
-        }
-        if (node.getType() == NodeType.PARAM_HAND) {
-            options.add("main");
-            options.add("off");
-            return options;
-        }
-        options.add("north");
-        options.add("south");
-        options.add("east");
-        options.add("west");
-        options.add("up");
-        options.add("down");
-        return options;
-    }
-
-    private void renderSimpleDropdownField(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY,
-                                           int fieldWidth, int fieldHeight, int paramIndex, int mouseX, int mouseY, float popupAlpha) {
-        boolean open = openSimpleDropdownIndex == paramIndex;
-        boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth
-            && mouseY >= fieldY && mouseY <= fieldY + fieldHeight;
-        float hoverProgress = open ? 1f : HoverAnimator.getProgress("overlay-simple-dropdown-" + paramIndex, hovered, UITheme.HOVER_ANIM_MS);
-        UIStyleHelper.FieldPalette palette = UIStyleHelper.getDropdownFieldPalette(UITheme.ACCENT_DEFAULT, hoverProgress, open, false);
-        UIStyleHelper.drawFieldFrame(
-            context,
-            fieldX,
-            fieldY,
-            fieldWidth,
-            fieldHeight,
-            new UIStyleHelper.FieldPalette(
-                applyPopupAlpha(palette.backgroundColor(), popupAlpha),
-                applyPopupAlpha(palette.borderColor(), popupAlpha),
-                applyPopupAlpha(palette.innerBorderColor(), popupAlpha),
-                applyPopupAlpha(palette.textColor(), popupAlpha),
-                applyPopupAlpha(palette.placeholderColor(), popupAlpha)
-            )
-        );
-
-        String value = paramIndex >= 0 && paramIndex < parameterValues.size() ? parameterValues.get(paramIndex) : "";
-        String display = formatSimpleDropdownValue(value);
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(trimDisplayString(textRenderer, display, fieldWidth - 20)),
-            fieldX + 4,
-            fieldY + 6,
-            applyPopupAlpha(palette.textColor(), popupAlpha)
-        );
-        UIStyleHelper.drawChevron(context, fieldX + fieldWidth - 9, fieldY + fieldHeight / 2, open, applyPopupAlpha(palette.textColor(), popupAlpha));
-    }
-
-    private void renderSimpleDropdownList(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY,
-                                          int fieldWidth, int contentBottom, int mouseX, int mouseY, float popupAlpha) {
-        if (openSimpleDropdownIndex < 0) {
-            return;
-        }
-        List<String> options = getSimpleDropdownOptions(openSimpleDropdownIndex);
-        if (options.isEmpty()) {
-            return;
-        }
-        int rowHeight = FIELD_HEIGHT;
-        int rowCount = Math.min(SIMPLE_DROPDOWN_MAX_ROWS, options.size());
-        int listTop = fieldY + FIELD_HEIGHT;
-        int listBottom = Math.min(listTop + rowCount * rowHeight, contentBottom);
-        int actualHeight = listBottom - listTop;
-        if (actualHeight <= 0) {
-            return;
-        }
-
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(UITheme.ACCENT_DEFAULT, 0f, openSimpleDropdownIndex >= 0, false);
-        UIStyleHelper.drawScrollContainer(
-            context,
-            fieldX,
-            listTop,
-            fieldWidth,
-            actualHeight,
-            new UIStyleHelper.ScrollContainerPalette(
-                applyPopupAlpha(containerPalette.backgroundColor(), popupAlpha),
-                applyPopupAlpha(containerPalette.borderColor(), popupAlpha),
-                applyPopupAlpha(containerPalette.innerBorderColor(), popupAlpha),
-                applyPopupAlpha(containerPalette.trackColor(), popupAlpha),
-                applyPopupAlpha(containerPalette.thumbColor(), popupAlpha)
-            )
-        );
-
-        for (int i = 0; i < rowCount; i++) {
-            int rowTop = listTop + i * rowHeight;
-            int rowBottom = Math.min(rowTop + rowHeight, listBottom);
-            boolean hovered = mouseX >= fieldX && mouseX <= fieldX + fieldWidth && mouseY >= rowTop && mouseY <= rowBottom;
-            String value = options.get(i);
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(UITheme.ACCENT_DEFAULT, hovered ? 1f : 0f, false, false);
-            if (hovered) {
-                UIStyleHelper.drawDropdownRow(
-                    context,
-                    fieldX + 1,
-                    rowTop,
-                    fieldWidth - 2,
-                    Math.max(0, rowBottom - rowTop),
-                    new UIStyleHelper.DropdownRowPalette(
-                        applyPopupAlpha(rowPalette.backgroundColor(), popupAlpha),
-                        applyPopupAlpha(rowPalette.borderColor(), popupAlpha),
-                        applyPopupAlpha(rowPalette.textColor(), popupAlpha)
-                    )
-                );
-            }
-            context.drawTextWithShadow(
-                textRenderer,
-                Text.literal(formatSimpleDropdownValue(value)),
-                fieldX + 4,
-                rowTop + 6,
-                applyPopupAlpha(hovered ? rowPalette.textColor() : UITheme.TEXT_PRIMARY, popupAlpha)
-            );
-        }
-    }
-
-    private String formatSimpleDropdownValue(String value) {
+    private String formatOverlayDisplayValue(int index, String value) {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        if (value.length() == 1) {
-            return value.toUpperCase(java.util.Locale.ROOT);
+        if (node == null || index < 0 || index >= node.getParameters().size()) {
+            return value;
         }
-        return Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase(java.util.Locale.ROOT);
+        NodeParameter parameter = node.getParameters().get(index);
+        if (parameter == null) {
+            return value;
+        }
+        if (node.getType() == NodeType.PARAM_HAND && "Hand".equalsIgnoreCase(parameter.getName())) {
+            String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+            if ("main".equals(normalized)
+                || "main hand".equals(normalized)
+                || "main_hand".equals(normalized)
+                || "main-hand".equals(normalized)
+                || "mainhand".equals(normalized)) {
+                return "Main Hand";
+            }
+            if ("off".equals(normalized)
+                || "offhand".equals(normalized)
+                || "off hand".equals(normalized)
+                || "off_hand".equals(normalized)
+                || "off-hand".equals(normalized)) {
+                return "Offhand";
+            }
+        }
+        if (node.getType() == NodeType.PARAM_BLOCK_FACE && "Face".equalsIgnoreCase(parameter.getName())) {
+            String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+            return switch (normalized) {
+                case "north" -> "North";
+                case "south" -> "South";
+                case "east" -> "East";
+                case "west" -> "West";
+                case "up" -> "Up";
+                case "down" -> "Down";
+                default -> value;
+            };
+        }
+        return value;
     }
 
     private static KeySpec key(String label, String value, int units) {

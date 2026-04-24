@@ -23,8 +23,5 @@
     "minecraft": "${minecraft_version}",
     "java": ">=21",
     "fabric-api": "*"
-  },
-  "recommends": {
-    "baritone": "*"
   }
 }

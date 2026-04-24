@@ -4095,7 +4095,7 @@ public class NodeGraph {
                             } else if (showMouseButtonPlaceholder) {
                                 value = "Left";
                             } else if (showHandPlaceholder) {
-                                value = "Main";
+                                value = "Main Hand";
                             } else if (showTradePlaceholder) {
                                 value = "1";
                             } else if (showAmountPlaceholder) {
@@ -9584,11 +9584,13 @@ public class NodeGraph {
                     if ("offhand".equals(normalized)
                         || "off_hand".equals(normalized)
                         || "off-hand".equals(normalized)
-                        || "off hand".equals(normalized)) {
-                        normalized = "off";
+                        || "off hand".equals(normalized)
+                        || "off".equals(normalized)) {
+                        normalized = "offhand";
                     } else if ("main_hand".equals(normalized)
                         || "main-hand".equals(normalized)
-                        || "main hand".equals(normalized)) {
+                        || "main hand".equals(normalized)
+                        || "mainhand".equals(normalized)) {
                         normalized = "main";
                     }
                     parameter.setStringValueFromUser(normalized);
@@ -9849,10 +9851,10 @@ public class NodeGraph {
 
     private String formatHandValue(String value) {
         if (isDefaultHandValue(value)) {
-            return "Main";
+            return "Main Hand";
         }
         if (value == null || value.isEmpty()) {
-            return "Main";
+            return "Main Hand";
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
         if ("off".equals(normalized)
@@ -9860,7 +9862,7 @@ public class NodeGraph {
             || "off_hand".equals(normalized)
             || "off-hand".equals(normalized)
             || "off hand".equals(normalized)) {
-            return "Off";
+            return "Offhand";
         }
         return value;
     }
@@ -9926,8 +9928,7 @@ public class NodeGraph {
             return false;
         }
         return isBooleanLiteralParameter(node, index)
-            || isAttributeDetectionDropdownParameter(node, index)
-            || isHandParameter(node, node.getParameters().get(index));
+            || isAttributeDetectionDropdownParameter(node, index);
     }
 
     private boolean isBlockFaceParameter(Node node, int index) {
@@ -11450,8 +11451,8 @@ public class NodeGraph {
         }
         if (isHandParameter(node, null)) {
             List<ParameterDropdownOption> result = new ArrayList<>();
-            result.add(new ParameterDropdownOption("Main", "main"));
-            result.add(new ParameterDropdownOption("Off", "off"));
+            result.add(new ParameterDropdownOption("Main Hand", "main"));
+            result.add(new ParameterDropdownOption("Offhand", "offhand"));
             return filterDropdownOptions(result, lowered);
         }
         if (isDirectionParameter(node, index)) {

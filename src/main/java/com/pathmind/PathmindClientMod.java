@@ -374,7 +374,7 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
         worldShutdownHandled = true;
-        LOGGER.info("Pathmind: handling client shutdown due to {}", reason);
+        LOGGER.debug("Pathmind: handling client shutdown due to {}", reason);
         ExecutionManager.getInstance().requestStopAll();
     }
 

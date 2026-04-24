@@ -22267,6 +22267,30 @@ public class Node {
         if (leftBoolean.isPresent() || rightBoolean.isPresent()) {
             return Optional.empty();
         }
+        Map<String, String> leftValues = left.exportParameterValues();
+        Map<String, String> rightValues = right.exportParameterValues();
+        Optional<Boolean> emptyTargetedBlockComparison = compareEmptyTargetedBlockValues(left, leftValues, right, rightValues);
+        if (emptyTargetedBlockComparison.isPresent()) {
+            return emptyTargetedBlockComparison;
+        }
+        if (leftValues != null && !leftValues.isEmpty() && rightValues != null && !rightValues.isEmpty()) {
+            Optional<Boolean> blockComparison = compareBlockSelectionValues(leftValues, rightValues);
+            if (blockComparison.isPresent()) {
+                return blockComparison;
+            }
+            Optional<Boolean> entityComparison = compareEntitySelectionValues(leftValues, rightValues);
+            if (entityComparison.isPresent()) {
+                return entityComparison;
+            }
+            Optional<Boolean> inventorySlotComparison = compareInventorySlotValues(left, leftValues, right, rightValues);
+            if (inventorySlotComparison.isPresent()) {
+                return inventorySlotComparison;
+            }
+            Optional<Boolean> itemComparison = compareItemSelectionValues(leftValues, rightValues);
+            if (itemComparison.isPresent()) {
+                return itemComparison;
+            }
+        }
         Optional<Double> leftNumber = resolveComparableNumber(left);
         Optional<Double> rightNumber = resolveComparableNumber(right);
         if (leftNumber.isPresent() && rightNumber.isPresent()) {
@@ -22285,30 +22309,8 @@ public class Node {
         if (leftString.isPresent() || rightString.isPresent()) {
             return Optional.empty();
         }
-        Map<String, String> leftValues = left.exportParameterValues();
-        Map<String, String> rightValues = right.exportParameterValues();
-        Optional<Boolean> emptyTargetedBlockComparison = compareEmptyTargetedBlockValues(left, leftValues, right, rightValues);
-        if (emptyTargetedBlockComparison.isPresent()) {
-            return emptyTargetedBlockComparison;
-        }
         if (leftValues == null || rightValues == null || leftValues.isEmpty() || rightValues.isEmpty()) {
             return Optional.empty();
-        }
-        Optional<Boolean> blockComparison = compareBlockSelectionValues(leftValues, rightValues);
-        if (blockComparison.isPresent()) {
-            return blockComparison;
-        }
-        Optional<Boolean> entityComparison = compareEntitySelectionValues(leftValues, rightValues);
-        if (entityComparison.isPresent()) {
-            return entityComparison;
-        }
-        Optional<Boolean> inventorySlotComparison = compareInventorySlotValues(left, leftValues, right, rightValues);
-        if (inventorySlotComparison.isPresent()) {
-            return inventorySlotComparison;
-        }
-        Optional<Boolean> itemComparison = compareItemSelectionValues(leftValues, rightValues);
-        if (itemComparison.isPresent()) {
-            return itemComparison;
         }
         return Optional.of(canonicalizeValueMap(leftValues).equals(canonicalizeValueMap(rightValues)));
     }
@@ -22508,6 +22510,22 @@ public class Node {
             return Optional.empty();
         }
 
+        // Prefer the slot's already-exported item/count snapshot when available so
+        // LIST_ITEM(gui) comparisons do not depend on a second live handler lookup.
+        List<String> slotSelections = resolveComparableItemSelections(slotValues);
+        if (!slotSelections.isEmpty()) {
+            if (!selectionsOverlap(slotSelections, itemSelections)) {
+                return Optional.of(false);
+            }
+
+            Optional<Integer> slotCount = resolveComparableItemCount(slotValues);
+            Optional<Integer> requiredCount = resolveComparableItemCount(itemValues);
+            if (slotCount.isPresent() && requiredCount.isPresent()) {
+                return Optional.of(slotCount.get().intValue() == requiredCount.get().intValue());
+            }
+            return Optional.of(true);
+        }
+
         ItemStack stack = resolveComparableInventorySlotStack(slotValues);
         if (stack == null || stack.isEmpty()) {
             return Optional.of(false);
@@ -22613,16 +22631,29 @@ public class Node {
             return false;
         }
         for (String left : leftValues) {
-            if (left == null || left.isEmpty()) {
+            String normalizedLeft = normalizeComparableItemSelection(left);
+            if (normalizedLeft.isEmpty()) {
                 continue;
             }
             for (String right : rightValues) {
-                if (left.equalsIgnoreCase(right)) {
+                String normalizedRight = normalizeComparableItemSelection(right);
+                if (!normalizedRight.isEmpty() && normalizedLeft.equalsIgnoreCase(normalizedRight)) {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    private String normalizeComparableItemSelection(String value) {
+        if (value == null) {
+            return "";
+        }
+        String sanitized = sanitizeResourceId(value);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return "";
+        }
+        return normalizeResourceId(sanitized, "minecraft");
     }
 
     private boolean statesMatch(String leftState, String rightState) {

@@ -404,6 +404,36 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void equalsComparesInventorySlotAndItemBeforeNumericSlotCount() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node slot = new Node(NodeType.PARAM_INVENTORY_SLOT, 0, 0) {
+            @Override
+            public Map<String, String> exportParameterValues() {
+                return Map.ofEntries(
+                    Map.entry("Slot", "0"),
+                    Map.entry("slot", "0"),
+                    Map.entry("Mode", "shulker_box|container"),
+                    Map.entry("mode", "shulker_box|container"),
+                    Map.entry("Item", "minecraft:emerald"),
+                    Map.entry("item", "minecraft:emerald"),
+                    Map.entry("Items", "minecraft:emerald"),
+                    Map.entry("items", "minecraft:emerald"),
+                    Map.entry("Count", "64"),
+                    Map.entry("count", "64"),
+                    Map.entry("Amount", "64"),
+                    Map.entry("amount", "64")
+                );
+            }
+        };
+        Node item = new Node(NodeType.PARAM_ITEM, 0, 0);
+        item.getParameter("Item").setStringValue("emerald");
+
+        assertTrue(equals.attachParameter(slot, 0));
+        assertTrue(equals.attachParameter(item, 1));
+        assertTrue(equals.evaluateSensor());
+    }
+
+    @Test
     void equalsFailsWhenCoordinateAndGroupContainsMismatch() {
         Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
         Node position = coordinateNode(10, 64, 10);

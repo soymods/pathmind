@@ -9,20 +9,13 @@ import net.minecraft.client.util.ObjectAllocator;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(WorldRenderer.class)
 public class NavigatorWorldRendererMixin {
-    @Inject(
-        method = "render",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/render/WorldRenderer;renderLateDebug(Lnet/minecraft/client/render/FrameGraphBuilder;Lnet/minecraft/client/render/state/CameraRenderState;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;Lorg/joml/Matrix4f;)V",
-            shift = At.Shift.BEFORE
-        )
-    )
+    @Inject(method = "render", at = @At("TAIL"))
     private void pathmind$renderNavigatorOverlay(
         ObjectAllocator allocator,
         RenderTickCounter tickCounter,

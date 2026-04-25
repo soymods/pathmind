@@ -175,6 +175,7 @@ public final class PathmindNavigator {
     private long lastProgressAtMs;
     private long lastPlanAtMs;
     private long lastJumpAtMs;
+    private long lastMiningJumpGateLogAtMs;
     private double bestDistanceSq = Double.MAX_VALUE;
     private GoalMode goalMode = GoalMode.EXACT;
     private WaterMode waterMode = WaterMode.NORMAL;
@@ -361,6 +362,7 @@ public final class PathmindNavigator {
         this.lastProgressAtMs = this.startedAtMs;
         this.lastPlanAtMs = 0L;
         this.lastJumpAtMs = 0L;
+        this.lastMiningJumpGateLogAtMs = 0L;
         this.bestDistanceSq = Double.MAX_VALUE;
         this.goalMode = GoalMode.EXACT;
         this.resolvedGoalPos = targetPos.toImmutable();
@@ -6167,14 +6169,24 @@ public final class PathmindNavigator {
             if (advanceBlock == null) {
                 return false;
             }
+            boolean jumpOpportunity = waypoint.getY() > playerFootPos.getY()
+                && canAttemptMiningAdvanceJump(world, playerFootPos, waypoint);
+            BlockPos moveTarget = jumpOpportunity
+                ? resolveJumpUpApproachTarget(world, playerFootPos, waypoint)
+                : advanceBlock;
+            if (moveTarget == null) {
+                moveTarget = advanceBlock;
+            }
             Vec3d currentPos = new Vec3d(player.getX(), player.getY(), player.getZ());
-            Vec3d advanceAim = Vec3d.ofCenter(advanceBlock, player.getY() - advanceBlock.getY());
+            Vec3d advanceAim = Vec3d.ofCenter(moveTarget, player.getY() - moveTarget.getY());
             double dx = advanceAim.x - currentPos.x;
             double dz = advanceAim.z - currentPos.z;
             double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+            float jumpYawError = 180.0F;
             if (horizontalDistance > 0.0001D) {
                 float targetYaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
                 float nextYaw = stepAngle(player.getYaw(), targetYaw, MAX_YAW_STEP);
+                jumpYawError = Math.abs(MathHelper.wrapDegrees(targetYaw - nextYaw));
                 player.setYaw(nextYaw);
                 player.setHeadYaw(nextYaw);
                 player.setBodyYaw(nextYaw);
@@ -6186,18 +6198,54 @@ public final class PathmindNavigator {
                 );
             }
             if (client.options != null) {
-                if (client.options.forwardKey != null) {
-                    client.options.forwardKey.setPressed(true);
+            if (client.options.forwardKey != null) {
+                client.options.forwardKey.setPressed(true);
+            }
+            if (client.options.jumpKey != null) {
+                boolean canHop = player.isOnGround()
+                    && jumpOpportunity
+                    && horizontalDistance <= 1.6D
+                    && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES;
+                client.options.jumpKey.setPressed(canHop);
+                if (jumpOpportunity && !canHop) {
+                    synchronized (this) {
+                        if (now - lastMiningJumpGateLogAtMs >= 250L) {
+                            appendDebugEventLocked(
+                                "miningAdvanceJumpGate player=" + formatDebugPos(playerFootPos)
+                                    + " waypoint=" + formatDebugPos(waypoint)
+                                    + " moveTarget=" + formatDebugPos(moveTarget)
+                                    + " advanceBlock=" + formatDebugPos(advanceBlock)
+                                    + " onGround=" + player.isOnGround()
+                                    + " horizontalDistance=" + (((double) Math.round(horizontalDistance * 100.0D)) / 100.0D)
+                                    + " jumpYawError=" + (((double) Math.round(jumpYawError * 100.0D)) / 100.0D)
+                                    + " maxJumpYawError=" + JUMP_YAW_ALIGNMENT_DEGREES
+                                    + " canAttempt=" + canAttemptMiningAdvanceJump(world, playerFootPos, waypoint)
+                            );
+                            lastMiningJumpGateLogAtMs = now;
+                        }
+                    }
                 }
-                if (client.options.jumpKey != null) {
-                    client.options.jumpKey.setPressed(false);
+                if (canHop) {
+                    player.jump();
+                    synchronized (this) {
+                        activeBreakTarget = null;
+                        activeMiningAscentPhase = MiningAscentPhase.JUMP;
+                            lastJumpAtMs = now;
+                            committedJumpWaypoint = moveTarget.toImmutable();
+                            committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
+                            lastReplanReason = "mined ascent advance jump";
+                            lastStuckReason = "jumping onto mined step";
+                        }
+                        noteControllerActivity(now);
+                        return true;
+                    }
                 }
             }
             synchronized (this) {
                 activeBreakTarget = null;
                 activeMiningAscentPhase = MiningAscentPhase.ADVANCE;
-                lastReplanReason = "mined ascent advance";
-                lastStuckReason = "advancing into mined step";
+                lastReplanReason = jumpOpportunity ? "stage mined ascent jump" : "mined ascent advance";
+                lastStuckReason = jumpOpportunity ? "staging mined step jump" : "advancing into mined step";
             }
             noteControllerActivity(now);
             return true;
@@ -6276,6 +6324,18 @@ public final class PathmindNavigator {
         int resumeIndex = resolveCommittedMiningResumeIndexLocked(playerFootPos, waypoint, plannedPrimitive);
         if (resumeIndex < 0) {
             return MiningProgress.incomplete();
+        }
+        if (plannedPrimitive.isMineAscent()) {
+            int currentIndex = currentPath.isEmpty() ? -1 : Math.max(0, Math.min(pathIndex, currentPath.size() - 1));
+            if (waypoint != null) {
+                int waypointIndex = currentPath.indexOf(waypoint);
+                if (waypointIndex >= 0) {
+                    currentIndex = waypointIndex;
+                }
+            }
+            if (resumeIndex <= currentIndex) {
+                return MiningProgress.incomplete();
+            }
         }
         return new MiningProgress(true, resumeIndex, plannedPrimitive.isMineAscent());
     }
@@ -6400,7 +6460,10 @@ public final class PathmindNavigator {
             boundedIndex = currentIndex;
         }
         if (plannedPrimitive.isMineAscent()) {
-            if (playerFootPos.getY() >= waypoint.getY() - 1) {
+            double stairDistanceSq = horizontalDistanceSq(playerFootPos, waypoint);
+            boolean reachedByHeight = playerFootPos.getY() >= waypoint.getY() - 1;
+            boolean reachedCurrentStep = reachedByHeight && stairDistanceSq <= WAYPOINT_REACHED_DISTANCE_SQ;
+            if (reachedCurrentStep) {
                 int nextIndex = Math.min(currentPath.size() - 1, boundedIndex + 1);
                 appendDebugEventLocked(
                     "miningResume currentIndex=" + boundedIndex
@@ -6408,7 +6471,9 @@ public final class PathmindNavigator {
                         + " player=" + formatDebugPos(playerFootPos)
                         + " waypoint=" + formatDebugPos(waypoint)
                         + " nextWaypoint=" + formatDebugPos(currentPath.get(nextIndex))
-                        + " reachedByHeight=true"
+                        + " reachedByHeight=" + reachedByHeight
+                        + " stairDistanceSq=" + (((double) Math.round(stairDistanceSq * 100.0D)) / 100.0D)
+                        + " reachedCurrentStep=true"
                 );
                 return currentPath.get(nextIndex) != null ? nextIndex : boundedIndex;
             }
@@ -6417,7 +6482,9 @@ public final class PathmindNavigator {
                     + " nextIndex=hold"
                     + " player=" + formatDebugPos(playerFootPos)
                     + " waypoint=" + formatDebugPos(waypoint)
-                    + " reachedByHeight=false"
+                    + " reachedByHeight=" + reachedByHeight
+                    + " stairDistanceSq=" + (((double) Math.round(stairDistanceSq * 100.0D)) / 100.0D)
+                    + " reachedCurrentStep=false"
             );
             return boundedIndex;
         }

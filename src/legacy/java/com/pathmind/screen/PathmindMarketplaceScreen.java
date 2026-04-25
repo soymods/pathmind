@@ -2356,7 +2356,7 @@ public class PathmindMarketplaceScreen extends Screen {
         );
         if (!disabled && easedHover > 0.001f) {
             int glowColor = animation.getAnimatedPopupColor(AnimationHelper.lerpColor(getAccentColor(), UITheme.TEXT_HEADER, 0.22f));
-            int alpha = Math.min(84, Math.round(72f * easedHover));
+            int alpha = Math.min(84, Math.round(72f * easedHover * animation.getPopupAlpha()));
             context.fill(x - 1, y - 1, x + width + 1, y + height + 1, (alpha << 24) | (glowColor & 0x00FFFFFF));
         }
         UIStyleHelper.drawToolbarButtonFrame(
@@ -3194,6 +3194,12 @@ public class PathmindMarketplaceScreen extends Screen {
             int textX = x + (size - this.textRenderer.getWidth(initials)) / 2;
             int textY = y + (size - this.textRenderer.fontHeight) / 2;
             context.drawTextWithShadow(this.textRenderer, Text.literal(initials), textX, textY, accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
+        }
+        float popupAlpha = Math.max(0f, Math.min(1f, accountPopupAnimation.getPopupAlpha()));
+        if (popupAlpha < 0.999f) {
+            int fadeAlpha = Math.min(255, Math.round((1f - popupAlpha) * 255f));
+            DrawContextBridge.fillOverlay(context, x + 3, y + 3, x + size - 3, y + size - 3,
+                (fadeAlpha << 24) | (UITheme.BACKGROUND_PRIMARY & 0x00FFFFFF));
         }
 
     }

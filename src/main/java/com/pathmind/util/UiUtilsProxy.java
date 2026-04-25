@@ -16,6 +16,7 @@ public final class UiUtilsProxy {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/UiUtils");
     private static final String SHARED_VARIABLES_CLASS = "com.ui_utils.SharedVariables";
     private static final String COMMAND_SYSTEM_CLASS = "com.mrbreaknfix.ui_utils.command.CommandSystem";
+    private static final String UI_ACTIONS_CLASS = "com.mrbreaknfix.ui_utils.utils.UIActions";
 
     private static volatile boolean initialized;
     private static Backend backend = Backend.NONE;
@@ -30,6 +31,14 @@ public final class UiUtilsProxy {
     private static Field bypassResourcePackField;
     private static Field resourcePackForceDenyField;
     private static Method executeCommandMethod;
+    private static Class<?> uiActionsClass;
+    private static Method setSendPacketsMethod;
+    private static Method shouldSendPacketsMethod;
+    private static Method setDelayPacketsMethod;
+    private static Method shouldDelayPacketsMethod;
+    private static Method disconnectAndSendPacketsMethod;
+    private static Field delayedModernPacketsField;
+    private static Field shouldEditSignModernField;
     private static Field overlayField;
     private static Method overlaySetEnabledMethod;
     private static Field overlayEnabledField;
@@ -76,6 +85,7 @@ public final class UiUtilsProxy {
         try {
             Class<?> commandSystem = Class.forName(COMMAND_SYSTEM_CLASS, false, UiUtilsProxy.class.getClassLoader());
             executeCommandMethod = commandSystem.getMethod("executeCommand", String.class);
+            initModernActions();
             backend = Backend.MODERN;
             initOverlayAccess();
             return true;
@@ -95,6 +105,17 @@ public final class UiUtilsProxy {
             backend = Backend.NONE;
             return false;
         }
+    }
+
+    private static void initModernActions() throws ReflectiveOperationException {
+        uiActionsClass = Class.forName(UI_ACTIONS_CLASS, false, UiUtilsProxy.class.getClassLoader());
+        setSendPacketsMethod = uiActionsClass.getMethod("setSendPackets", boolean.class);
+        shouldSendPacketsMethod = uiActionsClass.getMethod("shouldSendPackets");
+        setDelayPacketsMethod = uiActionsClass.getMethod("setDelayPackets", boolean.class);
+        shouldDelayPacketsMethod = uiActionsClass.getMethod("shouldDelayPackets");
+        disconnectAndSendPacketsMethod = uiActionsClass.getMethod("disconnectAndSendPackets");
+        delayedModernPacketsField = uiActionsClass.getField("delayedUIPackets");
+        shouldEditSignModernField = uiActionsClass.getField("shouldEditSign");
     }
 
     private static void initOverlayAccess() {
@@ -162,22 +183,49 @@ public final class UiUtilsProxy {
     }
 
     public static Boolean getSendPackets() {
+        if (!init()) {
+            return null;
+        }
+        if (backend == Backend.MODERN) {
+            return invokeBooleanMethod(shouldSendPacketsMethod);
+        }
         return getBooleanField(sendUIPacketsField);
     }
 
     public static Boolean getDelayPackets() {
+        if (!init()) {
+            return null;
+        }
+        if (backend == Backend.MODERN) {
+            return invokeBooleanMethod(shouldDelayPacketsMethod);
+        }
         return getBooleanField(delayUIPacketsField);
     }
 
     public static boolean setSendPackets(boolean value) {
+        if (!init()) {
+            return false;
+        }
+        if (backend == Backend.MODERN) {
+            return invokeVoidBooleanMethod(setSendPacketsMethod, value);
+        }
         return setBooleanField(sendUIPacketsField, value);
     }
 
     public static boolean setDelayPackets(boolean value) {
+        if (!init()) {
+            return false;
+        }
+        if (backend == Backend.MODERN) {
+            return invokeModernDelaySetter(value);
+        }
         return setBooleanField(delayUIPacketsField, value);
     }
 
     public static boolean setShouldEditSign(boolean value) {
+        if (backend == Backend.MODERN) {
+            return setBooleanField(shouldEditSignModernField, value);
+        }
         return setBooleanField(shouldEditSignField, value);
     }
 
@@ -210,11 +258,15 @@ public final class UiUtilsProxy {
     }
 
     public static List<?> getDelayedPackets() {
-        if (!init() || backend != Backend.LEGACY) {
+        if (!init()) {
+            return null;
+        }
+        Field field = backend == Backend.MODERN ? delayedModernPacketsField : delayedUIPacketsField;
+        if (field == null) {
             return null;
         }
         try {
-            Object value = delayedUIPacketsField.get(null);
+            Object value = field.get(null);
             return value instanceof List<?> ? (List<?>) value : null;
         } catch (IllegalAccessException e) {
             LOGGER.warn("Failed to access UI Utils delayed packets: {}", e.getMessage());
@@ -263,19 +315,38 @@ public final class UiUtilsProxy {
     }
 
     public static boolean flushDelayedPackets(MinecraftClient client) {
-        if (backend != Backend.LEGACY || client == null || client.getNetworkHandler() == null) {
+        if (!init() || client == null || client.getNetworkHandler() == null) {
             return false;
+        }
+        Boolean restoreDelay = null;
+        if (backend == Backend.MODERN) {
+            restoreDelay = getDelayPackets();
+            if (Boolean.TRUE.equals(restoreDelay) && !setDelayPackets(false)) {
+                return false;
+            }
         }
         List<?> packets = getDelayedPackets();
         if (packets == null || packets.isEmpty()) {
+            if (Boolean.TRUE.equals(restoreDelay)) {
+                setDelayPackets(true);
+            }
             return true;
         }
         for (Object packet : new java.util.ArrayList<>(packets)) {
             if (packet instanceof Packet<?> cast) {
-                client.getNetworkHandler().sendPacket(cast);
+                if (backend == Backend.MODERN) {
+                    if (!tryWriteAndFlush(client.getNetworkHandler().getConnection(), cast)) {
+                        return false;
+                    }
+                } else {
+                    client.getNetworkHandler().sendPacket(cast);
+                }
             }
         }
         packets.clear();
+        if (Boolean.TRUE.equals(restoreDelay)) {
+            setDelayPackets(true);
+        }
         return true;
     }
 
@@ -302,7 +373,7 @@ public final class UiUtilsProxy {
     }
 
     private static Boolean getBooleanField(Field field) {
-        if (!init() || backend != Backend.LEGACY || field == null) {
+        if (!init() || field == null) {
             return null;
         }
         try {
@@ -314,7 +385,7 @@ public final class UiUtilsProxy {
     }
 
     private static boolean setBooleanField(Field field, boolean value) {
-        if (!init() || backend != Backend.LEGACY || field == null) {
+        if (!init() || field == null) {
             return false;
         }
         try {
@@ -324,6 +395,61 @@ public final class UiUtilsProxy {
             LOGGER.warn("Failed to update UI Utils boolean field: {}", e.getMessage());
             return false;
         }
+    }
+
+    private static Boolean invokeBooleanMethod(Method method) {
+        if (method == null) {
+            return null;
+        }
+        try {
+            Object value = method.invoke(null);
+            return value instanceof Boolean ? (Boolean) value : null;
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to invoke UI Utils boolean method: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private static boolean invokeVoidBooleanMethod(Method method, boolean value) {
+        if (method == null) {
+            return false;
+        }
+        try {
+            method.invoke(null, value);
+            return true;
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to invoke UI Utils setter: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private static boolean invokeModernDelaySetter(boolean value) {
+        if (setDelayPacketsMethod == null) {
+            return false;
+        }
+        try {
+            Object result = setDelayPacketsMethod.invoke(null, value);
+            return result instanceof Boolean ? (Boolean) result : true;
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to update UI Utils delay packets: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean disconnectAndSendPackets() {
+        if (!init()) {
+            return false;
+        }
+        if (backend == Backend.MODERN) {
+            try {
+                disconnectAndSendPacketsMethod.invoke(null);
+                return true;
+            } catch (ReflectiveOperationException e) {
+                LOGGER.warn("Failed to disconnect and send UI Utils packets: {}", e.getMessage());
+                return false;
+            }
+        }
+        return false;
     }
 
     private enum Backend {

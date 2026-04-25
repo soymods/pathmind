@@ -220,22 +220,22 @@ class NodeCompatibilityTest {
 
     @Test
     void uiUtilsDelayPacketModesDoNotExposeEnabledParameter() {
-        Node enableDelay = new Node(NodeType.UI_UTILS, 0, 0);
-        enableDelay.setMode(NodeMode.UI_UTILS_ENABLE_DELAY_PACKETS);
+        Node delayPackets = new Node(NodeType.UI_UTILS, 0, 0);
+        delayPackets.setMode(NodeMode.UI_UTILS_ENABLE_DELAY_PACKETS);
 
         Node disableDelay = new Node(NodeType.UI_UTILS, 0, 0);
         disableDelay.setMode(NodeMode.UI_UTILS_DISABLE_DELAY_PACKETS);
 
-        assertNull(enableDelay.getParameter("Enabled"));
+        assertNull(delayPackets.getParameter("Enabled"));
         assertNull(disableDelay.getParameter("Enabled"));
     }
 
     @Test
-    void uiUtilsModePickerUsesExplicitDelayModes() {
+    void uiUtilsModePickerUsesSingleDelayToggleMode() {
         List<NodeMode> modes = List.of(NodeMode.getModesForNodeType(NodeType.UI_UTILS));
 
         assertTrue(modes.contains(NodeMode.UI_UTILS_ENABLE_DELAY_PACKETS));
-        assertTrue(modes.contains(NodeMode.UI_UTILS_DISABLE_DELAY_PACKETS));
+        assertFalse(modes.contains(NodeMode.UI_UTILS_DISABLE_DELAY_PACKETS));
         assertFalse(modes.contains(NodeMode.UI_UTILS_SET_SEND_PACKETS));
         assertFalse(modes.contains(NodeMode.UI_UTILS_SET_DELAY_PACKETS));
     }

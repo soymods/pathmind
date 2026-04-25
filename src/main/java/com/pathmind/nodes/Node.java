@@ -10828,9 +10828,6 @@ public class Node {
                         );
                         break;
                     case UI_UTILS_SET_SEND_PACKETS: {
-                        if (modernBackend) {
-                            throw new RuntimeException("Set Send Packets is not supported by this UI Utils version.");
-                        }
                         boolean enabled = parseNodeBoolean(this, "Enabled", true);
                         if (!com.pathmind.util.UiUtilsProxy.setSendPackets(enabled)) {
                             throw new RuntimeException("Failed to update UI Utils send packets setting.");
@@ -10843,15 +10840,12 @@ public class Node {
                         break;
                     }
                     case UI_UTILS_ENABLE_DELAY_PACKETS:
-                        updateUiUtilsDelayPackets(client, modernBackend, true);
+                        toggleUiUtilsDelayPackets(client, modernBackend);
                         break;
                     case UI_UTILS_DISABLE_DELAY_PACKETS:
                         updateUiUtilsDelayPackets(client, modernBackend, false);
                         break;
                     case UI_UTILS_FLUSH_DELAYED_PACKETS:
-                        if (modernBackend) {
-                            throw new RuntimeException("UI Utils version does not support delayed packets.");
-                        }
                         flushUiUtilsDelayedPackets(client, true);
                         break;
                     case UI_UTILS_SAVE_GUI:
@@ -10895,7 +10889,10 @@ public class Node {
                         break;
                     case UI_UTILS_DISCONNECT_AND_SEND:
                         if (modernBackend) {
-                            throw new RuntimeException("UI Utils version does not support disconnect-and-send.");
+                            if (!com.pathmind.util.UiUtilsProxy.disconnectAndSendPackets()) {
+                                throw new RuntimeException("Failed to disconnect and send UI Utils packets.");
+                            }
+                            break;
                         }
                         if (client.getNetworkHandler() == null) {
                             throw new RuntimeException("Cannot disconnect without a network handler.");
@@ -10978,16 +10975,18 @@ public class Node {
     }
 
     private void updateUiUtilsDelayPackets(net.minecraft.client.MinecraftClient client, boolean modernBackend, boolean enabled) {
-        if (modernBackend) {
-            throw new RuntimeException("UI Utils version does not support delayed packets.");
-        }
         Boolean wasEnabled = com.pathmind.util.UiUtilsProxy.getDelayPackets();
         if (!com.pathmind.util.UiUtilsProxy.setDelayPackets(enabled)) {
             throw new RuntimeException("Failed to update UI Utils delay packets setting.");
         }
-        if (!enabled && Boolean.TRUE.equals(wasEnabled)) {
+        if (!modernBackend && !enabled && Boolean.TRUE.equals(wasEnabled)) {
             flushUiUtilsDelayedPackets(client, true);
         }
+    }
+
+    private void toggleUiUtilsDelayPackets(net.minecraft.client.MinecraftClient client, boolean modernBackend) {
+        Boolean currentlyEnabled = com.pathmind.util.UiUtilsProxy.getDelayPackets();
+        updateUiUtilsDelayPackets(client, modernBackend, !Boolean.TRUE.equals(currentlyEnabled));
     }
 
     private String buildModernClickCommand() {

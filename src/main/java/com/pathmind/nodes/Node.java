@@ -19807,22 +19807,18 @@ public class Node {
         }
 
         int maxTrades = Integer.MAX_VALUE;
-        net.minecraft.village.TradedItem firstTradedItem = offer.getFirstBuyItem();
-        net.minecraft.item.ItemStack firstBuyItem = firstTradedItem.itemStack();
+        net.minecraft.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
         if (!firstBuyItem.isEmpty()) {
             int required = Math.max(1, firstBuyItem.getCount());
             int available = countAvailableForTrade(player.getInventory(), screenHandler, firstBuyItem);
             maxTrades = Math.min(maxTrades, available / required);
         }
 
-        java.util.Optional<net.minecraft.village.TradedItem> secondBuyItemOpt = offer.getSecondBuyItem();
-        if (secondBuyItemOpt.isPresent()) {
-            net.minecraft.item.ItemStack secondBuyItem = secondBuyItemOpt.get().itemStack();
-            if (!secondBuyItem.isEmpty()) {
-                int required = Math.max(1, secondBuyItem.getCount());
-                int available = countAvailableForTrade(player.getInventory(), screenHandler, secondBuyItem);
-                maxTrades = Math.min(maxTrades, available / required);
-            }
+        net.minecraft.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
+        if (!secondBuyItem.isEmpty()) {
+            int required = Math.max(1, secondBuyItem.getCount());
+            int available = countAvailableForTrade(player.getInventory(), screenHandler, secondBuyItem);
+            maxTrades = Math.min(maxTrades, available / required);
         }
 
         maxTrades = Math.min(maxTrades, Math.max(0, offer.getMaxUses() - offer.getUses()));
@@ -19838,11 +19834,7 @@ public class Node {
 
         net.minecraft.entity.player.PlayerInventory inventory = player.getInventory();
 
-        // In Minecraft 1.21+, getFirstBuyItem() returns TradedItem, use itemStack() to get ItemStack
-        net.minecraft.village.TradedItem firstTradedItem = offer.getFirstBuyItem();
-        net.minecraft.item.ItemStack firstBuyItem = firstTradedItem.itemStack();
-
-        // Check first required item
+        net.minecraft.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
         if (!firstBuyItem.isEmpty()) {
             int required = firstBuyItem.getCount();
             int available = countAvailableForTrade(inventory, screenHandler, firstBuyItem);
@@ -19851,12 +19843,8 @@ public class Node {
             }
         }
 
-        // Check second required item (if exists)
-        // getSecondBuyItem() returns Optional<TradedItem> in Minecraft 1.21+
-        java.util.Optional<net.minecraft.village.TradedItem> secondBuyItemOpt = offer.getSecondBuyItem();
-        if (secondBuyItemOpt.isPresent()) {
-            net.minecraft.village.TradedItem tradedItem = secondBuyItemOpt.get();
-            net.minecraft.item.ItemStack secondBuyItem = tradedItem.itemStack();
+        net.minecraft.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
+        if (!secondBuyItem.isEmpty()) {
             int required = secondBuyItem.getCount();
             int available = countAvailableForTrade(inventory, screenHandler, secondBuyItem);
             if (available < required) {
@@ -19865,6 +19853,41 @@ public class Node {
         }
 
         return true;
+    }
+
+    private static net.minecraft.item.ItemStack getRequiredFirstBuyItem(net.minecraft.village.TradeOffer offer) {
+        return offer == null ? net.minecraft.item.ItemStack.EMPTY : offer.getDisplayedFirstBuyItem();
+    }
+
+    private static net.minecraft.item.ItemStack getRequiredSecondBuyItem(net.minecraft.village.TradeOffer offer) {
+        return offer == null ? net.minecraft.item.ItemStack.EMPTY : offer.getDisplayedSecondBuyItem();
+    }
+
+    static int getRequiredFirstBuyCountForTests(net.minecraft.village.TradeOffer offer) {
+        if (offer == null) {
+            return 0;
+        }
+        return resolveRequiredTradeCount(
+            getRequiredFirstBuyItem(offer).getCount(),
+            offer.getFirstBuyItem().itemStack().getCount()
+        );
+    }
+
+    static int getRequiredSecondBuyCountForTests(net.minecraft.village.TradeOffer offer) {
+        if (offer == null) {
+            return 0;
+        }
+        java.util.Optional<net.minecraft.village.TradedItem> secondBuyItem = offer.getSecondBuyItem();
+        int originalCount = secondBuyItem.map(item -> item.itemStack().getCount()).orElse(0);
+        return resolveRequiredTradeCount(getRequiredSecondBuyItem(offer).getCount(), originalCount);
+    }
+
+    static int resolveRequiredTradeCountForTests(int displayedCount, int originalCount) {
+        return resolveRequiredTradeCount(displayedCount, originalCount);
+    }
+
+    private static int resolveRequiredTradeCount(int displayedCount, int originalCount) {
+        return displayedCount > 0 ? displayedCount : Math.max(0, originalCount);
     }
 
     private int countAvailableForTrade(net.minecraft.entity.player.PlayerInventory inventory,

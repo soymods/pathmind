@@ -241,6 +241,13 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void villagerTradeUsesDisplayedDiscountedPriceForFirstBuyItem() {
+        assertEquals(3, Node.resolveRequiredTradeCountForTests(3, 5));
+        assertEquals(5, Node.resolveRequiredTradeCountForTests(0, 5));
+        assertEquals(0, Node.resolveRequiredTradeCountForTests(0, 0));
+    }
+
+    @Test
     void equalsSupportsCoordinateOrGroupComparisons() {
         Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
         Node position = coordinateNode(10, 64, 10);

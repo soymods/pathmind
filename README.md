@@ -3,16 +3,15 @@
 # Pathmind
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21--1.21.11-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
-[![Fabric](https://img.shields.io/badge/Fabric-0.18.3-CC6E3E?style=for-the-badge&logo=modrinth)](https://fabricmc.net)
+[![Fabric](https://img.shields.io/badge/Fabric-0.17.3%2B-CC6E3E?style=for-the-badge&logo=modrinth)](https://fabricmc.net)
 [![Java](https://img.shields.io/badge/Java-21+-FF6B6B?style=for-the-badge&logo=openjdk)](https://openjdk.java.net)
 [![License](https://img.shields.io/badge/License-See%20LICENSE-lightgrey?style=for-the-badge)](LICENSE.txt)
-[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen?style=for-the-badge)](https://github.com/soymods/pathmind)
 
-A visual sandbox for designing automation workflows
+A visual node editor for building Minecraft automation workflows.
 
 🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
 
-### ⬇️ **DOWNLOAD PATHMIND ON MODRINTH** ⬇️
+### Download On Modrinth
 
 <a href="https://modrinth.com/mod/pathmind">
   <img src="https://img.shields.io/badge/Modrinth-DOWNLOAD-00D5AA?style=for-the-badge&logo=modrinth&logoColor=white">
@@ -20,142 +19,169 @@ A visual sandbox for designing automation workflows
 
 </div>
 
-## Quick Start
+## What Pathmind Is
 
-### Prerequisites
-- **Minecraft**: Any supported version (match the `+mc<version>` suffix on the jar you download)
-- **Fabric Loader**: 0.17.3 or higher
-- **Fabric API**: release that matches your chosen Minecraft version
-- **Java**: 21 or higher
+Pathmind lets you build automation with a visual graph instead of writing commands or scripts. You place nodes, connect them, configure parameters, then run the graph in-game.
 
-### Installation
+The current mod includes:
 
-1. **Install Fabric Loader**
-   - Download and install Fabric Loader for your chosen Minecraft version
-   - [Download from FabricMC](https://fabricmc.net/use/installer/)
+- A visual editor for building automation graphs in-game.
+- Workspace and preset management for saving and organizing your graphs.
+- Runtime automation features for executing workflows and reacting to game state.
+- Pathfinding and movement automation, with optional integrations for expanded behavior.
+- An in-game marketplace for sharing and discovering community presets.
+- HUD and editor feedback to help monitor execution and troubleshoot graphs.
 
-2. **Install Fabric API**
-   - Download the Fabric API build that matches your chosen Minecraft version
-   - [Download from Modrinth](https://modrinth.com/mod/fabric-api)
-   - Place it in your `mods` folder
+## Feature Overview
 
-4. **Install Pathmind**
-   - Download the Pathmind jar that matches your chosen Minecraft version
-   - [Download from Modrinth](https://modrinth.com/mod/pathmind)
-   - Place it in your `mods` folder
+### Visual Editor
 
-5. **Launch and Enjoy!**
-   - Start Minecraft with Fabric Loader
-   - Use your configured keybind to open the visual editor
-  
-  </div>
-</p>
+- Full-screen graph editing built around nodes and connections.
+- Tools for organizing, editing, and validating workflows.
+- Customizable editor presentation and general usability settings.
+
+### Nodes And Logic
+
+- Node categories for flow control, world interaction, player actions, data handling, sensing, parameters, and reusable logic.
+- Support for combining simple actions into larger automation workflows.
+- Reusable graph structures for building modular systems.
+
+### Execution And Runtime
+
+- Run graphs directly in-game and monitor what they are doing.
+- Build workflows that respond to events, conditions, and changing state.
+- Use runtime state and feedback overlays while automation is active.
+
+### Navigation And Pathfinding
+
+Pathmind ships with its own local movement backend and also supports Baritone-aware nodes.
+
+- Built-in movement and pathfinding support for navigation-focused automation.
+- Optional Baritone integration for players who want expanded navigation behavior.
+- Visual feedback for navigation state while workflows are running.
+
+### Marketplace
+
+The in-game marketplace is more than a static browser:
+
+- Browse shared presets from inside the mod.
+- Import community presets into your own workspace.
+- Publish and manage your own presets through the in-game UI.
+
+## Controls
+
+Default keybinds:
+
+- Open editor: `Right Alt`
+- Play graphs: `K`
+- Stop graphs: `J`
+
+Pathmind also adds main-menu integration so the editor is reachable before joining a world.
+
+## Installation
+
+### Required
+
+- Minecraft `1.21` through `1.21.11`
+- Fabric Loader `0.17.3` or newer
+- Matching Fabric API
+- Java `21+`
+
+### Optional
+
+- Baritone API mod for Baritone-backed nodes and extended navigation/building integration
+- UI Utils for UI automation nodes and related integrations
+
+### Steps
+
+1. Install Fabric Loader for your target Minecraft version.
+2. Install the matching Fabric API release.
+3. Download the correct Pathmind jar from Modrinth.
+4. Place the jars in your `mods` folder.
+5. Launch the game and open Pathmind with the configured keybind.
+
+## Workspace Files
+
+Pathmind stores data inside your Minecraft directory under `pathmind/`.
+
+- `pathmind/presets/`: saved workspace graphs
+- `pathmind/active_preset.txt`: current preset selection
+- `pathmind/settings.json`: user settings
+- `pathmind/marketplace_auth.json`: marketplace session data
+
+Imported marketplace presets and exported graphs also flow through this preset system.
 
 ## Compatibility
 
-- Release jars are suffixed with `+mc<version>` so you can keep multiple Minecraft targets side-by-side (e.g., `pathmind-1.1.4+mc1.21.11.jar`).
-- The default Gradle build targets the version listed in `gradle.properties`, but passing `-Pmc_version=<version>` (or using the auto-generated `buildMc<version>` tasks) compiles the identical codebase against any entry in `supportedMinecraftVersions`.
-- Use the `buildAllTargets` task to batch-build jars for every configured version.
+- Release jars are versioned as `pathmind-<modVersion>+mc<gameVersion>.jar`.
+- The same codebase is built for every supported Minecraft target from `1.21` through `1.21.11`.
+- Multiple language files are included.
+- Marketplace listings include version compatibility metadata.
 
 ## Development
 
-### Building from Source
+### Build From Source
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/soymods/pathmind.git
-   cd pathmind
-   ```
+```bash
+git clone https://github.com/soymods/pathmind.git
+cd pathmind
+./gradlew build
+```
 
-2. **Generate Sources**
-   ```bash
-   ./gradlew genSources
-   ```
+Artifacts are written to `build/libs/`.
 
-3. **Import to IDE**
-   - Import as a Gradle project
-   - Wait for dependencies to resolve
+### Run In Dev
 
-4. **Build the Mod**
-   ```bash
-   ./gradlew build
-   ```
-   Output will be in `build/libs/`
+```bash
+./gradlew runClient
+```
 
-5. **Run in Development**
-   ```bash
-   ./gradlew runClient
-   ```
+### Build A Specific Minecraft Target
 
-### Building for Specific Minecraft Versions
+```bash
+./gradlew build -Pmc_version=1.21.11
+```
 
-- `./gradlew build` creates a jar for the default target (set in `gradle.properties`), but the source code is the same across all supported versions.
-- To build for another version, override the property:  
-  `./gradlew build -Pmc_version=<minecraftVersion>`
-- Convenience tasks are available:
-  - `./gradlew buildMc1_21_11` (build only for `1.21.11`, as an example)
-  - `./gradlew buildAllTargets` (build every configured version sequentially)
-- Each jar is versioned as `pathmind-<modVersion>+mc<gameVersion>.jar` so you can publish multiple targets side by side.
+Convenience tasks:
+
+- `./gradlew buildMc1_21_11`
+- `./gradlew buildAllTargets`
+
+### Supported Build Targets
+
+`1.21`, `1.21.1`, `1.21.2`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.6`, `1.21.7`, `1.21.8`, `1.21.9`, `1.21.10`, `1.21.11`
 
 ## Version Information
 
 | Component | Version |
 |-----------|---------|
-| **Mod Version** | 1.1.4 |
-| **Minecraft Version** | Matches the `+mc<version>` suffix on each jar |
-| **Yarn Mappings** | Automatically selected per target version |
-| **Fabric Loader** | 0.17.3 |
-| **Fabric API** | Automatically selected per target version |
+| Mod Version | `1.1.4` |
+| Supported Minecraft Versions | `1.21 - 1.21.11` |
+| Fabric Loader | `0.17.3+` |
+| Java | `21+` |
 
-### Development Guidelines
-- Follow Java coding conventions
-- Add comments for complex logic
-- Test your changes thoroughly
-- Update documentation as needed
+## Release Readiness
 
-### Release Readiness
-- Use [`RELEASE_GATE.md`](RELEASE_GATE.md) as the required checklist before promoting any build from beta to full release.
+Use [`RELEASE_GATE.md`](RELEASE_GATE.md) before promoting a build.
 
 ## License
 
-This project is distributed under the custom **Pathmind License (All Rights Reserved)** as described in the [`LICENSE`](LICENSE)
-file. In summary:
+This project is distributed under the custom **Pathmind License (All Rights Reserved)** in [`LICENSE.txt`](LICENSE.txt).
 
-- Redistribution, modification, or re-uploading of the mod is **not permitted** without explicit written permission from the
-  author.
-- You **may create and monetize videos** featuring the mod.
-- Inclusion in modpacks is allowed only if monetization is limited to CurseForge or Modrinth (including sponsored links or
-  banners) unless prior written permission is granted. Modpacks distributed elsewhere must clearly credit the Pathmind project,
-  must not be easily confused with Pathmind or the author's other projects, and must end any additional monetization upon
-  request.
-- The mod is provided “as is” without warranty—use at your own risk.
+In short:
 
-## Bug Reports & Feature Requests
+- Redistribution, modification, or re-uploading is not allowed without explicit written permission.
+- Videos featuring the mod are allowed, including monetized videos.
+- Modpack inclusion is allowed under the limits described in the license.
+- The mod is provided as-is without warranty.
 
-Found a bug or have an idea? We'd love to hear from you!
+## Support And Feedback
 
-- **Bug Reports**: [Open an Issue](https://github.com/soymods/pathmind/issues/new?template=bug_report.md)
-- **Feature Requests**: [Open an Issue](https://github.com/soymods/pathmind/issues/new?template=feature_request.md)
-- **General Discussion**: [Join our Discord](https://discord.gg/7nGRX2d8a6)
+- Issues: [GitHub Issues](https://github.com/soymods/pathmind/issues)
+- Downloads: [Modrinth](https://modrinth.com/mod/pathmind)
+- Community: [Discord](https://discord.gg/7nGRX2d8a6)
 
 ## Acknowledgments
 
-- **FabricMC Team** for the modding framework
-- **Blender Foundation** & **Scratch Foundation** for inspiring the node-based interface design
-
-## Support
-
-Need help? Here are some resources:
-
-- **Documentation**: Check this README and in-game tooltips
-- **Issues**: [GitHub Issues](https://github.com/soymods/pathmind/issues)
-- **Discord**: [Join our Community](https://discord.gg/7nGRX2d8a6)
-
----
-
-<div align="center">
-
-[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/soymods/pathmind)
-[![Modrinth](https://img.shields.io/badge/Modrinth-Download-00D5AA?style=for-the-badge&logo=modrinth)](https://modrinth.com/mod/pathmind)
-
-</div>
+- FabricMC for the modding framework
+- Blender and Scratch for helping inspire the node-based workflow direction

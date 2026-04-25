@@ -3163,7 +3163,7 @@ public final class PathmindNavigator {
             .limit(MAX_VISIBLE_CANDIDATE_PATHS)
             .toList();
         BlockPos resolvedGoal = scoredPaths.get(0).path().isEmpty() ? null : scoredPaths.get(0).path().get(scoredPaths.get(0).path().size() - 1);
-        GoalMode goalMode = resolvedGoal != null && resolvedGoal.equals(exactPlanningTarget) ? GoalMode.EXACT : GoalMode.NEAREST_STANDABLE;
+        GoalMode goalMode = resolvedGoal != null && resolvedGoal.equals(target) ? GoalMode.EXACT : GoalMode.NEAREST_STANDABLE;
         return new PathComputation(scoredPaths.get(0).path(), scoredPaths.get(0).plannedPrimitives(), visibleCandidates, resolvedGoal, goalMode, null, null);
     }
 

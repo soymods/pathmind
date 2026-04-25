@@ -655,12 +655,6 @@ public class PathmindClientMod implements ClientModInitializer {
         if (remaining >= 2) {
             String modeToken = parts[coordinateStartIndex];
             String rawTarget = parts[coordinateStartIndex + 1];
-            if (modeToken.equalsIgnoreCase("coords")
-                || modeToken.equalsIgnoreCase("coord")
-                || modeToken.equalsIgnoreCase("xyz")
-                || modeToken.equalsIgnoreCase("xz")) {
-                return parseNavigatorCoordinateTarget(client, parts, coordinateStartIndex + 1, usageCommand, modeToken);
-            }
             if (modeToken.equalsIgnoreCase("block")) {
                 return resolveNavigatorBlockTarget(client, rawTarget, usageCommand);
             }
@@ -685,33 +679,7 @@ public class PathmindClientMod implements ClientModInitializer {
             return null;
         }
 
-        showNavigatorMessage("Usage: " + usageCommand + " <x> <y> <z>, " + usageCommand + " <x> <z>, " + usageCommand + " coords <x> <y> <z>, " + usageCommand + " coords <x> <z>, " + usageCommand + " block <block_id>, or " + usageCommand + " item <item_id>");
-        return null;
-    }
-
-    private BlockPos parseNavigatorCoordinateTarget(MinecraftClient client, String[] parts, int coordinateStartIndex, String usageCommand, String modeToken) {
-        if (client == null || client.player == null) {
-            showNavigatorMessage("Pathmind Nav is unavailable right now.");
-            return null;
-        }
-        int remaining = parts.length - coordinateStartIndex;
-        try {
-            if (remaining == 2) {
-                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
-                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockZ(), false);
-                return new BlockPos(x, client.player.getBlockY(), z);
-            }
-            if (remaining == 3) {
-                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
-                int y = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockY(), false);
-                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 2], client.player.getBlockZ(), false);
-                return new BlockPos(x, y, z);
-            }
-        } catch (NumberFormatException exception) {
-            showNavigatorMessage("Invalid coordinates for " + usageCommand + " " + modeToken + ".");
-            return null;
-        }
-        showNavigatorMessage("Usage: " + usageCommand + " " + modeToken + " <x> <y> <z> or " + usageCommand + " " + modeToken + " <x> <z>");
+        showNavigatorMessage("Usage: " + usageCommand + " <x> <y> <z>, " + usageCommand + " <x> <z>, " + usageCommand + " block <block_id>, or " + usageCommand + " item <item_id>");
         return null;
     }
 

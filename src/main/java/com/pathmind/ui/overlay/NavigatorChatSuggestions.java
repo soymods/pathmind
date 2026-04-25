@@ -207,36 +207,21 @@ public final class NavigatorChatSuggestions {
                 int z = client.player.getBlockZ();
                 suggestions.add(new SuggestionEntry(x + " " + y + " " + z, "current coords", "!" + root + " " + x + " " + y + " " + z));
                 suggestions.add(new SuggestionEntry(x + " " + z, "current x z", "!" + root + " " + x + " " + z));
-                suggestions.add(new SuggestionEntry("coords", "travel using typed coordinates", "!" + root + " coords"));
                 suggestions.add(new SuggestionEntry("block", "travel to nearest block type", "!" + root + " block"));
                 suggestions.add(new SuggestionEntry("item", "travel to nearest dropped item", "!" + root + " item"));
             } else {
                 suggestions.add(new SuggestionEntry("<x> <y> <z>", "absolute or ~ coords", "!" + root + " "));
                 suggestions.add(new SuggestionEntry("<x> <z>", "keep current y", "!" + root + " "));
-                suggestions.add(new SuggestionEntry("coords", "travel using typed coordinates", "!" + root + " coords"));
                 suggestions.add(new SuggestionEntry("block", "travel to nearest block type", "!" + root + " block"));
                 suggestions.add(new SuggestionEntry("item", "travel to nearest dropped item", "!" + root + " item"));
             }
         }
         if (partCount == 2 && !endsWithSpace) {
-            addIfMatches(suggestions, "coords", "travel using typed coordinates", "!" + root + " coords", parts[1]);
             addIfMatches(suggestions, "block", "travel to nearest block type", "!" + root + " block", parts[1]);
             addIfMatches(suggestions, "item", "travel to nearest dropped item", "!" + root + " item", parts[1]);
         }
         if (partCount == 2 && endsWithSpace) {
-            if ("coords".equals(parts[1])) {
-                MinecraftClient client = MinecraftClient.getInstance();
-                if (client != null && client.player != null) {
-                    int x = client.player.getBlockX();
-                    int y = client.player.getBlockY();
-                    int z = client.player.getBlockZ();
-                    suggestions.add(new SuggestionEntry(x + " " + y + " " + z, "current coords", "!" + root + " coords " + x + " " + y + " " + z));
-                    suggestions.add(new SuggestionEntry(x + " " + z, "current x z", "!" + root + " coords " + x + " " + z));
-                } else {
-                    suggestions.add(new SuggestionEntry("<x> <y> <z>", "absolute or ~ coords", "!" + root + " coords "));
-                    suggestions.add(new SuggestionEntry("<x> <z>", "keep current y", "!" + root + " coords "));
-                }
-            } else if ("block".equals(parts[1])) {
+            if ("block".equals(parts[1])) {
                 suggestions.add(new SuggestionEntry("diamond_ore", "nearest block by id", "!" + root + " block diamond_ore"));
                 suggestions.add(new SuggestionEntry("oak_log", "nearest block by id", "!" + root + " block oak_log"));
             } else if ("item".equals(parts[1])) {

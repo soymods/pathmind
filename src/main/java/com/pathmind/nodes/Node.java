@@ -328,6 +328,7 @@ public class Node {
     private int nextOutputSocket = 0;
     private int repeatRemainingIterations = 0;
     private boolean repeatActive = false;
+    private boolean repeatExecuteAttachedAction = false;
     private boolean lastSensorResult = false;
     private boolean selected = false;
     private boolean dragging = false;
@@ -1142,6 +1143,10 @@ public class Node {
         int value = this.nextOutputSocket;
         this.nextOutputSocket = 0;
         return value;
+    }
+
+    public boolean shouldExecuteRepeatAttachedAction() {
+        return type == NodeType.CONTROL_REPEAT && repeatExecuteAttachedAction;
     }
     
     public boolean isSocketClicked(int mouseX, int mouseY, int socketIndex, boolean isInput) {
@@ -15070,11 +15075,13 @@ public class Node {
         }
         if (repeatRemainingIterations > 0) {
             repeatRemainingIterations--;
+            repeatExecuteAttachedAction = true;
             setNextOutputSocket(0);
         } else {
             repeatRemainingIterations = 0;
             repeatActive = false;
-            setNextOutputSocket(1);
+            repeatExecuteAttachedAction = false;
+            setNextOutputSocket(0);
         }
         future.complete(null);
     }
@@ -21192,6 +21199,7 @@ public class Node {
     private void resetControlState() {
         this.repeatRemainingIterations = 0;
         this.repeatActive = false;
+        this.repeatExecuteAttachedAction = false;
         this.lastSensorResult = false;
         this.nextOutputSocket = 0;
         this.fallingPeakY = Double.NaN;

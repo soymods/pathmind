@@ -1621,7 +1621,8 @@ public class ExecutionManager {
                         });
                 }
 
-                if ((type == NodeType.CONTROL_REPEAT || type == NodeType.CONTROL_REPEAT_UNTIL) && nextSocket == 0) {
+                if (((type == NodeType.CONTROL_REPEAT && currentNode.shouldExecuteRepeatAttachedAction())
+                    || type == NodeType.CONTROL_REPEAT_UNTIL) && nextSocket == 0) {
                     if (type == NodeType.CONTROL_REPEAT_UNTIL) {
                         controller.pendingRepeatUntilExitControl = null;
                     }

@@ -13,6 +13,7 @@ import com.pathmind.ui.overlay.NavigatorChatSuggestions;
 import com.pathmind.ui.overlay.NavigatorDebugOverlay;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
+import com.pathmind.util.BlockSelection;
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.FabricEventTracker;
@@ -39,16 +40,26 @@ import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
+import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.MerchantScreen;
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.item.Item;
 import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.registry.Registries;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -60,6 +71,7 @@ public class PathmindClientMod implements ClientModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/Client");
     private static final String RECIPE_CACHE_NOTIFICATION_KEY = "recipe_cache_warmup";
     private static final int NAVIGATOR_NOTIFICATION_COLOR = 0xFF66D8FF;
+    private static final double NAVIGATOR_PARAMETER_SEARCH_RADIUS = 64.0D;
     private static ActiveNodeOverlay activeNodeOverlay;
     private static NavigatorDebugOverlay navigatorDebugOverlay;
     private static NodeErrorNotificationOverlay nodeErrorNotificationOverlay;
@@ -640,6 +652,22 @@ public class PathmindClientMod implements ClientModInitializer {
         }
 
         int remaining = parts.length - coordinateStartIndex;
+        if (remaining >= 2) {
+            String modeToken = parts[coordinateStartIndex];
+            String rawTarget = parts[coordinateStartIndex + 1];
+            if (modeToken.equalsIgnoreCase("coords")
+                || modeToken.equalsIgnoreCase("coord")
+                || modeToken.equalsIgnoreCase("xyz")
+                || modeToken.equalsIgnoreCase("xz")) {
+                return parseNavigatorCoordinateTarget(client, parts, coordinateStartIndex + 1, usageCommand, modeToken);
+            }
+            if (modeToken.equalsIgnoreCase("block")) {
+                return resolveNavigatorBlockTarget(client, rawTarget, usageCommand);
+            }
+            if (modeToken.equalsIgnoreCase("item")) {
+                return resolveNavigatorItemTarget(client, rawTarget, usageCommand);
+            }
+        }
         try {
             if (remaining == 2) {
                 int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
@@ -657,8 +685,170 @@ public class PathmindClientMod implements ClientModInitializer {
             return null;
         }
 
-        showNavigatorMessage("Usage: " + usageCommand + " <x> <y> <z> or " + usageCommand + " <x> <z>");
+        showNavigatorMessage("Usage: " + usageCommand + " <x> <y> <z>, " + usageCommand + " <x> <z>, " + usageCommand + " coords <x> <y> <z>, " + usageCommand + " coords <x> <z>, " + usageCommand + " block <block_id>, or " + usageCommand + " item <item_id>");
         return null;
+    }
+
+    private BlockPos parseNavigatorCoordinateTarget(MinecraftClient client, String[] parts, int coordinateStartIndex, String usageCommand, String modeToken) {
+        if (client == null || client.player == null) {
+            showNavigatorMessage("Pathmind Nav is unavailable right now.");
+            return null;
+        }
+        int remaining = parts.length - coordinateStartIndex;
+        try {
+            if (remaining == 2) {
+                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
+                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockZ(), false);
+                return new BlockPos(x, client.player.getBlockY(), z);
+            }
+            if (remaining == 3) {
+                int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
+                int y = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockY(), false);
+                int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 2], client.player.getBlockZ(), false);
+                return new BlockPos(x, y, z);
+            }
+        } catch (NumberFormatException exception) {
+            showNavigatorMessage("Invalid coordinates for " + usageCommand + " " + modeToken + ".");
+            return null;
+        }
+        showNavigatorMessage("Usage: " + usageCommand + " " + modeToken + " <x> <y> <z> or " + usageCommand + " " + modeToken + " <x> <z>");
+        return null;
+    }
+
+    private BlockPos resolveNavigatorBlockTarget(MinecraftClient client, String rawBlockId, String usageCommand) {
+        if (client == null || client.player == null || client.world == null) {
+            showNavigatorMessage("Pathmind Nav is unavailable right now.");
+            return null;
+        }
+        String normalized = normalizeNavigatorResourceId(rawBlockId, true);
+        if (normalized == null) {
+            showNavigatorMessage("Usage: " + usageCommand + " block <block_id>");
+            return null;
+        }
+        Identifier identifier = Identifier.tryParse(normalized);
+        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+            showNavigatorMessage("Unknown block identifier: " + rawBlockId);
+            return null;
+        }
+
+        List<BlockSelection> selections = new ArrayList<>();
+        BlockSelection.parse(normalized).ifPresent(selections::add);
+        if (selections.isEmpty()) {
+            showNavigatorMessage("Unknown block identifier: " + rawBlockId);
+            return null;
+        }
+
+        Optional<BlockPos> nearest = findNearestBlock(client, selections, NAVIGATOR_PARAMETER_SEARCH_RADIUS);
+        if (nearest.isEmpty()) {
+            showNavigatorMessage("No nearby block found for " + normalized + ".");
+            return null;
+        }
+        return nearest.get();
+    }
+
+    private BlockPos resolveNavigatorItemTarget(MinecraftClient client, String rawItemId, String usageCommand) {
+        if (client == null || client.player == null || client.world == null) {
+            showNavigatorMessage("Pathmind Nav is unavailable right now.");
+            return null;
+        }
+        String normalized = normalizeNavigatorResourceId(rawItemId, false);
+        if (normalized == null) {
+            showNavigatorMessage("Usage: " + usageCommand + " item <item_id>");
+            return null;
+        }
+        Identifier identifier = Identifier.tryParse(normalized);
+        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            showNavigatorMessage("Unknown item identifier: " + rawItemId);
+            return null;
+        }
+
+        Item item = Registries.ITEM.get(identifier);
+        Optional<ItemEntity> nearest = findNearestDroppedItemEntity(client, item, NAVIGATOR_PARAMETER_SEARCH_RADIUS);
+        if (nearest.isEmpty()) {
+            showNavigatorMessage("No nearby dropped item found for " + normalized + ".");
+            return null;
+        }
+        return nearest.get().getBlockPos();
+    }
+
+    private String normalizeNavigatorResourceId(String rawId, boolean block) {
+        if (rawId == null) {
+            return null;
+        }
+        String trimmed = rawId.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (block) {
+            Identifier identifier = BlockSelection.extractBlockIdentifier(trimmed);
+            return identifier != null ? identifier.toString() : null;
+        }
+        Identifier identifier = Identifier.tryParse(trimmed);
+        if (identifier != null) {
+            return identifier.toString();
+        }
+        Identifier namespaced = Identifier.tryParse("minecraft:" + trimmed.toLowerCase(Locale.ROOT));
+        return namespaced != null ? namespaced.toString() : null;
+    }
+
+    private Optional<BlockPos> findNearestBlock(MinecraftClient client, List<BlockSelection> selections, double range) {
+        if (client == null || client.player == null || client.world == null || selections == null || selections.isEmpty()) {
+            return Optional.empty();
+        }
+        int radius = Math.max(1, Math.min((int) Math.ceil(range), 64));
+        BlockPos playerPos = client.player.getBlockPos();
+        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        BlockPos bestPos = null;
+        double bestDistance = Double.MAX_VALUE;
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    BlockState state = client.world.getBlockState(mutable);
+                    if (state == null || state.isAir()) {
+                        continue;
+                    }
+                    boolean matches = false;
+                    for (BlockSelection selection : selections) {
+                        if (selection.matches(state)) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                    if (!matches) {
+                        continue;
+                    }
+                    double distance = mutable.getSquaredDistance(playerPos);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestPos = mutable.toImmutable();
+                    }
+                }
+            }
+        }
+
+        return Optional.ofNullable(bestPos);
+    }
+
+    private Optional<ItemEntity> findNearestDroppedItemEntity(MinecraftClient client, Item item, double range) {
+        if (client == null || client.player == null || client.world == null || item == null) {
+            return Optional.empty();
+        }
+        double searchRadius = Math.max(1.0D, range);
+        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
+        List<ItemEntity> entities = client.world.getEntitiesByClass(
+            ItemEntity.class,
+            searchBox,
+            entity -> entity != null && !entity.isRemoved() && !entity.getStack().isEmpty() && entity.getStack().isOf(item)
+        );
+        if (entities.isEmpty()) {
+            return Optional.empty();
+        }
+        ItemEntity nearest = entities.stream()
+            .min(Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)))
+            .orElse(null);
+        return Optional.ofNullable(nearest);
     }
 
     private int parseNavigatorCoordinate(String token, int base, boolean normalizeAbsoluteHorizontal) {

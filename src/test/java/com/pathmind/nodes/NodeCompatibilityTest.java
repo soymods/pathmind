@@ -4,6 +4,7 @@ import com.pathmind.execution.ExecutionManager;
 import com.pathmind.util.RecipeCompatibilityBridge;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -245,6 +246,32 @@ class NodeCompatibilityTest {
         assertEquals(3, Node.resolveRequiredTradeCountForTests(3, 5));
         assertEquals(5, Node.resolveRequiredTradeCountForTests(0, 5));
         assertEquals(0, Node.resolveRequiredTradeCountForTests(0, 0));
+    }
+
+    @Test
+    void controlRepeatFallsThroughSingleOutputAfterFinalIteration() throws Exception {
+        Node repeat = new Node(NodeType.CONTROL_REPEAT, 0, 0);
+        repeat.getParameter("Count").setStringValue("2");
+        Method executeControlRepeat = Node.class.getDeclaredMethod("executeControlRepeat", java.util.concurrent.CompletableFuture.class);
+        executeControlRepeat.setAccessible(true);
+
+        java.util.concurrent.CompletableFuture<Void> first = new java.util.concurrent.CompletableFuture<>();
+        executeControlRepeat.invoke(repeat, first);
+        assertTrue(first.isDone());
+        assertEquals(0, repeat.consumeNextOutputSocket());
+        assertTrue(repeat.shouldExecuteRepeatAttachedAction());
+
+        java.util.concurrent.CompletableFuture<Void> second = new java.util.concurrent.CompletableFuture<>();
+        executeControlRepeat.invoke(repeat, second);
+        assertTrue(second.isDone());
+        assertEquals(0, repeat.consumeNextOutputSocket());
+        assertTrue(repeat.shouldExecuteRepeatAttachedAction());
+
+        java.util.concurrent.CompletableFuture<Void> exit = new java.util.concurrent.CompletableFuture<>();
+        executeControlRepeat.invoke(repeat, exit);
+        assertTrue(exit.isDone());
+        assertEquals(0, repeat.consumeNextOutputSocket());
+        assertFalse(repeat.shouldExecuteRepeatAttachedAction());
     }
 
     @Test

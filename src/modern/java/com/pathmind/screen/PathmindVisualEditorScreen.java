@@ -7789,8 +7789,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int[] getSettingsNodeTypeButtonBounds(int contentX, int bodyY, int contentWidth, int maxScroll, int index) {
         int y = getSettingsNodeTypeListY(bodyY) + index * (SETTINGS_NODE_TYPE_BUTTON_HEIGHT + SETTINGS_NODE_TYPE_BUTTON_GAP) - settingsNodeSelectorScrollOffset;
-        int rowWidth = Math.max(0, contentWidth - (maxScroll > 0 ? UITheme.SCROLLBAR_WIDTH : 0));
-        return new int[]{contentX, y, rowWidth, SETTINGS_NODE_TYPE_BUTTON_HEIGHT};
+        int rowX = contentX + 2;
+        int rowWidth = Math.max(0, contentWidth - 2 - (maxScroll > 0 ? UITheme.SCROLLBAR_WIDTH : 0));
+        return new int[]{rowX, y, rowWidth, SETTINGS_NODE_TYPE_BUTTON_HEIGHT};
     }
 
     private void renderSettingsNodeTypeSelector(DrawContext context, int mouseX, int mouseY, int contentX, int bodyY, int contentWidth) {

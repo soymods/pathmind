@@ -119,7 +119,7 @@ public final class PathmindNavigator {
     private static final int COARSE_LOOKAHEAD_STEPS = 18;
     private static final double COARSE_PLANNING_DISTANCE_SQ = 18.0D * 18.0D;
     private static final int MAX_DEBUG_EVENTS = 12;
-    private static final Path NAV_DEBUG_LOG_PATH = Path.of(System.getProperty("user.dir"), "logs", "navigator-debug.log");
+    private static final Path NAV_DEBUG_LOG_PATH = Path.of(System.getProperty("user.dir"), ".pathmind", "logs", "navigator-debug.log");
     private static final long DEBUG_HEARTBEAT_INTERVAL_MS = 1500L;
     private static final double WATER_PENALTY = 3.5D;
     private static final double WATER_AVOIDANCE_PENALTY = 12.0D;

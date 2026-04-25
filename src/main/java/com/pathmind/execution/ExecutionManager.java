@@ -460,7 +460,7 @@ public class ExecutionManager {
         updateLastStartContext(startNodes.get(startNodes.size() - 1), PresetManager.getActivePreset());
 
         // Ensure Baritone isn't still executing stale goals from a previous session
-        cancelAllBaritoneCommands();
+        cancelAllNavigationCommands();
 
         List<NodeConnection> filteredConnections = filterConnections(connections);
 
@@ -928,7 +928,7 @@ public class ExecutionManager {
      * Request that all executing node chains stop immediately.
      */
     public void requestStopAll() {
-        cancelAllBaritoneCommands();
+        cancelAllNavigationCommands();
 
         if (!isExecuting && activeNode == null && activeChains.isEmpty()) {
             return;
@@ -997,6 +997,11 @@ public class ExecutionManager {
         } catch (Exception e) {
             LOGGER.warn("Failed to cancel Baritone processes: {}", e.getMessage());
         }
+    }
+
+    private void cancelAllNavigationCommands() {
+        cancelAllBaritoneCommands();
+        PathmindNavigator.getInstance().stop("execution manager stop");
     }
     
     /**
@@ -1091,7 +1096,7 @@ public class ExecutionManager {
             return false;
         }
 
-        cancelAllBaritoneCommands();
+        cancelAllNavigationCommands();
         controller.cancelRequested = true;
         LOGGER.debug("Stop requested for START node {}", startNode.getId());
         return true;

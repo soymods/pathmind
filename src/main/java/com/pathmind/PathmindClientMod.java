@@ -700,7 +700,7 @@ public class PathmindClientMod implements ClientModInitializer {
         }
         if (modeToken.equalsIgnoreCase("enable") || modeToken.equalsIgnoreCase("on")) {
             PathmindNavigator.getInstance().setEventLoggingEnabled(true);
-            showNavigatorMessage("Pathmind Nav logs enabled: logs/navigator-debug.log");
+            showNavigatorMessage("Pathmind Nav logs enabled: .pathmind/logs/navigator-debug.log");
             return;
         }
         if (modeToken.equalsIgnoreCase("disable") || modeToken.equalsIgnoreCase("off")) {

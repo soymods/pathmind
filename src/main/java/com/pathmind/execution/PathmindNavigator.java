@@ -892,6 +892,8 @@ public final class PathmindNavigator {
                 currentPlan = computation.plannedPrimitives();
                 activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
                 appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(currentPlan, 8));
+                appendDebugEventLocked("pathDetailed=" + formatIndexedPath(currentPath, 24));
+                appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(currentPlan, 24));
                 lastPlanAtMs = now;
                 bestDistanceSq = distanceSq;
                 lastProgressAtMs = now;
@@ -962,6 +964,8 @@ public final class PathmindNavigator {
                         currentPlan = recovery.plannedPrimitives();
                         activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
                         appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(currentPlan, 8));
+                        appendDebugEventLocked("pathDetailed=" + formatIndexedPath(currentPath, 24));
+                        appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(currentPlan, 24));
                         lastPlanAtMs = now;
                         lastProgressAtMs = now;
                         routeCommitUntilMs = now + ROUTE_COMMIT_MS;
@@ -2641,10 +2645,19 @@ public final class PathmindNavigator {
             && (currentDistance > 4.0D
             || currentStep.getY() > playerFootPos.getY()
             || !isWaypointActionable(world, currentStep))) {
+            int previousIndex = pathIndex;
             pathIndex = bestIndex;
             lastWaypointAdvanceAtMs = System.currentTimeMillis();
             furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, bestIndex - 1);
             lastAdvanceDecision = "resync:forward_index=" + bestIndex + " waypoint=" + formatDebugPos(currentPath.get(bestIndex));
+            appendDebugEventLocked(
+                "pathIndex " + previousIndex + " -> " + pathIndex
+                    + " reason=forward_resync oldWaypoint=" + formatDebugPos(previousIndex >= 0 && previousIndex < currentPath.size() ? currentPath.get(previousIndex) : null)
+                    + " newWaypoint=" + formatDebugPos(currentPath.get(pathIndex))
+                    + " player=" + formatDebugPos(playerFootPos)
+                    + " currentDistanceSq=" + String.format(java.util.Locale.ROOT, "%.2f", currentDistance)
+                    + " bestScore=" + String.format(java.util.Locale.ROOT, "%.2f", bestScore)
+            );
         }
     }
 
@@ -2938,6 +2951,10 @@ public final class PathmindNavigator {
         activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
         if (!currentPlan.isEmpty()) {
             appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(currentPlan, 8));
+            appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(currentPlan, 24));
+        }
+        if (!currentPath.isEmpty()) {
+            appendDebugEventLocked("pathDetailed=" + formatIndexedPath(currentPath, 24));
         }
     }
 
@@ -2955,6 +2972,37 @@ public final class PathmindNavigator {
             parts.add(formatPrimitiveLabel(primitive));
         }
         if (plan.size() > count) {
+            parts.add("...");
+        }
+        return parts.toString();
+    }
+
+    private String formatIndexedPrimitiveSequence(List<PlannedPrimitive> plan, int limit) {
+        if (plan == null || plan.isEmpty()) {
+            return "[]";
+        }
+        List<String> parts = new ArrayList<>();
+        int count = Math.min(limit, plan.size());
+        for (int i = 0; i < count; i++) {
+            PlannedPrimitive primitive = plan.get(i);
+            parts.add(i + ":" + formatPlannedPrimitive(primitive));
+        }
+        if (plan.size() > count) {
+            parts.add("...");
+        }
+        return parts.toString();
+    }
+
+    private String formatIndexedPath(List<BlockPos> path, int limit) {
+        if (path == null || path.isEmpty()) {
+            return "[]";
+        }
+        List<String> parts = new ArrayList<>();
+        int count = Math.min(limit, path.size());
+        for (int i = 0; i < count; i++) {
+            parts.add(i + ":" + formatDebugPos(path.get(i)));
+        }
+        if (path.size() > count) {
             parts.add("...");
         }
         return parts.toString();
@@ -6354,8 +6402,23 @@ public final class PathmindNavigator {
         if (plannedPrimitive.isMineAscent()) {
             if (playerFootPos.getY() >= waypoint.getY() - 1) {
                 int nextIndex = Math.min(currentPath.size() - 1, boundedIndex + 1);
+                appendDebugEventLocked(
+                    "miningResume currentIndex=" + boundedIndex
+                        + " nextIndex=" + nextIndex
+                        + " player=" + formatDebugPos(playerFootPos)
+                        + " waypoint=" + formatDebugPos(waypoint)
+                        + " nextWaypoint=" + formatDebugPos(currentPath.get(nextIndex))
+                        + " reachedByHeight=true"
+                );
                 return currentPath.get(nextIndex) != null ? nextIndex : boundedIndex;
             }
+            appendDebugEventLocked(
+                "miningResume currentIndex=" + boundedIndex
+                    + " nextIndex=hold"
+                    + " player=" + formatDebugPos(playerFootPos)
+                    + " waypoint=" + formatDebugPos(waypoint)
+                    + " reachedByHeight=false"
+            );
             return boundedIndex;
         }
         int nextIndex = Math.min(currentPath.size() - 1, boundedIndex + 1);
@@ -7051,6 +7114,8 @@ public final class PathmindNavigator {
         if (newWaypoint == null) {
             return false;
         }
+        int previousIndex = pathIndex;
+        BlockPos previousWaypoint = previousIndex >= 0 && previousIndex < currentPath.size() ? currentPath.get(previousIndex) : null;
         pathIndex = newIndex;
         furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex - (nearAdvance ? 1 : 0));
         activeWaypoint = newWaypoint;
@@ -7060,6 +7125,13 @@ public final class PathmindNavigator {
         lastProgressAtMs = now;
         routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
         lastAdvanceDecision = advanceDecision;
+        appendDebugEventLocked(
+            "pathIndex " + previousIndex + " -> " + pathIndex
+                + " reason=" + advanceDecision
+                + " oldWaypoint=" + formatDebugPos(previousWaypoint)
+                + " newWaypoint=" + formatDebugPos(newWaypoint)
+                + " nearAdvance=" + nearAdvance
+        );
         return true;
     }
 

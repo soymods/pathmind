@@ -301,6 +301,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private int languageDropdownX = 0;
     private int languageDropdownY = 0;
     private int languageDropdownWidth = 0;
+    private int languageDropdownClipX = 0;
+    private int languageDropdownClipY = 0;
+    private int languageDropdownClipWidth = 0;
+    private int languageDropdownClipHeight = 0;
     private boolean showGrid = true;
     private boolean renderConnectionsOnTop = false;
     private boolean showWorkspaceTooltips = true;
@@ -7021,6 +7025,10 @@ public class PathmindVisualEditorScreen extends Screen {
         this.languageDropdownX = contentX;
         this.languageDropdownY = languageButtonY;
         this.languageDropdownWidth = languageButtonWidth;
+        this.languageDropdownClipX = bodyBounds[0];
+        this.languageDropdownClipY = bodyBounds[1];
+        this.languageDropdownClipWidth = bodyBounds[2];
+        this.languageDropdownClipHeight = bodyBounds[3];
 
         String currentLang = this.client.getLanguageManager().getLanguage();
         String langDisplayName = getLanguageDisplayName(currentLang);
@@ -7866,13 +7874,14 @@ public class PathmindVisualEditorScreen extends Screen {
             getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.thumbColor())
         );
 
-        context.enableScissor(selectorBounds[0] + 1, listTop, selectorBounds[0] + selectorBounds[2] - 1, listBottom);
+        int listClipBottom = Math.max(listTop, listBottom - 1);
+        context.enableScissor(selectorBounds[0] + 1, listTop, selectorBounds[0] + selectorBounds[2] - 1, listClipBottom);
         NodeType selectedType = getEffectiveSettingsTargetType();
         List<NodeType> filteredTypes = getFilteredSettingsNodeTypes();
         for (int i = 0; i < filteredTypes.size(); i++) {
             NodeType type = filteredTypes.get(i);
             int[] bounds = getSettingsNodeTypeButtonBounds(contentX, bodyY, contentWidth, maxSelectorScroll, i);
-            if (bounds[1] + bounds[3] < listTop || bounds[1] > listBottom) {
+            if (bounds[1] + bounds[3] < listTop || bounds[1] >= listClipBottom) {
                 continue;
             }
             boolean hovered = isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
@@ -8592,9 +8601,17 @@ public class PathmindVisualEditorScreen extends Screen {
         int dropdownY = y + 22;
         int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
         int animatedHeight = (int) (fullOptionsHeight * animProgress);
+        int scissorLeft = Math.max(x, languageDropdownClipX);
+        int scissorTop = Math.max(dropdownY, languageDropdownClipY);
+        int scissorRight = Math.min(x + width, languageDropdownClipX + languageDropdownClipWidth);
+        int scissorBottom = Math.min(dropdownY + animatedHeight + 1, languageDropdownClipY + languageDropdownClipHeight);
 
-        // Use scissor to clip the dropdown content during animation
-        context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight + 1);
+        if (scissorRight <= scissorLeft || scissorBottom <= scissorTop) {
+            MatrixStackBridge.pop(matrices);
+            return;
+        }
+
+        context.enableScissor(scissorLeft, scissorTop, scissorRight, scissorBottom);
 
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), animProgress, languageDropdownOpen, false);
         UIStyleHelper.drawScrollContainer(

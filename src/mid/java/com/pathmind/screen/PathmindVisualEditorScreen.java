@@ -36,6 +36,7 @@ import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.MatrixStackBridge;
+import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.loader.api.FabricLoader;
@@ -282,6 +283,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private int languageDropdownX = 0;
     private int languageDropdownY = 0;
     private int languageDropdownWidth = 0;
+    private int languageDropdownClipX = 0;
+    private int languageDropdownClipY = 0;
+    private int languageDropdownClipWidth = 0;
+    private int languageDropdownClipHeight = 0;
     private boolean showGrid = true;
     private boolean showWorkspaceTooltips = true;
     private boolean showChatErrors = true;
@@ -302,6 +307,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private int settingsPopupScrollOffset = 0;
     private long settingsLastScrollEventMs = 0L;
     private int settingsLastScrollConsumer = 0;
+    private boolean settingsNodeSelectorScrollDragging = false;
+    private int settingsNodeSelectorScrollDragOffset = 0;
+    private boolean settingsPopupScrollDragging = false;
+    private int settingsPopupScrollDragOffset = 0;
     private AccentOption accentOption = AccentOption.SKY;
     private boolean overlayCutoutActive = false;
     private int overlayCutoutX = 0;
@@ -1663,6 +1672,25 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
+            if (settingsNodeSelectorScrollDragging) {
+                int popupX = getSettingsPopupX();
+                int popupY = getSettingsPopupY();
+                int contentPopupY = popupY - settingsPopupScrollOffset;
+                int contentX = popupX + 20;
+                int selectorWidth = SETTINGS_POPUP_WIDTH - 40;
+                int nodeSettingsBodyY = getSettingsNodeSectionBodyY(contentPopupY);
+                int maxSelectorScroll = getSettingsNodeTypeSelectorMaxScroll(selectorWidth);
+                ScrollbarHelper.Metrics selectorScrollMetrics = getSettingsNodeTypeSelectorScrollMetrics(contentX, nodeSettingsBodyY, selectorWidth, maxSelectorScroll);
+                settingsNodeSelectorScrollOffset = ScrollbarHelper.scrollFromThumb(selectorScrollMetrics, (int) mouseY - settingsNodeSelectorScrollDragOffset);
+            }
+            if (settingsPopupScrollDragging) {
+                int popupX = getSettingsPopupX();
+                int popupY = getSettingsPopupY();
+                int popupHeight = getSettingsPopupHeight();
+                int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight);
+                ScrollbarHelper.Metrics scrollMetrics = getSettingsPopupScrollMetrics(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, maxScroll);
+                settingsPopupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, (int) mouseY - settingsPopupScrollDragOffset);
+            }
             if (nodeDelayDragging) {
                 updateNodeDelayFromMouse((int) mouseX, getSettingsPopupX(), SETTINGS_POPUP_WIDTH);
             }
@@ -1759,6 +1787,8 @@ public class PathmindVisualEditorScreen extends Screen {
         if (settingsPopupAnimation.isVisible()) {
             nodeDelayDragging = false;
             createListRadiusDragging = false;
+            settingsNodeSelectorScrollDragging = false;
+            settingsPopupScrollDragging = false;
             if (nodeDelayField != null) {
                 nodeDelayField.mouseReleased(click);
             }
@@ -2291,11 +2321,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (isPointInRect((int) mouseX, (int) mouseY, selectorBounds[0], selectorBounds[1], selectorBounds[2], selectorBounds[3]) && verticalAmount != 0.0) {
                 int maxSelectorScroll = getSettingsNodeTypeSelectorMaxScroll(selectorBounds[2]);
                 if (maxSelectorScroll > 0 && !continueOuterScroll) {
-                    int nextSelectorScroll = MathHelper.clamp(
-                        settingsNodeSelectorScrollOffset - (int) Math.signum(verticalAmount) * 16,
-                        0,
-                        maxSelectorScroll
-                    );
+                    int nextSelectorScroll = ScrollbarHelper.applyWheel(settingsNodeSelectorScrollOffset, verticalAmount, 16, maxSelectorScroll);
                     if (nextSelectorScroll != settingsNodeSelectorScrollOffset) {
                         settingsNodeSelectorScrollOffset = nextSelectorScroll;
                         settingsLastScrollEventMs = now;
@@ -2310,11 +2336,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (isPointInRect((int) mouseX, (int) mouseY, bodyBounds[0], bodyBounds[1], bodyBounds[2], bodyBounds[3]) && verticalAmount != 0.0) {
                 int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight);
                 if (maxScroll > 0) {
-                    int nextPopupScroll = MathHelper.clamp(
-                        settingsPopupScrollOffset - (int) Math.signum(verticalAmount) * 16,
-                        0,
-                        maxScroll
-                    );
+                    int nextPopupScroll = ScrollbarHelper.applyWheel(settingsPopupScrollOffset, verticalAmount, 16, maxScroll);
                     if (nextPopupScroll != settingsPopupScrollOffset) {
                         settingsPopupScrollOffset = nextPopupScroll;
                         settingsLastScrollEventMs = now;
@@ -6385,6 +6407,10 @@ public class PathmindVisualEditorScreen extends Screen {
         this.languageDropdownX = contentX;
         this.languageDropdownY = languageButtonY;
         this.languageDropdownWidth = languageButtonWidth;
+        this.languageDropdownClipX = bodyBounds[0];
+        this.languageDropdownClipY = bodyBounds[1];
+        this.languageDropdownClipWidth = bodyBounds[2];
+        this.languageDropdownClipHeight = bodyBounds[3];
 
         String currentLang = this.client.getLanguageManager().getLanguage();
         String langDisplayName = getLanguageDisplayName(currentLang);
@@ -6525,6 +6551,16 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = popupX + scaledWidth - buttonWidth - 20;
         int buttonY = popupY + scaledHeight - buttonHeight - 16;
         context.disableScissor();
+        ScrollbarHelper.renderCutoffDividers(
+            context,
+            bodyBounds[0],
+            bodyBounds[0] + bodyBounds[2] - 1,
+            bodyBounds[1],
+            bodyBounds[1] + bodyBounds[3],
+            settingsPopupScrollOffset,
+            maxScroll,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE)
+        );
         renderSettingsPopupScrollbar(context, popupX, popupY, scaledWidth, scaledHeight, maxScroll);
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
         drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered,
@@ -7070,17 +7106,8 @@ public class PathmindVisualEditorScreen extends Screen {
         return getSettingsNodeSectionLabelY(popupY) + 14;
     }
 
-    private int getSettingsNodeTypeSelectorHeight(int contentWidth) {
-        int listViewportHeight = getSettingsNodeTypeListViewportHeight(contentWidth);
-        return SETTINGS_NODE_TYPE_SEARCH_PADDING
-            + SETTINGS_NODE_TYPE_SEARCH_HEIGHT
-            + SETTINGS_NODE_TYPE_SEARCH_LIST_GAP
-            + listViewportHeight
-            + SETTINGS_NODE_TYPE_SEARCH_PADDING;
-    }
-
     private int getSettingsNodeTypeSelectorViewportHeight(int contentWidth) {
-        return Math.min(getSettingsNodeTypeSelectorHeight(contentWidth), SETTINGS_NODE_TYPE_SELECTOR_MAX_HEIGHT);
+        return Math.min(SETTINGS_NODE_TYPE_SEARCH_HEIGHT + getSettingsNodeTypeListViewportHeight(contentWidth), SETTINGS_NODE_TYPE_SELECTOR_MAX_HEIGHT);
     }
 
     private int getSettingsNodeTypeSelectorMaxScroll(int contentWidth) {
@@ -7093,15 +7120,15 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int[] getSettingsNodeTypeSearchFieldBounds(int contentX, int bodyY, int contentWidth) {
         return new int[]{
-            contentX + SETTINGS_NODE_TYPE_SEARCH_PADDING,
-            bodyY + SETTINGS_NODE_TYPE_SEARCH_PADDING,
-            Math.max(0, contentWidth - SETTINGS_NODE_TYPE_SEARCH_PADDING * 2),
+            contentX,
+            bodyY,
+            contentWidth,
             SETTINGS_NODE_TYPE_SEARCH_HEIGHT
         };
     }
 
     private int getSettingsNodeTypeListY(int bodyY) {
-        return bodyY + SETTINGS_NODE_TYPE_SEARCH_PADDING + SETTINGS_NODE_TYPE_SEARCH_HEIGHT + SETTINGS_NODE_TYPE_SEARCH_LIST_GAP;
+        return bodyY + SETTINGS_NODE_TYPE_SEARCH_HEIGHT;
     }
 
     private int getSettingsNodeTypeListContentHeight() {
@@ -7114,11 +7141,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getSettingsNodeTypeListViewportHeight(int contentWidth) {
-        int chromeHeight = SETTINGS_NODE_TYPE_SEARCH_PADDING
-            + SETTINGS_NODE_TYPE_SEARCH_HEIGHT
-            + SETTINGS_NODE_TYPE_SEARCH_LIST_GAP
-            + SETTINGS_NODE_TYPE_SEARCH_PADDING;
-        int maxListViewportHeight = Math.max(0, SETTINGS_NODE_TYPE_SELECTOR_MAX_HEIGHT - chromeHeight);
+        int maxListViewportHeight = Math.max(0, SETTINGS_NODE_TYPE_SELECTOR_MAX_HEIGHT - SETTINGS_NODE_TYPE_SEARCH_HEIGHT);
         int minListViewportHeight = Math.min(maxListViewportHeight, SETTINGS_NODE_TYPE_EMPTY_HEIGHT);
         int listContentHeight = getSettingsNodeTypeListContentHeight();
         if (listContentHeight <= 0) {
@@ -7127,9 +7150,25 @@ public class PathmindVisualEditorScreen extends Screen {
         return Math.min(listContentHeight, maxListViewportHeight);
     }
 
-    private int[] getSettingsNodeTypeButtonBounds(int contentX, int bodyY, int contentWidth, int index) {
+    private ScrollbarHelper.Metrics getSettingsNodeTypeSelectorScrollMetrics(int contentX, int bodyY, int contentWidth, int maxScroll) {
+        int listY = getSettingsNodeTypeListY(bodyY);
+        int listHeight = Math.max(1, getSettingsNodeTypeSelectorViewportHeight(contentWidth) - SETTINGS_NODE_TYPE_SEARCH_HEIGHT);
+        return ScrollbarHelper.metrics(
+            contentX + contentWidth - UITheme.SCROLLBAR_WIDTH,
+            listY,
+            UITheme.SCROLLBAR_WIDTH,
+            listHeight,
+            maxScroll,
+            settingsNodeSelectorScrollOffset,
+            20
+        );
+    }
+
+    private int[] getSettingsNodeTypeButtonBounds(int contentX, int bodyY, int contentWidth, int maxScroll, int index) {
         int y = getSettingsNodeTypeListY(bodyY) + index * (SETTINGS_NODE_TYPE_BUTTON_HEIGHT + SETTINGS_NODE_TYPE_BUTTON_GAP) - settingsNodeSelectorScrollOffset;
-        return new int[]{contentX, y, contentWidth, SETTINGS_NODE_TYPE_BUTTON_HEIGHT};
+        int rowX = contentX + 2;
+        int rowWidth = Math.max(0, contentWidth - 2 - (maxScroll > 0 ? UITheme.SCROLLBAR_WIDTH : 0));
+        return new int[]{rowX, y, rowWidth, SETTINGS_NODE_TYPE_BUTTON_HEIGHT};
     }
 
     private void renderSettingsNodeTypeSelector(DrawContext context, int mouseX, int mouseY, int contentX, int bodyY, int contentWidth) {
@@ -7140,7 +7179,8 @@ public class PathmindVisualEditorScreen extends Screen {
         float searchHoverProgress = searchFocused ? 1f : getHoverProgress("settings-node-search-box", searchHovered);
         UIStyleHelper.FieldPalette searchPalette = UIStyleHelper.getSearchFieldPalette(getAccentColor(), searchHoverProgress, searchFocused, false);
         UIStyleHelper.ScrollContainerPalette selectorPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), 0f, true, false);
-        settingsNodeSelectorScrollOffset = MathHelper.clamp(settingsNodeSelectorScrollOffset, 0, getSettingsNodeTypeSelectorMaxScroll(contentWidth));
+        int maxSelectorScroll = getSettingsNodeTypeSelectorMaxScroll(contentWidth);
+        settingsNodeSelectorScrollOffset = ScrollbarHelper.clampScroll(settingsNodeSelectorScrollOffset, maxSelectorScroll);
         UIStyleHelper.drawScrollContainer(
             context,
             selectorBounds[0],
@@ -7180,34 +7220,48 @@ public class PathmindVisualEditorScreen extends Screen {
             settingsNodeSearchField.render(context, mouseX, mouseY, 0.0f);
         }
 
-        int listY = getSettingsNodeTypeListY(bodyY);
-        int listHeight = getSettingsNodeTypeListViewportHeight(contentWidth);
-        int listBottom = Math.min(selectorBounds[1] + selectorBounds[3] - 1, listY + listHeight);
-        context.enableScissor(selectorBounds[0] + 1, listY, selectorBounds[0] + selectorBounds[2] - 1, listBottom);
+        ScrollbarHelper.Metrics selectorScrollMetrics = getSettingsNodeTypeSelectorScrollMetrics(contentX, bodyY, contentWidth, maxSelectorScroll);
+        int listTop = searchBounds[1] + searchBounds[3];
+        int listHeight = Math.max(0, selectorBounds[3] - searchBounds[3]);
+        int listBottom = listTop + listHeight;
+        int listContentRight = maxSelectorScroll > 0 ? selectorScrollMetrics.trackLeft() : selectorBounds[0] + selectorBounds[2];
+        ScrollbarHelper.renderCutoffDividers(
+            context,
+            contentX,
+            listContentRight - 1,
+            listTop,
+            listBottom,
+            settingsNodeSelectorScrollOffset,
+            maxSelectorScroll,
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE)
+        );
+        ScrollbarHelper.renderSettingsStyle(
+            context,
+            selectorScrollMetrics,
+            getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.trackColor()),
+            getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.borderColor()),
+            getPopupAnimatedColor(settingsPopupAnimation, selectorPalette.thumbColor())
+        );
+
+        int listClipBottom = Math.max(listTop, listBottom - 1);
+        context.enableScissor(selectorBounds[0] + 1, listTop, selectorBounds[0] + selectorBounds[2] - 1, listClipBottom);
         NodeType selectedType = getEffectiveSettingsTargetType();
         List<NodeType> filteredTypes = getFilteredSettingsNodeTypes();
         for (int i = 0; i < filteredTypes.size(); i++) {
             NodeType type = filteredTypes.get(i);
-            int[] bounds = getSettingsNodeTypeButtonBounds(contentX, bodyY, contentWidth, i);
-            if (bounds[1] + bounds[3] < listY || bounds[1] > listY + listHeight) {
+            int[] bounds = getSettingsNodeTypeButtonBounds(contentX, bodyY, contentWidth, maxSelectorScroll, i);
+            if (bounds[1] + bounds[3] < listTop || bounds[1] >= listClipBottom) {
                 continue;
             }
             boolean hovered = isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
             boolean selected = type == selectedType;
             float hoverProgress = selected ? 1f : getHoverProgress("settings-node-selector:" + type.name(), hovered);
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), hoverProgress, selected, false);
-            UIStyleHelper.drawDropdownRow(
-                context,
-                bounds[0],
-                bounds[1],
-                bounds[2],
-                bounds[3],
-                new UIStyleHelper.DropdownRowPalette(
-                    getPopupAnimatedColor(settingsPopupAnimation, rowPalette.backgroundColor()),
-                    getPopupAnimatedColor(settingsPopupAnimation, rowPalette.borderColor()),
-                    getPopupAnimatedColor(settingsPopupAnimation, rowPalette.textColor())
-                )
-            );
+            int rowBg = getPopupAnimatedColor(settingsPopupAnimation,
+                selected ? UITheme.DROPDOWN_OPTION_HOVER : hovered ? UITheme.BACKGROUND_TERTIARY : UITheme.DROPDOWN_OPTION_BG);
+            context.fill(bounds[0], bounds[1], bounds[0] + bounds[2], bounds[1] + bounds[3], rowBg);
+            if (selected) {
+                DrawContextBridge.drawBorder(context, bounds[0], bounds[1], bounds[2], bounds[3], getPopupAnimatedColor(settingsPopupAnimation, getAccentColor()));
+            }
 
             int labelColor = getPopupAnimatedColor(settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getAccentColor(), hoverProgress));
             int metaColor = getPopupAnimatedColor(settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.TEXT_TERTIARY, UITheme.TEXT_SECONDARY, hoverProgress));
@@ -7218,7 +7272,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (filteredTypes.isEmpty()) {
             context.drawTextWithShadow(this.textRenderer, Text.literal("No matching node settings"),
-                contentX + 8, listY + 8, getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
+                contentX + 8, listTop + 8, getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
         }
         context.disableScissor();
     }
@@ -7345,29 +7399,18 @@ public class PathmindVisualEditorScreen extends Screen {
         if (maxScroll <= 0) {
             return;
         }
+        ScrollbarHelper.renderSettingsStyle(
+            context,
+            getSettingsPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight, maxScroll),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BACKGROUND_SIDEBAR),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT),
+            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT)
+        );
+    }
 
+    private ScrollbarHelper.Metrics getSettingsPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight, int maxScroll) {
         int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
-        int trackLeft = popupX + popupWidth - 12;
-        int trackRight = trackLeft + 4;
-        int trackTop = bodyBounds[1];
-        int trackBottom = bodyBounds[1] + bodyBounds[3];
-        int trackHeight = Math.max(1, trackBottom - trackTop);
-
-        context.fill(trackLeft, trackTop, trackRight, trackBottom,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BACKGROUND_SIDEBAR));
-        DrawContextBridge.drawBorder(context, trackLeft, trackTop, 4, trackHeight,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT));
-
-        int visibleHeight = Math.max(1, bodyBounds[3]);
-        int totalHeight = visibleHeight + maxScroll;
-        int thumbHeight = Math.max(20, (visibleHeight * trackHeight) / Math.max(1, totalHeight));
-        thumbHeight = Math.min(trackHeight, thumbHeight);
-        int maxThumbTravel = Math.max(0, trackHeight - thumbHeight);
-        int thumbOffset = maxScroll == 0 ? 0 : Math.round((float) settingsPopupScrollOffset / (float) maxScroll * maxThumbTravel);
-        int thumbTop = trackTop + thumbOffset;
-
-        context.fill(trackLeft + 1, thumbTop, trackRight - 1, thumbTop + thumbHeight,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_DEFAULT));
+        return ScrollbarHelper.metrics(popupX + popupWidth - 12, bodyBounds[1], 4, Math.max(1, bodyBounds[3]), maxScroll, settingsPopupScrollOffset, 20);
     }
 
     private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY,
@@ -7540,6 +7583,8 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsPopupScrollOffset = 0;
         settingsLastScrollEventMs = 0L;
         settingsLastScrollConsumer = 0;
+        settingsNodeSelectorScrollDragging = false;
+        settingsNodeSelectorScrollDragOffset = 0;
         if (settingsNodeSearchField != null) {
             settingsNodeSearchField.setText("");
             settingsNodeSearchField.setFocused(false);
@@ -7554,6 +7599,10 @@ public class PathmindVisualEditorScreen extends Screen {
         languageDropdownOpen = false;
         nodeDelayDragging = false;
         createListRadiusDragging = false;
+        settingsNodeSelectorScrollDragging = false;
+        settingsNodeSelectorScrollDragOffset = 0;
+        settingsPopupScrollDragging = false;
+        settingsPopupScrollDragOffset = 0;
         if (createListRadiusField != null) {
             createListRadiusField.setFocused(false);
             createListRadiusField.setVisible(false);
@@ -7595,6 +7644,15 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight)) {
             closeSettingsPopup();
+            return true;
+        }
+
+        int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight);
+        ScrollbarHelper.Metrics scrollMetrics = getSettingsPopupScrollMetrics(popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, maxScroll);
+        if (maxScroll > 0
+            && isPointInRect(mouseXi, mouseYi, scrollMetrics.trackLeft() - 3, scrollMetrics.trackTop(), scrollMetrics.trackWidth() + 6, scrollMetrics.viewportHeight())) {
+            settingsPopupScrollDragging = true;
+            settingsPopupScrollDragOffset = mouseYi - scrollMetrics.thumbTop();
             return true;
         }
 
@@ -7713,6 +7771,15 @@ public class PathmindVisualEditorScreen extends Screen {
         int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY, selectorWidth);
         int[] selectorViewportBounds = getSettingsNodeTypeSelectorBounds(contentX, nodeSettingsBodyY, selectorWidth);
         int[] selectorSearchBounds = getSettingsNodeTypeSearchFieldBounds(contentX, nodeSettingsBodyY, selectorWidth);
+        int maxSelectorScroll = getSettingsNodeTypeSelectorMaxScroll(selectorWidth);
+        ScrollbarHelper.Metrics selectorScrollMetrics = getSettingsNodeTypeSelectorScrollMetrics(contentX, nodeSettingsBodyY, selectorWidth, maxSelectorScroll);
+        if (maxSelectorScroll > 0
+            && isPointInRect(mouseXi, mouseYi, selectorScrollMetrics.trackLeft() - 3, selectorScrollMetrics.trackTop(),
+            selectorScrollMetrics.trackWidth() + 6, selectorScrollMetrics.viewportHeight())) {
+            settingsNodeSelectorScrollDragging = true;
+            settingsNodeSelectorScrollDragOffset = mouseYi - selectorScrollMetrics.thumbTop();
+            return true;
+        }
         if (settingsNodeSearchField != null) {
             if (bodyHovered && isPointInRect(mouseXi, mouseYi, selectorSearchBounds[0], selectorSearchBounds[1], selectorSearchBounds[2], selectorSearchBounds[3])) {
                 settingsNodeSearchField.setEditable(true);
@@ -7725,7 +7792,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         List<NodeType> filteredTypes = getFilteredSettingsNodeTypes();
         for (int i = 0; i < filteredTypes.size(); i++) {
-            int[] selectorBounds = getSettingsNodeTypeButtonBounds(contentX, nodeSettingsBodyY, selectorWidth, i);
+            int[] selectorBounds = getSettingsNodeTypeButtonBounds(contentX, nodeSettingsBodyY, selectorWidth, maxSelectorScroll, i);
             if (bodyHovered
                 && isPointInRect(mouseXi, mouseYi, selectorViewportBounds[0], selectorViewportBounds[1], selectorViewportBounds[2], selectorViewportBounds[3])
                 && isPointInRect(mouseXi, mouseYi, selectorBounds[0], selectorBounds[1], selectorBounds[2], selectorBounds[3])) {
@@ -7892,9 +7959,17 @@ public class PathmindVisualEditorScreen extends Screen {
         int dropdownY = y + 22;
         int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
         int animatedHeight = (int) (fullOptionsHeight * animProgress);
+        int scissorLeft = Math.max(x, languageDropdownClipX);
+        int scissorTop = Math.max(dropdownY, languageDropdownClipY);
+        int scissorRight = Math.min(x + width, languageDropdownClipX + languageDropdownClipWidth);
+        int scissorBottom = Math.min(dropdownY + animatedHeight, languageDropdownClipY + languageDropdownClipHeight);
 
-        // Use scissor to clip the dropdown content during animation
-        context.enableScissor(x, dropdownY, x + width, dropdownY + animatedHeight);
+        if (scissorRight <= scissorLeft || scissorBottom <= scissorTop) {
+            MatrixStackBridge.pop(matrices);
+            return;
+        }
+
+        context.enableScissor(scissorLeft, scissorTop, scissorRight, scissorBottom);
 
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), animProgress, languageDropdownOpen, false);
         UIStyleHelper.drawScrollContainer(

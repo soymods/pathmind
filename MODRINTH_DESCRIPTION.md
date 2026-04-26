@@ -27,25 +27,14 @@
 
 ## Features
 
-<details>
-<summary><b>Show preview</b></summary>
-
-<p align="center">
-  <span style="display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
-    <img
-      src="https://github.com/soymods/assets/blob/main/soymods-assets/pathmind/bridge.gif?raw=true"
-      width="350"
-      alt="Pathmind preview gif"
-    />
-    <img
-      src="https://cdn.modrinth.com/data/GX0d78rL/images/822214b3ccbf9a4d4d031129f862b1c484fd9378.png"
-      width="350"
-      alt="Pathmind screenshot"
-    />
-  </span>
-</p>
-
-</details>
+<div align="center">
+  <picture>
+    <img src="https://raw.githubusercontent.com/soymods/assets/main/soymods-assets/pathmind/preview.gif" width="350">
+  </picture>
+  <picture>
+    <img src="https://raw.githubusercontent.com/soymods/assets/main/soymods-assets/pathmind/preview_screenshot.png" width="350">
+  </picture>
+</div>
 
 ### Visual Automation
 - **Node-Based Editor**: Build automation visually with nodes, connections, and editable parameters instead of commands or scripts

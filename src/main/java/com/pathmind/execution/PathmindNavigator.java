@@ -46,6 +46,7 @@ import java.util.LinkedList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -353,6 +354,26 @@ public final class PathmindNavigator {
         if (targetPos == null || future == null) {
             return false;
         }
+        return startGotoInternal(targetPos, commandLabel, future);
+    }
+
+    public synchronized boolean startGotoNearBlock(BlockPos targetBlockPos, String commandLabel, CompletableFuture<Void> future) {
+        if (targetBlockPos == null || future == null) {
+            return false;
+        }
+        BlockPos navigationTarget = resolveAdjacentStandableTarget(targetBlockPos).orElse(targetBlockPos);
+        return startGotoInternal(navigationTarget, commandLabel, future);
+    }
+
+    public synchronized PreviewResult previewPathNearBlock(MinecraftClient client, BlockPos targetBlockPos, String commandLabel) {
+        if (targetBlockPos == null) {
+            return new PreviewResult(false, FailureReason.CLIENT_UNAVAILABLE.message);
+        }
+        BlockPos navigationTarget = resolveAdjacentStandableTarget(targetBlockPos).orElse(targetBlockPos);
+        return previewPath(client, navigationTarget, commandLabel);
+    }
+
+    private boolean startGotoInternal(BlockPos targetPos, String commandLabel, CompletableFuture<Void> future) {
         stopInternal(false, "replaced");
         this.targetPos = targetPos.toImmutable();
         this.commandLabel = commandLabel == null || commandLabel.isBlank() ? "Goto" : commandLabel.trim();
@@ -427,6 +448,52 @@ public final class PathmindNavigator {
         this.debugEvents.clear();
         appendDebugEventLocked("goto start target=" + formatDebugPos(this.targetPos));
         return true;
+    }
+
+    private Optional<BlockPos> resolveAdjacentStandableTarget(BlockPos targetBlockPos) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.world == null || targetBlockPos == null) {
+            return Optional.empty();
+        }
+
+        BlockPos playerPos = resolvePlayerFootPos(client.player);
+        if (playerPos == null) {
+            playerPos = client.player.getBlockPos();
+        }
+
+        BlockPos best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (int radius = 1; radius <= 3; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
+                        continue;
+                    }
+                    for (int dy = 1; dy >= -1; dy--) {
+                        BlockPos candidate = new BlockPos(
+                            targetBlockPos.getX() + dx,
+                            targetBlockPos.getY() + dy,
+                            targetBlockPos.getZ() + dz
+                        );
+                        if (!isStandable(client.world, candidate)) {
+                            continue;
+                        }
+                        double score = candidate.getSquaredDistance(playerPos)
+                            + (Math.abs(candidate.getY() - targetBlockPos.getY()) * 0.25D)
+                            + (radius * 0.05D);
+                        if (score < bestScore) {
+                            bestScore = score;
+                            best = candidate.toImmutable();
+                        }
+                    }
+                }
+            }
+            if (best != null) {
+                return Optional.of(best);
+            }
+        }
+
+        return Optional.empty();
     }
 
     public synchronized boolean isActive() {

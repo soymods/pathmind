@@ -9338,14 +9338,15 @@ public class Node {
             return;
         }
 
-        BlockPos targetPos = resolveTravelTarget(future);
+        TravelTarget travelTarget = resolveTravelTarget(future);
         if (future.isDone()) {
             return;
         }
-        if (targetPos == null) {
+        if (travelTarget == null || travelTarget.pos() == null) {
             future.completeExceptionally(new RuntimeException("No target resolved for TRAVEL node"));
             return;
         }
+        BlockPos targetPos = travelTarget.pos();
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null || client.world == null) {
@@ -9363,7 +9364,10 @@ public class Node {
         navigator.setBlockBreakingAllowed(isGotoAllowBreakWhileExecuting());
         navigator.setBlockPlacingAllowed(isGotoAllowPlaceWhileExecuting());
 
-        if (!navigator.startGoto(targetPos, "Node Travel", future)) {
+        boolean started = travelTarget.nearBlock()
+            ? navigator.startGotoNearBlock(targetPos, "Node Travel", future)
+            : navigator.startGoto(targetPos, "Node Travel", future);
+        if (!started) {
             navigator.setBlockBreakingAllowed(previousBreakAllowed);
             navigator.setBlockPlacingAllowed(previousPlaceAllowed);
             future.completeExceptionally(new RuntimeException("Could not start Pathmind Nav"));
@@ -9376,11 +9380,22 @@ public class Node {
         });
     }
 
-    private BlockPos resolveTravelTarget(CompletableFuture<Void> future) {
+    private record TravelTarget(BlockPos pos, boolean nearBlock) {
+    }
+
+    private TravelTarget resolveTravelTarget(CompletableFuture<Void> future) {
+        BlockPos attachedBlockTarget = resolveTravelTargetFromAttachedBlockParameter(future);
+        if (future.isDone()) {
+            return null;
+        }
+        if (attachedBlockTarget != null) {
+            return new TravelTarget(attachedBlockTarget, true);
+        }
+
         boolean[] handled = new boolean[1];
         BlockPos attachedTarget = resolveGotoFallbackTargetFromAttachedParameter(future, handled);
         if (handled[0]) {
-            return attachedTarget;
+            return new TravelTarget(attachedTarget, false);
         }
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
@@ -9389,7 +9404,7 @@ public class Node {
                 int x = getIntParameter("X", 0);
                 int y = getIntParameter("Y", 64);
                 int z = getIntParameter("Z", 0);
-                return new BlockPos(x, y, z);
+                return new TravelTarget(new BlockPos(x, y, z), false);
             }
             case GOTO_XZ: {
                 if (client == null || client.player == null) {
@@ -9398,7 +9413,7 @@ public class Node {
                 }
                 int x = getIntParameter("X", 0);
                 int z = getIntParameter("Z", 0);
-                return new BlockPos(x, client.player.getBlockY(), z);
+                return new TravelTarget(new BlockPos(x, client.player.getBlockY(), z), false);
             }
             case GOTO_Y: {
                 if (client == null || client.player == null) {
@@ -9407,15 +9422,52 @@ public class Node {
                 }
                 int y = getIntParameter("Y", 64);
                 BlockPos playerPos = client.player.getBlockPos();
-                return new BlockPos(playerPos.getX(), y, playerPos.getZ());
+                return new TravelTarget(new BlockPos(playerPos.getX(), y, playerPos.getZ()), false);
             }
             case GOTO_BLOCK: {
-                return resolveGotoFallbackTargetFromBlockId(getStringParameter("Block", null), future);
+                BlockPos targetBlock = resolveGotoFallbackTargetFromBlockId(getStringParameter("Block", null), future);
+                return new TravelTarget(targetBlock, true);
             }
             default:
                 future.completeExceptionally(new RuntimeException("Unknown TRAVEL mode: " + mode));
                 return null;
         }
+    }
+
+    private BlockPos resolveTravelTargetFromAttachedBlockParameter(CompletableFuture<Void> future) {
+        if (attachedParameters.isEmpty()) {
+            return null;
+        }
+
+        List<Integer> slotIndices = new ArrayList<>(attachedParameters.keySet());
+        Collections.sort(slotIndices);
+        for (Integer slotIndex : slotIndices) {
+            Node parameterNode = attachedParameters.get(slotIndex);
+            if (parameterNode == null) {
+                continue;
+            }
+            if (parameterNode.getType() == NodeType.VARIABLE) {
+                parameterNode = resolveVariableValueNode(parameterNode, slotIndex, future);
+                if (parameterNode == null) {
+                    return null;
+                }
+            }
+            if (parameterNode.getType() != NodeType.PARAM_BLOCK) {
+                continue;
+            }
+
+            String blockId = getBlockParameterValue(parameterNode);
+            BlockPos targetBlock = resolveGotoFallbackTargetFromBlockId(blockId, future);
+            if (future.isDone() || targetBlock == null) {
+                return targetBlock;
+            }
+            if (runtimeParameterData != null) {
+                runtimeParameterData.targetBlockPos = targetBlock;
+            }
+            return targetBlock;
+        }
+
+        return null;
     }
 
     private void startGotoTaskWithBreakGuard(CompletableFuture<Void> future) {
@@ -16991,12 +17043,12 @@ public class Node {
         int requestedSourceSlot = getIntParameter("SourceSlot", 0);
         int requestedTargetSlot = getIntParameter("TargetSlot", 0);
 
-        SlotSelectionType sourceSelection = resolveInventorySlotSelectionType(0);
-        SlotSelectionType targetSelection = resolveInventorySlotSelectionType(1);
         boolean shiftClickTarget = false;
         boolean moveAllMatchingStacks = false;
         Node sourceParameterNode = getAttachedParameter(0);
         Node targetParameterNode = getAttachedParameter(1);
+        SlotSelectionType sourceSelection = resolveMoveItemSlotSelectionType(sourceParameterNode, 0);
+        SlotSelectionType targetSelection = resolveMoveItemSlotSelectionType(targetParameterNode, 1);
         GuiSelectionMode targetGuiMode = null;
         if (targetParameterNode != null && targetParameterNode.getType() == NodeType.PARAM_GUI) {
             shiftClickTarget = true;
@@ -17022,18 +17074,26 @@ public class Node {
             ? null
             : resolveInventorySlot(handler, inventory, requestedTargetSlot, targetSelection);
 
-        if (sourceResolution == null || (!shiftClickTarget && targetResolution == null)) {
+        if (sourceResolution == null) {
+            sendNodeErrorMessage(client, "Move Item source slot could not be resolved.");
+            future.complete(null);
+            return;
+        }
+        if (!shiftClickTarget && targetResolution == null) {
+            sendNodeErrorMessage(client, "Move Item target slot could not be resolved.");
             future.complete(null);
             return;
         }
 
         if (!shiftClickTarget && sourceResolution.handlerSlotIndex == targetResolution.handlerSlotIndex) {
+            sendNodeErrorMessage(client, "Move Item source and target resolved to the same slot.");
             future.complete(null);
             return;
         }
 
         ItemStack sourceStack = sourceResolution.slot.getStack();
         if (sourceStack.isEmpty()) {
+            sendNodeErrorMessage(client, "Move Item source slot is empty.");
             future.complete(null);
             return;
         }
@@ -17357,6 +17417,29 @@ public class Node {
         return resolveInventorySlotSelectionType(parameterNode);
     }
 
+    private SlotSelectionType resolveMoveItemSlotSelectionType(Node parameterNode, int parameterSlotIndex) {
+        if (type != NodeType.MOVE_ITEM || parameterNode == null || parameterNode.getType() != NodeType.PARAM_ITEM) {
+            return resolveInventorySlotSelectionType(parameterNode);
+        }
+
+        String modeValue = getParameterString(parameterNode, "Mode");
+        if (modeValue != null && !modeValue.trim().isEmpty()) {
+            return resolveInventorySlotSelectionType(parameterNode);
+        }
+
+        Node counterpart = getAttachedParameter(parameterSlotIndex == 0 ? 1 : 0);
+        if (counterpart != null && counterpart.getType() != NodeType.PARAM_ITEM) {
+            SlotSelectionType counterpartSelection = resolveInventorySlotSelectionType(counterpart);
+            return counterpartSelection == SlotSelectionType.GUI_CONTAINER
+                ? SlotSelectionType.PLAYER_INVENTORY
+                : SlotSelectionType.GUI_CONTAINER;
+        }
+
+        return parameterSlotIndex == 0
+            ? SlotSelectionType.PLAYER_INVENTORY
+            : resolveInventorySlotSelectionType(parameterNode);
+    }
+
     private SlotSelectionType resolveInventorySlotSelectionType(Node parameterNode) {
         if (parameterNode == null) {
             return SlotSelectionType.PLAYER_INVENTORY;
@@ -17479,7 +17562,7 @@ public class Node {
     }
 
     private boolean resolveMoveItemSlotFromItemParameter(Node parameterNode, int slotIndex, CompletableFuture<Void> future) {
-        SlotSelectionType selectionType = resolveInventorySlotSelectionType(slotIndex);
+        SlotSelectionType selectionType = resolveMoveItemSlotSelectionType(parameterNode, slotIndex);
         return resolveMoveItemSlotFromItemParameter(parameterNode, slotIndex, selectionType, future);
     }
 

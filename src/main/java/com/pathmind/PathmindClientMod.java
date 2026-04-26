@@ -612,17 +612,20 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
 
-        BlockPos targetPos = parseNavigatorTarget(client, parts, 1, "!travel");
-        if (targetPos == null) {
+        NavigatorTarget target = parseNavigatorTarget(client, parts, 1, "!travel");
+        if (target == null || target.pos() == null) {
             return;
         }
 
         CompletableFuture<Void> future = new CompletableFuture<>();
-        if (!PathmindNavigator.getInstance().startGoto(targetPos, "Chat Travel", future)) {
+        boolean started = target.nearBlock()
+            ? PathmindNavigator.getInstance().startGotoNearBlock(target.pos(), "Chat Travel", future)
+            : PathmindNavigator.getInstance().startGoto(target.pos(), "Chat Travel", future);
+        if (!started) {
             showNavigatorMessage("Could not start Pathmind Nav.");
             return;
         }
-        showNavigatorMessage("Pathmind Nav: heading to " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ());
+        showNavigatorMessage("Pathmind Nav: heading to " + target.pos().getX() + " " + target.pos().getY() + " " + target.pos().getZ());
     }
 
     private void handleNavigatorPathPreview(MinecraftClient client, String[] parts) {
@@ -631,12 +634,14 @@ public class PathmindClientMod implements ClientModInitializer {
             return;
         }
 
-        BlockPos targetPos = parseNavigatorTarget(client, parts, 1, "!path");
-        if (targetPos == null) {
+        NavigatorTarget target = parseNavigatorTarget(client, parts, 1, "!path");
+        if (target == null || target.pos() == null) {
             return;
         }
 
-        PathmindNavigator.PreviewResult result = PathmindNavigator.getInstance().previewPath(client, targetPos, "Path Preview");
+        PathmindNavigator.PreviewResult result = target.nearBlock()
+            ? PathmindNavigator.getInstance().previewPathNearBlock(client, target.pos(), "Path Preview")
+            : PathmindNavigator.getInstance().previewPath(client, target.pos(), "Path Preview");
         showNavigatorMessage(result.message());
     }
 
@@ -645,7 +650,10 @@ public class PathmindClientMod implements ClientModInitializer {
         showNavigatorMessage(enabled ? "Pathmind Nav debug overlay enabled." : "Pathmind Nav debug overlay disabled.");
     }
 
-    private BlockPos parseNavigatorTarget(MinecraftClient client, String[] parts, int coordinateStartIndex, String usageCommand) {
+    private record NavigatorTarget(BlockPos pos, boolean nearBlock) {
+    }
+
+    private NavigatorTarget parseNavigatorTarget(MinecraftClient client, String[] parts, int coordinateStartIndex, String usageCommand) {
         if (client == null || client.player == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return null;
@@ -666,13 +674,13 @@ public class PathmindClientMod implements ClientModInitializer {
             if (remaining == 2) {
                 int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
                 int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockZ(), false);
-                return new BlockPos(x, client.player.getBlockY(), z);
+                return new NavigatorTarget(new BlockPos(x, client.player.getBlockY(), z), false);
             }
             if (remaining == 3) {
                 int x = parseNavigatorCoordinate(parts[coordinateStartIndex], client.player.getBlockX(), false);
                 int y = parseNavigatorCoordinate(parts[coordinateStartIndex + 1], client.player.getBlockY(), false);
                 int z = parseNavigatorCoordinate(parts[coordinateStartIndex + 2], client.player.getBlockZ(), false);
-                return new BlockPos(x, y, z);
+                return new NavigatorTarget(new BlockPos(x, y, z), false);
             }
         } catch (NumberFormatException exception) {
             showNavigatorMessage("Invalid coordinates for " + usageCommand + ".");
@@ -683,7 +691,7 @@ public class PathmindClientMod implements ClientModInitializer {
         return null;
     }
 
-    private BlockPos resolveNavigatorBlockTarget(MinecraftClient client, String rawBlockId, String usageCommand) {
+    private NavigatorTarget resolveNavigatorBlockTarget(MinecraftClient client, String rawBlockId, String usageCommand) {
         if (client == null || client.player == null || client.world == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return null;
@@ -711,10 +719,10 @@ public class PathmindClientMod implements ClientModInitializer {
             showNavigatorMessage("No nearby block found for " + normalized + ".");
             return null;
         }
-        return nearest.get();
+        return new NavigatorTarget(nearest.get(), true);
     }
 
-    private BlockPos resolveNavigatorItemTarget(MinecraftClient client, String rawItemId, String usageCommand) {
+    private NavigatorTarget resolveNavigatorItemTarget(MinecraftClient client, String rawItemId, String usageCommand) {
         if (client == null || client.player == null || client.world == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return null;
@@ -736,7 +744,7 @@ public class PathmindClientMod implements ClientModInitializer {
             showNavigatorMessage("No nearby dropped item found for " + normalized + ".");
             return null;
         }
-        return nearest.get().getBlockPos();
+        return new NavigatorTarget(nearest.get().getBlockPos(), false);
     }
 
     private String normalizeNavigatorResourceId(String rawId, boolean block) {

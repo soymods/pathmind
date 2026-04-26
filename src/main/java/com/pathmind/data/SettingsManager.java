@@ -20,6 +20,8 @@ import java.util.Map;
 public final class SettingsManager {
     private static final String BASE_DIRECTORY_NAME = "pathmind";
     private static final String SETTINGS_FILE_NAME = "settings.json";
+    private static final int NODE_DELAY_MIN_MS = 1;
+    private static final int NODE_DELAY_MAX_MS = 500;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static volatile Settings cachedSettings;
 
@@ -142,12 +144,11 @@ public final class SettingsManager {
     public static long getNodeDelayMs() {
         Settings settings = getCurrent();
         int delay = settings.nodeDelayMs == null ? 150 : settings.nodeDelayMs;
-        if (delay < 1) {
-            // Allow 0 in UI, but enforce a 1ms minimum for execution stability.
-            delay = 1;
+        if (delay < NODE_DELAY_MIN_MS) {
+            delay = NODE_DELAY_MIN_MS;
         }
-        if (delay > 1000) {
-            delay = 1000;
+        if (delay > NODE_DELAY_MAX_MS) {
+            delay = NODE_DELAY_MAX_MS;
         }
         return delay;
     }
@@ -225,8 +226,10 @@ public final class SettingsManager {
         }
         if (settings.nodeDelayMs == null) {
             settings.nodeDelayMs = 150;
-        } else if (settings.nodeDelayMs < 0) {
-            settings.nodeDelayMs = 0;
+        } else if (settings.nodeDelayMs < NODE_DELAY_MIN_MS) {
+            settings.nodeDelayMs = NODE_DELAY_MIN_MS;
+        } else if (settings.nodeDelayMs > NODE_DELAY_MAX_MS) {
+            settings.nodeDelayMs = NODE_DELAY_MAX_MS;
         }
         if (settings.gotoAllowBreakWhileExecuting == null) {
             settings.gotoAllowBreakWhileExecuting = false;

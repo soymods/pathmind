@@ -179,7 +179,7 @@ public class PathmindVisualEditorScreen extends Screen {
         NodeType.SENSOR_KEY_PRESSED,
         NodeType.CREATE_LIST
     };
-    private static final int NODE_DELAY_MIN_MS = 50;
+    private static final int NODE_DELAY_MIN_MS = 1;
     private static final int NODE_DELAY_MAX_MS = 500;
     private static final int TITLE_INTERACTION_PADDING = 4;
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;

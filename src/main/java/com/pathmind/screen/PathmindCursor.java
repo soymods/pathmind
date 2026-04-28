@@ -10,6 +10,9 @@ final class PathmindCursor {
     static final Identifier DEFAULT_TEXTURE = PathmindMod.id("textures/cursor/cursor_default.png");
     static final Identifier GRAB_TEXTURE = PathmindMod.id("textures/cursor/cursor_grab.png");
     static final Identifier GRABBING_TEXTURE = PathmindMod.id("textures/cursor/cursor_grabbing.png");
+    static final Identifier CUT_TEXTURE = PathmindMod.id("textures/cursor/cursor_cut.png");
+    static final Identifier POINTER_TEXTURE = PathmindMod.id("textures/cursor/cursor_pointer.png");
+    static final Identifier DISABLED_TEXTURE = PathmindMod.id("textures/cursor/cursor_disabled.png");
     private static final int SOURCE_SIZE = 16;
     static final int SIZE = 8;
     static final int HOTSPOT_X = Math.round(3f * SIZE / SOURCE_SIZE);

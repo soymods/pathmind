@@ -736,21 +736,29 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private Identifier resolveCursorTexture(int mouseX, int mouseY) {
+        if (nodeGraph.isConnectionCutActive()) {
+            return PathmindCursor.CUT_TEXTURE;
+        }
         if (isDraggingFromSidebar
             || nodeGraph.isAnyNodeBeingDragged()
-            || nodeGraph.isPanning()
-            || nodeGraph.isConnectionCutActive()) {
+            || nodeGraph.isPanning()) {
             return PathmindCursor.GRABBING_TEXTURE;
         }
 
         boolean overWorkspace = mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT;
         if (sidebar.isHoveringNode()) {
+            NodeType hoveredType = sidebar.getHoveredNodeType();
+            if (!sidebar.isHoveringCustomNode() && (shouldBlockBaritoneNode(hoveredType) || shouldBlockUiUtilsNode(hoveredType))) {
+                return PathmindCursor.DISABLED_TEXTURE;
+            }
             return PathmindCursor.GRAB_TEXTURE;
         }
         if (overWorkspace && (nodeGraph.getNodeAt(mouseX, mouseY) != null
-            || nodeGraph.getConnectionAt(mouseX, mouseY) != null
-            || nodeGraph.isHoveringStartButton())) {
+            || nodeGraph.getConnectionAt(mouseX, mouseY) != null)) {
             return PathmindCursor.GRAB_TEXTURE;
+        }
+        if (!overWorkspace) {
+            return PathmindCursor.POINTER_TEXTURE;
         }
 
         return PathmindCursor.DEFAULT_TEXTURE;

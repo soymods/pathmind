@@ -51,28 +51,83 @@ jobs:
             exit 1
           fi
 
-      - name: Pick main mod jar
-        id: jar
+      - name: Stage distributable jars
+        id: stage_jars
         shell: bash
         run: |
-          MC_VERSION="$(grep -E '^minecraft_version=' gradle.properties | head -n 1 | cut -d= -f2-)"
-          JAR="$(find "build/multiVersion/${MC_VERSION}" -maxdepth 1 -type f -name "*.jar" 2>/dev/null \
-            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
-            | sort \
-            | head -n 1)"
+          STAGING_DIR="build/ci-artifacts"
+          rm -rf "$STAGING_DIR"
+          mkdir -p "$STAGING_DIR"
 
-          if [ -z "$JAR" ]; then
-            echo "No suitable jar found for configured Minecraft version ${MC_VERSION}."
+          find build/multiVersion -maxdepth 2 -type f -name '*.jar' \
+            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
+            | sort > build/distributable-jars.txt
+
+          if [ ! -s build/distributable-jars.txt ]; then
+            echo "No distributable jars were produced."
             find build/multiVersion -maxdepth 2 -type f | sort || true
             exit 1
           fi
 
-          BASENAME="$(basename "$JAR" .jar)"
-          echo "jar_path=$JAR" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=$BASENAME" >> "$GITHUB_OUTPUT"
+          while IFS= read -r jar; do
+            cp "$jar" "$STAGING_DIR/"
+          done < build/distributable-jars.txt
 
-      - name: Upload mod jar (named like the jar)
+          COUNT="$(wc -l < build/distributable-jars.txt | tr -d ' ')"
+          echo "artifact_name=pathmind-test-builds-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "staging_dir=$STAGING_DIR" >> "$GITHUB_OUTPUT"
+          echo "jar_count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload all mod jars
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.jar.outputs.artifact_name }}
-          path: ${{ steps.jar.outputs.jar_path }}
+          name: ${{ steps.stage_jars.outputs.artifact_name }}
+          path: ${{ steps.stage_jars.outputs.staging_dir }}
+          if-no-files-found: error
+
+      - name: Post jars to Discord
+        if: ${{ github.event_name == 'push' && secrets.DISCORD_BOT_TOKEN != '' }}
+        shell: bash
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: "1498698231796859070"
+          ARTIFACT_NAME: ${{ steps.stage_jars.outputs.artifact_name }}
+          JAR_COUNT: ${{ steps.stage_jars.outputs.jar_count }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t jars < <(find "${{ steps.stage_jars.outputs.staging_dir }}" -maxdepth 1 -type f -name '*.jar' | sort)
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No jars available to send to Discord."
+            exit 1
+          fi
+
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          ref_name="${GITHUB_REF_NAME:-${GITHUB_SHA}}"
+          batch_size=10
+          total_batches=$(( (${#jars[@]} + batch_size - 1) / batch_size ))
+          batch_index=0
+
+          for ((i=0; i<${#jars[@]}; i+=batch_size)); do
+            batch_index=$((batch_index + 1))
+            payload_json="$(jq -cn \
+              --arg content "Pathmind test builds for ${ref_name} (${JAR_COUNT} jars)\nArtifact bundle: ${ARTIFACT_NAME}\nWorkflow run: ${run_url}\nBatch ${batch_index}/${total_batches}" \
+              '{content: $content}')"
+
+            curl_args=(
+              --fail-with-body
+              -sS
+              -X POST
+              "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages"
+              -H "Authorization: Bot ${DISCORD_BOT_TOKEN}"
+              -F "payload_json=${payload_json}"
+            )
+
+            file_index=0
+            for ((j=i; j<i+batch_size && j<${#jars[@]}; j++)); do
+              curl_args+=(-F "files[${file_index}]=@${jars[$j]}")
+              file_index=$((file_index + 1))
+            done
+
+            curl "${curl_args[@]}"
+          done

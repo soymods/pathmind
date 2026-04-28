@@ -8076,7 +8076,7 @@ public class Node {
             values.put("Distance", Double.toString(distance));
             valueType = NodeType.PARAM_DISTANCE;
         } else {
-            values = valueNode.exportParameterValues();
+            values = exportResolvedParameterValues(valueNode);
             NodeType resolvedValueType = valueNode.getResolvedValueType();
             if (resolvedValueType != valueNode.getType()) {
                 valueType = resolvedValueType;
@@ -8860,7 +8860,7 @@ public class Node {
             }
             default:
                 NodeType resolvedType = parameterNode.getResolvedValueType();
-                Map<String, String> exported = parameterNode.exportParameterValues();
+                Map<String, String> exported = exportResolvedParameterValues(parameterNode);
                 if (resolvedType == null || exported == null || exported.isEmpty()) {
                     if (client != null) {
                         sendNodeErrorMessage(client, "No value available to add to the list.");
@@ -8895,6 +8895,32 @@ public class Node {
 
     private String serializeListEntryValues(Map<String, String> values) {
         return LIST_ENTRY_SERIALIZED_PREFIX + LIST_ENTRY_GSON.toJson(values == null ? Collections.emptyMap() : values);
+    }
+
+    private Map<String, String> exportResolvedParameterValues(Node source) {
+        if (source == null) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> values = source.exportParameterValues();
+        if (values == null || values.isEmpty()) {
+            return values;
+        }
+        for (NodeParameter parameter : source.getParameters()) {
+            if (parameter == null) {
+                continue;
+            }
+            String key = parameter.getName();
+            if (key == null || key.isEmpty()) {
+                continue;
+            }
+            String resolvedValue = getParameterString(source, key);
+            if (resolvedValue == null) {
+                continue;
+            }
+            values.put(key, resolvedValue);
+            values.put(normalizeParameterKey(key), resolvedValue);
+        }
+        return values;
     }
 
     private Map<String, String> deserializeListEntryValues(String entry) {
@@ -14859,38 +14885,18 @@ public class Node {
         if (schematicParam != null) {
             schematic = schematicParam.getStringValue();
         }
-        
-        String command;
-        Vec3d targetVector = runtimeParameterData != null ? runtimeParameterData.targetVector : null;
-        if (targetVector != null) {
-            int x = (int) Math.floor(targetVector.x);
-            int y = (int) Math.floor(targetVector.y);
-            int z = (int) Math.floor(targetVector.z);
-            command = String.format("#build %s %d %d %d", schematic, x, y, z);
-        } else {
-            switch (mode) {
-                case BUILD_PLAYER:
-                    command = String.format("#build %s", schematic);
-                    break;
-                    
-                case BUILD_XYZ:
-                    int x = 0, y = 0, z = 0;
-                    NodeParameter xParam = getParameter("X");
-                    NodeParameter yParam = getParameter("Y");
-                    NodeParameter zParam = getParameter("Z");
-                    
-                    if (xParam != null) x = xParam.getIntValue();
-                    if (yParam != null) y = yParam.getIntValue();
-                    if (zParam != null) z = zParam.getIntValue();
-                    
-                    command = String.format("#build %s %d %d %d", schematic, x, y, z);
-                    break;
-                    
-                default:
-                    future.completeExceptionally(new RuntimeException("Unknown BUILD mode: " + mode));
-                    return;
-            }
+        BlockPos buildOrigin = resolveBuildOrigin();
+        if (buildOrigin == null) {
+            future.completeExceptionally(new RuntimeException("Unable to resolve build origin"));
+            return;
         }
+
+        boolean usePlayerOriginCommand = runtimeParameterData != null
+            ? runtimeParameterData.targetVector == null && mode == NodeMode.BUILD_PLAYER
+            : mode == NodeMode.BUILD_PLAYER;
+        String command = usePlayerOriginCommand
+            ? String.format("#build %s", schematic)
+            : String.format("#build %s %d %d %d", schematic, buildOrigin.getX(), buildOrigin.getY(), buildOrigin.getZ());
 
         if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
             executeCommand(command);
@@ -14905,7 +14911,51 @@ public class Node {
         }
 
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_BUILD, future);
+        Object builderProcess = BaritoneApiProxy.getBuilderProcess(baritone);
+        if (builderProcess != null && BaritoneApiProxy.build(builderProcess, schematic, buildOrigin)) {
+            return;
+        }
         executeCommand(command);
+    }
+
+    private BlockPos resolveBuildOrigin() {
+        Vec3d targetVector = runtimeParameterData != null ? runtimeParameterData.targetVector : null;
+        if (targetVector != null) {
+            return BlockPos.ofFloored(targetVector);
+        }
+
+        switch (mode) {
+            case BUILD_PLAYER:
+                return getPlayerBuildOrigin();
+            case BUILD_XYZ:
+                int x = 0;
+                int y = 0;
+                int z = 0;
+                NodeParameter xParam = getParameter("X");
+                NodeParameter yParam = getParameter("Y");
+                NodeParameter zParam = getParameter("Z");
+
+                if (xParam != null) {
+                    x = xParam.getIntValue();
+                }
+                if (yParam != null) {
+                    y = yParam.getIntValue();
+                }
+                if (zParam != null) {
+                    z = zParam.getIntValue();
+                }
+                return new BlockPos(x, y, z);
+            default:
+                return null;
+        }
+    }
+
+    private BlockPos getPlayerBuildOrigin() {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return null;
+        }
+        return client.player.getBlockPos();
     }
     
     private void executeExploreCommand(CompletableFuture<Void> future) {

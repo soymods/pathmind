@@ -2,6 +2,7 @@ package com.pathmind.util;
 
 import net.minecraft.util.math.BlockPos;
 
+import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -153,6 +154,16 @@ public final class BaritoneApiProxy {
 
     public static Object getBuilderProcess(Object baritone) {
         return invoke(baritone, "getBuilderProcess");
+    }
+
+    public static boolean build(Object builderProcess, String schematicFile, BlockPos origin) {
+        Object result = invokeBestMatch(builderProcess, "build", schematicFile, origin);
+        return !(result instanceof Boolean bool) || bool;
+    }
+
+    public static boolean build(Object builderProcess, String name, File schematic, Object origin) {
+        Object result = invokeBestMatch(builderProcess, "build", name, schematic, origin);
+        return !(result instanceof Boolean bool) || bool;
     }
 
     public static Object getPathingBehavior(Object baritone) {

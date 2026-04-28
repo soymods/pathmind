@@ -4,8 +4,32 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
-  build:
+  discover-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.versions.outputs.versions }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Discover supported Minecraft targets
+        id: versions
+        shell: bash
+        run: |
+          VERSIONS="$(grep -E '^\s*"[0-9]+\.[0-9]+(\.[0-9]+)?"\s+to\s+MinecraftVersionSpec\(' build.gradle.kts \
+            | sed -E 's/^\s*"([^"]+)".*/\1/' \
+            | jq -R . \
+            | jq -s -c .)"
+
+          echo "versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
+
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,69 +55,79 @@ jobs:
       - name: Unit tests
         run: ./gradlew test
 
-      - name: Build all supported Minecraft targets
-        run: ./gradlew buildAllTargets
+  build:
+    needs:
+      - discover-targets
+      - test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        minecraft_version: ${{ fromJSON(needs.discover-targets.outputs.versions) }}
 
-      - name: Verify all expected release jars exist
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Download Baritone API dependency
+        run: |
+          mkdir -p libs
+          curl -L -o libs/baritone-api-fabric-1.15.0.jar \
+            https://github.com/cabaletta/baritone/releases/download/v1.15.0/baritone-api-fabric-1.15.0.jar
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build mod jar for Minecraft ${{ matrix.minecraft_version }}
+        run: ./gradlew assemble -Pmc_version=${{ matrix.minecraft_version }}
+
+      - name: Pick mod jar for Minecraft ${{ matrix.minecraft_version }}
+        id: jar
         shell: bash
         run: |
-          EXPECTED_COUNT="$(grep -E '^\s*"[0-9]+\.[0-9]+(\.[0-9]+)?"\s+to\s+MinecraftVersionSpec\(' build.gradle.kts | wc -l | tr -d ' ')"
-          ACTUAL_COUNT="$(find build/multiVersion -maxdepth 2 -type f -name '*.jar' \
+          JAR="$(find build/libs -maxdepth 1 -type f -name '*.jar' \
             | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
-            | grep -c '\+mc')"
+            | sort \
+            | head -n 1)"
 
-          echo "Expected jars: $EXPECTED_COUNT"
-          echo "Actual jars:   $ACTUAL_COUNT"
-
-          if [ "$ACTUAL_COUNT" -ne "$EXPECTED_COUNT" ]; then
-            echo "Mismatch between supported targets and built jars."
-            find build/multiVersion -maxdepth 2 -type f | sort || true
+          if [ -z "$JAR" ]; then
+            echo "No suitable jar found for Minecraft ${{ matrix.minecraft_version }}."
+            find build/libs -maxdepth 1 -type f | sort || true
             exit 1
           fi
 
-      - name: Stage distributable jars
-        id: stage_jars
-        shell: bash
-        run: |
-          STAGING_DIR="build/ci-artifacts"
-          rm -rf "$STAGING_DIR"
-          mkdir -p "$STAGING_DIR"
+          echo "jar_path=$JAR" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$(basename "$JAR")" >> "$GITHUB_OUTPUT"
 
-          find build/multiVersion -maxdepth 2 -type f -name '*.jar' \
-            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
-            | sort > build/distributable-jars.txt
-
-          if [ ! -s build/distributable-jars.txt ]; then
-            echo "No distributable jars were produced."
-            find build/multiVersion -maxdepth 2 -type f | sort || true
-            exit 1
-          fi
-
-          while IFS= read -r jar; do
-            cp "$jar" "$STAGING_DIR/"
-          done < build/distributable-jars.txt
-
-          COUNT="$(wc -l < build/distributable-jars.txt | tr -d ' ')"
-          echo "artifact_name=pathmind-test-builds-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "staging_dir=$STAGING_DIR" >> "$GITHUB_OUTPUT"
-          echo "jar_count=$COUNT" >> "$GITHUB_OUTPUT"
-
-      - name: Upload all mod jars
+      - name: Upload mod jar
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.stage_jars.outputs.artifact_name }}
-          path: ${{ steps.stage_jars.outputs.staging_dir }}
+          name: ${{ steps.jar.outputs.artifact_name }}
+          path: ${{ steps.jar.outputs.jar_path }}
           if-no-files-found: error
+          retention-days: 90
 
-      - name: Post jars to Discord
-        if: ${{ github.event_name == 'push' }}
-        continue-on-error: true
+  notify-discord:
+    if: ${{ github.event_name == 'push' }}
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Post build links to Discord
         shell: bash
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: "1498698231796859070"
-          ARTIFACT_NAME: ${{ steps.stage_jars.outputs.artifact_name }}
-          JAR_COUNT: ${{ steps.stage_jars.outputs.jar_count }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -102,38 +136,55 @@ jobs:
             exit 0
           fi
 
-          mapfile -t jars < <(find "${{ steps.stage_jars.outputs.staging_dir }}" -maxdepth 1 -type f -name '*.jar' | sort)
-          if [ "${#jars[@]}" -eq 0 ]; then
-            echo "No jars available to send to Discord."
+          ARTIFACTS_JSON="$(curl --fail-with-body -sS \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100")"
+
+          MESSAGE="$(jq -r \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            --arg run_id "${GITHUB_RUN_ID}" \
+            --arg ref_name "${GITHUB_REF_NAME:-${GITHUB_SHA}}" \
+            '
+            .artifacts
+            | map(select(.expired | not))
+            | map(select(.name | test("^pathmind-.*\\+mc[0-9.]+\\.jar$")))
+            | sort_by(.name | capture("\\+mc(?<version>[0-9.]+)\\.jar$").version | split(".") | map(tonumber))
+            | if length == 0 then
+                empty
+              else
+                (
+                  "**Pathmind test builds** for `" + $ref_name + "`\n"
+                  + (length | tostring) + " downloads available for 90 days\n"
+                  + "[GitHub Actions run](<https://github.com/" + $repo + "/actions/runs/" + $run_id + ">)\n\n"
+                  + (
+                    map(
+                      "- `"
+                      + (.name | capture("\\+mc(?<version>[0-9.]+)\\.jar$").version)
+                      + "` - [Download](<https://github.com/"
+                      + $repo
+                      + "/actions/runs/"
+                      + $run_id
+                      + "/artifacts/"
+                      + (.id | tostring)
+                      + ">)"
+                    )
+                    | join("\n")
+                  )
+                )
+              end
+            ' <<<"$ARTIFACTS_JSON")"
+
+          if [ -z "${MESSAGE:-}" ]; then
+            echo "No build artifacts were available to post."
             exit 1
           fi
 
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          ref_name="${GITHUB_REF_NAME:-${GITHUB_SHA}}"
-          batch_size=10
-          total_batches=$(( (${#jars[@]} + batch_size - 1) / batch_size ))
-          batch_index=0
+          PAYLOAD="$(jq -cn --arg content "$MESSAGE" '{content: $content}')"
 
-          for ((i=0; i<${#jars[@]}; i+=batch_size)); do
-            batch_index=$((batch_index + 1))
-            payload_json="$(jq -cn \
-              --arg content "**Pathmind test builds** for \`${ref_name}\`\n${JAR_COUNT} jars attached\n[GitHub Actions run](<${run_url}>)\n*Batch ${batch_index}/${total_batches}*" \
-              '{content: $content}')"
-
-            curl_args=(
-              --fail-with-body
-              -sS
-              -X POST
-              "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages"
-              -H "Authorization: Bot ${DISCORD_BOT_TOKEN}"
-              -F "payload_json=${payload_json}"
-            )
-
-            file_index=0
-            for ((j=i; j<i+batch_size && j<${#jars[@]}; j++)); do
-              curl_args+=(-F "files[${file_index}]=@${jars[$j]}")
-              file_index=$((file_index + 1))
-            done
-
-            curl "${curl_args[@]}"
-          done
+          curl --fail-with-body -sS \
+            -X POST \
+            "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages" \
+            -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"

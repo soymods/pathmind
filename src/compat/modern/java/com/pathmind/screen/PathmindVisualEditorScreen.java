@@ -4282,6 +4282,8 @@ public class PathmindVisualEditorScreen extends Screen {
             case GLFW.GLFW_KEY_C:
                 nodeGraph.copySelectedNodeToClipboard();
                 return true;
+            case GLFW.GLFW_KEY_X:
+                return nodeGraph.deleteSelectedNode();
             case GLFW.GLFW_KEY_V:
                 nodeGraph.pasteClipboardNode();
                 return true;

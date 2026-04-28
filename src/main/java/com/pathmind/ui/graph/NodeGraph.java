@@ -129,6 +129,7 @@ public class NodeGraph {
     
     // Store the original connection that was disconnected
     private NodeConnection disconnectedConnection = null;
+    private NodeConnection insertionPreviewConnection = null;
 
     // Connection cutting state
     private boolean connectionCutActive = false;
@@ -1303,6 +1304,82 @@ public class NodeGraph {
         return true;
     }
 
+    private boolean isNodeEligibleForConnectionInsertion(Node node) {
+        return node != null
+            && node.shouldRenderSockets()
+            && !node.isSensorNode()
+            && !node.isParameterNode()
+            && node.getInputSocketCount() == 1
+            && node.getOutputSocketCount() == 1;
+    }
+
+    private NodeConnection findInsertionPreviewConnection(Node node) {
+        if (!isNodeEligibleForConnectionInsertion(node)) {
+            return null;
+        }
+
+        NodeConnection bestConnection = null;
+        double bestDistance = Double.MAX_VALUE;
+        int left = node.getX();
+        int top = node.getY();
+        int right = left + node.getWidth();
+        int bottom = top + node.getHeight();
+        double centerX = left + node.getWidth() / 2.0;
+        double centerY = top + node.getHeight() / 2.0;
+
+        for (NodeConnection connection : connections) {
+            if (connection == null
+                || connection.getOutputNode() == node
+                || connection.getInputNode() == node) {
+                continue;
+            }
+            if (!connectionIntersectsRect(connection, left, top, right, bottom, CONNECTION_CLICK_THRESHOLD)) {
+                continue;
+            }
+
+            double distance = connectionDistanceToPoint(connection, centerX, centerY);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestConnection = connection;
+            }
+        }
+
+        return bestConnection;
+    }
+
+    private boolean tryInsertDraggedNodeIntoPreviewConnection(Node node) {
+        if (!isNodeEligibleForConnectionInsertion(node) || insertionPreviewConnection == null) {
+            return false;
+        }
+
+        NodeConnection connection = insertionPreviewConnection;
+        insertionPreviewConnection = null;
+        boolean inserted = insertNodeIntoConnection(node, connection);
+        if (inserted) {
+            dragOperationChanged = true;
+        }
+        return inserted;
+    }
+
+    private boolean insertNodeIntoConnection(Node node, NodeConnection connection) {
+        if (node == null || connection == null || !connections.contains(connection)) {
+            return false;
+        }
+
+        Node source = connection.getOutputNode();
+        Node target = connection.getInputNode();
+        if (source == null || target == null || source == node || target == node) {
+            return false;
+        }
+
+        connections.remove(connection);
+        connections.add(new NodeConnection(source, node, connection.getOutputSocket(), 0));
+        connections.add(new NodeConnection(node, target, 0, connection.getInputSocket()));
+        invalidateConnectionIndex();
+        invalidateRenderCaches();
+        return true;
+    }
+
     private ClipboardSnapshot createClipboardSnapshot(Collection<Node> selection) {
         if (selection == null || selection.isEmpty()) {
             return null;
@@ -1824,6 +1901,7 @@ public class NodeGraph {
                 invalidateHierarchyCache();
                 draggingNode.setSocketsHidden(false);
                 resetDropTargets();
+                insertionPreviewConnection = null;
             } else {
                 if (!draggingNodeDetached) {
                     if (newX != draggingNodeStartX || newY != draggingNodeStartY) {
@@ -1878,9 +1956,14 @@ public class NodeGraph {
                             }
                         }
                     }
+                    insertionPreviewConnection = !hideSockets ? findInsertionPreviewConnection(draggingNode) : null;
                     draggingNode.setSocketsHidden(hideSockets);
+                } else {
+                    insertionPreviewConnection = null;
                 }
             }
+        } else {
+            insertionPreviewConnection = null;
         }
         if (isDraggingConnection) {
             connectionDragX = worldMouseX;
@@ -1920,9 +2003,11 @@ public class NodeGraph {
 
     public void previewSidebarDrag(Node candidate, int worldMouseX, int worldMouseY) {
         resetDropTargets();
+        insertionPreviewConnection = null;
         if (candidate == null) {
             return;
         }
+        positionNewNode(candidate, worldMouseX, worldMouseY);
         NodeType nodeType = candidate.getType();
         boolean parameterCandidate = nodeType == NodeType.SENSOR_POSITION_OF
             || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
@@ -1941,6 +2026,7 @@ public class NodeGraph {
         if (Node.isParameterType(nodeType)) {
             return;
         } else {
+            boolean actionTargetFound = false;
             for (Node node : nodes) {
                 if (!node.canAcceptActionNode()) {
                     continue;
@@ -1950,8 +2036,12 @@ public class NodeGraph {
                 }
                 if (node.isPointInsideActionSlot(worldMouseX, worldMouseY)) {
                     actionDropTarget = node;
+                    actionTargetFound = true;
                     break;
                 }
+            }
+            if (!actionTargetFound) {
+                insertionPreviewConnection = findInsertionPreviewConnection(candidate);
             }
         }
     }
@@ -2117,9 +2207,11 @@ public class NodeGraph {
 
     public Node handleSidebarDrop(Node newNode, int worldMouseX, int worldMouseY) {
         resetDropTargets();
+        insertionPreviewConnection = null;
         if (newNode == null) {
             return null;
         }
+        positionNewNode(newNode, worldMouseX, worldMouseY);
         NodeType nodeType = newNode.getType();
         if (nodeType == NodeType.START) {
             assignNewStartNodeNumber(newNode);
@@ -2167,8 +2259,11 @@ public class NodeGraph {
             }
         }
 
-        positionNewNode(newNode, worldMouseX, worldMouseY);
+        NodeConnection insertionConnection = findInsertionPreviewConnection(newNode);
         nodes.add(newNode);
+        if (insertionConnection != null) {
+            insertNodeIntoConnection(newNode, insertionConnection);
+        }
         markWorkspaceDirty();
         return newNode;
     }
@@ -2278,6 +2373,7 @@ public class NodeGraph {
             } else {
                 node.setDragging(false);
                 node.setSocketsHidden(shouldHideSocketsWhenAttached(node));
+                tryInsertDraggedNodeIntoPreviewConnection(node);
                 rootToPromote = getRootNode(node);
             }
         }
@@ -2287,6 +2383,7 @@ public class NodeGraph {
         draggingNode = null;
         draggingNodeDetached = false;
         resetDropTargets();
+        insertionPreviewConnection = null;
 
         if (dragOperationChanged) {
             pushUndoSnapshot(pendingDragUndoSnapshot);
@@ -2328,6 +2425,7 @@ public class NodeGraph {
         hoveredSocket = -1;
         disconnectedConnection = null;
         connectionDragMoved = false;
+        insertionPreviewConnection = null;
         resetDropTargets();
     }
 
@@ -13875,6 +13973,9 @@ public class NodeGraph {
                 if (!denseViewportMode && shouldGrayOutConnection(outputNode, inputNode)) {
                     color = toGrayscale(color, 0.65f);
                 }
+                if (connection == insertionPreviewConnection) {
+                    color = getSelectedNodeAccentColor();
+                }
 
                 if (animateConnections && manager.shouldAnimateConnection(connection)) {
                     renderAnimatedConnectionCurve(context, outputX, outputY, inputX, inputY,
@@ -14123,6 +14224,69 @@ public class NodeGraph {
         return segmentsIntersectWithTolerance(x1, y1, x2, y2, outputX, outputY, midX, outputY, threshold)
             || segmentsIntersectWithTolerance(x1, y1, x2, y2, midX, outputY, midX, inputY, threshold)
             || segmentsIntersectWithTolerance(x1, y1, x2, y2, midX, inputY, inputX, inputY, threshold);
+    }
+
+    private boolean connectionIntersectsRect(NodeConnection connection, int left, int top, int right, int bottom, int tolerance) {
+        if (connection == null) {
+            return false;
+        }
+        Node outputNode = connection.getOutputNode();
+        Node inputNode = connection.getInputNode();
+        if (outputNode == null || inputNode == null) {
+            return false;
+        }
+
+        int expandedLeft = left - tolerance;
+        int expandedTop = top - tolerance;
+        int expandedRight = right + tolerance;
+        int expandedBottom = bottom + tolerance;
+        int outputX = outputNode.getSocketX(false);
+        int outputY = outputNode.getSocketY(connection.getOutputSocket(), false);
+        int inputX = inputNode.getSocketX(true);
+        int inputY = inputNode.getSocketY(connection.getInputSocket(), true);
+        int midX = outputX + (inputX - outputX) / 2;
+
+        return axisAlignedSegmentIntersectsRect(outputX, outputY, midX, outputY, expandedLeft, expandedTop, expandedRight, expandedBottom)
+            || axisAlignedSegmentIntersectsRect(midX, outputY, midX, inputY, expandedLeft, expandedTop, expandedRight, expandedBottom)
+            || axisAlignedSegmentIntersectsRect(midX, inputY, inputX, inputY, expandedLeft, expandedTop, expandedRight, expandedBottom);
+    }
+
+    private boolean axisAlignedSegmentIntersectsRect(int x1, int y1, int x2, int y2, int left, int top, int right, int bottom) {
+        if (x1 == x2) {
+            int x = x1;
+            int minY = Math.min(y1, y2);
+            int maxY = Math.max(y1, y2);
+            return x >= left && x <= right && maxY >= top && minY <= bottom;
+        }
+        if (y1 == y2) {
+            int y = y1;
+            int minX = Math.min(x1, x2);
+            int maxX = Math.max(x1, x2);
+            return y >= top && y <= bottom && maxX >= left && minX <= right;
+        }
+        return false;
+    }
+
+    private double connectionDistanceToPoint(NodeConnection connection, double px, double py) {
+        if (connection == null) {
+            return Double.MAX_VALUE;
+        }
+        Node outputNode = connection.getOutputNode();
+        Node inputNode = connection.getInputNode();
+        if (outputNode == null || inputNode == null) {
+            return Double.MAX_VALUE;
+        }
+
+        int outputX = outputNode.getSocketX(false);
+        int outputY = outputNode.getSocketY(connection.getOutputSocket(), false);
+        int inputX = inputNode.getSocketX(true);
+        int inputY = inputNode.getSocketY(connection.getInputSocket(), true);
+        int midX = outputX + (inputX - outputX) / 2;
+
+        double distanceA = pointToSegmentDistanceSquared((int) Math.round(px), (int) Math.round(py), outputX, outputY, midX, outputY);
+        double distanceB = pointToSegmentDistanceSquared((int) Math.round(px), (int) Math.round(py), midX, outputY, midX, inputY);
+        double distanceC = pointToSegmentDistanceSquared((int) Math.round(px), (int) Math.round(py), midX, inputY, inputX, inputY);
+        return Math.min(distanceA, Math.min(distanceB, distanceC));
     }
 
     private boolean segmentsIntersectWithTolerance(int ax1, int ay1, int ax2, int ay2,

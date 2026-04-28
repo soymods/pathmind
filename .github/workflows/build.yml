@@ -136,15 +136,22 @@ jobs:
             exit 0
           fi
 
+          COMMIT_SHA="${GITHUB_SHA}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          COMMIT_MESSAGE="$(jq -r '.head_commit.message // .pull_request.title // ""' "$GITHUB_EVENT_PATH" | head -n 1)"
+          if [ -z "${COMMIT_MESSAGE:-}" ] || [ "${COMMIT_MESSAGE}" = "null" ]; then
+            COMMIT_MESSAGE="No commit message available"
+          fi
+          BUILD_TIMESTAMP="$(date -u +%s)"
+
           ARTIFACTS_JSON="$(curl --fail-with-body -sS \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100")"
 
-          MESSAGE="$(jq -r \
+          DOWNLOADS="$(jq -r \
             --arg repo "${GITHUB_REPOSITORY}" \
             --arg run_id "${GITHUB_RUN_ID}" \
-            --arg ref_name "${GITHUB_REF_NAME:-${GITHUB_SHA}}" \
             '
             .artifacts
             | map(select(.expired | not))
@@ -153,34 +160,45 @@ jobs:
             | if length == 0 then
                 empty
               else
-                (
-                  "**Pathmind test builds** for `" + $ref_name + "`\n"
-                  + (length | tostring) + " downloads available for 90 days\n"
-                  + "[GitHub Actions run](<https://github.com/" + $repo + "/actions/runs/" + $run_id + ">)\n\n"
-                  + (
-                    map(
-                      "- `"
-                      + (.name | capture("\\+mc(?<version>[0-9.]+)\\.jar$").version)
-                      + "` - [Download](<https://github.com/"
-                      + $repo
-                      + "/actions/runs/"
-                      + $run_id
-                      + "/artifacts/"
-                      + (.id | tostring)
-                      + ">)"
-                    )
-                    | join("\n")
-                  )
+                map(
+                  "• `"
+                  + (.name | capture("\\+mc(?<version>[0-9.]+)\\.jar$").version)
+                  + "` - [Download](<https://github.com/"
+                  + $repo
+                  + "/actions/runs/"
+                  + $run_id
+                  + "/artifacts/"
+                  + (.id | tostring)
+                  + ">)"
                 )
+                | join("\n")
               end
             ' <<<"$ARTIFACTS_JSON")"
 
-          if [ -z "${MESSAGE:-}" ]; then
+          if [ -z "${DOWNLOADS:-}" ]; then
             echo "No build artifacts were available to post."
             exit 1
           fi
 
-          PAYLOAD="$(jq -cn --arg content "$MESSAGE" '{content: $content}')"
+          SUMMARY_LINE="**Branch:** ${GITHUB_REF_NAME:-${GITHUB_REF}}\n**Commit:** [\`${SHORT_SHA}\`](<https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA}>) ${COMMIT_MESSAGE}\n**Built:**"
+          SUMMARY_LINE="${SUMMARY_LINE} <t:${BUILD_TIMESTAMP}:F>"
+
+          DESCRIPTION="${SUMMARY_LINE}\n\n**Downloads**\n${DOWNLOADS}\n\n[View GitHub Actions run](<https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}>)"
+
+          PAYLOAD="$(jq -cn \
+            --arg title "Pathmind test builds" \
+            --arg url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg description "$DESCRIPTION" \
+            '{
+              embeds: [
+                {
+                  title: $title,
+                  url: $url,
+                  description: $description,
+                  color: 5763719
+                }
+              ]
+            }')"
 
           curl --fail-with-body -sS \
             -X POST \

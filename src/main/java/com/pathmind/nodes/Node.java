@@ -7861,6 +7861,13 @@ public class Node {
             return null;
         }
 
+        if (parameterNode.getType() == NodeType.VARIABLE) {
+            parameterNode = resolveVariableValueNode(parameterNode, 0, future);
+            if (parameterNode == null) {
+                return null;
+            }
+        }
+
         NodeType parameterType = parameterNode.getType();
         switch (parameterType) {
             case PARAM_ENTITY: {

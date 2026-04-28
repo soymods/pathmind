@@ -175,31 +175,31 @@ sourceSets {
         java {
             setSrcDirs(listOf("src/main/java"))
             if (usesLegacyInputApis) {
-                srcDir("src/legacy/java")
+                srcDir("src/compat/legacy/base/java")
                 if (usesTypedUseItemCallback) {
-                    srcDir("src/legacy-typed-useitem/java")
+                    srcDir("src/compat/legacy/useitem/typed/java")
                 } else {
-                    srcDir("src/legacy-action-useitem/java")
+                    srcDir("src/compat/legacy/useitem/action/java")
                 }
                 if (usesOldLegacyRenderApis) {
                     if (requestedMinecraftVersion in preAllocatorLegacyRenderVersions) {
-                        srcDir("src/legacy-old/java")
+                        srcDir("src/compat/legacy/render/old/java")
                     } else if (requestedMinecraftVersion in allocatorLightmapLegacyRenderVersions) {
-                        srcDir("src/legacy-old-allocator/java")
+                        srcDir("src/compat/legacy/render/old-allocator/java")
                     } else if (requestedMinecraftVersion in allocatorNoLightmapLegacyRenderVersions) {
-                        srcDir("src/legacy-old-allocator-nolightmap/java")
+                        srcDir("src/compat/legacy/render/old-allocator-nolightmap/java")
                     } else {
                         throw GradleException("No legacy old render source set configured for Minecraft $requestedMinecraftVersion")
                     }
                 } else if (usesTransitionalLegacyRenderApis) {
-                    srcDir("src/legacy-transitional/java")
+                    srcDir("src/compat/legacy/render/transitional/java")
                 } else {
-                    srcDir("src/legacy-late/java")
+                    srcDir("src/compat/legacy/render/late/java")
                 }
             } else if (usesMidInputApis) {
-                srcDir("src/mid/java")
+                srcDir("src/compat/mid/java")
             } else {
-                srcDir("src/modern/java")
+                srcDir("src/compat/modern/java")
             }
         }
     }

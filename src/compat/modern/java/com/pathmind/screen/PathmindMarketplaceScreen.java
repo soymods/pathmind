@@ -25,6 +25,7 @@ import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -188,6 +189,7 @@ public class PathmindMarketplaceScreen extends Screen {
         && SettingsManager.getCurrent().skipMarketplaceDeleteConfirm;
     private boolean skipMarketplaceUpdateConfirm = SettingsManager.getCurrent().skipMarketplaceUpdateConfirm != null
         && SettingsManager.getCurrent().skipMarketplaceUpdateConfirm;
+    private boolean systemCursorHidden = false;
 
     public PathmindMarketplaceScreen(Screen parent) {
         this(parent, false, null, null);
@@ -210,6 +212,7 @@ public class PathmindMarketplaceScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        ensureCustomCursorHidden();
         if (searchField == null) {
             searchField = new PathmindTextField(this.textRenderer, 0, 0, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT, Text.literal("Search presets"));
             searchField.setMaxLength(64);
@@ -333,6 +336,26 @@ public class PathmindMarketplaceScreen extends Screen {
         if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
             renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
         }
+        if (!editorPopupMode) {
+            DrawContextBridge.startNewRootLayer(context);
+            PathmindCursor.renderDefault(context, popupMouseX, popupMouseY);
+        }
+    }
+
+    private void ensureCustomCursorHidden() {
+        if (systemCursorHidden || editorPopupMode) {
+            return;
+        }
+        PathmindCursor.hideSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = true;
+    }
+
+    private void restoreSystemCursor() {
+        if (!systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.showSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = false;
     }
 
     private void renderTopBar(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -2221,9 +2244,16 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         sortDropdownOpen = false;
+        restoreSystemCursor();
         if (this.client != null) {
             this.client.setScreen(parent);
         }
+    }
+
+    @Override
+    public void removed() {
+        restoreSystemCursor();
+        super.removed();
     }
 
     @Override

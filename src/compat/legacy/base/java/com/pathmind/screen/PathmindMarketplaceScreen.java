@@ -25,11 +25,9 @@ import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.gui.Click;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.input.CharInput;
-import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.gui.widget.TextFieldWidget;
@@ -114,6 +112,9 @@ public class PathmindMarketplaceScreen extends Screen {
     private int popupScrollOffset = 0;
     private boolean popupScrollDragging = false;
     private int popupScrollDragOffset = 0;
+    private int publishPopupScrollOffset = 0;
+    private boolean publishPopupScrollDragging = false;
+    private int publishPopupScrollDragOffset = 0;
     private int galleryScrollOffset = 0;
     private boolean galleryScrollDragging = false;
     private int galleryScrollDragOffset = 0;
@@ -186,6 +187,7 @@ public class PathmindMarketplaceScreen extends Screen {
         && SettingsManager.getCurrent().skipMarketplaceDeleteConfirm;
     private boolean skipMarketplaceUpdateConfirm = SettingsManager.getCurrent().skipMarketplaceUpdateConfirm != null
         && SettingsManager.getCurrent().skipMarketplaceUpdateConfirm;
+    private boolean systemCursorHidden = false;
 
     public PathmindMarketplaceScreen(Screen parent) {
         this(parent, false, null, null);
@@ -208,6 +210,7 @@ public class PathmindMarketplaceScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        ensureCustomCursorHidden();
         if (searchField == null) {
             searchField = new PathmindTextField(this.textRenderer, 0, 0, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT, Text.literal("Search presets"));
             searchField.setMaxLength(64);
@@ -317,18 +320,54 @@ public class PathmindMarketplaceScreen extends Screen {
             || pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
             DrawContextBridge.startNewRootLayer(context);
         }
-        if (popupPreset != null || presetPopupAnimation.isVisible()) {
-            renderPresetPopup(context, popupMouseX, popupMouseY, layout);
+        boolean popupLayerVisible = popupPreset != null || presetPopupAnimation.isVisible()
+            || accountPopupOpen || accountPopupAnimation.isVisible()
+            || publishPopupOpen || publishPopupAnimation.isVisible()
+            || pendingConfirmAction != null || confirmPopupAnimation.isVisible();
+        Object popupMatrices = context.getMatrices();
+        if (popupLayerVisible) {
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 450.0f);
         }
-        if (accountPopupOpen || accountPopupAnimation.isVisible()) {
-            renderAccountPopup(context, popupMouseX, popupMouseY, layout);
+        try {
+            if (popupPreset != null || presetPopupAnimation.isVisible()) {
+                renderPresetPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (accountPopupOpen || accountPopupAnimation.isVisible()) {
+                renderAccountPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (publishPopupOpen || publishPopupAnimation.isVisible()) {
+                renderPublishPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
+                renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
+            }
+        } finally {
+            if (popupLayerVisible) {
+                DrawContextBridge.flush(context);
+                MatrixStackBridge.pop(popupMatrices);
+            }
         }
-        if (publishPopupOpen || publishPopupAnimation.isVisible()) {
-            renderPublishPopup(context, popupMouseX, popupMouseY, layout);
+        if (!editorPopupMode) {
+            DrawContextBridge.startNewRootLayer(context);
+            PathmindCursor.renderDefault(context, popupMouseX, popupMouseY);
         }
-        if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
-            renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
+    }
+
+    private void ensureCustomCursorHidden() {
+        if (systemCursorHidden || editorPopupMode) {
+            return;
         }
+        PathmindCursor.hideSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = true;
+    }
+
+    private void restoreSystemCursor() {
+        if (!systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.showSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = false;
     }
 
     private void renderTopBar(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -353,12 +392,18 @@ public class PathmindMarketplaceScreen extends Screen {
         renderFilterControls(context, mouseX, mouseY, layout);
     }
 
+    private void disableScissorSafely(DrawContext context) {
+        DrawContextBridge.flush(context);
+        context.disableScissor();
+    }
+
     private void renderAccountToolbarButton(DrawContext context, int x, int y, boolean hovered) {
         int buttonWidth = getAccountButtonWidth();
         drawIconButton(context, x, y, buttonWidth, SORT_BUTTON_HEIGHT, hovered, authBusy);
         String accountLabel = getAccountButtonLabel();
         Identifier avatarTexture = getOrRequestAvatarTexture();
-        if (avatarTexture != null && authSession != null) {
+        boolean showAvatar = avatarTexture != null && authSession != null && GuiTextureRenderer.isAvailable();
+        if (showAvatar) {
             int labelColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
             int maxLabelWidth = Math.max(0, buttonWidth - SORT_BUTTON_HEIGHT - 10);
             String displayLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, accountLabel, maxLabelWidth);
@@ -398,7 +443,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int messageColor = loading ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(message),
                 layout.bodyX + layout.bodyWidth / 2, bodyY + bodyHeight / 2, messageColor);
-            context.disableScissor();
+            disableScissorSafely(context);
             renderFooter(context, mouseX, mouseY, layout);
             return;
         }
@@ -418,7 +463,7 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
 
-        context.disableScissor();
+        disableScissorSafely(context);
         if (galleryMetrics != null) {
             ScrollbarHelper.renderCutoffDividers(context, layout.bodyX, layout.bodyX + layout.bodyWidth - 1, bodyY, bodyY + bodyHeight, galleryScrollOffset, galleryMetrics.maxScroll(), UITheme.BORDER_SUBTLE);
             ScrollbarHelper.renderSettingsStyle(context, galleryMetrics, UITheme.BACKGROUND_SIDEBAR, UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT);
@@ -694,7 +739,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 renderPreviewNode(context, node, 0f, 0f, 1f, true, true);
             }
             MatrixStackBridge.pop(matrices);
-            context.disableScissor();
+            disableScissorSafely(context);
             return;
         }
         float viewScale = Math.max(0.08f, Math.min(0.6f, fitScale));
@@ -731,7 +776,7 @@ public class PathmindMarketplaceScreen extends Screen {
             renderPreviewNode(context, node, 0f, 0f, 1f, true, false);
         }
         MatrixStackBridge.pop(matrices);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private void drawPreviewConnection(DrawContext context, int startX, int startY, int endX, int endY, int color, boolean popup) {
@@ -972,6 +1017,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (popupWidth <= 0 || popupHeight <= 0 || popupPreset == null) {
             return;
         }
+        boolean renderPopupContent = !presetPopupClosing;
         context.enableScissor(popupX, popupY, popupX + popupWidth, popupY + popupHeight);
         UIStyleHelper.drawBeveledPanel(
             context,
@@ -983,6 +1029,11 @@ public class PathmindMarketplaceScreen extends Screen {
             presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
             presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
+
+        if (!renderPopupContent) {
+            disableScissorSafely(context);
+            return;
+        }
 
         context.drawTextWithShadow(this.textRenderer, Text.literal("Preset Details"), popupX + 12, popupY + 10,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
@@ -1170,7 +1221,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 "Sign in with Discord to like presets and count imports.",
                 presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
         }
-        context.disableScissor();
+        disableScissorSafely(context);
 
         ScrollbarHelper.renderCutoffDividers(
             context,
@@ -1229,7 +1280,7 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         drawAnimatedActionButton(context, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             importingPreset ? "Downloading..." : "Download", downloadHovered, importingPreset || deleteBusy, presetPopupAnimation);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private void renderAccountPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -1243,6 +1294,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (popupWidth <= 0 || popupHeight <= 0 || authSession == null) {
             return;
         }
+        boolean renderPopupContent = accountPopupOpen;
         context.enableScissor(popupX, popupY, popupX + popupWidth, popupY + popupHeight);
 
         UIStyleHelper.drawBeveledPanel(
@@ -1255,6 +1307,11 @@ public class PathmindMarketplaceScreen extends Screen {
             accountPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
             accountPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
+
+        if (!renderPopupContent) {
+            disableScissorSafely(context);
+            return;
+        }
 
         context.drawTextWithShadow(this.textRenderer, Text.literal("Account"), popupX + 12, popupY + 10,
             accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
@@ -1288,7 +1345,7 @@ public class PathmindMarketplaceScreen extends Screen {
             "Close", closeHovered, false, accountPopupAnimation);
         drawAnimatedActionButton(context, signOutButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             "Sign Out", signOutHovered, authBusy, accountPopupAnimation);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private void renderPublishPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -1322,32 +1379,40 @@ public class PathmindMarketplaceScreen extends Screen {
 
         int contentX = popupX + 12;
         int contentWidth = popupWidth - 24;
-        int sourceY = popupY + 40;
+        int contentTop = popupY + 40;
+        int contentBottom = popupY + popupHeight - 52;
+        int contentHeight = Math.max(24, contentBottom - contentTop);
+        int contentHeightTotal = measurePublishPopupContentHeight(contentWidth, !publishStatusMessage.isEmpty());
+        int maxPublishPopupScroll = Math.max(0, contentHeightTotal - contentHeight);
+        publishPopupScrollOffset = Math.max(0, Math.min(publishPopupScrollOffset, maxPublishPopupScroll));
+        int contentY = contentTop - publishPopupScrollOffset;
+        context.enableScissor(popupX + 8, contentTop, popupX + popupWidth - 8, contentBottom);
+
         String sourceLine = editingPreset == null
             ? "Source preset: " + fallback(publishSourcePresetName, "Unknown")
             : "Editing listing by " + fallback(editingPreset.getAuthorName(), "Unknown");
-        drawWrappedValue(context, contentX, sourceY, contentWidth,
+        drawWrappedValue(context, contentX, contentY, contentWidth,
             sourceLine,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
 
         int fieldWidth = popupWidth - 24;
         int fieldHeight = 18;
         int labelGap = 11;
-        int nameLabelY = popupY + 53;
-        int descriptionLabelY = popupY + 92;
-        int tagsLabelY = popupY + 131;
+        int nameLabelY = contentY + 13;
+        int descriptionLabelY = nameLabelY + 39;
+        int tagsLabelY = descriptionLabelY + 39;
         drawPublishField(context, mouseX, mouseY, contentX, nameLabelY, fieldWidth, fieldHeight, "Name", publishNameField, labelGap);
         drawPublishField(context, mouseX, mouseY, contentX, descriptionLabelY, fieldWidth, fieldHeight, "Description", publishDescriptionField, labelGap);
         drawPublishField(context, mouseX, mouseY, contentX, tagsLabelY, fieldWidth, fieldHeight, "Tags", publishTagsField, labelGap);
 
         String tagsHint = "Comma-separated tags. Slug updates automatically from the name.";
-        drawWrappedValue(context, contentX, popupY + 166, contentWidth, tagsHint,
+        drawWrappedValue(context, contentX, contentY + 126, contentWidth, tagsHint,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
-        int visibilityLabelY = popupY + 189;
+        int visibilityLabelY = contentY + 149;
         context.drawTextWithShadow(this.textRenderer, Text.literal("Visibility"), contentX, visibilityLabelY,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        Rect publishToggle = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
+        Rect publishToggle = getPublishPopupVisibilityToggleRect(popupX, popupWidth, visibilityLabelY);
         publishVisibilityToggle.setValue(publishVisibilityPublic);
         publishVisibilityToggle.setPosition(publishToggle.x, publishToggle.y);
         publishVisibilityToggle.render(context, mouseX, mouseY, publishPopupAnimation.getPopupAlpha());
@@ -1356,6 +1421,18 @@ public class PathmindMarketplaceScreen extends Screen {
             : "Private cloud preset. Only visible in My Presets.";
         drawWrappedValue(context, contentX + 78, visibilityLabelY + 2, contentWidth - 78, visibilityHint,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
+        disableScissorSafely(context);
+
+        ScrollbarHelper.renderCutoffDividers(
+            context,
+            popupX + 8,
+            popupX + popupWidth - 9,
+            contentTop,
+            contentBottom,
+            publishPopupScrollOffset,
+            maxPublishPopupScroll,
+            publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE)
+        );
 
         if (!publishStatusMessage.isEmpty()) {
             context.drawTextWithShadow(this.textRenderer,
@@ -1379,7 +1456,16 @@ public class PathmindMarketplaceScreen extends Screen {
         drawAnimatedActionButton(context, submitButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             publishBusy ? "Working..." : (editingPreset == null ? "Publish" : "Save"),
             submitHovered, publishBusy, publishPopupAnimation);
-        context.disableScissor();
+        if (maxPublishPopupScroll > 0) {
+            ScrollbarHelper.renderSettingsStyle(
+                context,
+                getPublishPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight),
+                publishPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SIDEBAR),
+                publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
+                publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT)
+            );
+        }
+        disableScissorSafely(context);
     }
 
     private void renderConfirmPopup(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -1454,7 +1540,7 @@ public class PathmindMarketplaceScreen extends Screen {
         drawAnimatedActionButton(context, confirmButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             confirmAction == ConfirmAction.DELETE ? "Delete" : "Update",
             confirmHovered, false, confirmPopupAnimation);
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private int drawPublishField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height,
@@ -1482,8 +1568,8 @@ public class PathmindMarketplaceScreen extends Screen {
         return fieldY + height;
     }
 
-    private Rect getPublishPopupVisibilityToggleRect(int popupX, int popupY, int popupWidth) {
-        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, popupY + 188,
+    private Rect getPublishPopupVisibilityToggleRect(int popupX, int popupWidth, int visibilityLabelY) {
+        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, visibilityLabelY - 2,
             publishVisibilityToggle.getWidth(), publishVisibilityToggle.getHeight());
     }
 
@@ -1516,12 +1602,11 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(Click click, boolean inBounds) {
-        int mouseX = (int) click.x();
-        int mouseY = (int) click.y();
-        int button = click.button();
+    public boolean mouseClicked(double mouseXDouble, double mouseYDouble, int button) {
+        int mouseX = (int) mouseXDouble;
+        int mouseY = (int) mouseYDouble;
         if (button != 0) {
-            return super.mouseClicked(click, inBounds);
+            return super.mouseClicked(mouseXDouble, mouseYDouble, button);
         }
 
         Layout layout = getLayout();
@@ -1573,6 +1658,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int popupY = bounds[1];
             int popupWidth = bounds[2];
             int popupHeight = bounds[3];
+            ScrollbarHelper.Metrics publishScrollMetrics = getPublishPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight);
             int cancelButtonX = popupX + (publishPopup.cancelButtonX - publishPopup.x);
             int authButtonX = popupX + (publishPopup.authButtonX - publishPopup.x);
             int submitButtonX = popupX + (publishPopup.submitButtonX - publishPopup.x);
@@ -1580,23 +1666,25 @@ public class PathmindMarketplaceScreen extends Screen {
 
             int fieldX = popupX + 12;
             int fieldWidth = popupWidth - 24;
-            int nameFieldY = popupY + 64;
+            int contentY = popupY + 40 - publishPopupScrollOffset;
+            int nameFieldY = contentY + 24;
             int descriptionFieldY = nameFieldY + 39;
             int tagsFieldY = descriptionFieldY + 39;
-            Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
+            int visibilityLabelY = contentY + 149;
+            Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupWidth, visibilityLabelY);
 
             boolean clickedField = false;
             if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
                 focusPublishField(publishNameField);
-                publishNameField.mouseClicked(click, inBounds);
+                publishNameField.mouseClicked(mouseXDouble, mouseYDouble, button);
                 clickedField = true;
             } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX, descriptionFieldY, fieldWidth, 18)) {
                 focusPublishField(publishDescriptionField);
-                publishDescriptionField.mouseClicked(click, inBounds);
+                publishDescriptionField.mouseClicked(mouseXDouble, mouseYDouble, button);
                 clickedField = true;
             } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
                 focusPublishField(publishTagsField);
-                publishTagsField.mouseClicked(click, inBounds);
+                publishTagsField.mouseClicked(mouseXDouble, mouseYDouble, button);
                 clickedField = true;
             } else if (isPointInRect(mouseX, mouseY, publishVisibilityToggleRect.x, publishVisibilityToggleRect.y, publishVisibilityToggleRect.width, publishVisibilityToggleRect.height)) {
                 publishVisibilityToggle.mouseClicked(mouseX, mouseY);
@@ -1606,6 +1694,13 @@ public class PathmindMarketplaceScreen extends Screen {
                 focusPublishField(null);
             }
             if (clickedField) {
+                return true;
+            }
+            if (publishScrollMetrics.maxScroll() > 0
+                && isPointInRect(mouseX, mouseY, publishScrollMetrics.trackLeft() - 3, publishScrollMetrics.trackTop(),
+                    publishScrollMetrics.trackWidth() + 6, publishScrollMetrics.viewportHeight())) {
+                publishPopupScrollDragging = true;
+                publishPopupScrollDragOffset = mouseY - publishScrollMetrics.thumbTop();
                 return true;
             }
             if (isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
@@ -1695,15 +1790,15 @@ public class PathmindMarketplaceScreen extends Screen {
                 boolean clickedField = false;
                 if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
                     focusPublishField(publishNameField);
-                    publishNameField.mouseClicked(click, inBounds);
+                    publishNameField.mouseClicked(mouseXDouble, mouseYDouble, button);
                     clickedField = true;
                 } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
                     focusPublishField(publishTagsField);
-                    publishTagsField.mouseClicked(click, inBounds);
+                    publishTagsField.mouseClicked(mouseXDouble, mouseYDouble, button);
                     clickedField = true;
                 } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX + 8, descriptionFieldY, fieldWidth - 16, 18)) {
                     focusPublishField(publishDescriptionField);
-                    publishDescriptionField.mouseClicked(click, inBounds);
+                    publishDescriptionField.mouseClicked(mouseXDouble, mouseYDouble, button);
                     clickedField = true;
                 } else if (presetVisibilityToggle.contains(mouseX, mouseY)) {
                     presetVisibilityToggle.mouseClicked(mouseX, mouseY);
@@ -1833,7 +1928,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 return true;
             }
             searchField.setFocused(true);
-            searchField.mouseClicked(click, inBounds);
+            searchField.mouseClicked(mouseXDouble, mouseYDouble, button);
             return true;
         }
         if (searchField != null) {
@@ -1983,17 +2078,32 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
 
-        return super.mouseClicked(click, inBounds);
+        return super.mouseClicked(mouseXDouble, mouseYDouble, button);
     }
 
     @Override
-    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+    public boolean mouseDragged(double mouseXDouble, double mouseYDouble, int button, double deltaX, double deltaY) {
         if (presetPopupClosing) {
             return true;
         }
+        if (publishPopupScrollDragging && publishPopupOpen) {
+            Layout layout = getLayout();
+            PublishPopupLayout popup = getPublishPopupLayout(layout);
+            int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+            ScrollbarHelper.Metrics scrollMetrics = getPublishPopupScrollMetrics(bounds[0], bounds[1], bounds[2], bounds[3]);
+            if (scrollMetrics.maxScroll() <= 0) {
+                return true;
+            }
+            int desiredThumbY = (int) mouseYDouble - publishPopupScrollDragOffset;
+            int minThumbY = scrollMetrics.trackTop();
+            int maxThumbY = scrollMetrics.trackTop() + Math.max(0, scrollMetrics.viewportHeight() - scrollMetrics.thumbHeight());
+            int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
+            publishPopupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
+            return true;
+        }
         if (popupPreviewDragging && popupPreset != null) {
-            int currentX = (int) click.x();
-            int currentY = (int) click.y();
+            int currentX = (int) mouseXDouble;
+            int currentY = (int) mouseYDouble;
             popupPreviewPanX += currentX - popupPreviewDragLastX;
             popupPreviewPanY += currentY - popupPreviewDragLastY;
             popupPreviewDragLastX = currentX;
@@ -2008,7 +2118,7 @@ public class PathmindMarketplaceScreen extends Screen {
             if (scrollMetrics.maxScroll() <= 0) {
                 return true;
             }
-            int desiredThumbY = (int) click.y() - popupScrollDragOffset;
+            int desiredThumbY = (int) mouseYDouble - popupScrollDragOffset;
             int minThumbY = scrollMetrics.trackTop();
             int maxThumbY = scrollMetrics.trackTop() + Math.max(0, scrollMetrics.viewportHeight() - scrollMetrics.thumbHeight());
             int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
@@ -2021,20 +2131,24 @@ public class PathmindMarketplaceScreen extends Screen {
             if (galleryMetrics.maxScroll() <= 0) {
                 return true;
             }
-            int desiredThumbY = (int) click.y() - galleryScrollDragOffset;
+            int desiredThumbY = (int) mouseYDouble - galleryScrollDragOffset;
             int minThumbY = galleryMetrics.trackTop();
             int maxThumbY = galleryMetrics.trackTop() + Math.max(0, galleryMetrics.viewportHeight() - galleryMetrics.thumbHeight());
             int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
             galleryScrollOffset = ScrollbarHelper.scrollFromThumb(galleryMetrics, clampedThumbY);
             return true;
         }
-        return super.mouseDragged(click, deltaX, deltaY);
+        return super.mouseDragged(mouseXDouble, mouseYDouble, button, deltaX, deltaY);
     }
 
     @Override
-    public boolean mouseReleased(Click click) {
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (popupPreviewDragging) {
             popupPreviewDragging = false;
+            return true;
+        }
+        if (publishPopupScrollDragging) {
+            publishPopupScrollDragging = false;
             return true;
         }
         if (popupScrollDragging) {
@@ -2045,12 +2159,26 @@ public class PathmindMarketplaceScreen extends Screen {
             galleryScrollDragging = false;
             return true;
         }
-        return super.mouseReleased(click);
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         Layout layout = getLayout();
+        if (publishPopupOpen) {
+            PublishPopupLayout popup = getPublishPopupLayout(layout);
+            int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+            ScrollbarHelper.Metrics scrollMetrics = getPublishPopupScrollMetrics(bounds[0], bounds[1], bounds[2], bounds[3]);
+            if (scrollMetrics.maxScroll() > 0
+                && isPointInRect((int) mouseX, (int) mouseY, bounds[0] + 8, scrollMetrics.trackTop(), bounds[2] - 16, scrollMetrics.viewportHeight())) {
+                int nextOffset = ScrollbarHelper.applyWheel(publishPopupScrollOffset, verticalAmount, 18, scrollMetrics.maxScroll());
+                if (nextOffset != publishPopupScrollOffset) {
+                    publishPopupScrollOffset = nextOffset;
+                    return true;
+                }
+            }
+            return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        }
         if (popupPreset != null || presetPopupAnimation.isVisible()) {
             if (popupPreset == null || presetPopupClosing) {
                 return true;
@@ -2123,18 +2251,25 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         sortDropdownOpen = false;
+        restoreSystemCursor();
         if (this.client != null) {
             this.client.setScreen(parent);
         }
     }
 
     @Override
-    public boolean keyPressed(KeyInput input) {
+    public void removed() {
+        restoreSystemCursor();
+        super.removed();
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
             if (pendingConfirmAction == null) {
                 return true;
             }
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeConfirmPopup();
                 return true;
             }
@@ -2144,7 +2279,7 @@ public class PathmindMarketplaceScreen extends Screen {
             return true;
         }
         if (publishPopupOpen || popupMetadataEditing) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 if (publishPopupOpen) {
                     closePublishPopup(editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible());
                 } else {
@@ -2152,61 +2287,61 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 return true;
             }
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(input)) {
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(input)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(input)) {
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            if ((input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
+            if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
                 startPublishSubmission();
                 return true;
             }
             return true;
         }
         if (sortDropdownOpen) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE || input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 sortDropdownOpen = false;
                 return true;
             }
         }
         if (searchField != null && searchField.isFocused()) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 searchField.setFocused(false);
                 return true;
             }
-            if (searchField.keyPressed(input)) {
+            if (searchField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
         }
-        if (input.key() == 256) { // ESC
+        if (keyCode == 256) { // ESC
             close();
             return true;
         }
-        return super.keyPressed(input);
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
-    public boolean charTyped(CharInput input) {
+    public boolean charTyped(char chr, int modifiers) {
         if (publishPopupOpen || popupMetadataEditing) {
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(input)) {
+            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(chr, modifiers)) {
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(input)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(chr, modifiers)) {
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(input)) {
+            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(chr, modifiers)) {
                 return true;
             }
             return true;
         }
-        if (searchField != null && searchField.isFocused() && searchField.charTyped(input)) {
+        if (searchField != null && searchField.isFocused() && searchField.charTyped(chr, modifiers)) {
             return true;
         }
-        return super.charTyped(input);
+        return super.charTyped(chr, modifiers);
     }
 
     private void drawIconButton(DrawContext context, int x, int y, int width, int height, boolean hovered, boolean disabled) {
@@ -2325,7 +2460,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int textColor = modes[i] == sortMode ? getAccentColor() : UITheme.TEXT_PRIMARY;
             context.drawTextWithShadow(this.textRenderer, Text.literal(modes[i].label), dropdownBounds.x + 8, optionY + 5, textColor);
         }
-        context.disableScissor();
+        disableScissorSafely(context);
     }
 
     private int drawWrappedValue(DrawContext context, int x, int y, int width, String value, int color, int maxLines) {
@@ -2401,6 +2536,14 @@ public class PathmindMarketplaceScreen extends Screen {
         return height;
     }
 
+    private int measurePublishPopupContentHeight(int textWidth, boolean includeStatusMessage) {
+        int height = 202;
+        if (includeStatusMessage) {
+            height += 16;
+        }
+        return height;
+    }
+
     private ScrollbarHelper.Metrics getPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight) {
         int contentTop = popupY + 40;
         int contentBottom = popupY + popupHeight - 48;
@@ -2408,6 +2551,15 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentHeightTotal = measurePopupContentHeight(Math.max(32, popupWidth - 24));
         int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
         return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, popupScrollOffset, 20);
+    }
+
+    private ScrollbarHelper.Metrics getPublishPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight) {
+        int contentTop = popupY + 40;
+        int contentBottom = popupY + popupHeight - 52;
+        int contentHeight = Math.max(24, contentBottom - contentTop);
+        int contentHeightTotal = measurePublishPopupContentHeight(Math.max(32, popupWidth - 24), !publishStatusMessage.isEmpty());
+        int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
+        return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, publishPopupScrollOffset, 20);
     }
 
     private ScrollbarHelper.Metrics getGalleryScrollMetrics(Layout layout) {
@@ -2885,6 +3037,9 @@ public class PathmindMarketplaceScreen extends Screen {
         publishSourcePresetName = fallback(presetName, PresetManager.getActivePreset());
         publishStatusMessage = "";
         publishStatusColor = UITheme.TEXT_SECONDARY;
+        publishPopupScrollOffset = 0;
+        publishPopupScrollDragging = false;
+        publishPopupScrollDragOffset = 0;
         if (publishNameField != null) {
             publishNameField.setText(publishSourcePresetName);
         }
@@ -2993,6 +3148,9 @@ public class PathmindMarketplaceScreen extends Screen {
         publishSourcePresetName = "";
         publishStatusMessage = "";
         publishStatusColor = UITheme.TEXT_SECONDARY;
+        publishPopupScrollOffset = 0;
+        publishPopupScrollDragging = false;
+        publishPopupScrollDragOffset = 0;
         focusPublishField(null);
         publishPopupAnimation.hide();
         if (returnToParent && this.client != null) {
@@ -4434,8 +4592,11 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         String label = getAccountButtonLabel();
         int labelWidth = this.textRenderer == null ? 0 : this.textRenderer.getWidth(label);
-        return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, labelWidth + SORT_BUTTON_HEIGHT + 10);
+        boolean showAvatar = getOrRequestAvatarTexture() != null && GuiTextureRenderer.isAvailable();
+        int contentWidth = showAvatar ? labelWidth + SORT_BUTTON_HEIGHT + 10 : labelWidth + 10;
+        return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, contentWidth);
     }
+
 
     private String normalizeSearch(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).trim();

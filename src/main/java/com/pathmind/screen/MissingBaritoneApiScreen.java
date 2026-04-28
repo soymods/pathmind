@@ -18,6 +18,7 @@ public class MissingBaritoneApiScreen extends Screen {
     private static final int BUTTON_SPACING = 8;
 
     private final Screen parent;
+    private boolean systemCursorHidden = false;
 
     public MissingBaritoneApiScreen(Screen parent) {
         super(Text.translatable("pathmind.screen.missingBaritone.title"));
@@ -27,6 +28,7 @@ public class MissingBaritoneApiScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        ensureCustomCursorHidden();
         int centerX = this.width / 2;
         int startY = this.height / 2 + 10;
 
@@ -59,9 +61,16 @@ public class MissingBaritoneApiScreen extends Screen {
 
     @Override
     public void close() {
+        restoreSystemCursor();
         if (this.client != null) {
             this.client.setScreen(parent);
         }
+    }
+
+    @Override
+    public void removed() {
+        restoreSystemCursor();
+        super.removed();
     }
 
     @Override
@@ -77,5 +86,22 @@ public class MissingBaritoneApiScreen extends Screen {
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 32, UITheme.LINK_COLOR);
 
         super.render(context, mouseX, mouseY, delta);
+        PathmindCursor.renderDefault(context, mouseX, mouseY);
+    }
+
+    private void ensureCustomCursorHidden() {
+        if (systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.hideSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = true;
+    }
+
+    private void restoreSystemCursor() {
+        if (!systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.showSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = false;
     }
 }

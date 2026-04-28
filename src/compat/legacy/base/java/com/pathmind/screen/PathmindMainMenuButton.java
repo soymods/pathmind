@@ -13,7 +13,7 @@ import com.pathmind.util.TextCompatibilityBridge;
  * A small icon button used on the title screen to open the Pathmind visual editor.
  */
 public class PathmindMainMenuButton extends ButtonWidget {
-    private static final Identifier ICON_TEXTURE = PathmindMod.id("textures/gui/button_logo.png");
+    private static final Identifier ICON_TEXTURE = PathmindMod.id("textures/gui/icons/button_logo.png");
     private static final int ICON_PADDING = 2;
     private static final int BUTTON_FILL = 0xFF4C4C4C;
     private static final int BUTTON_HOVER = 0xFF5A5A5A;

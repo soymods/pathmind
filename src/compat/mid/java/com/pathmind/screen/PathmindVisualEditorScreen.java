@@ -55,6 +55,7 @@ import com.pathmind.util.OverlayProtection;
 import com.pathmind.util.UiUtilsProxy;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
@@ -321,6 +322,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private Boolean uiUtilsOverlayPrevEnabled = null;
     private final List<WorkspaceTab> workspaceTabs = new ArrayList<>();
     private int activeWorkspaceTabIndex = 0;
+    private boolean systemCursorHidden = false;
 
     private static final class WorkspaceTab {
         private String label;
@@ -411,6 +413,7 @@ public class PathmindVisualEditorScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        ensureCustomCursorHidden();
         if (uiUtilsOverlayPrevEnabled == null) {
             uiUtilsOverlayPrevEnabled = UiUtilsProxy.setOverlayEnabled(false);
         }
@@ -705,9 +708,52 @@ public class PathmindVisualEditorScreen extends Screen {
             DrawContextBridge.startNewRootLayer(context);
             nodeGraph.renderScreenCoordinateCaptureOverlay(context, this.textRenderer, mouseX, mouseY);
         }
+        DrawContextBridge.startNewRootLayer(context);
+        renderCustomCursor(context, mouseX, mouseY);
         } finally {
             OverlayProtection.setPathmindRendering(false);
         }
+    }
+
+    private void ensureCustomCursorHidden() {
+        if (systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.hideSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = true;
+    }
+
+    private void restoreSystemCursor() {
+        if (!systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.showSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = false;
+    }
+
+    private void renderCustomCursor(DrawContext context, int mouseX, int mouseY) {
+        PathmindCursor.render(context, resolveCursorTexture(mouseX, mouseY), mouseX, mouseY);
+    }
+
+    private Identifier resolveCursorTexture(int mouseX, int mouseY) {
+        if (isDraggingFromSidebar
+            || nodeGraph.isAnyNodeBeingDragged()
+            || nodeGraph.isPanning()
+            || nodeGraph.isConnectionCutActive()) {
+            return PathmindCursor.GRABBING_TEXTURE;
+        }
+
+        boolean overWorkspace = mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT;
+        if (sidebar.isHoveringNode()) {
+            return PathmindCursor.GRAB_TEXTURE;
+        }
+        if (overWorkspace && (nodeGraph.getNodeAt(mouseX, mouseY) != null
+            || nodeGraph.getConnectionAt(mouseX, mouseY) != null
+            || nodeGraph.isHoveringStartButton())) {
+            return PathmindCursor.GRAB_TEXTURE;
+        }
+
+        return PathmindCursor.DEFAULT_TEXTURE;
     }
 
     private boolean isPopupObscuringWorkspace() {
@@ -3166,6 +3212,7 @@ public class PathmindVisualEditorScreen extends Screen {
     public void close() {
         nodeGraph.persistSessionViewportState();
         autoSaveWorkspace();
+        restoreSystemCursor();
         super.close();
     }
 
@@ -3177,6 +3224,7 @@ public class PathmindVisualEditorScreen extends Screen {
             UiUtilsProxy.setOverlayEnabled(uiUtilsOverlayPrevEnabled);
             uiUtilsOverlayPrevEnabled = null;
         }
+        restoreSystemCursor();
         super.removed();
     }
 

@@ -2056,30 +2056,7 @@ public class Node {
     }
 
     private void ensureAmountToggleParameters() {
-        if (!hasAmountToggle()) {
-            return;
-        }
-        String amountKey = getAmountParameterKey();
-        if (getParameter(amountKey) == null) {
-            boolean decimalAmount = type == NodeType.USE
-                || type == NodeType.SWING
-                || type == NodeType.SENSOR_CHAT_MESSAGE
-                || type == NodeType.SENSOR_FABRIC_EVENT;
-            ParameterType amountType = decimalAmount ? ParameterType.DOUBLE : ParameterType.INTEGER;
-            String defaultValue = decimalAmount ? "0.0" : "1";
-            if (type == NodeType.CHANGE_VARIABLE) {
-                parameters.add(createParameter(PARAM_ID_CHANGE_VARIABLE_AMOUNT, amountKey, amountType, defaultValue));
-            } else {
-                parameters.add(new NodeParameter(amountKey, amountType, defaultValue));
-            }
-        }
-        if (getParameter("UseAmount") == null) {
-            boolean defaultEnabled = false;
-            if (type == NodeType.DROP_ITEM) {
-                defaultEnabled = getIntParameter("Count", 1) > 1;
-            }
-            parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, Boolean.toString(defaultEnabled)));
-        }
+        NodeParameterRepair.ensureAmountToggleParameters(this);
     }
 
     private boolean usesVillagerTradeNumberField() {
@@ -2089,70 +2066,11 @@ public class Node {
     }
 
     public void ensureVillagerTradeNumberParameter() {
-        if (!usesVillagerTradeNumberField()) {
-            return;
-        }
-        if (type == NodeType.TRADE) {
-            NodeParameter number = getParameter("Number");
-            NodeParameter count = getParameter("Count");
-            NodeParameter legacyAmount = getParameter("Amount");
-            if (number == null) {
-                number = createParameter(PARAM_ID_TRADE_NUMBER, "Number", ParameterType.INTEGER, "1");
-                parameters.add(number);
-            }
-            if (count == null) {
-                String countValue = legacyAmount != null && legacyAmount.getStringValue() != null && !legacyAmount.getStringValue().isEmpty()
-                    ? legacyAmount.getStringValue()
-                    : "1";
-                count = createParameter(PARAM_ID_TRADE_COUNT, "Count", ParameterType.INTEGER, countValue);
-                if (legacyAmount != null) {
-                    count.setUserEdited(legacyAmount.isUserEdited());
-                }
-                parameters.add(count);
-            }
-            if (legacyAmount != null) {
-                parameters.remove(legacyAmount);
-            }
-            NodeParameter legacyToggle = getParameter("UseAmount");
-            if (legacyToggle != null) {
-                parameters.remove(legacyToggle);
-            }
-            return;
-        }
-        NodeParameter number = getParameter("Number");
-        if (number == null) {
-            NodeParameter legacy = getParameter("Amount");
-            String value = legacy != null && legacy.getStringValue() != null && !legacy.getStringValue().isEmpty()
-                ? legacy.getStringValue()
-                : "1";
-            number = createParameter(PARAM_ID_TRADE_NUMBER, "Number", ParameterType.INTEGER, value);
-            if (legacy != null) {
-                number.setUserEdited(legacy.isUserEdited());
-                parameters.remove(legacy);
-            }
-            parameters.add(number);
-        }
+        NodeParameterRepair.ensureVillagerTradeNumberParameter(this);
     }
 
     public void ensureCreateListRadiusParameters() {
-        if (type != NodeType.CREATE_LIST) {
-            return;
-        }
-        com.pathmind.data.SettingsManager.Settings settings = com.pathmind.data.SettingsManager.getCurrent();
-        String useRadiusDefault = Boolean.toString(Boolean.TRUE.equals(settings.createListUseCustomRadius));
-        String radiusDefault = Double.toString(settings.createListRadius == null ? 64 : settings.createListRadius);
-        if (getParameter("UseRadius") == null) {
-            parameters.add(createParameter(PARAM_ID_CREATE_LIST_USE_RADIUS, "UseRadius", ParameterType.BOOLEAN, useRadiusDefault));
-        }
-        if (getParameter("Radius") == null) {
-            parameters.add(createParameter(PARAM_ID_CREATE_LIST_RADIUS, "Radius", ParameterType.DOUBLE, radiusDefault));
-        }
-        if (getParameter("UseBlockCap") == null) {
-            parameters.add(createParameter(PARAM_ID_CREATE_LIST_USE_BLOCK_CAP, "UseBlockCap", ParameterType.BOOLEAN, "false"));
-        }
-        if (getParameter("MaxBlocks") == null) {
-            parameters.add(createParameter(PARAM_ID_CREATE_LIST_MAX_BLOCKS, "MaxBlocks", ParameterType.INTEGER, "256"));
-        }
+        NodeParameterRepair.ensureCreateListRadiusParameters(this);
     }
 
     public void repairSerializedParameters() {
@@ -2188,18 +2106,10 @@ public class Node {
     }
 
     private void ensureRandomRoundingParameters() {
-        if (!hasRandomRoundingField()) {
-            return;
-        }
-        if (getParameter("Rounding") == null) {
-            parameters.add(createParameter(PARAM_ID_RANDOM_ROUNDING, "Rounding", ParameterType.STRING, "round"));
-        }
-        if (getParameter("UseRounding") == null) {
-            parameters.add(createParameter(PARAM_ID_RANDOM_USE_ROUNDING, "UseRounding", ParameterType.BOOLEAN, "false"));
-        }
+        NodeParameterRepair.ensureRandomRoundingParameters(this);
     }
 
-    private boolean isRandomRoundingParameter(NodeParameter parameter) {
+    boolean isRandomRoundingParameter(NodeParameter parameter) {
         if (parameter == null || type != NodeType.OPERATOR_RANDOM) {
             return false;
         }
@@ -2923,502 +2833,7 @@ public class Node {
     }
 
     private void initializeParameters() {
-        // Handle generalized nodes with modes
-        if (mode != null) {
-            switch (mode) {
-                // GOTO modes
-                case GOTO_XYZ:
-                    parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                    break;
-                case GOTO_XZ:
-                    parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                    break;
-                case GOTO_Y:
-                    parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "64"));
-                    break;
-                case GOTO_BLOCK:
-                    parameters.add(new NodeParameter("Block", ParameterType.STRING, "stone"));
-                    break;
-                // GOAL modes
-                case GOAL_XYZ:
-                    parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                    break;
-                case GOAL_XZ:
-                    parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                    break;
-                case GOAL_Y:
-                    parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "64"));
-                    break;
-                case GOAL_CURRENT:
-                case GOAL_CLEAR:
-                    // No parameters needed
-                    break;
-                    
-                // COLLECT modes
-                case COLLECT_SINGLE:
-                    parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
-                    parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
-                    break;
-                case COLLECT_MULTIPLE:
-                    parameters.add(new NodeParameter("Blocks", ParameterType.STRING, "stone,dirt"));
-                    break;
-                    
-                // BUILD modes
-                case BUILD_PLAYER:
-                    parameters.add(new NodeParameter("Schematic", ParameterType.STRING, ""));
-                    break;
-                case BUILD_XYZ:
-                    parameters.add(new NodeParameter("Schematic", ParameterType.STRING, ""));
-                    parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                    break;
-                    
-                // EXPLORE modes
-                case EXPLORE_CURRENT:
-                    // No parameters needed
-                    break;
-                case EXPLORE_XYZ:
-                    parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                    parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                    break;
-                case EXPLORE_FILTER:
-                    parameters.add(new NodeParameter("Filter", ParameterType.STRING, "explore.txt"));
-                    break;
-                    
-                // FOLLOW modes
-                case FOLLOW_PLAYER:
-                    parameters.add(new NodeParameter("Player", ParameterType.STRING, "Self"));
-                    break;
-                case FOLLOW_PLAYERS:
-                case FOLLOW_ENTITIES:
-                    // No parameters needed
-                    break;
-                case FOLLOW_ENTITY_TYPE:
-                    parameters.add(new NodeParameter("Entity", ParameterType.STRING, "cow"));
-                    break;
-
-                // CRAFT modes
-                case CRAFT_PLAYER_GUI:
-                case CRAFT_CRAFTING_TABLE:
-                    parameters.add(new NodeParameter("Item", ParameterType.STRING, "stick"));
-                    parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
-                    break;
-
-                // FARM modes
-                case FARM_RANGE:
-                    parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "10"));
-                    break;
-                case FARM_WAYPOINT:
-                    parameters.add(new NodeParameter("Waypoint", ParameterType.STRING, "farm"));
-                    parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "10"));
-                    break;
-                    
-                // STOP modes
-                case STOP_NORMAL:
-                case STOP_CANCEL:
-                case STOP_FORCE:
-                    // No parameters needed
-                    break;
-                // Duration parameter modes
-                case WAIT_SECONDS:
-                case WAIT_TICKS:
-                case WAIT_MINUTES:
-                case WAIT_HOURS:
-                    parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, ""));
-                    break;
-                // UI Utils modes
-                case UI_UTILS_SET_SEND_PACKETS:
-                case UI_UTILS_SET_DELAY_PACKETS:
-                case UI_UTILS_SET_ENABLED:
-                case UI_UTILS_SET_BYPASS_RESOURCE_PACK:
-                case UI_UTILS_SET_FORCE_DENY_RESOURCE_PACK:
-                    parameters.add(new NodeParameter("Enabled", ParameterType.BOOLEAN, "true"));
-                    break;
-                case UI_UTILS_ENABLE_DELAY_PACKETS:
-                case UI_UTILS_DISABLE_DELAY_PACKETS:
-                    break;
-                case UI_UTILS_FABRICATE_CLICK_SLOT:
-                    parameters.add(createParameter(PARAM_ID_UI_CLICK_SYNC_ID, "SyncId", ParameterType.INTEGER, "-1"));
-                    parameters.add(createParameter(PARAM_ID_UI_CLICK_REVISION, "Revision", ParameterType.INTEGER, "-1"));
-                    parameters.add(createParameter(PARAM_ID_UI_CLICK_SLOT, "Slot", ParameterType.INTEGER, "0"));
-                    parameters.add(createParameter(PARAM_ID_UI_CLICK_BUTTON, "Button", ParameterType.INTEGER, "0"));
-                    parameters.add(createParameter(PARAM_ID_UI_CLICK_ACTION, "Action", ParameterType.STRING, "PICKUP"));
-                    parameters.add(createParameter(PARAM_ID_UI_CLICK_TIMES, "TimesToSend", ParameterType.INTEGER, "1"));
-                    parameters.add(createParameter(PARAM_ID_UI_CLICK_DELAY, "Delay", ParameterType.BOOLEAN, "false"));
-                    break;
-                case UI_UTILS_FABRICATE_BUTTON_CLICK:
-                    parameters.add(createParameter(PARAM_ID_UI_BUTTON_SYNC_ID, "SyncId", ParameterType.INTEGER, "-1"));
-                    parameters.add(createParameter(PARAM_ID_UI_BUTTON_ID, "ButtonId", ParameterType.INTEGER, "0"));
-                    parameters.add(createParameter(PARAM_ID_UI_BUTTON_TIMES, "TimesToSend", ParameterType.INTEGER, "1"));
-                    parameters.add(createParameter(PARAM_ID_UI_BUTTON_DELAY, "Delay", ParameterType.BOOLEAN, "false"));
-                    break;
-
-                default:
-                    // No parameters needed
-                    break;
-            }
-            return;
-        }
-        
-        // Handle node types that don't use modes
-        switch (type) {
-            case PLACE:
-                parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
-                parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                break;
-            case WAIT:
-                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "0.0"));
-                break;
-            case START_CHAIN:
-                parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
-                break;
-            case RUN_PRESET:
-                parameters.add(new NodeParameter("Preset", ParameterType.STRING, ""));
-                break;
-            case CUSTOM_NODE:
-            case TEMPLATE:
-                parameters.add(new NodeParameter("Preset", ParameterType.STRING, ""));
-                break;
-            case STOP_CHAIN:
-                parameters.add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
-                break;
-            case HOTBAR:
-                parameters.add(createParameter(PARAM_ID_HOTBAR_SLOT, "Slot", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Item", ParameterType.STRING, ""));
-                break;
-            case DROP_ITEM:
-                parameters.add(new NodeParameter("All", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "1"));
-                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("IntervalSeconds", ParameterType.DOUBLE, "0.0"));
-                break;
-            case DROP_SLOT:
-                parameters.add(createParameter(PARAM_ID_DROP_SLOT_INDEX, "Slot", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("EntireStack", ParameterType.BOOLEAN, "true"));
-                break;
-            case CLICK_SLOT:
-                parameters.add(createParameter(PARAM_ID_CLICK_SLOT_INDEX, "Slot", ParameterType.INTEGER, "0"));
-                break;
-            case CLICK_SCREEN:
-                parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
-                break;
-            case MOVE_ITEM:
-                parameters.add(createParameter(PARAM_ID_MOVE_ITEM_SOURCE_SLOT, "SourceSlot", ParameterType.INTEGER, "0"));
-                parameters.add(createParameter(PARAM_ID_MOVE_ITEM_TARGET_SLOT, "TargetSlot", ParameterType.INTEGER, "9"));
-                parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "0"));
-                break;
-            case EQUIP_ARMOR:
-                parameters.add(createParameter(PARAM_ID_EQUIP_ARMOR_SOURCE_SLOT, "SourceSlot", ParameterType.INTEGER, "0"));
-                parameters.add(createParameter(PARAM_ID_EQUIP_ARMOR_SLOT, "ArmorSlot", ParameterType.STRING, "head"));
-                break;
-            case EQUIP_HAND:
-                parameters.add(createParameter(PARAM_ID_EQUIP_HAND_SOURCE_SLOT, "SourceSlot", ParameterType.INTEGER, "0"));
-                parameters.add(createParameter(PARAM_ID_EQUIP_HAND_HAND, "Hand", ParameterType.STRING, "main"));
-                break;
-            case WRITE_BOOK:
-                parameters.add(new NodeParameter("Page", ParameterType.INTEGER, "1"));
-                break;
-            case WRITE_SIGN:
-                break;
-            case USE:
-                parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
-                parameters.add(new NodeParameter("UseDurationSeconds", ParameterType.DOUBLE, "0.0"));
-                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("RepeatCount", ParameterType.INTEGER, "1"));
-                parameters.add(new NodeParameter("UseIntervalSeconds", ParameterType.DOUBLE, "0.0"));
-                parameters.add(new NodeParameter("StopIfUnavailable", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("UseUntilEmpty", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("AllowBlockInteraction", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("AllowEntityInteraction", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("SwingAfterUse", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("SneakWhileUsing", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
-                break;
-            case SWING:
-                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "0.0"));
-                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
-                break;
-            case INTERACT:
-                parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
-                parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, ""));
-                parameters.add(new NodeParameter("PreferEntity", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("PreferBlock", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("FallbackToItemUse", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("SwingOnSuccess", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("SneakWhileInteracting", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
-                break;
-            case PLACE_HAND:
-                parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
-                parameters.add(new NodeParameter("SneakWhilePlacing", ParameterType.BOOLEAN, "false"));
-                parameters.add(new NodeParameter("SwingOnPlace", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("RequireBlockHit", ParameterType.BOOLEAN, "true"));
-                parameters.add(new NodeParameter("RestoreSneakState", ParameterType.BOOLEAN, "true"));
-                break;
-            case TRADE:
-                parameters.add(createParameter(PARAM_ID_TRADE_NUMBER, "Number", ParameterType.INTEGER, "1"));
-                parameters.add(createParameter(PARAM_ID_TRADE_COUNT, "Count", ParameterType.INTEGER, "1"));
-                break;
-            case LOOK:
-                parameters.add(createParameter(PARAM_ID_LOOK_YAW, "Yaw", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_LOOK_PITCH, "Pitch", ParameterType.DOUBLE, "0.0"));
-                break;
-            case WALK:
-                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, "1.0"));
-                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "0.0"));
-                break;
-            case PRESS_KEY:
-                parameters.add(new NodeParameter("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
-                break;
-            case CRAWL:
-                break;
-            case CROUCH:
-                break;
-            case SPRINT:
-                break;
-            case FLY:
-                break;
-            case CONTROL_REPEAT:
-                parameters.add(new NodeParameter("Count", ParameterType.INTEGER, "10"));
-                break;
-            case CONTROL_WAIT_UNTIL:
-            case CONTROL_IF:
-                break;
-            case CONTROL_IF_ELSE:
-                break;
-            case CONTROL_FORK:
-                break;
-            case CONTROL_JOIN_ANY:
-                break;
-            case CONTROL_JOIN_ALL:
-                break;
-            case EVENT_FUNCTION:
-                parameters.add(new NodeParameter("Name", ParameterType.STRING, "function"));
-                break;
-            case EVENT_CALL:
-                parameters.add(new NodeParameter("Name", ParameterType.STRING, "function"));
-                break;
-            case VARIABLE:
-                parameters.add(new NodeParameter("Variable", ParameterType.STRING, "variable"));
-                break;
-            case CREATE_LIST:
-                com.pathmind.data.SettingsManager.Settings createListSettings = com.pathmind.data.SettingsManager.getCurrent();
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                parameters.add(createParameter(PARAM_ID_CREATE_LIST_USE_RADIUS, "UseRadius", ParameterType.BOOLEAN,
-                    Boolean.toString(Boolean.TRUE.equals(createListSettings.createListUseCustomRadius))));
-                parameters.add(createParameter(PARAM_ID_CREATE_LIST_RADIUS, "Radius", ParameterType.DOUBLE,
-                    Double.toString(createListSettings.createListRadius == null ? 64 : createListSettings.createListRadius)));
-                parameters.add(createParameter(PARAM_ID_CREATE_LIST_USE_BLOCK_CAP, "UseBlockCap", ParameterType.BOOLEAN, "false"));
-                parameters.add(createParameter(PARAM_ID_CREATE_LIST_MAX_BLOCKS, "MaxBlocks", ParameterType.INTEGER, "256"));
-                break;
-            case ADD_TO_LIST:
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                break;
-            case REMOVE_FIRST_FROM_LIST:
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                break;
-            case REMOVE_LAST_FROM_LIST:
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                break;
-            case REMOVE_LIST_ITEM:
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                parameters.add(new NodeParameter("Index", ParameterType.INTEGER, "1"));
-                break;
-            case REMOVE_FROM_LIST:
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                break;
-            case LIST_ITEM:
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                parameters.add(new NodeParameter("Index", ParameterType.INTEGER, "1"));
-                break;
-            case LIST_LENGTH:
-                parameters.add(new NodeParameter("List", ParameterType.STRING, "list"));
-                break;
-            case OPERATOR_RANDOM:
-                parameters.add(new NodeParameter("Min", ParameterType.DOUBLE, "0.0"));
-                parameters.add(new NodeParameter("Max", ParameterType.DOUBLE, "1.0"));
-                parameters.add(new NodeParameter("Seed", ParameterType.STRING, "Any"));
-                parameters.add(createParameter(PARAM_ID_RANDOM_ROUNDING, "Rounding", ParameterType.STRING, "round"));
-                parameters.add(createParameter(PARAM_ID_RANDOM_USE_ROUNDING, "UseRounding", ParameterType.BOOLEAN, "false"));
-                break;
-            case OPERATOR_MOD:
-                break;
-            case OPERATOR_BOOLEAN_NOT:
-                break;
-            case OPERATOR_BOOLEAN_OR:
-            case OPERATOR_BOOLEAN_AND:
-            case OPERATOR_BOOLEAN_XOR:
-                break;
-            case OPERATOR_GREATER:
-            case OPERATOR_LESS:
-                parameters.add(new NodeParameter("Inclusive", ParameterType.BOOLEAN, "false"));
-                break;
-            case CHANGE_VARIABLE:
-                parameters.add(createParameter(PARAM_ID_CHANGE_VARIABLE_AMOUNT, "Amount", ParameterType.INTEGER, "1"));
-                parameters.add(createParameter(PARAM_ID_CHANGE_VARIABLE_OPERATION, "Operation", ParameterType.STRING, "+"));
-                break;
-            case SENSOR_TOUCHING_BLOCK:
-            case SENSOR_TOUCHING_ENTITY:
-            case SENSOR_AT_COORDINATES:
-            case SENSOR_IS_DAYTIME:
-            case SENSOR_IS_RAINING:
-            case SENSOR_ITEM_IN_INVENTORY:
-                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
-                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
-                break;
-            case SENSOR_ITEM_IN_SLOT:
-                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "1"));
-                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "false"));
-                break;
-            case SENSOR_SLOT_ITEM_COUNT:
-                break;
-            case SENSOR_VILLAGER_TRADE:
-            case SENSOR_IN_STOCK:
-                parameters.add(createParameter(PARAM_ID_TRADE_NUMBER, "Number", ParameterType.INTEGER, "1"));
-                break;
-            case SENSOR_IS_SWIMMING:
-            case SENSOR_IS_IN_LAVA:
-            case SENSOR_IS_UNDERWATER:
-            case SENSOR_KEY_PRESSED:
-                break;
-            case SENSOR_HEALTH_BELOW:
-                parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
-                break;
-            case SENSOR_HUNGER_BELOW:
-                parameters.add(new NodeParameter("Amount", ParameterType.INTEGER, "10"));
-                break;
-            case SENSOR_IS_FALLING:
-                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "0.25"));
-                break;
-            case SENSOR_IS_RENDERED:
-            case SENSOR_IS_VISIBLE:
-                parameters.add(new NodeParameter("Resource", ParameterType.STRING, "stone"));
-                break;
-            case SENSOR_CHAT_MESSAGE:
-                parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "10.0"));
-                parameters.add(new NodeParameter("UseAmount", ParameterType.BOOLEAN, "true"));
-                break;
-            case SENSOR_JOINED_SERVER:
-                break;
-            case SENSOR_FABRIC_EVENT:
-                parameters.add(new NodeParameter("Event", ParameterType.STRING, "Any"));
-                break;
-            case SENSOR_ATTRIBUTE_DETECTION:
-                parameters.add(new NodeParameter("Attribute", ParameterType.STRING, AttributeDetectionConfig.AttributeOption.NAME.id()));
-                parameters.add(new NodeParameter("Value", ParameterType.STRING, ""));
-                break;
-            case PARAM_COORDINATE:
-                parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "64"));
-                parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                break;
-            case PARAM_BLOCK:
-                parameters.add(new NodeParameter("Block", ParameterType.STRING, ""));
-                parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
-                break;
-            case PARAM_ITEM:
-                parameters.add(new NodeParameter("Item", ParameterType.STRING, ""));
-                break;
-            case PARAM_VILLAGER_TRADE:
-                parameters.add(new NodeParameter("Profession", ParameterType.STRING, "librarian"));
-                parameters.add(new NodeParameter("Item", ParameterType.STRING, "book"));
-                break;
-            case PARAM_ENTITY:
-                parameters.add(new NodeParameter("Entity", ParameterType.STRING, ""));
-                parameters.add(new NodeParameter("State", ParameterType.STRING, ""));
-                break;
-            case PARAM_PLAYER:
-                parameters.add(new NodeParameter("Player", ParameterType.STRING, "Self"));
-                break;
-            case PARAM_MESSAGE:
-                parameters.add(new NodeParameter("Text", ParameterType.STRING, ""));
-                break;
-            case PARAM_WAYPOINT:
-                parameters.add(new NodeParameter("Waypoint", ParameterType.STRING, "home"));
-                parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "10"));
-                break;
-            case PARAM_SCHEMATIC:
-                parameters.add(new NodeParameter("Schematic", ParameterType.STRING, ""));
-                parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                break;
-            case PARAM_INVENTORY_SLOT:
-                parameters.add(createParameter(PARAM_ID_INVENTORY_SLOT_INDEX, "Slot", ParameterType.INTEGER, "0"));
-                parameters.add(createParameter(PARAM_ID_INVENTORY_SLOT_MODE, "Mode", ParameterType.STRING, "player_inventory"));
-                break;
-            case PARAM_DURATION:
-                parameters.add(new NodeParameter("Duration", ParameterType.DOUBLE, ""));
-                break;
-            case PARAM_AMOUNT:
-                parameters.add(new NodeParameter("Amount", ParameterType.DOUBLE, "1.0"));
-                break;
-            case PARAM_BOOLEAN:
-                parameters.add(createParameter(PARAM_ID_BOOLEAN_MODE, "Mode", ParameterType.STRING, BOOLEAN_MODE_LITERAL));
-                parameters.add(createParameter(PARAM_ID_BOOLEAN_TOGGLE, "Toggle", ParameterType.BOOLEAN, "true"));
-                parameters.add(createParameter(PARAM_ID_BOOLEAN_VARIABLE, "Variable", ParameterType.STRING, ""));
-                break;
-            case PARAM_HAND:
-                parameters.add(new NodeParameter("Hand", ParameterType.STRING, "main"));
-                break;
-            case PARAM_GUI:
-                parameters.add(new NodeParameter("GUI", ParameterType.STRING, "Any"));
-                break;
-            case PARAM_KEY:
-                parameters.add(new NodeParameter("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
-                break;
-            case PARAM_MOUSE_BUTTON:
-                parameters.add(new NodeParameter("MouseButton", ParameterType.STRING, "Left"));
-                break;
-            case PARAM_RANGE:
-                parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "6"));
-                break;
-            case PARAM_DISTANCE:
-                parameters.add(new NodeParameter("Distance", ParameterType.DOUBLE, "2.0"));
-                break;
-            case PARAM_DIRECTION:
-                parameters.add(createParameter(PARAM_ID_DIRECTION_MODE, "Mode", ParameterType.STRING, DIRECTION_MODE_EXACT));
-                parameters.add(createParameter(PARAM_ID_DIRECTION_CARDINAL, "Direction", ParameterType.STRING, ""));
-                parameters.add(createParameter(PARAM_ID_DIRECTION_YAW, "Yaw", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_DIRECTION_PITCH, "Pitch", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_DIRECTION_YAW_OFFSET, "YawOffset", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_DIRECTION_PITCH_OFFSET, "PitchOffset", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_DIRECTION_DISTANCE, "Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
-                break;
-            case PARAM_BLOCK_FACE:
-                parameters.add(new NodeParameter("Face", ParameterType.STRING, "north"));
-                break;
-            case PARAM_ROTATION:
-                parameters.add(createParameter(PARAM_ID_ROTATION_YAW, "Yaw", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_ROTATION_PITCH, "Pitch", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_ROTATION_YAW_OFFSET, "YawOffset", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_ROTATION_PITCH_OFFSET, "PitchOffset", ParameterType.DOUBLE, "0.0"));
-                parameters.add(createParameter(PARAM_ID_ROTATION_DISTANCE, "Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
-                break;
-            case PARAM_PLACE_TARGET:
-                parameters.add(new NodeParameter("Block", ParameterType.BLOCK_TYPE, "stone"));
-                parameters.add(new NodeParameter("X", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Y", ParameterType.INTEGER, "0"));
-                parameters.add(new NodeParameter("Z", ParameterType.INTEGER, "0"));
-                break;
-            case PARAM_CLOSEST:
-                parameters.add(new NodeParameter("Range", ParameterType.INTEGER, "5"));
-                break;
-            default:
-                // No parameters needed
-                break;
-        }
+        NodeParameterDefaults.initialize(parameters, type, mode);
     }
 
     /**
@@ -3477,7 +2892,7 @@ public class Node {
         }
     }
 
-    private boolean shouldShowStateParameter() {
+    boolean shouldShowStateParameter() {
         if (type == NodeType.PARAM_BLOCK) {
             String blockValue = getParameterString(this, "Block");
             if (blockValue == null || blockValue.isEmpty()) {
@@ -3519,80 +2934,20 @@ public class Node {
         return false;
     }
 
+    int getMaxParameterLabelLength() {
+        return MAX_PARAMETER_LABEL_LENGTH;
+    }
+
     public String getParameterDisplayName(NodeParameter parameter) {
-        if (parameter == null) {
-            return "";
-        }
-        String name = parameter.getName();
-        if (type == NodeType.PARAM_BOOLEAN && "Toggle".equalsIgnoreCase(name)) {
-            return "Value";
-        }
-        if (type == NodeType.USE && "UseDurationSeconds".equalsIgnoreCase(name)) {
-            return "Hold Duration";
-        }
-        if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
-            return "Text";
-        }
-        if (type == NodeType.PARAM_PLAYER && "Player".equalsIgnoreCase(name)) {
-            return "User";
-        }
-        if (type == NodeType.PARAM_VILLAGER_TRADE
-            && ("Item".equalsIgnoreCase(name) || "Trade".equalsIgnoreCase(name))) {
-            return "Trade";
-        }
-        if (type == NodeType.CREATE_LIST && "UseRadius".equalsIgnoreCase(name)) {
-            return "Use Custom Radius";
-        }
-        if (type == NodeType.CREATE_LIST && "UseBlockCap".equalsIgnoreCase(name)) {
-            return "Use Block Cap";
-        }
-        return name;
+        return NodeAttributeParameters.getParameterDisplayName(this, parameter);
     }
 
     public String getParameterDisplayValue(NodeParameter parameter) {
-        if (parameter == null) {
-            return "";
-        }
-        String value = parameter.getDisplayValue();
-        if (isAttributeDetectionSensor()) {
-            if ("Attribute".equalsIgnoreCase(parameter.getName())) {
-                AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(value);
-                return attribute != null ? attribute.label() : value;
-            }
-            if ("Value".equalsIgnoreCase(parameter.getName())) {
-                AttributeDetectionConfig.AttributeOption attribute =
-                    AttributeDetectionConfig.getAttribute(getParameterString(this, "Attribute"));
-                if (attribute != null && attribute.valueType() == AttributeDetectionConfig.ValueType.BOOLEAN) {
-                    return parseBooleanLike(value) ? "True" : "False";
-                }
-            }
-        }
-        if (type == NodeType.PARAM_GUI && "GUI".equalsIgnoreCase(parameter.getName())) {
-            return GuiSelectionMode.getDisplayNameOrFallback(value);
-        }
-        if (type == NodeType.PARAM_VILLAGER_TRADE
-            && ("Item".equalsIgnoreCase(parameter.getName()) || "Trade".equalsIgnoreCase(parameter.getName()))) {
-            return formatVillagerTradeDisplayValue(value);
-        }
-        return value;
+        return NodeAttributeParameters.getParameterDisplayValue(this, parameter);
     }
 
     public boolean isDirectionModeExact() {
-        if (type != NodeType.PARAM_DIRECTION) {
-            return false;
-        }
-        ensureCombinedDirectionParameters();
-        NodeParameter modeParameter = getParameter("Mode");
-        String rawMode = modeParameter != null ? modeParameter.getStringValue() : null;
-        if (rawMode != null && !rawMode.trim().isEmpty()) {
-            return !DIRECTION_MODE_CARDINAL.equalsIgnoreCase(rawMode.trim());
-        }
-        NodeParameter directionParameter = getParameter("Direction");
-        String directionValue = directionParameter != null ? directionParameter.getStringValue() : null;
-        if (directionValue != null && !directionValue.trim().isEmpty()) {
-            return false;
-        }
-        return true;
+        return NodeDirectionParameters.isDirectionModeExact(this, DIRECTION_MODE_EXACT, DIRECTION_MODE_CARDINAL, DEFAULT_DIRECTION_DISTANCE);
     }
 
     public boolean isDirectionModeCardinal() {
@@ -3600,58 +2955,15 @@ public class Node {
     }
 
     public void setDirectionModeExact(boolean exact) {
-        if (type != NodeType.PARAM_DIRECTION) {
-            return;
-        }
-        ensureCombinedDirectionParameters();
-        String modeValue = exact ? DIRECTION_MODE_EXACT : DIRECTION_MODE_CARDINAL;
-        setParameterValueAndPropagate("Mode", modeValue);
-        NodeParameter modeParameter = getParameter("Mode");
-        if (modeParameter != null) {
-            modeParameter.setUserEdited(true);
-        }
+        NodeDirectionParameters.setDirectionModeExact(this, exact, DIRECTION_MODE_EXACT, DIRECTION_MODE_CARDINAL, DEFAULT_DIRECTION_DISTANCE);
     }
 
     private void ensureCombinedDirectionParameters() {
-        if (type != NodeType.PARAM_DIRECTION) {
-            return;
-        }
-        NodeParameter directionParameter = getParameter("Direction");
-        String directionValue = directionParameter != null ? directionParameter.getStringValue() : null;
-        String inferredMode = directionValue != null && !directionValue.trim().isEmpty()
-            ? DIRECTION_MODE_CARDINAL
-            : DIRECTION_MODE_EXACT;
-        ensureDirectionParameter(PARAM_ID_DIRECTION_MODE, "Mode", ParameterType.STRING, inferredMode, 0);
-        ensureDirectionParameter(PARAM_ID_DIRECTION_CARDINAL, "Direction", ParameterType.STRING, "", 1);
-        ensureDirectionParameter(PARAM_ID_DIRECTION_YAW, "Yaw", ParameterType.DOUBLE, "0.0", 2);
-        ensureDirectionParameter(PARAM_ID_DIRECTION_PITCH, "Pitch", ParameterType.DOUBLE, "0.0", 3);
-        ensureDirectionParameter(PARAM_ID_DIRECTION_YAW_OFFSET, "YawOffset", ParameterType.DOUBLE, "0.0", 4);
-        ensureDirectionParameter(PARAM_ID_DIRECTION_PITCH_OFFSET, "PitchOffset", ParameterType.DOUBLE, "0.0", 5);
-        ensureDirectionParameter(PARAM_ID_DIRECTION_DISTANCE, "Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE), 6);
-    }
-
-    private void ensureDirectionParameter(String id, String name, ParameterType parameterType, String defaultValue, int targetIndex) {
-        if (getParameter(name) != null) {
-            return;
-        }
-        NodeParameter parameter = createParameter(id, name, parameterType, defaultValue);
-        int insertIndex = Math.max(0, Math.min(targetIndex, parameters.size()));
-        parameters.add(insertIndex, parameter);
+        NodeDirectionParameters.ensureCombinedDirectionParameters(this, DIRECTION_MODE_EXACT, DIRECTION_MODE_CARDINAL, DEFAULT_DIRECTION_DISTANCE);
     }
 
     public boolean isBooleanModeLiteral() {
-        if (type != NodeType.PARAM_BOOLEAN) {
-            return false;
-        }
-        ensureBooleanParameters();
-        NodeParameter modeParameter = getParameter("Mode");
-        String rawMode = modeParameter != null ? modeParameter.getStringValue() : null;
-        if (rawMode != null && !rawMode.trim().isEmpty()) {
-            return !BOOLEAN_MODE_VARIABLE.equalsIgnoreCase(rawMode.trim());
-        }
-        NodeParameter variableParameter = getParameter("Variable");
-        String variableValue = variableParameter != null ? variableParameter.getStringValue() : null;
-        return variableValue == null || variableValue.trim().isEmpty();
+        return NodeBooleanParameters.isBooleanModeLiteral(this, BOOLEAN_MODE_LITERAL, BOOLEAN_MODE_VARIABLE);
     }
 
     public boolean isBooleanModeVariable() {
@@ -3659,251 +2971,23 @@ public class Node {
     }
 
     public void setBooleanModeLiteral(boolean literalMode) {
-        if (type != NodeType.PARAM_BOOLEAN) {
-            return;
-        }
-        ensureBooleanParameters();
-        String modeValue = literalMode ? BOOLEAN_MODE_LITERAL : BOOLEAN_MODE_VARIABLE;
-        setParameterValueAndPropagate("Mode", modeValue);
-        NodeParameter modeParameter = getParameter("Mode");
-        if (modeParameter != null) {
-            modeParameter.setUserEdited(true);
-        }
+        NodeBooleanParameters.setBooleanModeLiteral(this, literalMode, BOOLEAN_MODE_LITERAL, BOOLEAN_MODE_VARIABLE);
     }
 
     private void ensureBooleanParameters() {
-        if (type != NodeType.PARAM_BOOLEAN) {
-            return;
-        }
-        ensureBooleanParameter("Mode", ParameterType.STRING, BOOLEAN_MODE_LITERAL, 0);
-        ensureBooleanParameter("Toggle", ParameterType.BOOLEAN, "true", 1);
-        ensureBooleanParameter("Variable", ParameterType.STRING, "", 2);
+        NodeBooleanParameters.ensureBooleanParameters(this, BOOLEAN_MODE_LITERAL);
     }
 
     public boolean isAttributeDetectionSensor() {
-        return type == NodeType.SENSOR_ATTRIBUTE_DETECTION;
+        return NodeAttributeParameters.isAttributeDetectionSensor(this);
     }
 
     public void normalizeAttributeDetectionParameters() {
-        if (!isAttributeDetectionSensor()) {
-            return;
-        }
-        parameters.removeIf(param -> param != null && "Operator".equalsIgnoreCase(param.getName()));
-        ensureAttributeDetectionParameter("Attribute", AttributeDetectionConfig.AttributeOption.NAME.id(), 0);
-        ensureAttributeDetectionParameter("Value", "", 1);
-
-        AttributeDetectionConfig.TargetKind targetKind = null;
-        Node targetNode = getAttachedParameter(0);
-        if (targetNode != null) {
-            targetKind = AttributeDetectionConfig.inferTargetKind(targetNode.getType());
-        }
-
-        NodeParameter attributeParameter = getParameter("Attribute");
-        NodeParameter valueParameter = getParameter("Value");
-        if (attributeParameter == null || valueParameter == null) {
-            return;
-        }
-
-        AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(attributeParameter.getStringValue());
-        if (attribute == null || (targetKind != null && !attribute.supports(targetKind))) {
-            attribute = AttributeDetectionConfig.getDefaultAttribute(targetKind);
-            attributeParameter.setStringValue(attribute.id());
-        }
-
-        String normalizedValue = valueParameter.getStringValue();
-        if (attribute.valueType() == AttributeDetectionConfig.ValueType.BOOLEAN) {
-            if (normalizedValue == null || normalizedValue.isBlank()) {
-                normalizedValue = AttributeDetectionConfig.getDefaultValue(attribute);
-            } else {
-                normalizedValue = Boolean.toString(parseBooleanLike(normalizedValue));
-            }
-            valueParameter.setStringValue(normalizedValue);
-        }
-    }
-
-    private void ensureAttributeDetectionParameter(String name, String defaultValue, int targetIndex) {
-        if (getParameter(name) != null) {
-            return;
-        }
-        NodeParameter parameter = new NodeParameter(name, ParameterType.STRING, defaultValue);
-        int insertIndex = Math.max(0, Math.min(targetIndex, parameters.size()));
-        parameters.add(insertIndex, parameter);
-    }
-
-    private void ensureBooleanParameter(String name, ParameterType parameterType, String defaultValue, int targetIndex) {
-        if (getParameter(name) != null) {
-            return;
-        }
-        NodeParameter parameter;
-        if ("Mode".equalsIgnoreCase(name)) {
-            parameter = createParameter(PARAM_ID_BOOLEAN_MODE, name, parameterType, defaultValue);
-        } else if ("Toggle".equalsIgnoreCase(name)) {
-            parameter = createParameter(PARAM_ID_BOOLEAN_TOGGLE, name, parameterType, defaultValue);
-        } else if ("Variable".equalsIgnoreCase(name)) {
-            parameter = createParameter(PARAM_ID_BOOLEAN_VARIABLE, name, parameterType, defaultValue);
-        } else {
-            parameter = new NodeParameter(name, parameterType, defaultValue);
-        }
-        int insertIndex = Math.max(0, Math.min(targetIndex, parameters.size()));
-        parameters.add(insertIndex, parameter);
-    }
-
-    private String formatVillagerTradeDisplayValue(String value) {
-        if (value == null || value.isEmpty()) {
-            return "";
-        }
-        if (!value.contains("|") || !value.contains("@")) {
-            return value;
-        }
-        String[] parts = value.split("\\|");
-        TradeKeyPart first = parts.length > 0 ? parseTradeKeyPart(parts[0]) : null;
-        TradeKeyPart second = parts.length > 1 ? parseTradeKeyPart(parts[1]) : null;
-        TradeKeyPart sell = parts.length > 2 ? parseTradeKeyPart(parts[2]) : null;
-        if (sell == null || !sell.isValid()) {
-            return value;
-        }
-        StringBuilder builder = new StringBuilder();
-        if (first != null && first.isValid()) {
-            builder.append(first.format());
-        }
-        if (second != null && second.isValid()) {
-            if (builder.length() > 0) {
-                builder.append(" + ");
-            }
-            builder.append(second.format());
-        }
-        if (builder.length() > 0) {
-            builder.append(" -> ");
-        }
-        builder.append(sell.format());
-        return builder.toString();
-    }
-
-    private TradeKeyPart parseTradeKeyPart(String part) {
-        if (part == null || part.isEmpty() || "none@0".equals(part)) {
-            return TradeKeyPart.empty();
-        }
-        int atIndex = part.indexOf('@');
-        if (atIndex <= 0) {
-            return TradeKeyPart.empty();
-        }
-        String itemId = part.substring(0, atIndex);
-        String countRaw = part.substring(atIndex + 1);
-        int count = 1;
-        try {
-            count = Math.max(1, Integer.parseInt(countRaw));
-        } catch (NumberFormatException ignored) {
-            count = 1;
-        }
-        Identifier identifier = Identifier.tryParse(itemId);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-            return TradeKeyPart.empty();
-        }
-        return new TradeKeyPart(Registries.ITEM.get(identifier).getName().getString(), count);
-    }
-
-    private static final class TradeKeyPart {
-        private static final TradeKeyPart EMPTY = new TradeKeyPart("", 0);
-        private final String name;
-        private final int count;
-
-        private TradeKeyPart(String name, int count) {
-            this.name = name;
-            this.count = count;
-        }
-
-        private static TradeKeyPart empty() {
-            return EMPTY;
-        }
-
-        private boolean isValid() {
-            return name != null && !name.isEmpty() && count > 0;
-        }
-
-        private String format() {
-            if (count > 1) {
-                return count + "x " + name;
-            }
-            return name;
-        }
+        NodeAttributeParameters.normalizeAttributeDetectionParameters(this);
     }
 
     public String getParameterLabel(NodeParameter parameter) {
-        if (parameter == null) {
-            return "";
-        }
-        if (type == NodeType.PARAM_DIRECTION) {
-            String parameterName = parameter.getName();
-            boolean exactMode = isDirectionModeExact();
-            if ("Mode".equalsIgnoreCase(parameterName)) {
-                return "";
-            }
-            if ("Direction".equalsIgnoreCase(parameterName) && exactMode) {
-                return "";
-            }
-            if (("Yaw".equalsIgnoreCase(parameterName)
-                || "Pitch".equalsIgnoreCase(parameterName)
-                || "YawOffset".equalsIgnoreCase(parameterName)
-                || "PitchOffset".equalsIgnoreCase(parameterName)
-                || "Distance".equalsIgnoreCase(parameterName))
-                && !exactMode) {
-                return "";
-            }
-        }
-        if (type == NodeType.PARAM_BOOLEAN) {
-            ensureBooleanParameters();
-            String parameterName = parameter.getName();
-            boolean literalMode = isBooleanModeLiteral();
-            if ("Mode".equalsIgnoreCase(parameterName)) {
-                return "";
-            }
-            if ("Toggle".equalsIgnoreCase(parameterName) && !literalMode) {
-                return "";
-            }
-            if ("Variable".equalsIgnoreCase(parameterName) && literalMode) {
-                return "";
-            }
-        }
-        if (isRandomRoundingParameter(parameter)) {
-            return "";
-        }
-        if (type == NodeType.CREATE_LIST) {
-            String paramName = parameter.getName();
-            if ("UseRadius".equalsIgnoreCase(paramName)
-                || "Radius".equalsIgnoreCase(paramName)
-                || "UseBlockCap".equalsIgnoreCase(paramName)
-                || "MaxBlocks".equalsIgnoreCase(paramName)) {
-                return "";
-            }
-        }
-        if (type == NodeType.USE) {
-            String paramName = parameter.getName();
-            if ("UseDurationSeconds".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
-                return "";
-            }
-        }
-        if (type == NodeType.SWING) {
-            String paramName = parameter.getName();
-            if ("Duration".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
-                return "";
-            }
-        }
-        if ("State".equalsIgnoreCase(parameter.getName()) && !shouldShowStateParameter()) {
-            return "";
-        }
-        if (type == NodeType.SENSOR_FABRIC_EVENT) {
-            String paramName = parameter.getName();
-            if ("Amount".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
-                return "";
-            }
-        }
-        String name = getParameterDisplayName(parameter);
-        String text = name + ": " + parameter.getDisplayValue();
-        if (text.length() <= MAX_PARAMETER_LABEL_LENGTH) {
-            return text;
-        }
-        int maxContentLength = Math.max(0, MAX_PARAMETER_LABEL_LENGTH - 3);
-        return text.substring(0, maxContentLength) + "...";
+        return NodeAttributeParameters.getParameterLabel(this, parameter);
     }
 
     private int getVisibleParameterLineCount() {
@@ -20453,7 +19537,7 @@ public class Node {
         return resolved != null ? resolved : defaultValue;
     }
 
-    private static String getParameterString(Node node, String name) {
+    static String getParameterString(Node node, String name) {
         if (node == null || name == null) {
             return null;
         }
@@ -22138,14 +21222,7 @@ public class Node {
     }
 
     private boolean parseBooleanLike(String value) {
-        if (value == null) {
-            return false;
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        return "true".equals(normalized)
-            || "1".equals(normalized)
-            || "yes".equals(normalized)
-            || "on".equals(normalized);
+        return NodeAttributeParameters.parseBooleanLike(value);
     }
 
     private String getEntityCustomName(Entity entity) {

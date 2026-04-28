@@ -180,10 +180,19 @@ jobs:
             exit 1
           fi
 
-          SUMMARY_LINE="**Branch:** ${GITHUB_REF_NAME:-${GITHUB_REF}}\n**Commit:** [\`${SHORT_SHA}\`](<https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA}>) ${COMMIT_MESSAGE}\n**Built:**"
-          SUMMARY_LINE="${SUMMARY_LINE} <t:${BUILD_TIMESTAMP}:F>"
+          SUMMARY_LINE="$(printf '**Branch:** %s\n**Commit:** [`%s`](<https://github.com/%s/commit/%s>) %s\n**Built:** <t:%s:F>' \
+            "${GITHUB_REF_NAME:-${GITHUB_REF}}" \
+            "${SHORT_SHA}" \
+            "${GITHUB_REPOSITORY}" \
+            "${COMMIT_SHA}" \
+            "${COMMIT_MESSAGE}" \
+            "${BUILD_TIMESTAMP}")"
 
-          DESCRIPTION="${SUMMARY_LINE}\n\n**Downloads**\n${DOWNLOADS}\n\n[View GitHub Actions run](<https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}>)"
+          DESCRIPTION="$(printf '%s\n\n**Downloads**\n%s\n\n[View GitHub Actions run](<https://github.com/%s/actions/runs/%s>)' \
+            "${SUMMARY_LINE}" \
+            "${DOWNLOADS}" \
+            "${GITHUB_REPOSITORY}" \
+            "${GITHUB_RUN_ID}")"
 
           PAYLOAD="$(jq -cn \
             --arg title "Pathmind test builds" \

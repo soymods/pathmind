@@ -224,9 +224,9 @@ supportedMinecraftVersions.keys.forEach { version ->
         outputs.dir(versionOutputDir)
         workingDir = projectDir
         if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
-            commandLine("cmd", "/c", "gradlew.bat", "build", "-Pmc_version=$version")
+            commandLine("cmd", "/c", "gradlew.bat", "assemble", "-Pmc_version=$version")
         } else {
-            commandLine("./gradlew", "build", "-Pmc_version=$version")
+            commandLine("./gradlew", "assemble", "-Pmc_version=$version")
         }
         doFirst {
             project.delete(versionOutputDir)

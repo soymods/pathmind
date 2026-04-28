@@ -693,6 +693,7 @@ public class PathmindVisualEditorScreen extends Screen {
             validationPanelOpen = false;
             clearPresetInputFieldFocus();
         }
+        boolean rawJsonButtonHovered = renderRawJsonToggleButton(context, chromeMouseX, chromeMouseY, false);
         if (!rawJsonMode) {
             renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
@@ -702,13 +703,22 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             renderValidationPanel(context, mouseX, mouseY, validationResult);
         }
-        renderRawJsonToggleButton(context, chromeMouseX, chromeMouseY, false);
         if (rawJsonMode) {
             renderRawJsonSaveButton(context, chromeMouseX, chromeMouseY, false);
         } else {
-            renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
+            boolean validationButtonHovered = renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
             renderBottomLeftWorkspaceButtons(context, mouseX, mouseY);
             renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
+            if (showWorkspaceTooltips && !isPopupObscuringWorkspace() && !validationPanelOpen) {
+                if (validationButtonHovered) {
+                    drawWorkspaceTooltip(context, "Checks", chromeMouseX, chromeMouseY);
+                } else if (rawJsonButtonHovered) {
+                    drawWorkspaceTooltip(context, "Raw JSON", chromeMouseX, chromeMouseY);
+                }
+            }
+        }
+        if (rawJsonMode && showWorkspaceTooltips && rawJsonButtonHovered) {
+            drawWorkspaceTooltip(context, "Exit Raw JSON", chromeMouseX, chromeMouseY);
         }
 
         if (controlsDisabled) {
@@ -6494,7 +6504,7 @@ public class PathmindVisualEditorScreen extends Screen {
         TooltipRenderer.render(context, this.textRenderer, text, mouseX, mouseY, this.width, this.height);
     }
 
-    private void renderValidationButton(DrawContext context, int mouseX, int mouseY, boolean disabled,
+    private boolean renderValidationButton(DrawContext context, int mouseX, int mouseY, boolean disabled,
                                         GraphValidationResult validationResult) {
         int buttonX = getValidationButtonX();
         int buttonY = getValidationButtonY();
@@ -6530,9 +6540,10 @@ public class PathmindVisualEditorScreen extends Screen {
             drawValidationConsoleIcon(context, buttonX, buttonY, statusColor);
         }
 
+        return hovered;
     }
 
-    private void renderRawJsonToggleButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+    private boolean renderRawJsonToggleButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getRawJsonButtonX();
         int buttonY = getRawJsonButtonY();
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, RAW_JSON_BUTTON_SIZE, RAW_JSON_BUTTON_SIZE);
@@ -6542,6 +6553,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int textX = buttonX + Math.max(1, (RAW_JSON_BUTTON_SIZE - this.textRenderer.getWidth(icon)) / 2);
         int textY = buttonY + (RAW_JSON_BUTTON_SIZE - this.textRenderer.fontHeight) / 2 + 1;
         context.drawText(this.textRenderer, icon, textX, textY, iconColor, false);
+        return hovered;
     }
 
     private void renderRawJsonSaveButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {

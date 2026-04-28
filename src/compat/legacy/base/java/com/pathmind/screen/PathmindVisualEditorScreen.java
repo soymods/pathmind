@@ -2253,6 +2253,12 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
+            && canStartInlinePresetRename(activePresetName)) {
+            startInlinePresetRename(activePresetName);
+            return true;
+        }
+
         if (handleNodeGraphShortcuts(keyCode, modifiers)) {
             return true;
         }
@@ -2836,6 +2842,13 @@ public class PathmindVisualEditorScreen extends Screen {
             && !inlinePresetRenameName.isEmpty();
     }
 
+    private boolean canStartInlinePresetRename(String presetName) {
+        return presetName != null
+            && !presetName.isEmpty()
+            && !isPresetDeleteDisabled(presetName)
+            && inlinePresetRenameField != null;
+    }
+
     private boolean shouldStartInlinePresetRename(String presetName) {
         long now = System.currentTimeMillis();
         boolean doubleClick = presetName != null && presetName.equals(lastPresetTitleClickName)
@@ -2866,7 +2879,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void startInlinePresetRename(String presetName) {
-        if (presetName == null || presetName.isEmpty() || isPresetDeleteDisabled(presetName) || inlinePresetRenameField == null) {
+        if (!canStartInlinePresetRename(presetName)) {
             return;
         }
         closeCreatePresetPopup();
@@ -2878,6 +2891,8 @@ public class PathmindVisualEditorScreen extends Screen {
         inlinePresetRenameField.setVisible(true);
         inlinePresetRenameField.setEditable(true);
         inlinePresetRenameField.setFocused(true);
+        inlinePresetRenameField.setCursorToStart(false);
+        inlinePresetRenameField.setSelectionEnd(presetName.length());
     }
 
     private boolean renamePresetInternal(String currentName, String desiredName) {
@@ -2948,7 +2963,13 @@ public class PathmindVisualEditorScreen extends Screen {
             int fieldX = titleBounds[0];
             int fieldWidth = getPresetTabTextMaxWidth(label, tabWidth);
             int fieldHeight = Math.max(this.textRenderer.fontHeight + 2, titleBounds[3]);
-            int fieldY = titleBounds[1] + 1;
+            int fieldY = titleBounds[1];
+            int frameX = Math.max(drawX + 2, fieldX - 3);
+            int frameY = y + 2;
+            int frameWidth = Math.min(fieldWidth + 6, drawX + tabWidth - 2 - frameX);
+            int frameHeight = TAB_HEIGHT - 4;
+            context.fill(frameX, frameY, frameX + frameWidth, frameY + frameHeight, UITheme.BACKGROUND_SECONDARY);
+            DrawContextBridge.drawBorderInLayer(context, frameX, frameY, frameWidth, frameHeight, getAccentColor());
             inlinePresetRenameField.setVisible(true);
             inlinePresetRenameField.setEditable(true);
             inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);

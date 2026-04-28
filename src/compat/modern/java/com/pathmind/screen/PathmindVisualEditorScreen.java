@@ -19,6 +19,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.control.RawJsonEditor;
 import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.control.ToggleSwitch;
@@ -132,6 +133,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int STOP_BUTTON_SIZE = 18;
     private static final int CONTROL_BUTTON_GAP = 6;
     private static final int VALIDATION_BUTTON_SIZE = 18;
+    private static final int RAW_JSON_BUTTON_SIZE = 18;
     private static final int VALIDATION_BUTTON_WIDE_WIDTH = STOP_BUTTON_SIZE + CONTROL_BUTTON_GAP + PLAY_BUTTON_SIZE;
     private static final int VALIDATION_BUTTON_WIDE_HEIGHT = 16;
     private static final int VALIDATION_PANEL_WIDTH = 292;
@@ -338,6 +340,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private int overlayCutoutY = 0;
     private int overlayCutoutWidth = 0;
     private int overlayCutoutHeight = 0;
+    private boolean rawJsonMode = false;
+    private RawJsonEditor rawJsonEditor;
+    private final Map<String, String> rawJsonDrafts = new HashMap<>();
+    private boolean rawJsonDirty = false;
     private Boolean uiUtilsOverlayPrevEnabled = null;
     private final List<WorkspaceTab> workspaceTabs = new ArrayList<>();
     private int activeWorkspaceTabIndex = 0;
@@ -507,6 +513,16 @@ public class PathmindVisualEditorScreen extends Screen {
             inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
             this.addSelectableChild(inlinePresetRenameField);
         }
+        if (rawJsonEditor == null) {
+            rawJsonEditor = new RawJsonEditor();
+            rawJsonEditor.setTextChangedListener(() -> {
+                if (rawJsonMode) {
+                    rawJsonDirty = true;
+                    rawJsonDrafts.put(activePresetName, rawJsonEditor.getText());
+                    rawJsonEditor.clearStatus();
+                }
+            });
+        }
         if (nodeDelayField == null) {
             nodeDelayField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.literal("Delay"));
             nodeDelayField.setMaxLength(6);
@@ -612,33 +628,34 @@ public class PathmindVisualEditorScreen extends Screen {
         titleUnderlineAnimation.tick();
         GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
 
-        // Update mouse hover for socket highlighting
-        nodeGraph.updateMouseHover(mouseX, mouseY);
         nodeGraph.setSidebarWidth(sidebar.getWidth());
         nodeGraph.setExecutionEnabled(shouldShowExecutionControls());
-        
-        // Render node graph (stationary nodes only)
-        renderNodeGraph(context, mouseX, mouseY, delta, false);
+        if (rawJsonMode) {
+            renderRawJsonWorkspace(context, mouseX, mouseY);
+        } else {
+            nodeGraph.updateMouseHover(mouseX, mouseY);
+            renderNodeGraph(context, mouseX, mouseY, delta, false);
+        }
 
         // Start a new GUI layer so UI chrome always sits above workspace nodes.
         DrawContextBridge.startNewRootLayer(context);
 
-        // Workspace utilities should sit beneath the sidebar when it expands
-        renderWorkspaceButtons(context, mouseX, mouseY);
+        if (!rawJsonMode) {
+            renderWorkspaceButtons(context, mouseX, mouseY);
 
-        // Always render sidebar after node graph/buttons so expanded categories sit on top
-        boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
-        boolean allowSidebarTooltips = showWorkspaceTooltips && !nodeGraph.isAnyNodeBeingDragged();
-        sidebar.render(
-            context,
-            this.textRenderer,
-            mouseX,
-            mouseY,
-            TITLE_BAR_HEIGHT,
-            this.height - TITLE_BAR_HEIGHT,
-            sidebarInteractionsEnabled,
-            allowSidebarTooltips
-        );
+            boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
+            boolean allowSidebarTooltips = showWorkspaceTooltips && !nodeGraph.isAnyNodeBeingDragged();
+            sidebar.render(
+                context,
+                this.textRenderer,
+                mouseX,
+                mouseY,
+                TITLE_BAR_HEIGHT,
+                this.height - TITLE_BAR_HEIGHT,
+                sidebarInteractionsEnabled,
+                allowSidebarTooltips
+            );
+        }
 
         // Render title bar above the workspace so nodes never overlap it.
         UIStyleHelper.drawBeveledPanel(
@@ -676,16 +693,23 @@ public class PathmindVisualEditorScreen extends Screen {
             validationPanelOpen = false;
             clearPresetInputFieldFocus();
         }
-        renderZoomControls(context, chromeMouseX, chromeMouseY, false);
+        if (!rawJsonMode) {
+            renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
-        if (shouldShowExecutionControls()) {
-            renderStopButton(context, chromeMouseX, chromeMouseY, false);
-            renderPlayButton(context, chromeMouseX, chromeMouseY, false);
+            if (shouldShowExecutionControls()) {
+                renderStopButton(context, chromeMouseX, chromeMouseY, false);
+                renderPlayButton(context, chromeMouseX, chromeMouseY, false);
+            }
+            renderValidationPanel(context, mouseX, mouseY, validationResult);
         }
-        renderValidationPanel(context, mouseX, mouseY, validationResult);
-        renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
-        renderBottomLeftWorkspaceButtons(context, mouseX, mouseY);
-        renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
+        renderRawJsonToggleButton(context, chromeMouseX, chromeMouseY, false);
+        if (rawJsonMode) {
+            renderRawJsonSaveButton(context, chromeMouseX, chromeMouseY, false);
+        } else {
+            renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
+            renderBottomLeftWorkspaceButtons(context, mouseX, mouseY);
+            renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
+        }
 
         if (controlsDisabled) {
             DrawContextBridge.startNewRootLayer(context);
@@ -756,8 +780,10 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.updateContextMenuHover(mouseX, mouseY);
         nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
         renderNodeSearchField(context, mouseX, mouseY, delta);
-        DrawContextBridge.startNewRootLayer(context);
-        renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
+        if (!rawJsonMode) {
+            DrawContextBridge.startNewRootLayer(context);
+            renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
+        }
         if (isDraggingFromSidebar && (draggingNodeType != null || draggingSidebarNode != null)) {
             renderDraggingNode(context, mouseX, mouseY);
         }
@@ -846,6 +872,14 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean shouldShowExecutionControls() {
         MinecraftClient client = MinecraftClient.getInstance();
         return client != null && client.player != null;
+    }
+
+    private void renderRawJsonWorkspace(DrawContext context, int mouseX, int mouseY) {
+        if (rawJsonEditor == null) {
+            rawJsonEditor = new RawJsonEditor();
+        }
+        rawJsonEditor.setBounds(0, TITLE_BAR_HEIGHT, this.width, this.height - TITLE_BAR_HEIGHT);
+        rawJsonEditor.render(context, this.textRenderer, mouseX, mouseY);
     }
 
     private boolean handleNodeDoubleClickExecution(Node clickedNode) {
@@ -1306,7 +1340,21 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (!isPopupObscuringWorkspace() && button == 0) {
+        if (button == 0) {
+            if (isPresetBrowserButtonClicked((int) mouseX, (int) mouseY)) {
+                presetDropdownOpen = !presetDropdownOpen;
+                return true;
+            }
+            if (isTitleClicked((int) mouseX, (int) mouseY)) {
+                openInfoPopup();
+                return true;
+            }
+            if (handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
+                return true;
+            }
+        }
+
+        if (!rawJsonMode && !isPopupObscuringWorkspace() && button == 0) {
             if (handleValidationPanelClick((int) mouseX, (int) mouseY)) {
                 return true;
             }
@@ -1315,7 +1363,7 @@ public class PathmindVisualEditorScreen extends Screen {
             clearPresetInputFieldFocus();
         }
 
-        if (!isPopupObscuringWorkspace() && button == 0 && shouldShowExecutionControls()) {
+        if (!rawJsonMode && !isPopupObscuringWorkspace() && button == 0 && shouldShowExecutionControls()) {
             if (isPointInPlayButton((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = false;
                 startExecutingAllGraphs();
@@ -1328,7 +1376,11 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
-        if (!isPopupObscuringWorkspace() && button == 0) {
+        if (!rawJsonMode && !isPopupObscuringWorkspace() && button == 0) {
+            if (isRawJsonButtonClicked((int) mouseX, (int) mouseY, button)) {
+                toggleRawJsonMode();
+                return true;
+            }
             if (isPointInZoomMinus((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = false;
                 nodeGraph.zoomOut(getWorkspaceCenterX(), getWorkspaceCenterY());
@@ -1364,18 +1416,21 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
-        if (button == 0) {
-            if (isPresetBrowserButtonClicked((int) mouseX, (int) mouseY)) {
-                presetDropdownOpen = !presetDropdownOpen;
+        if (rawJsonMode && button == 0) {
+            if (isRawJsonButtonClicked((int) mouseX, (int) mouseY, button)) {
+                toggleRawJsonMode();
                 return true;
             }
-            if (isTitleClicked((int) mouseX, (int) mouseY)) {
-                openInfoPopup();
+            if (isRawJsonSaveButtonClicked((int) mouseX, (int) mouseY, button)) {
+                saveRawJsonChanges();
                 return true;
             }
         }
 
-        if (button == 0 && handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
+        if (rawJsonMode) {
+            if (rawJsonEditor != null && rawJsonEditor.mouseClicked(mouseX, mouseY, button, this.textRenderer)) {
+                return true;
+            }
             return true;
         }
 
@@ -1893,6 +1948,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (rawJsonMode) {
+            return rawJsonEditor != null && rawJsonEditor.mouseDragged(mouseX, mouseY, button, this.textRenderer);
+        }
+
         if (button == 1 && cuttingConnections) {
             nodeGraph.updateConnectionCut(nodeGraph.screenToWorldX((int) mouseX), nodeGraph.screenToWorldY((int) mouseY));
             return true;
@@ -2026,6 +2085,13 @@ public class PathmindVisualEditorScreen extends Screen {
             clearPendingPresetTabInteraction();
             if (!presetName.equals(activePresetName)) {
                 switchPreset(presetName);
+            }
+            return true;
+        }
+
+        if (rawJsonMode) {
+            if (rawJsonEditor != null) {
+                rawJsonEditor.mouseReleased(button);
             }
             return true;
         }
@@ -2353,6 +2419,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (rawJsonMode) {
+            return rawJsonEditor != null && rawJsonEditor.keyPressed(keyCode, modifiers, this.textRenderer);
+        }
+
         if (nodeGraph.isScreenCoordinateCaptureActive() && keyCode == GLFW.GLFW_KEY_ESCAPE) {
             nodeGraph.cancelScreenCoordinateCapture();
             return true;
@@ -2387,6 +2457,12 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleCoordinateKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
+        if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
+            && canStartInlinePresetRename(activePresetName)) {
+            startInlinePresetRename(activePresetName);
             return true;
         }
 
@@ -2502,6 +2578,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (rawJsonMode) {
+            return rawJsonEditor != null && rawJsonEditor.charTyped(chr, modifiers, this.textRenderer);
+        }
+
         if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.textRenderer)) {
             return true;
         }
@@ -2605,6 +2685,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (importExportPopupAnimation.isVisible()) {
             return true;
+        }
+
+        if (rawJsonMode) {
+            return rawJsonEditor != null && rawJsonEditor.mouseScrolled(verticalAmount, this.textRenderer);
         }
 
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
@@ -2992,6 +3076,13 @@ public class PathmindVisualEditorScreen extends Screen {
             && !inlinePresetRenameName.isEmpty();
     }
 
+    private boolean canStartInlinePresetRename(String presetName) {
+        return presetName != null
+            && !presetName.isEmpty()
+            && !isPresetDeleteDisabled(presetName)
+            && inlinePresetRenameField != null;
+    }
+
     private boolean shouldStartInlinePresetRename(String presetName) {
         long now = System.currentTimeMillis();
         boolean doubleClick = presetName != null && presetName.equals(lastPresetTitleClickName)
@@ -3022,7 +3113,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void startInlinePresetRename(String presetName) {
-        if (presetName == null || presetName.isEmpty() || isPresetDeleteDisabled(presetName) || inlinePresetRenameField == null) {
+        if (!canStartInlinePresetRename(presetName)) {
             return;
         }
         closeCreatePresetPopup();
@@ -3034,6 +3125,8 @@ public class PathmindVisualEditorScreen extends Screen {
         inlinePresetRenameField.setVisible(true);
         inlinePresetRenameField.setEditable(true);
         inlinePresetRenameField.setFocused(true);
+        inlinePresetRenameField.setCursorToStart(false);
+        inlinePresetRenameField.setSelectionEnd(presetName.length());
     }
 
     private boolean renamePresetInternal(String currentName, String desiredName) {
@@ -3052,6 +3145,14 @@ public class PathmindVisualEditorScreen extends Screen {
         Optional<String> renamedPreset = PresetManager.renamePreset(currentName, desiredName);
         if (renamedPreset.isEmpty()) {
             return false;
+        }
+        String renamedKey = renamedPreset.get();
+        if (rawJsonDrafts.containsKey(currentName)) {
+            String draft = rawJsonDrafts.remove(currentName);
+            rawJsonDrafts.put(renamedKey, draft);
+            if (rawJsonMode && currentName.equals(inlinePresetRenameName)) {
+                rawJsonDirty = true;
+            }
         }
 
         refreshAvailablePresets();
@@ -3104,7 +3205,13 @@ public class PathmindVisualEditorScreen extends Screen {
             int fieldX = titleBounds[0];
             int fieldWidth = getPresetTabTextMaxWidth(label, tabWidth);
             int fieldHeight = Math.max(this.textRenderer.fontHeight + 2, titleBounds[3]);
-            int fieldY = titleBounds[1] + 1;
+            int fieldY = titleBounds[1];
+            int frameX = Math.max(drawX + 2, fieldX - 3);
+            int frameY = y + 2;
+            int frameWidth = Math.min(fieldWidth + 6, drawX + tabWidth - 2 - frameX);
+            int frameHeight = TAB_HEIGHT - 4;
+            context.fill(frameX, frameY, frameX + frameWidth, frameY + frameHeight, UITheme.BACKGROUND_SECONDARY);
+            DrawContextBridge.drawBorderInLayer(context, frameX, frameY, frameWidth, frameHeight, getAccentColor());
             inlinePresetRenameField.setVisible(true);
             inlinePresetRenameField.setEditable(true);
             inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
@@ -4609,6 +4716,14 @@ public class PathmindVisualEditorScreen extends Screen {
             return getPlayButtonY() + PLAY_BUTTON_SIZE + CONTROL_BUTTON_GAP;
         }
         return TITLE_BAR_HEIGHT + PLAY_BUTTON_MARGIN;
+    }
+
+    private int getRawJsonButtonX() {
+        return getValidationButtonX() - CONTROL_BUTTON_GAP - RAW_JSON_BUTTON_SIZE;
+    }
+
+    private int getRawJsonButtonY() {
+        return getValidationButtonY();
     }
 
     private int getZoomPlusButtonX() {
@@ -6178,6 +6293,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void switchPreset(String presetName) {
         stopInlinePresetRename(false);
+        if (rawJsonMode && rawJsonEditor != null && activePresetName != null && !activePresetName.isEmpty()) {
+            rawJsonDrafts.put(activePresetName, rawJsonEditor.getText());
+        }
         nodeGraph.save();
         PresetManager.setActivePreset(presetName);
         refreshAvailablePresets();
@@ -6208,6 +6326,12 @@ public class PathmindVisualEditorScreen extends Screen {
         refreshMissingUiUtilsPopup();
         nodeGraph.restoreSessionViewportState();
         updateImportExportPathFromPreset();
+        if (rawJsonMode && rawJsonEditor != null) {
+            String draft = rawJsonDrafts.get(activePresetName);
+            rawJsonEditor.setText(draft != null ? draft : NodeGraphPersistence.toPrettyJson(nodeGraph.exportGraphDataSnapshot()));
+            rawJsonDirty = draft != null;
+            rawJsonEditor.clearStatus();
+        }
     }
 
     private void renderWorkspaceButtons(DrawContext context, int mouseX, int mouseY) {
@@ -6406,6 +6530,34 @@ public class PathmindVisualEditorScreen extends Screen {
             drawValidationConsoleIcon(context, buttonX, buttonY, statusColor);
         }
 
+    }
+
+    private void renderRawJsonToggleButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+        int buttonX = getRawJsonButtonX();
+        int buttonY = getRawJsonButtonY();
+        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, RAW_JSON_BUTTON_SIZE, RAW_JSON_BUTTON_SIZE);
+        drawToolbarButtonFrame(context, buttonX, buttonY, RAW_JSON_BUTTON_SIZE, RAW_JSON_BUTTON_SIZE, hovered, rawJsonMode, disabled, "raw-json-button");
+        int iconColor = disabled ? UITheme.DROPDOWN_ACTION_DISABLED : (hovered || rawJsonMode ? getAccentColor() : UITheme.TEXT_PRIMARY);
+        String icon = "{ }";
+        int textX = buttonX + Math.max(1, (RAW_JSON_BUTTON_SIZE - this.textRenderer.getWidth(icon)) / 2);
+        int textY = buttonY + (RAW_JSON_BUTTON_SIZE - this.textRenderer.fontHeight) / 2 + 1;
+        context.drawText(this.textRenderer, icon, textX, textY, iconColor, false);
+    }
+
+    private void renderRawJsonSaveButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+        int buttonX = getValidationButtonX();
+        int buttonY = getValidationButtonY();
+        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
+        boolean active = rawJsonDirty;
+        drawToolbarButtonFrame(context, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE, hovered, active, disabled, "raw-json-save-button");
+        int iconColor = disabled ? UITheme.DROPDOWN_ACTION_DISABLED : (hovered || active ? getAccentColor() : UITheme.TEXT_PRIMARY);
+        int left = buttonX + 4;
+        int top = buttonY + 3;
+        int size = 10;
+        DrawContextBridge.drawBorder(context, left, top, size, size, iconColor);
+        context.fill(left + 2, top + 2, left + size - 2, top + 4, iconColor);
+        context.fill(left + size - 4, top + 2, left + size - 2, top + 5, UITheme.BACKGROUND_SECTION);
+        context.drawHorizontalLine(left + 2, left + size - 3, top + 7, iconColor);
     }
 
     private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
@@ -6658,6 +6810,89 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         clearPresetInputFieldFocus();
         return false;
+    }
+
+    private boolean isRawJsonButtonClicked(int mouseX, int mouseY, int button) {
+        if (button != 0) {
+            return false;
+        }
+        return isPointInRect(mouseX, mouseY, getRawJsonButtonX(), getRawJsonButtonY(), RAW_JSON_BUTTON_SIZE, RAW_JSON_BUTTON_SIZE);
+    }
+
+    private boolean isRawJsonSaveButtonClicked(int mouseX, int mouseY, int button) {
+        if (button != 0) {
+            return false;
+        }
+        return rawJsonMode && isValidationButtonClicked(mouseX, mouseY, button);
+    }
+
+    private void enterRawJsonMode() {
+        if (rawJsonEditor == null) {
+            rawJsonEditor = new RawJsonEditor();
+        }
+        dismissParameterOverlay();
+        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            bookTextEditorOverlay.hide();
+        }
+        rawJsonMode = true;
+        validationPanelOpen = false;
+        clearPresetInputFieldFocus();
+        String draft = rawJsonDrafts.get(activePresetName);
+        rawJsonEditor.setText(draft != null ? draft : NodeGraphPersistence.toPrettyJson(nodeGraph.exportGraphDataSnapshot()));
+        rawJsonDirty = draft != null;
+        rawJsonEditor.clearStatus();
+    }
+
+    private boolean applyRawJsonEditorChanges(boolean exitMode) {
+        if (!rawJsonMode || rawJsonEditor == null) {
+            return true;
+        }
+        try {
+            NodeGraphData parsed = NodeGraphPersistence.parseNodeGraphData(rawJsonEditor.getText());
+            if (parsed == null) {
+                rawJsonEditor.setStatus("JSON is empty or invalid.", UITheme.STATE_ERROR);
+                return false;
+            }
+            if (!nodeGraph.applyGraphDataSnapshot(parsed, true)) {
+                rawJsonEditor.setStatus("JSON parsed, but the workspace could not be applied.", UITheme.STATE_ERROR);
+                return false;
+            }
+            nodeGraph.save();
+            refreshMissingBaritonePopup();
+            refreshMissingUiUtilsPopup();
+            rawJsonDrafts.remove(activePresetName);
+            rawJsonDirty = false;
+            if (exitMode) {
+                rawJsonMode = false;
+                rawJsonEditor.clearStatus();
+            } else {
+                rawJsonEditor.setStatus("Saved.", UITheme.STATE_SUCCESS);
+            }
+            return true;
+        } catch (Exception e) {
+            rawJsonEditor.setStatus("Invalid JSON: " + (e.getMessage() == null ? "parse error" : e.getMessage()), UITheme.STATE_ERROR);
+            return false;
+        }
+    }
+
+    private boolean ensureRawJsonApplied(boolean exitMode) {
+        if (!rawJsonMode) {
+            return true;
+        }
+        return applyRawJsonEditorChanges(exitMode);
+    }
+
+    private void toggleRawJsonMode() {
+        if (rawJsonMode) {
+            rawJsonMode = false;
+            rawJsonEditor.clearStatus();
+        } else {
+            enterRawJsonMode();
+        }
+    }
+
+    private void saveRawJsonChanges() {
+        applyRawJsonEditorChanges(false);
     }
 
     private int getValidationPresetInputSectionHeight() {

@@ -373,13 +373,13 @@ public class NodeGraph {
         MINIMAL
     }
 
-    private static final class ClipboardSnapshot {
-        private final NodeGraphData data;
-        private final List<String> selectionIds;
-        private final int anchorX;
-        private final int anchorY;
+    static final class ClipboardSnapshot {
+        final NodeGraphData data;
+        final List<String> selectionIds;
+        final int anchorX;
+        final int anchorY;
 
-        private ClipboardSnapshot(NodeGraphData data, List<String> selectionIds, int anchorX, int anchorY) {
+        ClipboardSnapshot(NodeGraphData data, List<String> selectionIds, int anchorX, int anchorY) {
             this.data = data;
             this.selectionIds = selectionIds;
             this.anchorX = anchorX;
@@ -387,13 +387,13 @@ public class NodeGraph {
         }
     }
 
-    private static final class SelectionBounds {
-        private final int minX;
-        private final int minY;
-        private final int maxX;
-        private final int maxY;
+    static final class SelectionBounds {
+        final int minX;
+        final int minY;
+        final int maxX;
+        final int maxY;
 
-        private SelectionBounds(int minX, int minY, int maxX, int maxY) {
+        SelectionBounds(int minX, int minY, int maxX, int maxY) {
             this.minX = minX;
             this.minY = minY;
             this.maxX = maxX;
@@ -620,7 +620,7 @@ public class NodeGraph {
         invalidateValidation();
     }
 
-    private void assignNewStartNodeNumber(Node node) {
+    void assignNewStartNodeNumber(Node node) {
         if (node == null || node.getType() != NodeType.START) {
             return;
         }
@@ -954,27 +954,8 @@ public class NodeGraph {
         }
     }
 
-    private SelectionBounds calculateBounds(Collection<Node> nodesToMeasure) {
-        if (nodesToMeasure == null || nodesToMeasure.isEmpty()) {
-            return null;
-        }
-        int minX = Integer.MAX_VALUE;
-        int minY = Integer.MAX_VALUE;
-        int maxX = Integer.MIN_VALUE;
-        int maxY = Integer.MIN_VALUE;
-        for (Node node : nodesToMeasure) {
-            if (node == null) {
-                continue;
-            }
-            minX = Math.min(minX, node.getX());
-            minY = Math.min(minY, node.getY());
-            maxX = Math.max(maxX, node.getX() + node.getWidth());
-            maxY = Math.max(maxY, node.getY() + node.getHeight());
-        }
-        if (minX == Integer.MAX_VALUE) {
-            return null;
-        }
-        return new SelectionBounds(minX, minY, maxX, maxY);
+    SelectionBounds calculateBounds(Collection<Node> nodesToMeasure) {
+        return NodeGraphHierarchySupport.calculateBounds(nodesToMeasure);
     }
 
     private SelectionBounds calculateHierarchyBounds(Node root) {
@@ -1000,28 +981,14 @@ public class NodeGraph {
     }
 
     private void rebuildHierarchyCacheIfNeeded() {
-        if (!hierarchyGeometryDirty) {
-            return;
-        }
-
-        cachedRootNodes.clear();
-        cachedHierarchyBounds.clear();
-        cachedHierarchyNodeCounts.clear();
-
-        Set<Node> seenRoots = new LinkedHashSet<>();
-        for (Node node : nodes) {
-            Node root = getRootNode(node);
-            if (root == null || !seenRoots.add(root)) {
-                continue;
-            }
-
-            List<Node> hierarchyNodes = new ArrayList<>();
-            collectHierarchyNodes(root, hierarchyNodes, new HashSet<>());
-            cachedRootNodes.add(root);
-            cachedHierarchyBounds.put(root, calculateBounds(hierarchyNodes));
-            cachedHierarchyNodeCounts.put(root, hierarchyNodes.size());
-        }
-
+        NodeGraphHierarchySupport.rebuildHierarchyCacheIfNeeded(
+            this,
+            hierarchyGeometryDirty,
+            nodes,
+            cachedRootNodes,
+            cachedHierarchyBounds,
+            cachedHierarchyNodeCounts
+        );
         hierarchyGeometryDirty = false;
     }
 
@@ -1040,7 +1007,7 @@ public class NodeGraph {
         connectionIndexDirty = false;
     }
 
-    private void collectHierarchyNodes(Node node, List<Node> collected, Set<Node> visited) {
+    void collectHierarchyNodes(Node node, List<Node> collected, Set<Node> visited) {
         if (node == null || !visited.add(node)) {
             return;
         }
@@ -1200,22 +1167,11 @@ public class NodeGraph {
         parameterDropSlotIndex = null;
     }
 
-    private void bringNodeToFront(Node node) {
-        if (node == null) {
-            return;
-        }
-        Node root = getRootNode(node);
-        List<Node> hierarchy = new ArrayList<>();
-        collectHierarchy(root, hierarchy, new HashSet<>());
-        // Remove all hierarchy nodes from current ordering
-        for (Node member : hierarchy) {
-            nodes.remove(member);
-        }
-        // Append in hierarchy order so they render above others
-        nodes.addAll(hierarchy);
+    void bringNodeToFront(Node node) {
+        NodeGraphHierarchySupport.bringNodeToFront(this, node, nodes);
     }
 
-    private Node getRootNode(Node node) {
+    Node getRootNode(Node node) {
         Node current = node;
         Node parent;
         while ((parent = getParentForNode(current)) != null) {
@@ -1224,27 +1180,8 @@ public class NodeGraph {
         return current;
     }
 
-    private void collectHierarchy(Node node, List<Node> result, Set<Node> visited) {
-        if (node == null || visited.contains(node)) {
-            return;
-        }
-        visited.add(node);
-        result.add(node);
-
-        Node actionChild = node.getAttachedActionNode();
-        collectHierarchy(actionChild, result, visited);
-
-        Node sensorChild = node.getAttachedSensor();
-        collectHierarchy(sensorChild, result, visited);
-
-        Map<Integer, Node> parameterMap = node.getAttachedParameters();
-        if (parameterMap != null && !parameterMap.isEmpty()) {
-            List<Integer> keys = new ArrayList<>(parameterMap.keySet());
-            Collections.sort(keys);
-            for (Integer key : keys) {
-                collectHierarchy(parameterMap.get(key), result, visited);
-            }
-        }
+    void collectHierarchy(Node node, List<Node> result, Set<Node> visited) {
+        NodeGraphHierarchySupport.collectHierarchy(node, result, visited);
     }
 
     public Node getSelectedNode() {
@@ -1381,345 +1318,26 @@ public class NodeGraph {
     }
 
     private ClipboardSnapshot createClipboardSnapshot(Collection<Node> selection) {
-        if (selection == null || selection.isEmpty()) {
-            return null;
-        }
-        List<Node> hierarchy = new ArrayList<>();
-        Set<Node> visited = new HashSet<>();
-        for (Node node : selection) {
-            collectHierarchy(node, hierarchy, visited);
-        }
-        if (hierarchy.isEmpty()) {
-            return null;
-        }
-        Set<Node> subset = new LinkedHashSet<>(hierarchy);
-        List<NodeConnection> subsetConnections = new ArrayList<>();
-        for (NodeConnection connection : connections) {
-            if (subset.contains(connection.getOutputNode()) && subset.contains(connection.getInputNode())) {
-                subsetConnections.add(connection);
-            }
-        }
-        NodeGraphData data = buildGraphData(hierarchy, subsetConnections, subset);
-        if (data == null) {
-            return null;
-        }
-        SelectionBounds bounds = calculateBounds(subset);
-        int anchorX = bounds != null ? bounds.minX : 0;
-        int anchorY = bounds != null ? bounds.minY : 0;
-        List<String> selectionIds = new ArrayList<>();
-        for (Node node : selection) {
-            if (node != null) {
-                selectionIds.add(node.getId());
-            }
-        }
-        return new ClipboardSnapshot(data, selectionIds, anchorX, anchorY);
+        return NodeGraphClipboardSupport.createClipboardSnapshot(this, selection, connections);
     }
 
     private Node instantiateClipboardSnapshot(ClipboardSnapshot snapshot, int targetAnchorX, int targetAnchorY) {
-        if (snapshot == null || snapshot.data == null) {
-            return null;
-        }
-        int offsetX = targetAnchorX - snapshot.anchorX;
-        int offsetY = targetAnchorY - snapshot.anchorY;
-        Map<String, Node> idToNode = new HashMap<>();
-
-        for (NodeGraphData.NodeData nodeData : snapshot.data.getNodes()) {
-            if (nodeData.getType() == null) {
-                continue;
-            }
-            Node newNode = new Node(nodeData.getType(), nodeData.getX() + offsetX, nodeData.getY() + offsetY);
-            if (nodeData.getType() == NodeType.START) {
-                assignNewStartNodeNumber(newNode);
-            }
-            if (nodeData.getMode() != null) {
-                newNode.setMode(nodeData.getMode());
-            }
-            List<NodeGraphData.ParameterData> params = nodeData.getParameters();
-            if (params != null) {
-                newNode.getParameters().clear();
-                for (NodeGraphData.ParameterData paramData : params) {
-                    ParameterType parameterType = ParameterType.STRING;
-                    String typeName = paramData.getType();
-                    if (typeName != null) {
-                        try {
-                            parameterType = ParameterType.valueOf(typeName);
-                        } catch (IllegalArgumentException ignored) {
-                            parameterType = ParameterType.STRING;
-                        }
-                    }
-                    String value = paramData.getValue() == null ? "" : paramData.getValue();
-                    NodeParameter parameter = new NodeParameter(paramData.getName(), parameterType, value);
-                    if (paramData.getUserEdited() != null) {
-                        parameter.setUserEdited(paramData.getUserEdited());
-                    }
-                    newNode.getParameters().add(parameter);
-                }
-                if ((newNode.getType() == NodeType.STOP_CHAIN || newNode.getType() == NodeType.START_CHAIN)
-                    && newNode.getParameter("StartNumber") == null) {
-                    newNode.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
-                }
-                if ((newNode.getType() == NodeType.RUN_PRESET || newNode.getType() == NodeType.TEMPLATE || newNode.getType() == NodeType.CUSTOM_NODE)
-                    && newNode.getParameter("Preset") == null) {
-                    newNode.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
-                }
-            }
-            newNode.ensureVillagerTradeNumberParameter();
-            if (nodeData.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
-                newNode.setMessageLines(nodeData.getMessageLines());
-                newNode.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
-            }
-            if (newNode.hasBookTextInput() && nodeData.getBookText() != null) {
-                newNode.setBookText(nodeData.getBookText());
-            }
-            if (newNode.isStickyNote()) {
-                newNode.setStickyNoteText(nodeData.getStickyNoteText());
-                Integer stickyNoteWidth = nodeData.getStickyNoteWidth();
-                Integer stickyNoteHeight = nodeData.getStickyNoteHeight();
-                if (stickyNoteWidth != null || stickyNoteHeight != null) {
-                    newNode.setStickyNoteSize(
-                        stickyNoteWidth != null ? stickyNoteWidth : newNode.getWidth(),
-                        stickyNoteHeight != null ? stickyNoteHeight : newNode.getHeight()
-                    );
-                }
-            }
-            if (newNode.getType() == NodeType.SENSOR_KEY_PRESSED) {
-                Boolean storedValue = nodeData.getKeyPressedActivatesInGuis();
-                newNode.setKeyPressedActivatesInGuis(storedValue == null || storedValue);
-            }
-            if (newNode.hasBooleanToggle()) {
-                Boolean storedToggle = nodeData.getBooleanToggleValue();
-                newNode.setBooleanToggleValue(storedToggle == null || storedToggle);
-            }
-            newNode.recalculateDimensions();
-            nodes.add(newNode);
-            idToNode.put(nodeData.getId(), newNode);
-        }
-
-        for (NodeGraphData.NodeData nodeData : snapshot.data.getNodes()) {
-            Node parent = idToNode.get(nodeData.getId());
-            if (parent == null) {
-                continue;
-            }
-            String sensorId = nodeData.getAttachedSensorId();
-            if (sensorId != null) {
-                Node sensor = idToNode.get(sensorId);
-                if (sensor != null) {
-                    parent.attachSensor(sensor);
-                }
-            }
-            String actionId = nodeData.getAttachedActionId();
-            if (actionId != null) {
-                Node action = idToNode.get(actionId);
-                if (action != null) {
-                    parent.attachActionNode(action);
-                }
-            }
-
-            List<NodeGraphData.ParameterAttachmentData> attachments = nodeData.getParameterAttachments();
-            if (attachments != null && !attachments.isEmpty()) {
-                List<NodeGraphData.ParameterAttachmentData> ordered = new ArrayList<>(attachments);
-                ordered.sort(java.util.Comparator.comparingInt(NodeGraphData.ParameterAttachmentData::getSlotIndex));
-                for (NodeGraphData.ParameterAttachmentData attachment : ordered) {
-                    Node parameterNode = idToNode.get(attachment.getParameterNodeId());
-                    if (parameterNode != null) {
-                        parent.attachParameter(parameterNode, attachment.getSlotIndex());
-                    }
-                }
-            }
-        }
-
-        if (snapshot.data.getConnections() != null) {
-            for (NodeGraphData.ConnectionData connData : snapshot.data.getConnections()) {
-                Node outputNode = idToNode.get(connData.getOutputNodeId());
-                Node inputNode = idToNode.get(connData.getInputNodeId());
-                if (outputNode == null || inputNode == null || outputNode.isSensorNode() || inputNode.isSensorNode()) {
-                    continue;
-                }
-                connections.add(new NodeConnection(outputNode, inputNode, connData.getOutputSocket(), connData.getInputSocket()));
-            }
-        }
-
-        List<Node> clonesForSelection = new ArrayList<>();
-        if (snapshot.selectionIds != null) {
-            for (String originalId : snapshot.selectionIds) {
-                Node clone = idToNode.get(originalId);
-                if (clone != null) {
-                    clonesForSelection.add(clone);
-                }
-            }
-        }
-
-        Node primaryClone = null;
-        if (!clonesForSelection.isEmpty()) {
-            primaryClone = clonesForSelection.get(0);
-            selectNodes(clonesForSelection);
-            for (Node clone : clonesForSelection) {
-                bringNodeToFront(clone);
-            }
-        } else if (!idToNode.isEmpty()) {
-            primaryClone = idToNode.values().iterator().next();
-            selectNode(primaryClone);
-            bringNodeToFront(primaryClone);
-        }
-
-        markWorkspaceDirty();
-        return primaryClone;
+        return NodeGraphClipboardSupport.instantiateClipboardSnapshot(this, snapshot, targetAnchorX, targetAnchorY, nodes, connections);
     }
 
-    private NodeGraphData buildGraphData(Collection<Node> nodeCollection, Collection<NodeConnection> connectionCollection, Set<Node> allowedNodes) {
-        NodeGraphData data = new NodeGraphData();
-        if (nodeCollection == null) {
-            return data;
-        }
-        Set<Node> allowed = allowedNodes != null ? allowedNodes : new LinkedHashSet<>(nodeCollection);
-        for (Node node : nodeCollection) {
-            if (node == null) {
-                continue;
-            }
-            NodeGraphData.NodeData nodeData = new NodeGraphData.NodeData();
-            nodeData.setId(node.getId());
-            nodeData.setType(node.getType());
-            nodeData.setMode(node.getMode());
-            nodeData.setX(node.getX());
-            nodeData.setY(node.getY());
-            nodeData.setStartNodeNumber(node.getStartNodeNumber());
-            if (node.hasMessageInputFields()) {
-                nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
-                nodeData.setMessageClientSide(node.isMessageClientSide());
-            } else {
-                nodeData.setMessageLines(null);
-                nodeData.setMessageClientSide(null);
-            }
-            if (node.hasBookTextInput()) {
-                nodeData.setBookText(node.getBookText());
-            } else {
-                nodeData.setBookText(null);
-            }
-            if (node.isStickyNote()) {
-                nodeData.setStickyNoteText(node.getStickyNoteText());
-                nodeData.setStickyNoteWidth(node.getStickyNoteWidthOverride());
-                nodeData.setStickyNoteHeight(node.getStickyNoteHeightOverride());
-            } else {
-                nodeData.setStickyNoteText(null);
-                nodeData.setStickyNoteWidth(null);
-                nodeData.setStickyNoteHeight(null);
-            }
-            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
-                nodeData.setTemplateName(node.getTemplateName());
-                nodeData.setTemplateVersion(node.getTemplateVersion());
-                nodeData.setCustomNodeInstance(node.isCustomNodeInstance());
-                nodeData.setTemplateGraph(node.getTemplateGraphData());
-            } else {
-                nodeData.setTemplateName(null);
-                nodeData.setTemplateVersion(null);
-                nodeData.setCustomNodeInstance(null);
-                nodeData.setTemplateGraph(null);
-            }
-            if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
-                nodeData.setKeyPressedActivatesInGuis(node.isKeyPressedActivatesInGuis());
-            } else {
-                nodeData.setKeyPressedActivatesInGuis(null);
-            }
-
-            List<NodeGraphData.ParameterData> paramDataList = new ArrayList<>();
-            for (NodeParameter param : node.getParameters()) {
-                NodeGraphData.ParameterData paramData = new NodeGraphData.ParameterData();
-                paramData.setName(param.getName());
-                paramData.setValue(param.getStringValue());
-                paramData.setType(param.getType().name());
-                paramData.setUserEdited(param.isUserEdited());
-                paramDataList.add(paramData);
-            }
-            nodeData.setParameters(paramDataList);
-
-            Node attachedSensor = node.getAttachedSensor();
-            nodeData.setAttachedSensorId(attachedSensor != null && allowed.contains(attachedSensor) ? attachedSensor.getId() : null);
-
-            Node parentControl = node.getParentControl();
-            nodeData.setParentControlId(parentControl != null && allowed.contains(parentControl) ? parentControl.getId() : null);
-
-            Node attachedAction = node.getAttachedActionNode();
-            nodeData.setAttachedActionId(attachedAction != null && allowed.contains(attachedAction) ? attachedAction.getId() : null);
-
-            Node parentActionControl = node.getParentActionControl();
-            nodeData.setParentActionControlId(parentActionControl != null && allowed.contains(parentActionControl) ? parentActionControl.getId() : null);
-
-            List<NodeGraphData.ParameterAttachmentData> attachmentData = new ArrayList<>();
-            Map<Integer, Node> attachedParameters = node.getAttachedParameters();
-            if (attachedParameters != null && !attachedParameters.isEmpty()) {
-                List<Integer> slotIndices = new ArrayList<>(attachedParameters.keySet());
-                Collections.sort(slotIndices);
-                for (Integer slotIndex : slotIndices) {
-                    Node parameterNode = attachedParameters.get(slotIndex);
-                    if (parameterNode != null && allowed.contains(parameterNode)) {
-                        attachmentData.add(new NodeGraphData.ParameterAttachmentData(slotIndex, parameterNode.getId()));
-                    }
-                }
-            }
-            nodeData.setParameterAttachments(attachmentData);
-            if (!attachmentData.isEmpty()) {
-                nodeData.setAttachedParameterId(attachmentData.get(0).getParameterNodeId());
-            } else {
-                nodeData.setAttachedParameterId(null);
-            }
-
-            Node parentParameterHost = node.getParentParameterHost();
-            nodeData.setParentParameterHostId(parentParameterHost != null && allowed.contains(parentParameterHost) ? parentParameterHost.getId() : null);
-            if (node.hasBooleanToggle()) {
-                nodeData.setBooleanToggleValue(node.getBooleanToggleValue());
-            } else {
-                nodeData.setBooleanToggleValue(null);
-            }
-
-            data.getNodes().add(nodeData);
-        }
-
-        if (connectionCollection != null) {
-            for (NodeConnection connection : connectionCollection) {
-                if (connection == null) {
-                    continue;
-                }
-                Node outputNode = connection.getOutputNode();
-                Node inputNode = connection.getInputNode();
-                if (!allowed.contains(outputNode) || !allowed.contains(inputNode)) {
-                    continue;
-                }
-                if (outputNode.isSensorNode() || inputNode.isSensorNode()) {
-                    continue;
-                }
-                NodeGraphData.ConnectionData connData = new NodeGraphData.ConnectionData(
-                    outputNode.getId(),
-                    inputNode.getId(),
-                    connection.getOutputSocket(),
-                    connection.getInputSocket()
-                );
-                data.getConnections().add(connData);
-            }
-        }
-
-        return data;
+    NodeGraphData buildGraphData(Collection<Node> nodeCollection, Collection<NodeConnection> connectionCollection, Set<Node> allowedNodes) {
+        return NodeGraphClipboardSupport.buildGraphData(nodeCollection, connectionCollection, allowedNodes);
     }
 
     private void pushUndoState() {
-        if (suppressUndoCapture) {
-            return;
-        }
-        NodeGraphData snapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-        pushUndoSnapshot(snapshot);
+        NodeGraphHistorySupport.pushUndoState(this, nodes, connections, undoStack, redoStack, suppressUndoCapture, MAX_HISTORY);
     }
 
     private void pushUndoSnapshot(NodeGraphData snapshot) {
-        if (snapshot == null || suppressUndoCapture) {
-            return;
-        }
-        undoStack.push(snapshot);
-        while (undoStack.size() > MAX_HISTORY) {
-            undoStack.removeLast();
-        }
-        redoStack.clear();
+        NodeGraphHistorySupport.pushUndoSnapshot(snapshot, undoStack, redoStack, suppressUndoCapture, MAX_HISTORY);
     }
 
-    private void restoreFromSnapshot(NodeGraphData data) {
+    void restoreFromSnapshot(NodeGraphData data) {
         if (data == null) {
             return;
         }
@@ -1730,29 +1348,11 @@ public class NodeGraph {
     }
 
     public boolean undo() {
-        if (undoStack.isEmpty()) {
-            return false;
-        }
-        NodeGraphData currentState = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-        NodeGraphData previousState = undoStack.pop();
-        if (currentState != null) {
-            redoStack.push(currentState);
-        }
-        restoreFromSnapshot(previousState);
-        return true;
+        return NodeGraphHistorySupport.undo(this, nodes, connections, undoStack, redoStack);
     }
 
     public boolean redo() {
-        if (redoStack.isEmpty()) {
-            return false;
-        }
-        NodeGraphData currentState = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-        NodeGraphData nextState = redoStack.pop();
-        if (currentState != null) {
-            undoStack.push(currentState);
-        }
-        restoreFromSnapshot(nextState);
-        return true;
+        return NodeGraphHistorySupport.redo(this, nodes, connections, undoStack, redoStack);
     }
 
     public void startDragging(Node node, int mouseX, int mouseY) {

@@ -73,6 +73,20 @@ public class NodeGraphPersistence {
         return writeNodeGraphDataToPath(data, savePath);
     }
 
+    public static String toPrettyJson(NodeGraphData data) {
+        if (data == null) {
+            return "";
+        }
+        return GSON.toJson(data);
+    }
+
+    public static NodeGraphData parseNodeGraphData(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        return GSON.fromJson(json, NodeGraphData.class);
+    }
+
     /**
      * Load the node graph from disk
      */

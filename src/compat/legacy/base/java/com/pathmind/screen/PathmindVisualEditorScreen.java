@@ -769,7 +769,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return PathmindCursor.GRAB_TEXTURE;
         }
         Node hoveredNode = overWorkspace ? nodeGraph.getNodeAt(mouseX, mouseY) : null;
-        if (hoveredNode != null && isHoveringNodeInlineControl(hoveredNode, mouseX, mouseY)) {
+        if (hoveredNode != null && nodeGraph.isPointInsideInteractiveNodeControl(hoveredNode, mouseX, mouseY)) {
             return PathmindCursor.DEFAULT_TEXTURE;
         }
         if (overWorkspace && (hoveredNode != null
@@ -782,19 +782,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
         return PathmindCursor.DEFAULT_TEXTURE;
     }
-
-    private boolean isHoveringNodeInlineControl(Node hoveredNode, int mouseX, int mouseY) {
-        return nodeGraph.isHoveringStartButton()
-            || nodeGraph.getCoordinateFieldAxisAt(hoveredNode, mouseX, mouseY) >= 0
-            || nodeGraph.isPointInsideStopTargetField(hoveredNode, mouseX, mouseY)
-            || nodeGraph.isPointInsideVariableField(hoveredNode, mouseX, mouseY)
-            || nodeGraph.isPointInsideAmountField(hoveredNode, mouseX, mouseY)
-            || nodeGraph.getParameterFieldIndexAt(hoveredNode, mouseX, mouseY) >= 0
-            || nodeGraph.isPointInsideEventNameField(hoveredNode, mouseX, mouseY)
-            || nodeGraph.isPointInsideBookTextButton(hoveredNode, mouseX, mouseY)
-            || nodeGraph.isPointInsidePopupEditButton(hoveredNode, mouseX, mouseY);
-    }
-
     private boolean isPopupObscuringWorkspace() {
         boolean overlayVisible = parameterOverlay != null && parameterOverlay.isVisible();
         boolean bookOverlayVisible = bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible();

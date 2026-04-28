@@ -14456,6 +14456,81 @@ public class NodeGraph {
         return hoveringStartButton;
     }
 
+    public boolean isPointInsideInteractiveNodeControl(Node node, int mouseX, int mouseY) {
+        if (node == null) {
+            return false;
+        }
+
+        int worldX = screenToWorldX(mouseX);
+        int worldY = screenToWorldY(mouseY);
+
+        if (node.getType() == NodeType.START && isMouseOverStartButton(node, mouseX, mouseY)) {
+            return true;
+        }
+        if (node.getType() == NodeType.TEMPLATE && isPointInsideTemplateEditButton(node, mouseX, mouseY)) {
+            return true;
+        }
+        if (isPointInsideBooleanToggle(node, mouseX, mouseY)
+            || isPointInsideSchematicField(node, mouseX, mouseY)
+            || isPointInsideRunPresetField(node, mouseX, mouseY)
+            || isPointInsideScreenCoordinatePickerButton(node, mouseX, mouseY)
+            || isPointInsideStickyNoteTextArea(node, mouseX, mouseY)
+            || getStickyNoteResizeCornerAt(node, mouseX, mouseY) != null
+            || getCoordinateFieldAxisAt(node, mouseX, mouseY) >= 0
+            || isPointInsideStopTargetField(node, mouseX, mouseY)
+            || isPointInsideVariableField(node, mouseX, mouseY)
+            || isPointInsideRandomRoundingToggle(node, mouseX, mouseY)
+            || isPointInsideRandomRoundingField(node, mouseX, mouseY)
+            || isPointInsideAmountToggle(node, mouseX, mouseY)
+            || isPointInsideAmountSignToggle(node, mouseX, mouseY)
+            || isPointInsideAmountField(node, mouseX, mouseY)
+            || getMessageFieldIndexAt(node, mouseX, mouseY) >= 0
+            || getParameterFieldIndexAt(node, mouseX, mouseY) >= 0
+            || isPointInsideEventNameField(node, mouseX, mouseY)
+            || isPointInsideBookTextButton(node, mouseX, mouseY)
+            || isPointInsidePopupEditButton(node, mouseX, mouseY)
+            || isPointInsideMessageScopeToggle(node, mouseX, mouseY)) {
+            return true;
+        }
+
+        if (node.hasMessageInputFields()) {
+            int buttonTop = node.getMessageButtonTop();
+            int buttonBottom = buttonTop + node.getMessageButtonSize();
+            int addLeft = node.getMessageAddButtonLeft();
+            int removeLeft = node.getMessageRemoveButtonLeft();
+            int buttonSize = node.getMessageButtonSize();
+            if ((worldX >= addLeft && worldX <= addLeft + buttonSize
+                && worldY >= buttonTop && worldY <= buttonBottom)
+                || (worldX >= removeLeft && worldX <= removeLeft + buttonSize
+                && worldY >= buttonTop && worldY <= buttonBottom)) {
+                return true;
+            }
+        }
+
+        if (isCombinedDirectionNode(node)) {
+            int fieldLeft = getParameterFieldLeft(node);
+            int fieldTop = getDirectionModeTabTop(node);
+            int fieldWidth = getParameterFieldWidth(node);
+            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
+                return true;
+            }
+        }
+
+        if (isCombinedBooleanNode(node)) {
+            int fieldLeft = getParameterFieldLeft(node);
+            int fieldTop = getBooleanModeTabTop(node);
+            int fieldWidth = getParameterFieldWidth(node);
+            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
+                return true;
+            }
+        }
+
+        return isInlineDropdownParameter(node, getParameterFieldIndexAt(node, mouseX, mouseY))
+            || isPointInsideModeField(node, mouseX, mouseY);
+    }
+
     public boolean handleStartButtonClick(int mouseX, int mouseY) {
         lastStartButtonTriggeredExecution = false;
         if (!executionEnabled) {

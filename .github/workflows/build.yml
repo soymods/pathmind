@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -115,19 +115,24 @@ jobs:
           retention-days: 90
 
   notify-discord:
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
     needs:
-      - build
+      - publish-prerelease
     runs-on: ubuntu-latest
     continue-on-error: true
 
     steps:
+      - name: Download release jars
+        uses: actions/download-artifact@v4
+        with:
+          path: build/release-assets
+          merge-multiple: true
+
       - name: Post build links to Discord
         shell: bash
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: "1498698231796859070"
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -144,39 +149,33 @@ jobs:
           fi
           BUILD_TIMESTAMP="$(date -u +%s)"
 
-          ARTIFACTS_JSON="$(curl --fail-with-body -sS \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100")"
+          mapfile -t jars < <(find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort)
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No release jars were available to post."
+            exit 1
+          fi
 
-          DOWNLOADS="$(jq -r \
-            --arg repo "${GITHUB_REPOSITORY}" \
-            --arg run_id "${GITHUB_RUN_ID}" \
-            '
-            .artifacts
-            | map(select(.expired | not))
-            | map(select(.name | test("^pathmind-.*\\+mc[0-9.]+\\.jar$")))
-            | sort_by(.name | capture("\\+mc(?<version>[0-9.]+)\\.jar$").version | split(".") | map(tonumber))
-            | if length == 0 then
-                empty
-              else
-                map(
-                  "• `"
-                  + (.name | capture("\\+mc(?<version>[0-9.]+)\\.jar$").version)
-                  + "` - [Download](<https://github.com/"
-                  + $repo
-                  + "/actions/runs/"
-                  + $run_id
-                  + "/artifacts/"
-                  + (.id | tostring)
-                  + ">)"
-                )
-                | join("\n")
-              end
-            ' <<<"$ARTIFACTS_JSON")"
+          DOWNLOADS="$(
+            printf '%s\n' "${jars[@]}" \
+              | sed 's#^.*/##' \
+              | jq -R . \
+              | jq -s -r --arg repo "${GITHUB_REPOSITORY}" '
+                  sort_by(capture("\\+mc(?<version>[0-9.]+)\\.jar$").version | split(".") | map(tonumber))
+                  | map(
+                      "• `"
+                      + (capture("\\+mc(?<version>[0-9.]+)\\.jar$").version)
+                      + "` - [Download](<https://github.com/"
+                      + $repo
+                      + "/releases/download/test-builds/"
+                      + .
+                      + ">)"
+                    )
+                  | join("\n")
+                '
+          )"
 
           if [ -z "${DOWNLOADS:-}" ]; then
-            echo "No build artifacts were available to post."
+            echo "No release download links were available to post."
             exit 1
           fi
 
@@ -215,3 +214,47 @@ jobs:
             -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
+
+  publish-prerelease:
+    if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+    needs:
+      - build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release jars
+        uses: actions/download-artifact@v4
+        with:
+          path: build/release-assets
+          merge-multiple: true
+
+      - name: Publish rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t jars < <(find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort)
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No release jars were downloaded."
+            exit 1
+          fi
+
+          notes_file="$(mktemp)"
+          {
+            echo "Rolling test-build prerelease for Pathmind."
+            echo
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "$notes_file"
+
+          if gh release view test-builds >/dev/null 2>&1; then
+            gh release delete test-builds --yes --cleanup-tag
+          fi
+
+          gh release create test-builds "${jars[@]}" \
+            --target "${GITHUB_SHA}" \
+            --title "Pathmind test builds" \
+            --notes-file "$notes_file" \
+            --prerelease

@@ -193,22 +193,24 @@ public final class GraphValidator {
         }
 
         if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
-            String preset = normalize(getParameterValue(node, "Preset"));
-            String targetPreset = preset.isEmpty() ? normalize(activePreset) : preset;
-            if (!targetPreset.isEmpty() && !containsIgnoreCase(availablePresets, targetPreset)) {
+            String preset = trimToEmpty(getParameterValue(node, "Preset"));
+            String targetPreset = preset.isEmpty() ? trimToEmpty(activePreset) : preset;
+            String resolvedPreset = findIgnoreCase(availablePresets, targetPreset);
+            String loadPreset = resolvedPreset != null ? resolvedPreset : targetPreset;
+            if (!targetPreset.isEmpty() && resolvedPreset == null) {
                 issues.add(issue(GraphValidationSeverity.ERROR, "missing_template_preset",
                     (type == NodeType.CUSTOM_NODE ? "Custom Node" : "Template")
                         + " references preset \"" + displayValue(targetPreset) + "\", but that preset was not found.", node));
             }
             NodeGraphData resolvedGraph = node.getTemplateGraphData();
             if (resolvedGraph == null && !targetPreset.isEmpty()) {
-                resolvedGraph = NodeGraphPersistence.loadNodeGraphForPreset(targetPreset);
+                resolvedGraph = NodeGraphPersistence.loadNodeGraphForPreset(loadPreset);
             }
             if (resolvedGraph == null) {
                 issues.add(issue(GraphValidationSeverity.WARNING, "missing_template_graph",
                     (type == NodeType.CUSTOM_NODE ? "Custom Node" : "Template") + " has no saved internal graph yet.", node));
             } else {
-                NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(targetPreset, resolvedGraph);
+                NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(loadPreset, resolvedGraph);
                 int instanceVersion = node.getTemplateVersion();
                 int definitionVersion = definition != null && definition.getVersion() != null ? definition.getVersion() : 0;
                 if (instanceVersion > 0 && definitionVersion > instanceVersion) {
@@ -369,19 +371,27 @@ public final class GraphValidator {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    private static String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
     private static String displayValue(String value) {
         return value == null ? "" : value.trim();
     }
 
     private static boolean containsIgnoreCase(List<String> values, String candidate) {
+        return findIgnoreCase(values, candidate) != null;
+    }
+
+    private static String findIgnoreCase(List<String> values, String candidate) {
         if (candidate == null || candidate.isBlank()) {
-            return false;
+            return null;
         }
         for (String value : values) {
             if (value != null && value.trim().equalsIgnoreCase(candidate.trim())) {
-                return true;
+                return value.trim();
             }
         }
-        return false;
+        return null;
     }
 }

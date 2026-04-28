@@ -117,7 +117,7 @@ jobs:
           for ((i=0; i<${#jars[@]}; i+=batch_size)); do
             batch_index=$((batch_index + 1))
             payload_json="$(jq -cn \
-              --arg content "Pathmind test builds for ${ref_name} (${JAR_COUNT} jars)\nArtifact bundle: ${ARTIFACT_NAME}\nWorkflow run: ${run_url}\nBatch ${batch_index}/${total_batches}" \
+              --arg content "**Pathmind test builds** for \`${ref_name}\`\n${JAR_COUNT} jars attached\n[GitHub Actions run](<${run_url}>)\n*Batch ${batch_index}/${total_batches}*" \
               '{content: $content}')"
 
             curl_args=(

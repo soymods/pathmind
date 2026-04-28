@@ -9,6 +9,8 @@
 
 A visual node editor for building Minecraft automation workflows.
 
+Created by `soymods`.
+
 🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
 
 ### Download On Modrinth

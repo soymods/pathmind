@@ -81,6 +81,8 @@ public class NodeGraph {
     private static final int TEMPLATE_PREVIEW_TOP = 42;
     private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
     private static final int VIEWPORT_CULL_MARGIN = 64;
+    private static final int CONNECTION_CUT_THRESHOLD = 6;
+    private static final int CONNECTION_CUT_PREVIEW_COLOR = 0xCCFF6B6B;
     private static final int STICKY_NOTE_MAX_CHARS = 4096;
     private static final int DENSE_VIEW_VISIBLE_NODE_THRESHOLD = 120;
 
@@ -127,6 +129,14 @@ public class NodeGraph {
     
     // Store the original connection that was disconnected
     private NodeConnection disconnectedConnection = null;
+
+    // Connection cutting state
+    private boolean connectionCutActive = false;
+    private boolean connectionCutMoved = false;
+    private int connectionCutStartWorldX = 0;
+    private int connectionCutStartWorldY = 0;
+    private int connectionCutCurrentWorldX = 0;
+    private int connectionCutCurrentWorldY = 0;
     
     // Socket hover state
     private Node hoveredSocketNode = null;
@@ -1773,6 +1783,11 @@ public class NodeGraph {
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
 
+        if (connectionCutActive) {
+            updateConnectionCut(worldMouseX, worldMouseY);
+            return;
+        }
+
         if (resizingStickyNote != null && stickyNoteResizeCorner != null) {
             updateStickyNoteResize(worldMouseX, worldMouseY);
             return;
@@ -2509,9 +2524,9 @@ public class NodeGraph {
     }
     
     public boolean isAnyNodeBeingDragged() {
-        return draggingNode != null || isDraggingConnection;
+        return draggingNode != null || isDraggingConnection || connectionCutActive;
     }
-    
+
     public void startPanning(int mouseX, int mouseY) {
         isPanning = true;
         panStartX = mouseX;
@@ -3085,25 +3100,89 @@ public class NodeGraph {
         int worldX = screenToWorldX(mouseX);
         int worldY = screenToWorldY(mouseY);
         for (NodeConnection connection : connections) {
-            // Simple check - could be improved with better line collision detection
-            Node outputNode = connection.getOutputNode();
-            Node inputNode = connection.getInputNode();
-
-            int outputX = outputNode.getSocketX(false);
-            int outputY = outputNode.getSocketY(connection.getOutputSocket(), false);
-            int inputX = inputNode.getSocketX(true);
-            int inputY = inputNode.getSocketY(connection.getInputSocket(), true);
-
-            // Check if mouse is near the connection line (simplified)
-            if (Math.abs(worldY - (outputY + inputY) / 2) < 10) {
-                int minX = Math.min(outputX, inputX);
-                int maxX = Math.max(outputX, inputX);
-                if (worldX >= minX && worldX <= maxX) {
-                    return connection;
-                }
+            if (isPointNearConnection(connection, worldX, worldY, CONNECTION_CLICK_THRESHOLD)) {
+                return connection;
             }
         }
         return null;
+    }
+
+    public void startConnectionCut(int mouseX, int mouseY) {
+        connectionCutActive = true;
+        connectionCutMoved = false;
+        connectionCutStartWorldX = screenToWorldX(mouseX);
+        connectionCutStartWorldY = screenToWorldY(mouseY);
+        connectionCutCurrentWorldX = connectionCutStartWorldX;
+        connectionCutCurrentWorldY = connectionCutStartWorldY;
+    }
+
+    public void updateConnectionCut(int worldX, int worldY) {
+        if (!connectionCutActive) {
+            return;
+        }
+        connectionCutCurrentWorldX = worldX;
+        connectionCutCurrentWorldY = worldY;
+        if (!connectionCutMoved) {
+            int deltaX = Math.abs(connectionCutCurrentWorldX - connectionCutStartWorldX);
+            int deltaY = Math.abs(connectionCutCurrentWorldY - connectionCutStartWorldY);
+            connectionCutMoved = deltaX > CONNECTION_CUT_THRESHOLD || deltaY > CONNECTION_CUT_THRESHOLD;
+        }
+    }
+
+    public boolean stopConnectionCut() {
+        boolean removedAny = false;
+        if (connectionCutActive && connectionCutMoved) {
+            List<NodeConnection> toRemove = new ArrayList<>();
+            for (NodeConnection connection : connections) {
+                if (doesSegmentIntersectConnection(
+                    connection,
+                    connectionCutStartWorldX,
+                    connectionCutStartWorldY,
+                    connectionCutCurrentWorldX,
+                    connectionCutCurrentWorldY,
+                    CONNECTION_CUT_THRESHOLD
+                )) {
+                    toRemove.add(connection);
+                }
+            }
+            if (!toRemove.isEmpty()) {
+                pushUndoState();
+                connections.removeAll(toRemove);
+                invalidateConnectionIndex();
+                markWorkspaceDirty();
+                removedAny = true;
+            }
+        }
+
+        connectionCutActive = false;
+        connectionCutMoved = false;
+        return removedAny;
+    }
+
+    public void cancelConnectionCut() {
+        connectionCutActive = false;
+        connectionCutMoved = false;
+    }
+
+    public boolean removeConnection(NodeConnection connection) {
+        if (connection == null || !connections.contains(connection)) {
+            return false;
+        }
+        pushUndoState();
+        boolean removed = connections.remove(connection);
+        if (removed) {
+            invalidateConnectionIndex();
+            markWorkspaceDirty();
+        }
+        return removed;
+    }
+
+    public boolean isConnectionCutActive() {
+        return connectionCutActive;
+    }
+
+    public boolean hasConnectionCutMoved() {
+        return connectionCutMoved;
     }
 
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta, boolean onlyDragged) {
@@ -13846,6 +13925,10 @@ public class NodeGraph {
                 }
             }
         }
+
+        if (!onlyDragged && connectionCutActive) {
+            renderConnectionCutPreview(context);
+        }
     }
 
     private boolean isNodeOverSidebarForRender(Node node, int screenX, int screenWidth) {
@@ -13990,6 +14073,133 @@ public class NodeGraph {
         
         // Horizontal line from middle to target
         context.drawHorizontalLine(Math.min(midX, x2), Math.max(midX, x2), y2, color);
+    }
+
+    private void renderConnectionCutPreview(DrawContext context) {
+        int startX = worldToScreenX(connectionCutStartWorldX);
+        int startY = worldToScreenY(connectionCutStartWorldY);
+        int endX = worldToScreenX(connectionCutCurrentWorldX);
+        int endY = worldToScreenY(connectionCutCurrentWorldY);
+        drawSegmentWithThickness(context, startX, startY, endX, endY, CONNECTION_CUT_PREVIEW_COLOR, 0);
+    }
+
+    private boolean isPointNearConnection(NodeConnection connection, int worldX, int worldY, int threshold) {
+        if (connection == null) {
+            return false;
+        }
+        Node outputNode = connection.getOutputNode();
+        Node inputNode = connection.getInputNode();
+        if (outputNode == null || inputNode == null) {
+            return false;
+        }
+
+        int outputX = outputNode.getSocketX(false);
+        int outputY = outputNode.getSocketY(connection.getOutputSocket(), false);
+        int inputX = inputNode.getSocketX(true);
+        int inputY = inputNode.getSocketY(connection.getInputSocket(), true);
+        int midX = outputX + (inputX - outputX) / 2;
+
+        return pointToSegmentDistanceSquared(worldX, worldY, outputX, outputY, midX, outputY) <= threshold * threshold
+            || pointToSegmentDistanceSquared(worldX, worldY, midX, outputY, midX, inputY) <= threshold * threshold
+            || pointToSegmentDistanceSquared(worldX, worldY, midX, inputY, inputX, inputY) <= threshold * threshold;
+    }
+
+    private boolean doesSegmentIntersectConnection(NodeConnection connection, int x1, int y1, int x2, int y2, int threshold) {
+        if (connection == null) {
+            return false;
+        }
+        Node outputNode = connection.getOutputNode();
+        Node inputNode = connection.getInputNode();
+        if (outputNode == null || inputNode == null) {
+            return false;
+        }
+
+        int outputX = outputNode.getSocketX(false);
+        int outputY = outputNode.getSocketY(connection.getOutputSocket(), false);
+        int inputX = inputNode.getSocketX(true);
+        int inputY = inputNode.getSocketY(connection.getInputSocket(), true);
+        int midX = outputX + (inputX - outputX) / 2;
+
+        return segmentsIntersectWithTolerance(x1, y1, x2, y2, outputX, outputY, midX, outputY, threshold)
+            || segmentsIntersectWithTolerance(x1, y1, x2, y2, midX, outputY, midX, inputY, threshold)
+            || segmentsIntersectWithTolerance(x1, y1, x2, y2, midX, inputY, inputX, inputY, threshold);
+    }
+
+    private boolean segmentsIntersectWithTolerance(int ax1, int ay1, int ax2, int ay2,
+                                                   int bx1, int by1, int bx2, int by2,
+                                                   int tolerance) {
+        if (segmentsIntersect(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2)) {
+            return true;
+        }
+        int toleranceSq = tolerance * tolerance;
+        return pointToSegmentDistanceSquared(ax1, ay1, bx1, by1, bx2, by2) <= toleranceSq
+            || pointToSegmentDistanceSquared(ax2, ay2, bx1, by1, bx2, by2) <= toleranceSq
+            || pointToSegmentDistanceSquared(bx1, by1, ax1, ay1, ax2, ay2) <= toleranceSq
+            || pointToSegmentDistanceSquared(bx2, by2, ax1, ay1, ax2, ay2) <= toleranceSq;
+    }
+
+    private boolean segmentsIntersect(int ax1, int ay1, int ax2, int ay2,
+                                      int bx1, int by1, int bx2, int by2) {
+        int o1 = orientation(ax1, ay1, ax2, ay2, bx1, by1);
+        int o2 = orientation(ax1, ay1, ax2, ay2, bx2, by2);
+        int o3 = orientation(bx1, by1, bx2, by2, ax1, ay1);
+        int o4 = orientation(bx1, by1, bx2, by2, ax2, ay2);
+
+        if (o1 != o2 && o3 != o4) {
+            return true;
+        }
+
+        return (o1 == 0 && onSegment(ax1, ay1, bx1, by1, ax2, ay2))
+            || (o2 == 0 && onSegment(ax1, ay1, bx2, by2, ax2, ay2))
+            || (o3 == 0 && onSegment(bx1, by1, ax1, ay1, bx2, by2))
+            || (o4 == 0 && onSegment(bx1, by1, ax2, ay2, bx2, by2));
+    }
+
+    private int orientation(int ax, int ay, int bx, int by, int cx, int cy) {
+        long value = (long) (by - ay) * (cx - bx) - (long) (bx - ax) * (cy - by);
+        if (value == 0L) {
+            return 0;
+        }
+        return value > 0L ? 1 : 2;
+    }
+
+    private boolean onSegment(int ax, int ay, int bx, int by, int cx, int cy) {
+        return bx >= Math.min(ax, cx) && bx <= Math.max(ax, cx)
+            && by >= Math.min(ay, cy) && by <= Math.max(ay, cy);
+    }
+
+    private int pointToSegmentDistanceSquared(int px, int py, int x1, int y1, int x2, int y2) {
+        int dx = x2 - x1;
+        int dy = y2 - y1;
+        if (dx == 0 && dy == 0) {
+            int diffX = px - x1;
+            int diffY = py - y1;
+            return diffX * diffX + diffY * diffY;
+        }
+
+        double lengthSquared = (double) dx * dx + (double) dy * dy;
+        double projection = ((px - x1) * (double) dx + (py - y1) * (double) dy) / lengthSquared;
+        double t = Math.max(0.0d, Math.min(1.0d, projection));
+        double closestX = x1 + t * dx;
+        double closestY = y1 + t * dy;
+        double distX = px - closestX;
+        double distY = py - closestY;
+        return (int) Math.round(distX * distX + distY * distY);
+    }
+
+    private void drawSegmentWithThickness(DrawContext context, int x1, int y1, int x2, int y2, int color, int thickness) {
+        if (x1 == x2 && y1 == y2) {
+            context.fill(x1 - thickness, y1 - thickness, x1 + thickness + 1, y1 + thickness + 1, color);
+            return;
+        }
+
+        int steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+        for (int i = 0; i <= steps; i++) {
+            float t = steps == 0 ? 0.0f : (float) i / (float) steps;
+            int x = Math.round(x1 + (x2 - x1) * t);
+            int y = Math.round(y1 + (y2 - y1) * t);
+            context.fill(x - thickness, y - thickness, x + thickness + 1, y + thickness + 1, color);
+        }
     }
 
     private void renderDenseConnectionCurve(DrawContext context, int x1, int y1, int x2, int y2, int color) {

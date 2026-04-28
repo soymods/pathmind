@@ -22,6 +22,10 @@
 </p>
 
 <p align="center">
+  Created by <b>soymods</b>
+</p>
+
+<p align="center">
   🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
 </p>
 

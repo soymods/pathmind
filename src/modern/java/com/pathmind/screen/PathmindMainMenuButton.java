@@ -24,6 +24,7 @@ public class PathmindMainMenuButton extends ButtonWidget {
     private static final int SHADOW_COLOR = 0x66000000;
     private static final String OPEN_EDITOR_KEY = "gui.pathmind.open_editor";
     private static final String OPEN_EDITOR_FALLBACK = "Open Pathmind";
+    private static final String CREATOR_SUFFIX = " by soymods";
 
     public PathmindMainMenuButton(int x, int y, int size, PressAction pressAction) {
         super(x, y, size, size, TextCompatibilityBridge.empty(), pressAction, DEFAULT_NARRATION_SUPPLIER);
@@ -92,8 +93,8 @@ public class PathmindMainMenuButton extends ButtonWidget {
     private static MutableText resolveOpenEditorText() {
         MutableText text = TextCompatibilityBridge.translatable(OPEN_EDITOR_KEY);
         if (OPEN_EDITOR_KEY.equals(text.getString())) {
-            return TextCompatibilityBridge.literal(OPEN_EDITOR_FALLBACK);
+            return TextCompatibilityBridge.literal(OPEN_EDITOR_FALLBACK + CREATOR_SUFFIX);
         }
-        return text;
+        return text.append(TextCompatibilityBridge.literal(CREATOR_SUFFIX));
     }
 }

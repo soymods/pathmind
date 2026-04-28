@@ -213,6 +213,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int rightClickStartX = -1;
     private int rightClickStartY = -1;
     private long rightClickStartTime = 0;
+    private boolean cuttingConnections = false;
     private TextFieldWidget nodeSearchField;
     private boolean nodeSearchOpen = false;
     private int nodeSearchFieldX = 0;
@@ -1367,6 +1368,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
             // Handle right-click - track position for context menu
             if (button == 1) {
+                if (InputCompatibilityBridge.hasControlDown()) {
+                    cuttingConnections = true;
+                    nodeGraph.startConnectionCut((int) mouseX, (int) mouseY);
+                    return true;
+                }
                 rightClickStartX = (int)mouseX;
                 rightClickStartY = (int)mouseY;
                 rightClickStartTime = System.currentTimeMillis();
@@ -1648,7 +1654,7 @@ public class PathmindVisualEditorScreen extends Screen {
             // Check if clicking on a connection to delete it
             var connection = nodeGraph.getConnectionAt((int)mouseX, (int)mouseY);
             if (connection != null && button == 1) {
-                nodeGraph.getConnections().remove(connection);
+                nodeGraph.removeConnection(connection);
                 return true;
             }
             
@@ -1741,6 +1747,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (draggingPresetTabName != null) {
             updatePresetTabDrag((int) mouseX);
+            return true;
+        }
+
+        if (button == 1 && cuttingConnections) {
+            nodeGraph.updateConnectionCut(nodeGraph.screenToWorldX((int) mouseX), nodeGraph.screenToWorldY((int) mouseY));
             return true;
         }
 
@@ -1911,6 +1922,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopDraggingConnection();
             }
         } else if (button == 1) {
+            if (cuttingConnections) {
+                nodeGraph.stopConnectionCut();
+                cuttingConnections = false;
+                return true;
+            }
             // Right-click released - check if it's a click or a drag
             if (rightClickStartX != -1) {
                 int deltaX = Math.abs((int)mouseX - rightClickStartX);

@@ -47,6 +47,7 @@ public class Sidebar {
     private static final int CATEGORY_HEADER_LINE_SPACING = 2;
     private static final int GROUP_HEADER_HEIGHT = 16;
     private static final int GROUP_HEADER_LINE_SPACING = 2;
+    private static final int NODE_LINE_SPACING = 1;
 
     private final Map<NodeCategory, List<NodeType>> categoryNodes;
     private final Map<NodeCategory, List<NodeGroup>> groupedCategoryNodes;
@@ -467,22 +468,26 @@ public class Sidebar {
     }
     
     private void calculateMaxScroll(int sidebarHeight) {
-        calculateMaxScroll(sidebarHeight, 0, null);
+        calculateMaxScroll(sidebarHeight, 0, null, null);
     }
 
-    private void calculateMaxScroll(int sidebarHeight, int headerHeight, List<GroupHeaderInfo> groupHeaders) {
+    private void calculateMaxScroll(int sidebarHeight, int headerHeight, List<GroupHeaderInfo> groupHeaders, List<NodeRowInfo> customNodeRows) {
         int totalHeight = 0;
         
         // Add space for category header and nodes (content starts at top)
         if (selectedCategory != null) {
             totalHeight += Math.max(CATEGORY_HEADER_HEIGHT, headerHeight);
             
-            if (selectedCategory == NodeCategory.CUSTOM) {
-                totalHeight += customNodes.size() * NODE_HEIGHT;
+            if (selectedCategory == NodeCategory.CUSTOM && customNodeRows != null) {
+                for (NodeRowInfo info : customNodeRows) {
+                    totalHeight += info.height();
+                }
             } else if (groupHeaders != null && !groupHeaders.isEmpty()) {
                 for (GroupHeaderInfo info : groupHeaders) {
                     totalHeight += info.getHeight();
-                    totalHeight += info.getGroup().getNodes().size() * NODE_HEIGHT;
+                    for (NodeRowInfo row : info.getNodeRows()) {
+                        totalHeight += row.height();
+                    }
                 }
             } else if (hasGroupedContent(selectedCategory)) {
                 for (NodeGroup group : getGroupsForCategory(selectedCategory)) {
@@ -490,10 +495,8 @@ public class Sidebar {
                         continue;
                     }
                     totalHeight += GROUP_HEADER_HEIGHT;
-                    totalHeight += group.getNodes().size() * NODE_HEIGHT;
                 }
             } else {
-                // Add space for nodes in selected category
                 List<NodeType> nodes = categoryNodes.get(selectedCategory);
                 if (nodes != null) {
                     totalHeight += nodes.size() * NODE_HEIGHT;
@@ -560,17 +563,21 @@ public class Sidebar {
         int contentTextX = currentInnerSidebarWidth + 8;
         int contentTextRight = totalWidth - SCROLLBAR_MARGIN - SCROLLBAR_WIDTH - 4;
         int maxContentWidth = Math.max(1, contentTextRight - contentTextX);
+        int nodeLabelX = currentInnerSidebarWidth + 8 + 12 + 4;
+        int nodeTextWidth = Math.max(1, contentTextRight - nodeLabelX);
 
         List<String> headerLines = null;
         int headerHeight = 0;
         final int headerLineHeight = textRenderer.fontHeight + CATEGORY_HEADER_LINE_SPACING;
         final int groupLineHeight = textRenderer.fontHeight + GROUP_HEADER_LINE_SPACING;
+        final int nodeLineHeight = textRenderer.fontHeight + NODE_LINE_SPACING;
         if (selectedCategory != null) {
             headerLines = wrapText(selectedCategory.getDisplayName(), textRenderer, maxContentWidth);
             headerHeight = Math.max(CATEGORY_HEADER_HEIGHT, headerLines.size() * headerLineHeight);
         }
 
         List<GroupHeaderInfo> groupHeaders = null;
+        List<NodeRowInfo> customNodeRows = null;
         if (selectedCategory != null && hasGroupedContent(selectedCategory)) {
             groupHeaders = new ArrayList<>();
             for (NodeGroup group : getGroupsForCategory(selectedCategory)) {
@@ -579,11 +586,13 @@ public class Sidebar {
                 }
                 List<String> lines = wrapText(group.getTitle(), textRenderer, maxContentWidth);
                 int height = Math.max(GROUP_HEADER_HEIGHT, lines.size() * groupLineHeight);
-                groupHeaders.add(new GroupHeaderInfo(group, lines, height));
+                groupHeaders.add(new GroupHeaderInfo(group, lines, height, buildNodeRows(group.getNodes(), textRenderer, nodeTextWidth, nodeLineHeight)));
             }
+        } else if (selectedCategory == NodeCategory.CUSTOM) {
+            customNodeRows = buildCustomNodeRows(textRenderer, nodeTextWidth, nodeLineHeight);
         }
 
-        calculateMaxScroll(sidebarHeight, headerHeight, groupHeaders);
+        calculateMaxScroll(sidebarHeight, headerHeight, groupHeaders, customNodeRows);
         
         // Outer sidebar background
         int outerColor = totalWidth > currentInnerSidebarWidth ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
@@ -657,7 +666,7 @@ public class Sidebar {
             int sidebarBottom = sidebarStartY + sidebarHeight;
             int nodeBackgroundLeft = currentInnerSidebarWidth + 1; // Keep divider line visible by offsetting fills
             int contentClipLeft = nodeBackgroundLeft;
-            int contentClipRight = currentInnerSidebarWidth + Math.round((totalWidth - currentInnerSidebarWidth) * openProgress);
+            int contentClipRight = Math.min(totalWidth, contentTextRight + 2);
             if (contentClipRight <= contentClipLeft) {
                 contentClipRight = contentClipLeft + 1;
             }
@@ -685,31 +694,38 @@ public class Sidebar {
             hoveredNodeType = null;
 
             if (selectedCategory == NodeCategory.CUSTOM) {
-                for (CustomNodeEntry customNode : customNodes) {
+                if (customNodeRows != null) {
+                    for (NodeRowInfo customNode : customNodeRows) {
+                        int rowHeight = customNode.height();
                     if (contentY >= sidebarBottom) {
                         break;
                     }
                     boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth
-                        && effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
+                        && effectiveMouseY >= contentY && effectiveMouseY < contentY + rowHeight;
                     if (nodeHovered) {
-                        hoveredCustomNode = customNode;
-                        context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
+                        hoveredCustomNode = customNode.customNode();
+                        context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                     }
 
                     int indicatorSize = 12;
                     int indicatorX = currentInnerSidebarWidth + 8;
-                    int indicatorY = contentY + 3;
+                    int indicatorY = contentY + Math.max(3, (rowHeight - indicatorSize) / 2);
                     UIStyleHelper.drawBeveledPanel(context, indicatorX, indicatorY, indicatorSize, indicatorSize,
                         NodeType.TEMPLATE.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
 
-                    context.drawTextWithShadow(
-                        textRenderer,
-                        Text.literal(customNode.getLabel()),
-                        indicatorX + indicatorSize + 4,
-                        contentY + 4,
-                        UITheme.TEXT_PRIMARY
-                    );
-                    contentY += NODE_HEIGHT;
+                        int lineY = contentY + 4;
+                        for (String line : customNode.lines()) {
+                            context.drawTextWithShadow(
+                                textRenderer,
+                                Text.literal(line),
+                                indicatorX + indicatorSize + 4,
+                                lineY,
+                                UITheme.TEXT_PRIMARY
+                            );
+                            lineY += nodeLineHeight;
+                        }
+                        contentY += rowHeight;
+                    }
                 }
             } else if (hasGroupedContent(selectedCategory)) {
                 outer:
@@ -735,24 +751,26 @@ public class Sidebar {
 
                         contentY += groupInfo.getHeight();
 
-                        List<NodeType> groupNodes = group.getNodes();
+                        List<NodeRowInfo> groupNodes = groupInfo.getNodeRows();
                         for (int nodeIndex = 0; nodeIndex < groupNodes.size(); nodeIndex++) {
-                            NodeType nodeType = groupNodes.get(nodeIndex);
+                            NodeRowInfo row = groupNodes.get(nodeIndex);
+                            NodeType nodeType = row.nodeType();
+                            int rowHeight = row.height();
                             if (contentY >= sidebarBottom) {
                                 break outer;
                             }
 
                             boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth &&
-                                                effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
+                                                effectiveMouseY >= contentY && effectiveMouseY < contentY + rowHeight;
 
                             if (nodeHovered) {
                                 hoveredNodeType = nodeType;
-                                context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
+                                context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                             }
 
                             int indicatorSize = 12;
                             int indicatorX = currentInnerSidebarWidth + 8;
-                            int indicatorY = contentY + 3;
+                            int indicatorY = contentY + Math.max(3, (rowHeight - indicatorSize) / 2);
                             UIStyleHelper.drawBeveledPanel(
                                 context,
                                 indicatorX,
@@ -764,37 +782,43 @@ public class Sidebar {
                                 UITheme.PANEL_INNER_BORDER
                             );
 
-                            context.drawTextWithShadow(
-                                textRenderer,
-                                Text.literal(nodeType.getDisplayName()),
-                                indicatorX + indicatorSize + 4,
-                                contentY + 4,
-                                getSidebarNodeTextColor(selectedCategory, nodeHovered)
-                            );
+                            int lineY = contentY + 4;
+                            for (String line : row.lines()) {
+                                context.drawTextWithShadow(
+                                    textRenderer,
+                                    Text.literal(line),
+                                    indicatorX + indicatorSize + 4,
+                                    lineY,
+                                    getSidebarNodeTextColor(selectedCategory, nodeHovered)
+                                );
+                                lineY += nodeLineHeight;
+                            }
 
-                            contentY += NODE_HEIGHT;
+                            contentY += rowHeight;
                         }
                     }
                 }
             } else {
                 // Render nodes in selected category
-                List<NodeType> nodes = categoryNodes.get(selectedCategory);
+                List<NodeRowInfo> nodes = buildNodeRowsForCategory(selectedCategory, textRenderer, nodeTextWidth, nodeLineHeight);
                 if (nodes != null) {
                     for (int nodeIndex = 0; nodeIndex < nodes.size(); nodeIndex++) {
-                        NodeType nodeType = nodes.get(nodeIndex);
+                        NodeRowInfo row = nodes.get(nodeIndex);
+                        NodeType nodeType = row.nodeType();
+                        int rowHeight = row.height();
                         if (contentY >= sidebarBottom) break; // Don't render beyond sidebar
                         
                         boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth &&
-                                            effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
+                                            effectiveMouseY >= contentY && effectiveMouseY < contentY + rowHeight;
 
                         if (nodeHovered) {
                             hoveredNodeType = nodeType;
-                            context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
+                            context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                         }
 
                         int indicatorSize = 12;
                         int indicatorX = currentInnerSidebarWidth + 8; // Align with category title
-                        int indicatorY = contentY + 3;
+                        int indicatorY = contentY + Math.max(3, (rowHeight - indicatorSize) / 2);
                         UIStyleHelper.drawBeveledPanel(
                             context,
                             indicatorX,
@@ -806,19 +830,23 @@ public class Sidebar {
                             UITheme.PANEL_INNER_BORDER
                         );
 
-                        context.drawTextWithShadow(
-                            textRenderer,
-                            Text.literal(nodeType.getDisplayName()),
-                            indicatorX + indicatorSize + 4, // Position after the indicator with some spacing
-                            contentY + 4,
-                            getSidebarNodeTextColor(selectedCategory, nodeHovered)
-                        );
+                        int lineY = contentY + 4;
+                        for (String line : row.lines()) {
+                            context.drawTextWithShadow(
+                                textRenderer,
+                                Text.literal(line),
+                                indicatorX + indicatorSize + 4, // Position after the indicator with some spacing
+                                lineY,
+                                getSidebarNodeTextColor(selectedCategory, nodeHovered)
+                            );
+                            lineY += nodeLineHeight;
+                        }
                         
-                        contentY += NODE_HEIGHT;
+                        contentY += rowHeight;
                     }
                 }
             }
-
+            context.disableScissor();
             ScrollbarHelper.renderCutoffDividers(
                 context,
                 nodeBackgroundLeft,
@@ -831,7 +859,6 @@ public class Sidebar {
             );
             renderCategoryScrollbar(context, totalWidth, contentTop, contentBottom);
             DrawContextBridge.flush(context);
-            context.disableScissor();
         }
 
         if (interactionsEnabled && showTooltips && hoveredCustomNode != null) {
@@ -1146,6 +1173,39 @@ public class Sidebar {
         return Math.max(1, breakIndex - 1);
     }
 
+    private List<NodeRowInfo> buildNodeRowsForCategory(NodeCategory category, TextRenderer textRenderer, int maxWidth, int lineHeight) {
+        List<NodeType> nodes = categoryNodes.get(category);
+        if (nodes == null || textRenderer == null) {
+            return java.util.Collections.emptyList();
+        }
+        return buildNodeRows(nodes, textRenderer, maxWidth, lineHeight);
+    }
+
+    private List<NodeRowInfo> buildCustomNodeRows(TextRenderer textRenderer, int maxWidth, int lineHeight) {
+        if (textRenderer == null) {
+            return java.util.Collections.emptyList();
+        }
+        List<NodeRowInfo> rows = new ArrayList<>();
+        for (CustomNodeEntry customNode : customNodes) {
+            List<String> lines = wrapText(customNode.getLabel(), textRenderer, maxWidth);
+            rows.add(new NodeRowInfo(null, customNode, lines, getWrappedNodeRowHeight(lines.size(), lineHeight)));
+        }
+        return rows;
+    }
+
+    private List<NodeRowInfo> buildNodeRows(List<NodeType> nodes, TextRenderer textRenderer, int maxWidth, int lineHeight) {
+        List<NodeRowInfo> rows = new ArrayList<>();
+        for (NodeType nodeType : nodes) {
+            List<String> lines = wrapText(nodeType.getDisplayName(), textRenderer, maxWidth);
+            rows.add(new NodeRowInfo(nodeType, null, lines, getWrappedNodeRowHeight(lines.size(), lineHeight)));
+        }
+        return rows;
+    }
+
+    private int getWrappedNodeRowHeight(int lineCount, int lineHeight) {
+        return Math.max(NODE_HEIGHT, Math.max(1, lineCount) * lineHeight + 7);
+    }
+
     private void renderCategoryScrollbar(DrawContext context, int totalWidth, int contentTop, int contentBottom) {
         if (maxScroll <= 0 || contentBottom <= contentTop) {
             return;
@@ -1175,11 +1235,13 @@ public class Sidebar {
         private final NodeGroup group;
         private final List<String> lines;
         private final int height;
+        private final List<NodeRowInfo> nodeRows;
 
-        private GroupHeaderInfo(NodeGroup group, List<String> lines, int height) {
+        private GroupHeaderInfo(NodeGroup group, List<String> lines, int height, List<NodeRowInfo> nodeRows) {
             this.group = group;
             this.lines = lines;
             this.height = height;
+            this.nodeRows = nodeRows;
         }
 
         public NodeGroup getGroup() {
@@ -1193,7 +1255,13 @@ public class Sidebar {
         public int getHeight() {
             return height;
         }
+
+        public List<NodeRowInfo> getNodeRows() {
+            return nodeRows;
+        }
     }
+
+    private record NodeRowInfo(NodeType nodeType, CustomNodeEntry customNode, List<String> lines, int height) {}
 
     public static class NodeGroup {
         private final String title;

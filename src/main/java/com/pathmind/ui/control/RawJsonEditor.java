@@ -20,6 +20,9 @@ public class RawJsonEditor {
     private static final int STATUS_HEIGHT = 18;
     private static final int GUTTER_PADDING = 8;
     private static final int TEXT_PADDING = 8;
+    private static final int SCROLLBAR_THICKNESS = 4;
+    private static final int SCROLLBAR_MARGIN = 3;
+    private static final int MIN_SCROLLBAR_THUMB_SIZE = 18;
 
     private int x;
     private int y;
@@ -34,6 +37,9 @@ public class RawJsonEditor {
     private int verticalScroll = 0;
     private int horizontalScroll = 0;
     private boolean draggingSelection = false;
+    private boolean draggingVerticalScrollbar = false;
+    private boolean draggingHorizontalScrollbar = false;
+    private int scrollbarDragOffset = 0;
     private long caretBlinkLastToggleMs = 0L;
     private boolean caretVisible = true;
     private String statusMessage = "";
@@ -171,14 +177,33 @@ public class RawJsonEditor {
         }
 
         context.disableScissor();
+        renderScrollIndicators(context, textRenderer, editorX, editorY, editorWidth, editorHeight, gutterWidth);
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button, TextRenderer textRenderer) {
         if (!isInsideEditor(mouseX, mouseY)) {
             draggingSelection = false;
+            draggingVerticalScrollbar = false;
+            draggingHorizontalScrollbar = false;
             return false;
         }
         if (button != 0) {
+            return true;
+        }
+        ScrollbarMetrics verticalScrollbar = getVerticalScrollbar(textRenderer);
+        if (verticalScrollbar != null && verticalScrollbar.thumbContains((int) mouseX, (int) mouseY)) {
+            draggingVerticalScrollbar = true;
+            draggingHorizontalScrollbar = false;
+            draggingSelection = false;
+            scrollbarDragOffset = (int) mouseY - verticalScrollbar.thumbStart();
+            return true;
+        }
+        ScrollbarMetrics horizontalScrollbar = getHorizontalScrollbar(textRenderer);
+        if (horizontalScrollbar != null && horizontalScrollbar.thumbContains((int) mouseX, (int) mouseY)) {
+            draggingHorizontalScrollbar = true;
+            draggingVerticalScrollbar = false;
+            draggingSelection = false;
+            scrollbarDragOffset = (int) mouseX - horizontalScrollbar.thumbStart();
             return true;
         }
         int newCaret = getIndexAtPoint((int) mouseX, (int) mouseY, textRenderer);
@@ -194,7 +219,28 @@ public class RawJsonEditor {
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button, TextRenderer textRenderer) {
-        if (button != 0 || !draggingSelection) {
+        if (button != 0) {
+            return false;
+        }
+        if (draggingVerticalScrollbar) {
+            ScrollbarMetrics scrollbar = getVerticalScrollbar(textRenderer);
+            if (scrollbar == null) {
+                return false;
+            }
+            setVerticalScrollFromThumb((int) mouseY - scrollbarDragOffset, scrollbar);
+            resetCaretBlink();
+            return true;
+        }
+        if (draggingHorizontalScrollbar) {
+            ScrollbarMetrics scrollbar = getHorizontalScrollbar(textRenderer);
+            if (scrollbar == null) {
+                return false;
+            }
+            setHorizontalScrollFromThumb((int) mouseX - scrollbarDragOffset, scrollbar);
+            resetCaretBlink();
+            return true;
+        }
+        if (!draggingSelection) {
             return false;
         }
         int newCaret = getIndexAtPoint((int) mouseX, (int) mouseY, textRenderer);
@@ -209,16 +255,34 @@ public class RawJsonEditor {
     public boolean mouseReleased(int button) {
         if (button == 0) {
             draggingSelection = false;
+            draggingVerticalScrollbar = false;
+            draggingHorizontalScrollbar = false;
             return true;
         }
         return false;
     }
 
     public boolean mouseScrolled(double amount, TextRenderer textRenderer) {
-        int lineHeight = textRenderer.fontHeight + 2;
-        int maxScroll = getMaxVerticalScroll(textRenderer);
-        verticalScroll = MathHelper.clamp(verticalScroll - (int) Math.round(amount * lineHeight * 2), 0, maxScroll);
+        if (isShiftDown()) {
+            int horizontalStep = Math.max(12, textRenderer.getWidth("    "));
+            int maxHorizontalScroll = getMaxHorizontalScroll(textRenderer);
+            horizontalScroll = MathHelper.clamp(horizontalScroll - (int) Math.round(amount * horizontalStep), 0, maxHorizontalScroll);
+        } else {
+            int lineHeight = textRenderer.fontHeight + 2;
+            int maxScroll = getMaxVerticalScroll(textRenderer);
+            verticalScroll = MathHelper.clamp(verticalScroll - (int) Math.round(amount * lineHeight * 2), 0, maxScroll);
+        }
         return true;
+    }
+
+    private boolean isShiftDown() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) {
+            return false;
+        }
+        long handle = client.getWindow().getHandle();
+        return GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
+            || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
     }
 
     public boolean keyPressed(int keyCode, int modifiers, TextRenderer textRenderer) {
@@ -472,6 +536,131 @@ public class RawJsonEditor {
         return Math.max(0, contentHeight - visibleHeight);
     }
 
+    private int getMaxLineWidth(TextRenderer textRenderer) {
+        int maxWidth = 0;
+        for (String line : getLines()) {
+            maxWidth = Math.max(maxWidth, textRenderer.getWidth(line));
+        }
+        return maxWidth;
+    }
+
+    private int getMaxHorizontalScroll(TextRenderer textRenderer) {
+        int gutterWidth = getGutterWidth(textRenderer);
+        int editorWidth = Math.max(1, width - PANEL_PADDING * 2);
+        int visibleWidth = Math.max(1, editorWidth - gutterWidth - TEXT_PADDING * 2 - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN);
+        return Math.max(0, getMaxLineWidth(textRenderer) - visibleWidth);
+    }
+
+    private void renderScrollIndicators(DrawContext context, TextRenderer textRenderer, int editorX, int editorY, int editorWidth, int editorHeight, int gutterWidth) {
+        int trackColor = UITheme.BORDER_DEFAULT;
+        int thumbColor = UITheme.TEXT_TERTIARY;
+        int activeThumbColor = UITheme.TEXT_SECONDARY;
+
+        ScrollbarMetrics verticalScrollbar = getVerticalScrollbar(textRenderer);
+        if (verticalScrollbar != null) {
+            context.fill(
+                verticalScrollbar.trackX(),
+                verticalScrollbar.trackY(),
+                verticalScrollbar.trackX() + verticalScrollbar.trackThickness(),
+                verticalScrollbar.trackY() + verticalScrollbar.trackLength(),
+                trackColor
+            );
+            context.fill(
+                verticalScrollbar.trackX(),
+                verticalScrollbar.thumbStart(),
+                verticalScrollbar.trackX() + verticalScrollbar.trackThickness(),
+                verticalScrollbar.thumbStart() + verticalScrollbar.thumbLength(),
+                draggingVerticalScrollbar ? activeThumbColor : thumbColor
+            );
+        }
+
+        ScrollbarMetrics horizontalScrollbar = getHorizontalScrollbar(textRenderer);
+        if (horizontalScrollbar != null) {
+            context.fill(
+                horizontalScrollbar.trackX(),
+                horizontalScrollbar.trackY(),
+                horizontalScrollbar.trackX() + horizontalScrollbar.trackLength(),
+                horizontalScrollbar.trackY() + horizontalScrollbar.trackThickness(),
+                trackColor
+            );
+            context.fill(
+                horizontalScrollbar.thumbStart(),
+                horizontalScrollbar.trackY(),
+                horizontalScrollbar.thumbStart() + horizontalScrollbar.thumbLength(),
+                horizontalScrollbar.trackY() + horizontalScrollbar.trackThickness(),
+                draggingHorizontalScrollbar ? activeThumbColor : thumbColor
+            );
+        }
+    }
+
+    private ScrollbarMetrics getVerticalScrollbar(TextRenderer textRenderer) {
+        int editorX = x + PANEL_PADDING;
+        int editorY = y + HEADER_HEIGHT + STATUS_HEIGHT;
+        int editorWidth = Math.max(1, width - PANEL_PADDING * 2);
+        int editorHeight = Math.max(1, height - HEADER_HEIGHT - STATUS_HEIGHT - PANEL_PADDING);
+        int trackX = editorX + editorWidth - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN;
+        int trackY = editorY + SCROLLBAR_MARGIN;
+        int trackLength = Math.max(0, editorHeight - SCROLLBAR_MARGIN * 2 - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN);
+        int maxVerticalScroll = getMaxVerticalScroll(textRenderer);
+        if (maxVerticalScroll <= 0 || trackLength <= 0) {
+            return null;
+        }
+        int visibleHeight = Math.max(1, editorHeight - TEXT_PADDING * 2);
+        int contentHeight = getLines().size() * (textRenderer.fontHeight + 2);
+        int thumbLength = Math.max(MIN_SCROLLBAR_THUMB_SIZE, Math.round((visibleHeight / (float) Math.max(visibleHeight, contentHeight)) * trackLength));
+        thumbLength = Math.min(trackLength, thumbLength);
+        int thumbTravel = Math.max(0, trackLength - thumbLength);
+        int thumbStart = trackY + Math.round((verticalScroll / (float) maxVerticalScroll) * thumbTravel);
+        return new ScrollbarMetrics(false, trackX, trackY, SCROLLBAR_THICKNESS, trackLength, thumbStart, thumbLength, maxVerticalScroll);
+    }
+
+    private ScrollbarMetrics getHorizontalScrollbar(TextRenderer textRenderer) {
+        int editorX = x + PANEL_PADDING;
+        int editorY = y + HEADER_HEIGHT + STATUS_HEIGHT;
+        int editorWidth = Math.max(1, width - PANEL_PADDING * 2);
+        int gutterWidth = getGutterWidth(textRenderer);
+        int trackX = editorX + gutterWidth + TEXT_PADDING;
+        int trackY = editorY + editorHeight() - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN;
+        int trackLength = Math.max(0, editorWidth - gutterWidth - TEXT_PADDING * 2 - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN * 2);
+        int maxHorizontalScroll = getMaxHorizontalScroll(textRenderer);
+        if (maxHorizontalScroll <= 0 || trackLength <= 0) {
+            return null;
+        }
+        int visibleWidth = Math.max(1, editorWidth - gutterWidth - TEXT_PADDING * 2 - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN);
+        int contentWidth = Math.max(visibleWidth, getMaxLineWidth(textRenderer));
+        int thumbLength = Math.max(MIN_SCROLLBAR_THUMB_SIZE, Math.round((visibleWidth / (float) contentWidth) * trackLength));
+        thumbLength = Math.min(trackLength, thumbLength);
+        int thumbTravel = Math.max(0, trackLength - thumbLength);
+        int thumbStart = trackX + Math.round((horizontalScroll / (float) maxHorizontalScroll) * thumbTravel);
+        return new ScrollbarMetrics(true, trackX, trackY, SCROLLBAR_THICKNESS, trackLength, thumbStart, thumbLength, maxHorizontalScroll);
+    }
+
+    private void setVerticalScrollFromThumb(int thumbStart, ScrollbarMetrics scrollbar) {
+        int thumbTravel = Math.max(0, scrollbar.trackLength() - scrollbar.thumbLength());
+        if (thumbTravel <= 0) {
+            verticalScroll = 0;
+            return;
+        }
+        int clampedThumbStart = MathHelper.clamp(thumbStart, scrollbar.trackY(), scrollbar.trackY() + thumbTravel);
+        float progress = (clampedThumbStart - scrollbar.trackY()) / (float) thumbTravel;
+        verticalScroll = MathHelper.clamp(Math.round(progress * scrollbar.maxScroll()), 0, scrollbar.maxScroll());
+    }
+
+    private void setHorizontalScrollFromThumb(int thumbStart, ScrollbarMetrics scrollbar) {
+        int thumbTravel = Math.max(0, scrollbar.trackLength() - scrollbar.thumbLength());
+        if (thumbTravel <= 0) {
+            horizontalScroll = 0;
+            return;
+        }
+        int clampedThumbStart = MathHelper.clamp(thumbStart, scrollbar.trackX(), scrollbar.trackX() + thumbTravel);
+        float progress = (clampedThumbStart - scrollbar.trackX()) / (float) thumbTravel;
+        horizontalScroll = MathHelper.clamp(Math.round(progress * scrollbar.maxScroll()), 0, scrollbar.maxScroll());
+    }
+
+    private int editorHeight() {
+        return Math.max(1, height - HEADER_HEIGHT - STATUS_HEIGHT - PANEL_PADDING);
+    }
+
     private void ensureCaretVisible(TextRenderer textRenderer) {
         int[] caret = getCaretRenderPosition(textRenderer);
         int editorX = x + PANEL_PADDING;
@@ -489,7 +678,7 @@ public class RawJsonEditor {
             horizontalScroll += caret[0] - (editorX + editorWidth - TEXT_PADDING);
         }
         verticalScroll = MathHelper.clamp(verticalScroll, 0, getMaxVerticalScroll(textRenderer));
-        horizontalScroll = Math.max(0, horizontalScroll);
+        horizontalScroll = MathHelper.clamp(horizontalScroll, 0, getMaxHorizontalScroll(textRenderer));
     }
 
     private boolean isInsideEditor(double mouseX, double mouseY) {
@@ -654,6 +843,23 @@ public class RawJsonEditor {
     }
 
     private record LineColumn(int line, int column) {}
+    private record ScrollbarMetrics(
+        boolean horizontal,
+        int trackX,
+        int trackY,
+        int trackThickness,
+        int trackLength,
+        int thumbStart,
+        int thumbLength,
+        int maxScroll
+    ) {
+        private boolean thumbContains(int mouseX, int mouseY) {
+            if (horizontal) {
+                return mouseX >= thumbStart && mouseX <= thumbStart + thumbLength && mouseY >= trackY && mouseY <= trackY + trackThickness;
+            }
+            return mouseX >= trackX && mouseX <= trackX + trackThickness && mouseY >= thumbStart && mouseY <= thumbStart + thumbLength;
+        }
+    }
     private record EditorState(
         String text,
         int caretPosition,

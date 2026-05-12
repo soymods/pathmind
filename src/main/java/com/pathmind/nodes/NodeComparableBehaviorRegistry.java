@@ -8,23 +8,6 @@ final class NodeComparableBehaviorRegistry {
     private static final Map<NodeType, NodeComparableBehavior> BEHAVIORS = new EnumMap<>(NodeType.class);
 
     static {
-        register(NodeType.PARAM_COORDINATE, stringBehavior((owner, node) -> {
-            String formatted = owner.formatCoordinateValues(node.exportParameterValues());
-            return formatted.isEmpty() ? Optional.empty() : Optional.of(formatted);
-        }));
-        register(NodeType.PARAM_ROTATION, stringBehavior((owner, node) -> {
-            String formatted = owner.formatRotationValues(node.exportParameterValues());
-            return formatted.isEmpty() ? Optional.empty() : Optional.of(formatted);
-        }));
-        register(NodeType.PARAM_MESSAGE, stringBehavior((owner, node) -> {
-            String text = Node.getParameterString(node, "Text");
-            if (text == null || text.trim().isEmpty()) {
-                text = Node.getParameterString(node, "Message");
-            }
-            return text == null || text.trim().isEmpty() ? Optional.empty() : Optional.of(text.trim());
-        }));
-        register(NodeType.PARAM_DIRECTION, stringBehavior(NodeComparableBehaviorRegistry::resolveDirectionString));
-        register(NodeType.PARAM_BLOCK_FACE, stringBehavior(NodeComparableBehaviorRegistry::resolveBlockFaceString));
         register(NodeType.SENSOR_TARGETED_BLOCK_FACE, stringBehavior((owner, node) -> {
             Map<String, String> values = node.exportParameterValues();
             String face = owner.getRuntimeValue(values, "face");
@@ -47,11 +30,9 @@ final class NodeComparableBehaviorRegistry {
             },
             NodeComparableBehaviorRegistry::resolveSingleAxisAmount
         ));
-        register(NodeType.PARAM_AMOUNT, numberBehavior((owner, node) -> Optional.of(Node.parseNodeDouble(node, "Amount", 0.0))));
         register(NodeType.OPERATOR_RANDOM, numberBehavior((owner, node) -> Optional.of(Node.parseNodeDouble(node, "Amount", 0.0))));
         register(NodeType.OPERATOR_MOD, numberBehavior((owner, node) -> Optional.of(Node.parseNodeDouble(node, "Amount", 0.0))));
         register(NodeType.LIST_LENGTH, numberBehavior((owner, node) -> Optional.of(Node.parseNodeDouble(node, "Amount", 0.0))));
-        register(NodeType.PARAM_DISTANCE, numberBehavior((owner, node) -> Optional.of(Node.parseNodeDouble(node, "Distance", 0.0))));
         register(NodeType.SENSOR_DISTANCE_BETWEEN, numberBehavior(NodeComparableBehaviorRegistry::resolveDistanceValue));
         register(NodeType.SENSOR_IS_ON_GROUND, numberBehavior(NodeComparableBehaviorRegistry::resolveDistanceValue));
         register(NodeType.SENSOR_SLOT_ITEM_COUNT, numberBehavior((owner, node) -> {
@@ -62,8 +43,6 @@ final class NodeComparableBehaviorRegistry {
             }
             return amountValue.isEmpty() ? Optional.empty() : Optional.ofNullable(Node.parseDoubleOrNull(amountValue));
         }));
-        register(NodeType.PARAM_INVENTORY_SLOT, numberBehavior((owner, node) ->
-            owner.resolveInventorySlotCount(node).map(count -> (double) count)));
     }
 
     static NodeComparableBehavior get(NodeType type) {
@@ -76,32 +55,6 @@ final class NodeComparableBehaviorRegistry {
 
     private static void register(NodeType type, NodeComparableBehavior behavior) {
         BEHAVIORS.put(type, behavior);
-    }
-
-    private static Optional<String> resolveDirectionString(Node owner, Node node) {
-        String formatted = owner.formatRotationValues(node.exportParameterValues());
-        if (!formatted.isEmpty()) {
-            return Optional.of(formatted);
-        }
-        String direction = Node.getParameterString(node, "Direction");
-        if (direction == null || direction.trim().isEmpty()) {
-            direction = Node.getParameterString(node, "Side");
-        }
-        if (direction == null || direction.trim().isEmpty()) {
-            direction = Node.getParameterString(node, "Face");
-        }
-        return direction == null || direction.trim().isEmpty() ? Optional.empty() : Optional.of(direction.trim());
-    }
-
-    private static Optional<String> resolveBlockFaceString(Node owner, Node node) {
-        String face = Node.getParameterString(node, "Face");
-        if (face == null || face.trim().isEmpty()) {
-            face = Node.getParameterString(node, "Side");
-        }
-        if (face == null || face.trim().isEmpty()) {
-            face = Node.getParameterString(node, "Direction");
-        }
-        return face == null || face.trim().isEmpty() ? Optional.empty() : Optional.of(face.trim());
     }
 
     private static Optional<String> resolveLookDirectionString(Node owner, Node node) {

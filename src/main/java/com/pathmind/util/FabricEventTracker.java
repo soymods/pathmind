@@ -131,6 +131,7 @@ public final class FabricEventTracker {
         ordered.add("fabric.client.message.send_command");
         ordered.add("fabric.client.message.send_chat_canceled");
         ordered.add("fabric.client.message.send_command_canceled");
+        ordered.add("fabric.server.message.chat_message");
 
         // Rendering / HUD
         ordered.add("fabric.client.render.hud");

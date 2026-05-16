@@ -40,6 +40,7 @@ import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -125,6 +126,7 @@ public class PathmindClientMod implements ClientModInitializer {
     private static final String EVT_MESSAGE_SEND_COMMAND_CANCELED = "fabric.client.message.send_command_canceled";
     private static final String EVT_MESSAGE_SEND_MODIFY_CHAT = "fabric.client.message.send_modify_chat";
     private static final String EVT_MESSAGE_SEND_MODIFY_COMMAND = "fabric.client.message.send_modify_command";
+    private static final String EVT_SERVER_MESSAGE_CHAT = "fabric.server.message.chat_message";
 
     private static final String EVT_RENDER_HUD = "fabric.client.render.hud";
     private static final String EVT_PLAYER_ATTACK_BLOCK = "fabric.player.attack_block";
@@ -322,6 +324,10 @@ public class PathmindClientMod implements ClientModInitializer {
         ClientReceiveMessageEvents.CHAT_CANCELED.register((message, signedMessage, sender, params, receptionTimestamp) ->
             fireFabricEvent(EVT_MESSAGE_RECEIVE_CHAT_CANCELED));
         ClientReceiveMessageEvents.GAME_CANCELED.register((message, overlay) -> fireFabricEvent(EVT_MESSAGE_RECEIVE_GAME_CANCELED));
+        ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
+            fireFabricEvent(EVT_SERVER_MESSAGE_CHAT);
+            fireFabricEvent(EVT_MESSAGE_RECEIVE_CHAT);
+        });
 
         ClientSendMessageEvents.ALLOW_CHAT.register(message -> {
             fireFabricEvent(EVT_MESSAGE_SEND_ALLOW_CHAT);

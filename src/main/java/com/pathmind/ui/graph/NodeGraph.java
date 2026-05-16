@@ -138,6 +138,7 @@ public class NodeGraph {
     private int connectionCutStartWorldY = 0;
     private int connectionCutCurrentWorldX = 0;
     private int connectionCutCurrentWorldY = 0;
+    private final List<CutPoint> connectionCutPath = new ArrayList<>();
     
     // Socket hover state
     private Node hoveredSocketNode = null;
@@ -2812,6 +2813,8 @@ public class NodeGraph {
         connectionCutStartWorldY = screenToWorldY(mouseY);
         connectionCutCurrentWorldX = connectionCutStartWorldX;
         connectionCutCurrentWorldY = connectionCutStartWorldY;
+        connectionCutPath.clear();
+        connectionCutPath.add(new CutPoint(connectionCutStartWorldX, connectionCutStartWorldY));
     }
 
     public void updateConnectionCut(int worldX, int worldY) {
@@ -2825,6 +2828,10 @@ public class NodeGraph {
             int deltaY = Math.abs(connectionCutCurrentWorldY - connectionCutStartWorldY);
             connectionCutMoved = deltaX > CONNECTION_CUT_THRESHOLD || deltaY > CONNECTION_CUT_THRESHOLD;
         }
+        CutPoint lastPoint = connectionCutPath.isEmpty() ? null : connectionCutPath.get(connectionCutPath.size() - 1);
+        if (lastPoint == null || lastPoint.x != worldX || lastPoint.y != worldY) {
+            connectionCutPath.add(new CutPoint(worldX, worldY));
+        }
     }
 
     public boolean stopConnectionCut() {
@@ -2832,14 +2839,7 @@ public class NodeGraph {
         if (connectionCutActive && connectionCutMoved) {
             List<NodeConnection> toRemove = new ArrayList<>();
             for (NodeConnection connection : connections) {
-                if (doesSegmentIntersectConnection(
-                    connection,
-                    connectionCutStartWorldX,
-                    connectionCutStartWorldY,
-                    connectionCutCurrentWorldX,
-                    connectionCutCurrentWorldY,
-                    CONNECTION_CUT_THRESHOLD
-                )) {
+                if (doesCutPathIntersectConnection(connection)) {
                     toRemove.add(connection);
                 }
             }
@@ -2854,12 +2854,14 @@ public class NodeGraph {
 
         connectionCutActive = false;
         connectionCutMoved = false;
+        connectionCutPath.clear();
         return removedAny;
     }
 
     public void cancelConnectionCut() {
         connectionCutActive = false;
         connectionCutMoved = false;
+        connectionCutPath.clear();
     }
 
     public boolean removeConnection(NodeConnection connection) {
@@ -13777,11 +13779,48 @@ public class NodeGraph {
     }
 
     private void renderConnectionCutPreview(DrawContext context) {
-        int startX = worldToScreenX(connectionCutStartWorldX);
-        int startY = worldToScreenY(connectionCutStartWorldY);
-        int endX = worldToScreenX(connectionCutCurrentWorldX);
-        int endY = worldToScreenY(connectionCutCurrentWorldY);
-        drawSegmentWithThickness(context, startX, startY, endX, endY, CONNECTION_CUT_PREVIEW_COLOR, 0);
+        if (connectionCutPath.size() < 2) {
+            int x = connectionCutCurrentWorldX - cameraX;
+            int y = connectionCutCurrentWorldY - cameraY;
+            drawSegmentWithThickness(context, x, y, x, y, CONNECTION_CUT_PREVIEW_COLOR, 0);
+            return;
+        }
+        CutPoint previous = connectionCutPath.get(0);
+        for (int i = 1; i < connectionCutPath.size(); i++) {
+            CutPoint current = connectionCutPath.get(i);
+            drawSegmentWithThickness(
+                context,
+                previous.x - cameraX,
+                previous.y - cameraY,
+                current.x - cameraX,
+                current.y - cameraY,
+                CONNECTION_CUT_PREVIEW_COLOR,
+                0
+            );
+            previous = current;
+        }
+    }
+
+    private boolean doesCutPathIntersectConnection(NodeConnection connection) {
+        if (connectionCutPath.size() < 2) {
+            return false;
+        }
+        CutPoint previous = connectionCutPath.get(0);
+        for (int i = 1; i < connectionCutPath.size(); i++) {
+            CutPoint current = connectionCutPath.get(i);
+            if (doesSegmentIntersectConnection(
+                connection,
+                previous.x,
+                previous.y,
+                current.x,
+                current.y,
+                CONNECTION_CUT_THRESHOLD
+            )) {
+                return true;
+            }
+            previous = current;
+        }
+        return false;
     }
 
     private boolean isPointNearConnection(NodeConnection connection, int worldX, int worldY, int threshold) {
@@ -13969,6 +14008,16 @@ public class NodeGraph {
     private void renderDenseConnectionCurve(DrawContext context, int x1, int y1, int x2, int y2, int color) {
         context.drawHorizontalLine(Math.min(x1, x2), Math.max(x1, x2), y1, color);
         context.drawVerticalLine(x2, Math.min(y1, y2), Math.max(y1, y2), color);
+    }
+
+    private static final class CutPoint {
+        private final int x;
+        private final int y;
+
+        private CutPoint(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
     }
 
     public List<Node> getNodes() {

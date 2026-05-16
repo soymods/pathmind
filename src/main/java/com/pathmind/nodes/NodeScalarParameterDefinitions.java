@@ -15,6 +15,9 @@ final class NodeScalarParameterDefinitions {
             case PARAM_INVENTORY_SLOT -> Optional.of(InventorySlotParameterDefinition.create());
             case PARAM_VILLAGER_TRADE -> Optional.of(VillagerTradeParameterDefinition.create());
             case PARAM_WAYPOINT -> Optional.of(WaypointParameterDefinition.create());
+            case PARAM_GUI -> Optional.of(GuiParameterDefinition.create());
+            case PARAM_KEY -> Optional.of(KeyParameterDefinition.create());
+            case PARAM_MOUSE_BUTTON -> Optional.of(MouseButtonParameterDefinition.create());
             default -> Optional.empty();
         };
     }

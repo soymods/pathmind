@@ -66,6 +66,11 @@ class NodeBehaviorDefinitionRegistryTest {
         assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_MESSAGE).hasComparableBehavior());
         assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_INVENTORY_SLOT).hasParameterBehavior());
         assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_INVENTORY_SLOT).hasComparableBehavior());
+        assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_GUI).hasParameterBehavior());
+        assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_KEY).hasParameterBehavior());
+        assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_KEY).hasComparableBehavior());
+        assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_MOUSE_BUTTON).hasParameterBehavior());
+        assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_MOUSE_BUTTON).hasComparableBehavior());
         assertTrue(NodeBehaviorDefinitionRegistry.get(NodeType.LIST_ITEM).hasGotoFallbackTargetBehavior());
         assertTrue(NodeBehaviorDefinitionRegistry.snapshot().containsKey(NodeType.PARAM_DIRECTION));
     }
@@ -245,6 +250,49 @@ class NodeBehaviorDefinitionRegistryTest {
 
         assertEquals("hello", values.get("Message"));
         assertEquals(Optional.of("hello"), definition.resolveComparableString(owner, message));
+    }
+
+    @Test
+    void guiDefinitionExportsSelectionAliases() {
+        Node gui = new Node(NodeType.PARAM_GUI, 0, 0);
+        gui.getParameter("GUI").setStringValue("player_inventory");
+
+        Map<String, String> values = gui.exportParameterValues();
+
+        assertEquals("player_inventory", values.get("GUI"));
+        assertEquals("player_inventory", values.get("Mode"));
+        assertEquals("player_inventory", values.get("GuiMode"));
+        assertEquals("player_inventory", values.get("Selection"));
+    }
+
+    @Test
+    void keyDefinitionExportsInputAliasesAndComparableString() {
+        Node owner = new Node(NodeType.CONTROL_IF, 0, 0);
+        Node key = new Node(NodeType.PARAM_KEY, 0, 0);
+        key.getParameter("Key").setStringValue("GLFW_KEY_A");
+        NodeBehaviorDefinition definition = NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_KEY);
+
+        Map<String, String> values = key.exportParameterValues();
+
+        assertEquals("GLFW_KEY_A", values.get("Key"));
+        assertEquals("GLFW_KEY_A", values.get("Button"));
+        assertEquals("GLFW_KEY_A", values.get("Input"));
+        assertEquals(Optional.of("GLFW_KEY_A"), definition.resolveComparableString(owner, key));
+    }
+
+    @Test
+    void mouseButtonDefinitionExportsInputAliasesAndComparableString() {
+        Node owner = new Node(NodeType.CONTROL_IF, 0, 0);
+        Node mouseButton = new Node(NodeType.PARAM_MOUSE_BUTTON, 0, 0);
+        mouseButton.getParameter("MouseButton").setStringValue("Right");
+        NodeBehaviorDefinition definition = NodeBehaviorDefinitionRegistry.get(NodeType.PARAM_MOUSE_BUTTON);
+
+        Map<String, String> values = mouseButton.exportParameterValues();
+
+        assertEquals("Right", values.get("MouseButton"));
+        assertEquals("Right", values.get("Button"));
+        assertEquals("Right", values.get("Input"));
+        assertEquals(Optional.of("Right"), definition.resolveComparableString(owner, mouseButton));
     }
 
     @Test

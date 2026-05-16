@@ -87,8 +87,14 @@ public class ExecutionManager {
         final Map<String, RuntimeVariable> runtimeVariables;
         final Map<String, RuntimeList> runtimeLists;
         final Map<Node, Set<Integer>> joinBarrierInputs;
+        final List<Node> graphNodes;
+        final List<NodeConnection> graphConnections;
 
         ChainController(Node startNode, int rootExecutionId) {
+            this(startNode, rootExecutionId, List.of(), List.of());
+        }
+
+        ChainController(Node startNode, int rootExecutionId, List<Node> graphNodes, List<NodeConnection> graphConnections) {
             this.startNode = startNode;
             this.rootExecutionId = rootExecutionId;
             this.cancelRequested = false;
@@ -97,6 +103,8 @@ public class ExecutionManager {
             this.runtimeVariables = new ConcurrentHashMap<>();
             this.runtimeLists = new ConcurrentHashMap<>();
             this.joinBarrierInputs = new ConcurrentHashMap<>();
+            this.graphNodes = Collections.synchronizedList(new ArrayList<>(graphNodes == null ? List.of() : graphNodes));
+            this.graphConnections = Collections.synchronizedList(new ArrayList<>(graphConnections == null ? List.of() : graphConnections));
         }
     }
 
@@ -477,6 +485,7 @@ public class ExecutionManager {
 
         activeChains.clear();
 
+        List<BranchLaunchData> launchDatas = new ArrayList<>();
         List<Node> isolatedStartNodes = new ArrayList<>();
         for (Node startNode : startNodes) {
             BranchData branchData = buildBranchData(startNode, nodes, filteredConnections);
@@ -486,6 +495,7 @@ public class ExecutionManager {
                 continue;
             }
             mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
+            launchDatas.add(launchData);
             isolatedStartNodes.add(launchData.rootNode);
         }
 
@@ -496,9 +506,11 @@ public class ExecutionManager {
 
         startExecution(isolatedStartNodes, markGlobalSnapshot);
 
-        for (Node isolatedStartNode : isolatedStartNodes) {
+        for (BranchLaunchData launchData : launchDatas) {
+            Node isolatedStartNode = launchData.rootNode;
             int executionId = allocateExecutionId();
-            ChainController controller = new ChainController(isolatedStartNode, executionId);
+            ChainController controller = new ChainController(isolatedStartNode, executionId,
+                launchData.branchData.nodes, launchData.branchData.connections);
             activeChains.put(isolatedStartNode, controller);
             CompletableFuture<Void> chainFuture = runChain(isolatedStartNode, controller, controller.rootExecutionId);
             chainFuture.whenComplete((ignored, throwable) ->
@@ -612,7 +624,8 @@ public class ExecutionManager {
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        ChainController controller = new ChainController(launchData.rootNode, executionId,
+            launchData.branchData.nodes, launchData.branchData.connections);
         activeChains.put(launchData.rootNode, controller);
         seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
@@ -668,7 +681,8 @@ public class ExecutionManager {
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        ChainController controller = new ChainController(launchData.rootNode, executionId,
+            launchData.branchData.nodes, launchData.branchData.connections);
         activeChains.put(launchData.rootNode, controller);
         seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
@@ -730,7 +744,8 @@ public class ExecutionManager {
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        ChainController controller = new ChainController(launchData.rootNode, executionId,
+            launchData.branchData.nodes, launchData.branchData.connections);
         activeChains.put(launchData.rootNode, controller);
         seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
@@ -1164,7 +1179,8 @@ public class ExecutionManager {
         }
 
         int executionId = allocateExecutionId();
-        ChainController controller = new ChainController(launchData.rootNode, executionId);
+        ChainController controller = new ChainController(launchData.rootNode, executionId,
+            launchData.branchData.nodes, launchData.branchData.connections);
         activeChains.put(launchData.rootNode, controller);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
@@ -1520,7 +1536,7 @@ public class ExecutionManager {
             return CompletableFuture.completedFuture(null);
         }
 
-        List<Node> handlers = resolveFunctionInvocationHandlers(eventName);
+        List<Node> handlers = resolveFunctionInvocationHandlers(eventName, controller);
         if (handlers.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1547,15 +1563,17 @@ public class ExecutionManager {
         return handlersComplete;
     }
 
-    private List<Node> resolveFunctionInvocationHandlers(String eventName) {
+    private List<Node> resolveFunctionInvocationHandlers(String eventName, ChainController controller) {
         if (eventName == null || eventName.isEmpty()) {
             return List.of();
         }
 
-        List<Node> sourceNodes = (workspaceNodes != null && !workspaceNodes.isEmpty()) ? workspaceNodes : activeNodes;
-        List<NodeConnection> sourceConnections = (workspaceConnections != null && !workspaceConnections.isEmpty())
-            ? workspaceConnections
-            : activeConnections;
+        List<Node> sourceNodes = controller != null && controller.graphNodes != null && !controller.graphNodes.isEmpty()
+            ? snapshotList(controller.graphNodes)
+            : (workspaceNodes != null && !workspaceNodes.isEmpty() ? workspaceNodes : activeNodes);
+        List<NodeConnection> sourceConnections = controller != null && controller.graphConnections != null && !controller.graphConnections.isEmpty()
+            ? snapshotList(controller.graphConnections)
+            : (workspaceConnections != null && !workspaceConnections.isEmpty() ? workspaceConnections : activeConnections);
         if (sourceNodes == null || sourceNodes.isEmpty() || sourceConnections == null) {
             return List.of();
         }
@@ -1581,10 +1599,15 @@ public class ExecutionManager {
             }
 
             mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
+            mergeControllerGraph(controller, launchData.branchData.nodes, launchData.branchData.connections);
             handlers.add(launchData.rootNode);
         }
 
         return handlers;
+    }
+
+    private List<Node> resolveFunctionInvocationHandlers(String eventName) {
+        return resolveFunctionInvocationHandlers(eventName, null);
     }
 
     private CompletableFuture<Void> continueFromNode(Node currentNode, ChainController controller, int executionId,
@@ -1636,7 +1659,15 @@ public class ExecutionManager {
                                 && controller.pendingRepeatUntilExitControl == currentNode) {
                                 controller.pendingRepeatUntilExitControl = null;
                                 int exitSocket = getRepeatUntilExitOutputSocket(currentNode);
-                                NodeConnection exitConnection = getNextConnectedConnection(currentNode, activeConnections, exitSocket);
+                                List<NodeConnection> graphConnections = controller != null
+                                    && controller.graphConnections != null
+                                    && !controller.graphConnections.isEmpty()
+                                    ? snapshotList(controller.graphConnections)
+                                    : activeConnections;
+                                NodeConnection exitConnection = getNextConnectedConnection(
+                                    currentNode,
+                                    graphConnections,
+                                    exitSocket);
                                 if (exitConnection != null) {
                                     return runChain(exitConnection.getInputNode(), controller, executionId, repeatUntilGuard,
                                         exitConnection.getInputSocket());
@@ -1672,7 +1703,12 @@ public class ExecutionManager {
 
     private CompletableFuture<Void> continueFromOutputSocket(Node currentNode, ChainController controller, int executionId,
                                                              Node repeatUntilGuard, int outputSocket) {
-        NodeConnection nextConnection = getNextConnectedConnection(currentNode, activeConnections, outputSocket);
+        List<NodeConnection> graphConnections = controller != null
+            && controller.graphConnections != null
+            && !controller.graphConnections.isEmpty()
+            ? snapshotList(controller.graphConnections)
+            : activeConnections;
+        NodeConnection nextConnection = getNextConnectedConnection(currentNode, graphConnections, outputSocket);
         if (nextConnection == null) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1680,7 +1716,12 @@ public class ExecutionManager {
     }
 
     private CompletableFuture<Void> continueFork(Node currentNode, ChainController controller, int executionId, Node repeatUntilGuard) {
-        List<NodeConnection> branchConnections = getOutgoingConnections(currentNode, activeConnections);
+        List<NodeConnection> graphConnections = controller != null
+            && controller.graphConnections != null
+            && !controller.graphConnections.isEmpty()
+            ? snapshotList(controller.graphConnections)
+            : activeConnections;
+        List<NodeConnection> branchConnections = getOutgoingConnections(currentNode, graphConnections);
         if (branchConnections.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
@@ -2278,6 +2319,37 @@ public class ExecutionManager {
         }
 
         rebuildConnectionState(this.activeNodes, this.activeConnections);
+    }
+
+    private void mergeControllerGraph(ChainController controller, List<Node> branchNodes, List<NodeConnection> branchConnections) {
+        if (controller == null) {
+            return;
+        }
+        if (branchNodes != null && !branchNodes.isEmpty()) {
+            synchronized (controller.graphNodes) {
+                LinkedHashSet<Node> mergedNodes = new LinkedHashSet<>(controller.graphNodes);
+                mergedNodes.addAll(branchNodes);
+                controller.graphNodes.clear();
+                controller.graphNodes.addAll(mergedNodes);
+            }
+        }
+        if (branchConnections != null && !branchConnections.isEmpty()) {
+            synchronized (controller.graphConnections) {
+                LinkedHashSet<NodeConnection> mergedConnections = new LinkedHashSet<>(controller.graphConnections);
+                mergedConnections.addAll(branchConnections);
+                controller.graphConnections.clear();
+                controller.graphConnections.addAll(mergedConnections);
+            }
+        }
+    }
+
+    private static <T> List<T> snapshotList(List<T> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        synchronized (source) {
+            return new ArrayList<>(source);
+        }
     }
 
     private BranchLaunchData createBranchLaunchData(BranchData branchData, int startNodeNumber) {

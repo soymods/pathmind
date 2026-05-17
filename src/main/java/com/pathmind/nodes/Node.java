@@ -137,8 +137,8 @@ public class Node {
     private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
     private static final Method DO_ATTACK_METHOD = resolveDoAttackMethod();
     private static final Method SYNC_SELECTED_SLOT_METHOD = resolveSyncSelectedSlotMethod();
-    private static final Gson LIST_ENTRY_GSON = new Gson();
-    private static final String LIST_ENTRY_SERIALIZED_PREFIX = "pm_list:";
+    static final Gson LIST_ENTRY_GSON = new Gson();
+    static final String LIST_ENTRY_SERIALIZED_PREFIX = "pm_list:";
     public static final int NO_OUTPUT = -1;
     private final String id;
     private final NodeType type;
@@ -172,8 +172,8 @@ public class Node {
     static final int BODY_PADDING_NO_PARAMS = 10;
     static final int START_END_SIZE = 36;
     private static final String CHAT_MESSAGE_PREFIX = "\u00A74[\u00A7cPathmind\u00A74] \u00A77";
-    private static final String LIST_SLOT_GUI_PREFIX = "gui:";
-    private static final String LIST_SLOT_PLAYER_PREFIX = "player:";
+    static final String LIST_SLOT_GUI_PREFIX = "gui:";
+    static final String LIST_SLOT_PLAYER_PREFIX = "player:";
     private static final long CRAFTING_ACTION_DELAY_MS = 75L;
     static final long CONTROL_POLL_INTERVAL_MS = 10L;
     private static final long FALLING_SENSOR_RETENTION_MS = 1000L;
@@ -918,7 +918,7 @@ public class Node {
         return runtimeState.owningStartNode;
     }
 
-    private Node resolveExecutionStartNode() {
+    Node resolveExecutionStartNode() {
         if (runtimeState.owningStartNode != null) {
             return runtimeState.owningStartNode;
         }
@@ -1806,7 +1806,7 @@ public class Node {
         }
     }
 
-    private String normalizeOperation(String value) {
+    String normalizeOperation(String value) {
         if (value == null) {
             return "+";
         }
@@ -1881,12 +1881,12 @@ public class Node {
         return numberParam == null || !numberParam.isUserEdited();
     }
 
-    private int getConfiguredVillagerTradeNumber() {
+    int getConfiguredVillagerTradeNumber() {
         ensureVillagerTradeNumberParameter();
         return Math.max(1, getIntParameter("Number", 1));
     }
 
-    private int getConfiguredVillagerTradeCount() {
+    int getConfiguredVillagerTradeCount() {
         ensureVillagerTradeNumberParameter();
         return Math.max(1, getIntParameter("Count", 1));
     }
@@ -2289,7 +2289,7 @@ public class Node {
         updateAttachedSensorPosition();
     }
 
-    private boolean applyParameterValuesFromMap(Map<String, String> values) {
+    boolean applyParameterValuesFromMap(Map<String, String> values) {
         if (values == null || values.isEmpty()) {
             return false;
         }
@@ -4116,7 +4116,7 @@ public class Node {
         NodeExecutionCompletion.failWithCurrentClient(this, future, message);
     }
 
-    private Optional<Vec3d> resolvePositionTarget(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
+    Optional<Vec3d> resolvePositionTarget(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
         if (parameterNode != null && parameterNode.getType() == NodeType.LIST_ITEM) {
             Node resolved = resolveListItemValueNode(parameterNode, future, false, data);
             if (resolved != null) {
@@ -4195,7 +4195,7 @@ public class Node {
         return Optional.empty();
     }
 
-    private Optional<Vec3d> resolveDistanceBetweenTarget(Node parameterNode) {
+    Optional<Vec3d> resolveDistanceBetweenTarget(Node parameterNode) {
         if (parameterNode == null) {
             return Optional.empty();
         }
@@ -4862,7 +4862,7 @@ public class Node {
         }
     }
 
-    private static Integer parseIntOrNull(String value) {
+    static Integer parseIntOrNull(String value) {
         if (value == null || value.isEmpty()) {
             return null;
         }
@@ -5372,7 +5372,7 @@ public class Node {
         return Optional.ofNullable(bestPos);
     }
 
-    private List<BlockPos> findBlocksWithinRange(net.minecraft.client.MinecraftClient client, List<BlockSelection> selections, double range) {
+    List<BlockPos> findBlocksWithinRange(net.minecraft.client.MinecraftClient client, List<BlockSelection> selections, double range) {
         if (client == null || client.player == null || client.world == null || selections == null || selections.isEmpty()) {
             return Collections.emptyList();
         }
@@ -5748,1114 +5748,6 @@ public class Node {
         }
     }
 
-    private void executeSetVariableCommand(CompletableFuture<Void> future) {
-        Node slot0 = getAttachedParameter(0);
-        Node slot1 = getAttachedParameter(1);
-        Node variableNode = slot0;
-        Node valueNode = slot1;
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (variableNode == null || variableNode.getType() != NodeType.VARIABLE
-            || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
-            NodeExecutionCompletion.fail(this, client, future, "Set Variable requires a variable input and a value parameter.");
-            return;
-        }
-
-        String variableName = getParameterString(variableNode, "Variable");
-        if (variableName == null || variableName.trim().isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future, "Variable name cannot be empty.");
-            return;
-        }
-
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = getOwningStartNode();
-        if (startNode == null && getParentControl() != null) {
-            startNode = getParentControl().getOwningStartNode();
-        }
-        NodeType valueType = valueNode.getType();
-        Map<String, String> values;
-        if (valueNode.isSensorNode() && NodeTraitRegistry.isBooleanSensor(valueType)) {
-            boolean sensorResult = valueNode.evaluateSensor();
-            values = new HashMap<>();
-            values.put("Toggle", Boolean.toString(sensorResult));
-            values.put(normalizeParameterKey("Toggle"), Boolean.toString(sensorResult));
-            valueType = NodeType.PARAM_BOOLEAN;
-        } else
-        if (valueType == NodeType.SENSOR_POSITION_OF) {
-            Node parameterNode = valueNode.getAttachedParameter(0);
-            if (parameterNode == null) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "Position Of requires an entity, user, block, or item parameter.");
-                return;
-            }
-            Optional<Vec3d> resolved = valueNode.resolvePositionTarget(parameterNode, null, null);
-            if (resolved.isEmpty()) {
-                setNextOutputSocket(NO_OUTPUT);
-                NodeExecutionCompletion.fail(this, client, future, "Position Of could not resolve its target.");
-                return;
-            }
-            values = valueNode.exportParameterValues();
-            valueType = valueNode.getResolvedValueType();
-        } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
-            Node parameterNodeA = valueNode.getAttachedParameter(0);
-            Node parameterNodeB = valueNode.getAttachedParameter(1);
-            if (parameterNodeA == null || parameterNodeB == null) {
-                setNextOutputSocket(NO_OUTPUT);
-                NodeExecutionCompletion.fail(this, client, future,
-                    "Distance Between requires two parameters (coordinate, entity, user, block, or item).");
-                return;
-            }
-            if ((!valueNode.providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.COORDINATE)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.ITEM)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.PLAYER))
-                || (!valueNode.providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.COORDINATE)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.ITEM)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.PLAYER))) {
-                setNextOutputSocket(NO_OUTPUT);
-                NodeExecutionCompletion.fail(this, client, future,
-                    "Distance Between only accepts coordinate, entity, user, block, or item parameters.");
-                return;
-            }
-            Optional<Vec3d> resolvedA = valueNode.resolveDistanceBetweenTarget(parameterNodeA);
-            Optional<Vec3d> resolvedB = valueNode.resolveDistanceBetweenTarget(parameterNodeB);
-            if (resolvedA.isEmpty() || resolvedB.isEmpty()) {
-                setNextOutputSocket(NO_OUTPUT);
-                NodeExecutionCompletion.fail(this, client, future,
-                    "Distance Between could not resolve one or both targets.");
-                return;
-            }
-            double distance = Math.sqrt(resolvedA.get().squaredDistanceTo(resolvedB.get()));
-            values = new HashMap<>();
-            values.put("Distance", Double.toString(distance));
-            valueType = NodeType.PARAM_DISTANCE;
-        } else {
-            values = exportResolvedParameterValues(valueNode);
-            NodeType resolvedValueType = valueNode.getResolvedValueType();
-            if (resolvedValueType != valueNode.getType()) {
-                valueType = resolvedValueType;
-            }
-        }
-        ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
-        boolean stored = startNode != null && manager.setRuntimeVariable(startNode, variableName.trim(), value);
-        if (!stored) {
-            manager.setRuntimeVariableForAnyActiveChain(variableName.trim(), value);
-        }
-        NodeExecutionCompletion.complete(future);
-    }
-
-    private void executeChangeVariableCommand(CompletableFuture<Void> future) {
-        Node variableNode = getAttachedParameter(0);
-
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (variableNode == null) {
-            NodeExecutionCompletion.fail(this, client, future, "Change Variable requires a variable.");
-            return;
-        }
-
-        String variableName = getParameterString(variableNode, "Variable");
-        if (variableName == null || variableName.trim().isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future, "Variable name cannot be empty.");
-            return;
-        }
-
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = getOwningStartNode();
-        if (startNode == null) {
-            NodeExecutionCompletion.fail(this, client, future, "No active node tree available for variable change.");
-            return;
-        }
-
-        ExecutionManager.RuntimeVariable current = manager.getRuntimeVariable(startNode, variableName.trim());
-        if (current == null) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "Variable \"" + variableName.trim() + "\" is not set.");
-            return;
-        }
-
-        NodeType valueType = current.getType();
-        if (valueType == null) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "Variable \"" + variableName.trim() + "\" has no value.");
-            return;
-        }
-
-        Node snapshot = new Node(valueType, 0, 0);
-        snapshot.setSocketsHidden(true);
-        Map<String, String> values = current.getValues();
-        if (values != null && !values.isEmpty()) {
-            snapshot.applyParameterValuesFromMap(values);
-        }
-
-        double amount = getDoubleParameter("Amount", 1.0);
-        String operation = getAmountOperation();
-        if ((operation.equals("/") || operation.equals("%")) && Math.abs(amount) < 1.0E-9) {
-            NodeExecutionCompletion.fail(this, client, future, "Change Variable cannot divide by 0.");
-            return;
-        }
-
-        String[] error = new String[1];
-        if (!applyNumericOperation(snapshot, amount, operation, error)) {
-            NodeExecutionCompletion.fail(this, client, future, error[0] != null ? error[0]
-                : "Change Variable supports variables with a single numeric value.");
-            return;
-        }
-
-        Map<String, String> updatedValues = snapshot.exportParameterValues();
-        ExecutionManager.RuntimeVariable updated = new ExecutionManager.RuntimeVariable(valueType, updatedValues);
-        manager.setRuntimeVariable(startNode, variableName.trim(), updated);
-        NodeExecutionCompletion.complete(future);
-    }
-
-    private enum RemoveListMode {
-        FIRST,
-        LAST,
-        INDEX,
-        VALUE
-    }
-
-    private void executeAddToListCommand(CompletableFuture<Void> future) {
-        Node parameterNode = getAttachedParameter(0);
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (parameterNode == null) {
-            NodeExecutionCompletion.fail(this, client, future, "Add To List requires an entity, player, or item parameter.");
-            return;
-        }
-
-        String listName = getStringParameter("List", "");
-        if (listName == null || listName.trim().isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future, "List name cannot be empty.");
-            return;
-        }
-
-        ListValueEntry listValue = resolveListValueEntry(parameterNode, future);
-        if (future.isDone()) {
-            return;
-        }
-        if (listValue == null || listValue.entry == null || listValue.entry.trim().isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "No matching target found nearby for " + type.getDisplayName() + ".");
-            return;
-        }
-
-        Node startNode = resolveExecutionStartNode();
-        if (startNode == null) {
-            NodeExecutionCompletion.fail(this, client, future, "No active node tree available for list update.");
-            return;
-        }
-
-        ExecutionManager manager = ExecutionManager.getInstance();
-        ExecutionManager.RuntimeList runtimeList = manager.getRuntimeList(startNode, listName.trim());
-        if (runtimeList == null) {
-            runtimeList = new ExecutionManager.RuntimeList(listValue.elementType, Collections.singletonList(listValue.entry));
-            manager.setRuntimeList(startNode, listName.trim(), runtimeList);
-            NodeExecutionCompletion.complete(future);
-            return;
-        }
-
-        if (runtimeList.getElementType() != listValue.elementType) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "List \"" + listName.trim() + "\" stores " + describeListElementType(runtimeList.getElementType())
-                    + " entries and cannot accept " + describeListElementType(listValue.elementType) + ".");
-            return;
-        }
-
-        runtimeList.addEntry(listValue.entry);
-        NodeExecutionCompletion.complete(future);
-    }
-
-    private void executeRemoveFromListCommand(CompletableFuture<Void> future, RemoveListMode mode) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        String listName = getStringParameter("List", "");
-        if (listName == null || listName.trim().isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future, "List name cannot be empty.");
-            return;
-        }
-
-        ExecutionManager.RuntimeList runtimeList = resolveRuntimeList(this);
-        if (runtimeList == null || runtimeList.isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "List \"" + listName.trim() + "\" is empty or missing.");
-            return;
-        }
-
-        String removed = null;
-        if (mode == RemoveListMode.FIRST) {
-            removed = runtimeList.removeFirstEntry();
-        } else if (mode == RemoveListMode.LAST) {
-            removed = runtimeList.removeLastEntry();
-        } else if (mode == RemoveListMode.INDEX) {
-            int index = getIntParameter("Index", 1);
-            if (index <= 0) {
-                NodeExecutionCompletion.fail(this, client, future, "List item index must be 1 or greater.");
-                return;
-            }
-            removed = runtimeList.removeEntry(index - 1);
-            if (removed == null) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "List \"" + listName.trim() + "\" has no item " + index + ".");
-                return;
-            }
-        } else {
-            Node valueNode = getAttachedParameter(0);
-            if (valueNode == null) {
-                NodeExecutionCompletion.fail(this, client, future, "Remove From List requires a value parameter.");
-                return;
-            }
-            int removedCount = 0;
-            while (true) {
-                int matchedIndex = findListEntryIndexByValue(runtimeList, valueNode, future);
-                if (future.isDone()) {
-                    return;
-                }
-                if (matchedIndex < 0) {
-                    break;
-                }
-                removed = runtimeList.removeEntry(matchedIndex);
-                if (removed == null) {
-                    break;
-                }
-                removedCount++;
-            }
-            if (removedCount <= 0) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No matching entry was found in list \"" + listName.trim() + "\".");
-                return;
-            }
-        }
-
-        if (removed == null) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "List \"" + listName.trim() + "\" is empty or missing.");
-            return;
-        }
-        NodeExecutionCompletion.complete(future);
-    }
-
-    private void executeCreateListCommand(CompletableFuture<Void> future) {
-        Node parameterNode = getAttachedParameter(0);
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (parameterNode == null) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "Create List requires an entity, player, item, or GUI parameter.");
-            return;
-        }
-
-        NodeType parameterType = parameterNode.getType();
-        String listName = getStringParameter("List", "");
-        if (listName == null || listName.trim().isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future, "List name cannot be empty.");
-            return;
-        }
-
-        if (client == null || client.player == null || client.world == null) {
-            NodeExecutionCompletion.complete(future);
-            return;
-        }
-
-        ensureCreateListRadiusParameters();
-        boolean useCustomRadius = isCreateListCustomRadiusEnabled();
-        double searchRadius = getCreateListSearchRadius(client);
-
-        if (!isCreateListCollectionTarget(parameterType)) {
-            ListValueEntry singleValue = resolveListValueEntry(parameterNode, future);
-            if (future.isDone()) {
-                return;
-            }
-            if (singleValue == null || singleValue.entry == null || singleValue.entry.trim().isEmpty()) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "Create List could not resolve a value from the attached parameter.");
-                return;
-            }
-
-            ExecutionManager manager = ExecutionManager.getInstance();
-            Node startNode = resolveExecutionStartNode();
-            if (startNode == null) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No active node tree available for list creation.");
-                return;
-            }
-            manager.setRuntimeList(startNode, listName.trim(),
-                new ExecutionManager.RuntimeList(singleValue.elementType, Collections.singletonList(singleValue.entry)));
-            NodeExecutionCompletion.complete(future);
-            return;
-        }
-
-        List<Entity> matches = new ArrayList<>();
-        if (parameterType == NodeType.PARAM_BLOCK) {
-            List<BlockSelection> blocks = resolveBlocksFromParameter(parameterNode);
-            if (blocks.isEmpty()) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No block selected for " + type.getDisplayName() + ".");
-                return;
-            }
-
-            List<BlockPos> positions = findBlocksWithinRange(client, blocks, searchRadius);
-            if (positions.isEmpty()) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No matching blocks found nearby for " + type.getDisplayName() + ".");
-                return;
-            }
-            if (isCreateListBlockCapEnabled() && positions.size() > getCreateListMaxBlocks()) {
-                positions = new ArrayList<>(positions.subList(0, getCreateListMaxBlocks()));
-            }
-
-            List<String> entries = new ArrayList<>();
-            for (BlockPos pos : positions) {
-                if (pos == null) {
-                    continue;
-                }
-                Map<String, String> values = new HashMap<>();
-                values.put("X", Integer.toString(pos.getX()));
-                values.put("Y", Integer.toString(pos.getY()));
-                values.put("Z", Integer.toString(pos.getZ()));
-                values.put("x", Integer.toString(pos.getX()));
-                values.put("y", Integer.toString(pos.getY()));
-                values.put("z", Integer.toString(pos.getZ()));
-                entries.add(serializeListEntryValues(values));
-            }
-
-            ExecutionManager manager = ExecutionManager.getInstance();
-            Node startNode = resolveExecutionStartNode();
-            if (startNode == null) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No active node tree available for list creation.");
-                return;
-            }
-
-            manager.setRuntimeList(startNode, listName.trim(),
-                new ExecutionManager.RuntimeList(NodeType.PARAM_COORDINATE, entries));
-            NodeExecutionCompletion.complete(future);
-            return;
-        } else if (parameterType == NodeType.PARAM_ENTITY) {
-            String state = getEntityParameterState(parameterNode);
-            String rawEntity = getParameterString(parameterNode, "Entity");
-            if (isAnySelectionValue(rawEntity)) {
-                matches.addAll(useCustomRadius
-                    ? findEntitiesWithinRange(client, searchRadius, state)
-                    : findRenderedEntities(client, state));
-            } else {
-                List<String> entityIds = resolveEntityIdsFromParameter(parameterNode);
-                if (entityIds.isEmpty()) {
-                    NodeExecutionCompletion.fail(this, client, future,
-                        "No entity selected for " + type.getDisplayName() + ".");
-                    return;
-                }
-
-                for (String candidateId : entityIds) {
-                    Identifier identifier = Identifier.tryParse(candidateId);
-                    if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
-                        continue;
-                    }
-                    EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-                    matches.addAll(useCustomRadius
-                        ? findEntitiesByTypeWithinRange(client, entityType, searchRadius, state)
-                        : findRenderedEntitiesByType(client, entityType, state));
-                }
-            }
-        } else if (parameterType == NodeType.PARAM_PLAYER) {
-            String playerName = getParameterString(parameterNode, "Player");
-            List<AbstractClientPlayerEntity> nearbyPlayers = useCustomRadius
-                ? findPlayersWithinRange(client, searchRadius)
-                : client.world.getPlayers();
-            if (isAnyPlayerValue(playerName)) {
-                matches.addAll(nearbyPlayers);
-            } else if (isSelfPlayerValue(playerName)) {
-                if (!useCustomRadius || client.player.squaredDistanceTo(client.player) <= searchRadius * searchRadius) {
-                    matches.add(client.player);
-                }
-            } else {
-                for (AbstractClientPlayerEntity player : nearbyPlayers) {
-                    if (player == null) {
-                        continue;
-                    }
-                    if (playerName != null && playerName.equalsIgnoreCase(
-                        GameProfileCompatibilityBridge.getName(player.getGameProfile()))) {
-                        matches.add(player);
-                    }
-                }
-            }
-
-            if (matches.isEmpty()) {
-                String message;
-                if (isAnyPlayerValue(playerName)) {
-                    message = "No players nearby for " + type.getDisplayName() + ".";
-                } else if (isSelfPlayerValue(playerName)) {
-                    message = "Local player unavailable for " + type.getDisplayName() + ".";
-                } else {
-                    message = "Player \"" + playerName + "\" is not nearby for " + type.getDisplayName() + ".";
-                }
-                NodeExecutionCompletion.fail(this, client, future, message);
-                return;
-            }
-        } else if (parameterType == NodeType.PARAM_ITEM) {
-            List<String> itemIds = resolveItemIdsFromParameter(parameterNode);
-            if (itemIds.isEmpty()) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No item selected for " + type.getDisplayName() + ".");
-                return;
-            }
-
-            for (String candidateId : itemIds) {
-                Identifier identifier = Identifier.tryParse(candidateId);
-                if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-                    continue;
-                }
-                Item item = Registries.ITEM.get(identifier);
-                matches.addAll(useCustomRadius
-                    ? findItemsWithinRange(client, item, searchRadius)
-                    : findRenderedItemsByType(client, item));
-            }
-        } else if (parameterType == NodeType.PARAM_GUI) {
-            ScreenHandler handler = client.player.currentScreenHandler;
-            if (handler == null) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No GUI is open for " + type.getDisplayName() + ".");
-                return;
-            }
-
-            GuiSelectionMode guiMode = GuiSelectionMode.fromId(getParameterString(parameterNode, "GUI"));
-            List<String> entries = collectGuiListEntries(handler, guiMode);
-            if (entries.isEmpty()) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No matching GUI slots found for " + type.getDisplayName() + ".");
-                return;
-            }
-
-            ExecutionManager manager = ExecutionManager.getInstance();
-            Node startNode = resolveExecutionStartNode();
-            if (startNode == null) {
-                NodeExecutionCompletion.fail(this, client, future,
-                    "No active node tree available for list creation.");
-                return;
-            }
-
-            manager.setRuntimeList(startNode, listName.trim(),
-                new ExecutionManager.RuntimeList(parameterType, entries));
-            NodeExecutionCompletion.complete(future);
-            return;
-        }
-
-        if (matches.isEmpty()) {
-            // Fallback for entity lists: keep configured entity IDs so downstream LIST_ITEM
-            // can resolve nearest matching entities at use time.
-            if (parameterType == NodeType.PARAM_ENTITY) {
-                List<String> configuredEntityIds = resolveEntityIdsFromParameter(parameterNode);
-                if (!configuredEntityIds.isEmpty()) {
-                    ExecutionManager manager = ExecutionManager.getInstance();
-                    Node startNode = resolveExecutionStartNode();
-                    if (startNode != null) {
-                        manager.setRuntimeList(startNode, listName.trim(),
-                            new ExecutionManager.RuntimeList(parameterType, configuredEntityIds));
-                        NodeExecutionCompletion.complete(future);
-                        return;
-                    }
-                }
-            }
-
-            NodeExecutionCompletion.fail(this, client, future,
-                "No matching targets found nearby for " + type.getDisplayName() + ".");
-            return;
-        }
-
-        matches.sort(Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)));
-        List<String> entries = new ArrayList<>();
-        for (Entity entity : matches) {
-            if (entity != null && !entity.isRemoved()) {
-                entries.add(entity.getUuidAsString());
-            }
-        }
-
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = resolveExecutionStartNode();
-        if (startNode == null) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "No active node tree available for list creation.");
-            return;
-        }
-
-        manager.setRuntimeList(startNode, listName.trim(),
-            new ExecutionManager.RuntimeList(parameterType, entries));
-        NodeExecutionCompletion.complete(future);
-    }
-
-    static boolean isCreateListCollectionTarget(NodeType parameterType) {
-        return parameterType == NodeType.PARAM_BLOCK
-            || parameterType == NodeType.PARAM_ENTITY
-            || parameterType == NodeType.PARAM_PLAYER
-            || parameterType == NodeType.PARAM_ITEM
-            || parameterType == NodeType.PARAM_GUI;
-    }
-
-    private List<String> collectGuiListEntries(ScreenHandler handler, GuiSelectionMode guiMode) {
-        if (handler == null) {
-            return Collections.emptyList();
-        }
-        List<String> entries = new ArrayList<>();
-        for (int slotIndex = 0; slotIndex < handler.slots.size(); slotIndex++) {
-            Slot slot = handler.getSlot(slotIndex);
-            if (slot == null) {
-                continue;
-            }
-            boolean playerSlot = slot.inventory instanceof PlayerInventory;
-            if (guiMode == GuiSelectionMode.PLAYER_INVENTORY && !playerSlot) {
-                continue;
-            }
-            if (guiMode != null && guiMode != GuiSelectionMode.PLAYER_INVENTORY && playerSlot) {
-                continue;
-            }
-            int storedSlotIndex = playerSlot ? slot.getIndex() : slotIndex;
-            entries.add((playerSlot ? LIST_SLOT_PLAYER_PREFIX : LIST_SLOT_GUI_PREFIX) + storedSlotIndex);
-        }
-        return entries;
-    }
-
-    private List<Entity> findRenderedEntities(net.minecraft.client.MinecraftClient client, String state) {
-        if (client == null || client.player == null || client.world == null) {
-            return Collections.emptyList();
-        }
-        double renderDistance = getCurrentRenderDistanceBlocks(client);
-        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
-        return client.world.getOtherEntities(
-            client.player,
-            searchBox,
-            entity -> entity != null
-                && entity.isAlive()
-                && EntityStateOptions.matchesState(entity, state)
-        );
-    }
-
-    private List<Entity> findEntitiesWithinRange(net.minecraft.client.MinecraftClient client, double range, String state) {
-        if (client == null || client.player == null || client.world == null) {
-            return Collections.emptyList();
-        }
-        double searchRadius = Math.max(1.0, range);
-        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-        return client.world.getOtherEntities(
-            client.player,
-            searchBox,
-            entity -> entity != null
-                && entity.isAlive()
-                && EntityStateOptions.matchesState(entity, state)
-        );
-    }
-
-    private List<Entity> findRenderedEntitiesByType(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, String state) {
-        if (client == null || client.player == null || client.world == null || entityType == null) {
-            return Collections.emptyList();
-        }
-        double renderDistance = getCurrentRenderDistanceBlocks(client);
-        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
-        return client.world.getOtherEntities(
-            client.player,
-            searchBox,
-            entity -> entity != null
-                && entity.isAlive()
-                && entity.getType() == entityType
-                && EntityStateOptions.matchesState(entity, state)
-        );
-    }
-
-    private List<Entity> findEntitiesByTypeWithinRange(net.minecraft.client.MinecraftClient client, EntityType<?> entityType,
-                                                       double range, String state) {
-        if (client == null || client.player == null || client.world == null || entityType == null) {
-            return Collections.emptyList();
-        }
-        double searchRadius = Math.max(1.0, range);
-        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-        return client.world.getOtherEntities(
-            client.player,
-            searchBox,
-            entity -> entity != null
-                && entity.isAlive()
-                && entity.getType() == entityType
-                && EntityStateOptions.matchesState(entity, state)
-        );
-    }
-
-    private List<ItemEntity> findRenderedItemsByType(net.minecraft.client.MinecraftClient client, Item item) {
-        if (client == null || client.player == null || client.world == null || item == null) {
-            return Collections.emptyList();
-        }
-        double renderDistance = getCurrentRenderDistanceBlocks(client);
-        Box searchBox = client.player.getBoundingBox().expand(renderDistance);
-        return client.world.getEntitiesByClass(
-            ItemEntity.class,
-            searchBox,
-            entity -> entity != null
-                && !entity.isRemoved()
-                && !entity.getStack().isEmpty()
-                && entity.getStack().isOf(item)
-        );
-    }
-
-    private List<ItemEntity> findItemsWithinRange(net.minecraft.client.MinecraftClient client, Item item, double range) {
-        if (client == null || client.player == null || client.world == null || item == null) {
-            return Collections.emptyList();
-        }
-        double searchRadius = Math.max(1.0, range);
-        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-        return client.world.getEntitiesByClass(
-            ItemEntity.class,
-            searchBox,
-            entity -> entity != null
-                && !entity.isRemoved()
-                && !entity.getStack().isEmpty()
-                && entity.getStack().isOf(item)
-        );
-    }
-
-    private List<AbstractClientPlayerEntity> findPlayersWithinRange(net.minecraft.client.MinecraftClient client, double range) {
-        if (client == null || client.player == null || client.world == null) {
-            return Collections.emptyList();
-        }
-        double maxDistanceSquared = Math.max(1.0, range);
-        maxDistanceSquared *= maxDistanceSquared;
-        List<AbstractClientPlayerEntity> players = new ArrayList<>();
-        for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
-            if (player == null || player.isRemoved()) {
-                continue;
-            }
-            if (player.squaredDistanceTo(client.player) <= maxDistanceSquared) {
-                players.add(player);
-            }
-        }
-        return players;
-    }
-
-    private double getCurrentRenderDistanceBlocks(net.minecraft.client.MinecraftClient client) {
-        if (client == null || client.options == null) {
-            return 16.0;
-        }
-        return Math.max(16.0, client.options.getViewDistance().getValue() * 16.0);
-    }
-
-    private boolean isCreateListCustomRadiusEnabled() {
-        ensureCreateListRadiusParameters();
-        return getBooleanParameter("UseRadius", false);
-    }
-
-    private boolean isCreateListBlockCapEnabled() {
-        ensureCreateListRadiusParameters();
-        return getBooleanParameter("UseBlockCap", false);
-    }
-
-    private double getCreateListSearchRadius(net.minecraft.client.MinecraftClient client) {
-        ensureCreateListRadiusParameters();
-        if (!isCreateListCustomRadiusEnabled()) {
-            return getCurrentRenderDistanceBlocks(client);
-        }
-        return Math.max(1.0, getDoubleParameter("Radius", getCurrentRenderDistanceBlocks(client)));
-    }
-
-    private int getCreateListMaxBlocks() {
-        ensureCreateListRadiusParameters();
-        return Math.max(1, getIntParameter("MaxBlocks", 256));
-    }
-
-    static final class ListValueEntry {
-        final NodeType elementType;
-        final String entry;
-
-        ListValueEntry(NodeType elementType, String entry) {
-            this.elementType = elementType;
-            this.entry = entry;
-        }
-    }
-
-    private ListValueEntry resolveListValueEntry(Node parameterNode, CompletableFuture<Void> future) {
-        if (parameterNode == null) {
-            return null;
-        }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
-            if (future != null && !future.isDone()) {
-                future.complete(null);
-            }
-            return null;
-        }
-
-        if (parameterNode.getType() == NodeType.VARIABLE) {
-            parameterNode = resolveVariableValueNode(parameterNode, 0, future);
-            if (parameterNode == null) {
-                return null;
-            }
-        }
-
-        NodeType parameterType = parameterNode.getType();
-        NodeBehaviorDefinition behaviorDefinition = NodeBehaviorDefinitionRegistry.get(parameterType);
-        if (behaviorDefinition != null && behaviorDefinition.hasListEntryBehavior()) {
-            return behaviorDefinition.resolveListValueEntry(this, parameterNode, client);
-        }
-
-        NodeType resolvedType = parameterNode.getResolvedValueType();
-        Map<String, String> exported = exportResolvedParameterValues(parameterNode);
-        if (resolvedType == null || exported == null || exported.isEmpty()) {
-            if (client != null) {
-                sendNodeErrorMessage(client, "No value available to add to the list.");
-            }
-            if (future != null && !future.isDone()) {
-                future.complete(null);
-            }
-            return null;
-        }
-        return new ListValueEntry(resolvedType, serializeListEntryValues(exported));
-    }
-
-    private String describeListElementType(NodeType type) {
-        if (type == NodeType.PARAM_COORDINATE) {
-            return "coordinate";
-        }
-        if (type == NodeType.PARAM_ENTITY) {
-            return "entity";
-        }
-        if (type == NodeType.PARAM_PLAYER) {
-            return "player";
-        }
-        if (type == NodeType.PARAM_ITEM) {
-            return "item";
-        }
-        if (type == NodeType.PARAM_GUI) {
-            return "GUI";
-        }
-        return "unknown";
-    }
-
-    private String serializeListEntryValues(Map<String, String> values) {
-        return LIST_ENTRY_SERIALIZED_PREFIX + LIST_ENTRY_GSON.toJson(values == null ? Collections.emptyMap() : values);
-    }
-
-    private Map<String, String> exportResolvedParameterValues(Node source) {
-        if (source == null) {
-            return Collections.emptyMap();
-        }
-        Map<String, String> values = source.exportParameterValues();
-        if (values == null || values.isEmpty()) {
-            return values;
-        }
-        for (NodeParameter parameter : source.getParameters()) {
-            if (parameter == null) {
-                continue;
-            }
-            String key = parameter.getName();
-            if (key == null || key.isEmpty()) {
-                continue;
-            }
-            String resolvedValue = getParameterString(source, key);
-            if (resolvedValue == null) {
-                continue;
-            }
-            values.put(key, resolvedValue);
-            values.put(normalizeParameterKey(key), resolvedValue);
-        }
-        return values;
-    }
-
-    private Map<String, String> deserializeListEntryValues(String entry) {
-        if (entry == null || !entry.startsWith(LIST_ENTRY_SERIALIZED_PREFIX)) {
-            return Collections.emptyMap();
-        }
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, String> parsed = LIST_ENTRY_GSON.fromJson(
-                entry.substring(LIST_ENTRY_SERIALIZED_PREFIX.length()), Map.class);
-            return parsed == null ? Collections.emptyMap() : parsed;
-        } catch (Exception ignored) {
-            return Collections.emptyMap();
-        }
-    }
-
-    private int findListEntryIndexByValue(ExecutionManager.RuntimeList list, Node valueNode, CompletableFuture<Void> future) {
-        if (list == null || valueNode == null) {
-            return -1;
-        }
-        Node comparisonNode = valueNode;
-        if (comparisonNode.getType() == NodeType.VARIABLE) {
-            comparisonNode = resolveVariableValueNode(comparisonNode, 0, future);
-            if (comparisonNode == null) {
-                return -1;
-            }
-        }
-        for (int i = 0; i < list.size(); i++) {
-            Node entryNode = buildListEntrySnapshot(list, i + 1, false, null, future);
-            if (entryNode == null) {
-                continue;
-            }
-            Optional<Boolean> equals = compareParameterNodes(entryNode, comparisonNode);
-            if (equals.orElse(false)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private Node buildListEntrySnapshot(ExecutionManager.RuntimeList list, int index, boolean reportErrors,
-                                        RuntimeParameterData data, CompletableFuture<Void> future) {
-        if (list == null || index <= 0 || index > list.size()) {
-            return null;
-        }
-        String entry = list.getEntry(index - 1);
-        if (entry == null || entry.isEmpty()) {
-            return null;
-        }
-
-        if (entry.startsWith(LIST_ENTRY_SERIALIZED_PREFIX)) {
-            NodeType elementType = list.getElementType();
-            if (elementType == null) {
-                return null;
-            }
-            Map<String, String> values = deserializeListEntryValues(entry);
-            if (values.isEmpty()) {
-                return null;
-            }
-            Node snapshot = new Node(elementType, 0, 0);
-            snapshot.setSocketsHidden(true);
-            snapshot.applyParameterValuesFromMap(values);
-            if (data != null) {
-                String x = values.get("X");
-                String y = values.get("Y");
-                String z = values.get("Z");
-                Integer xi = parseIntOrNull(x);
-                Integer yi = parseIntOrNull(y);
-                Integer zi = parseIntOrNull(z);
-                if (xi != null && yi != null && zi != null) {
-                    data.targetBlockPos = new BlockPos(xi, yi, zi);
-                    data.targetVector = Vec3d.ofCenter(data.targetBlockPos);
-                }
-            }
-            return snapshot;
-        }
-
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        NodeType elementType = list.getElementType();
-        if (elementType == NodeType.PARAM_ENTITY || elementType == NodeType.PARAM_PLAYER || elementType == NodeType.PARAM_ITEM) {
-            Node snapshot = new Node(elementType, 0, 0);
-            snapshot.setSocketsHidden(true);
-            try {
-                Entity resolved = null;
-                try {
-                    java.util.UUID uuid = java.util.UUID.fromString(entry);
-                    if (client != null) {
-                        resolved = resolveEntityByUuid(client, uuid);
-                    }
-                } catch (IllegalArgumentException ignored) {
-                }
-
-                if (elementType == NodeType.PARAM_ENTITY) {
-                    if (resolved != null) {
-                        Identifier typeId = Registries.ENTITY_TYPE.getId(resolved.getType());
-                        if (typeId != null) {
-                            snapshot.setParameterValueAndPropagate("Entity", typeId.toString());
-                        }
-                        String state = EntityStateOptions.describe(resolved);
-                        if (state != null) {
-                            snapshot.setParameterValueAndPropagate("State", state);
-                        }
-                        if (data != null) {
-                            data.targetEntity = resolved;
-                            data.targetBlockPos = resolved.getBlockPos();
-                        }
-                    } else {
-                        snapshot.setParameterValueAndPropagate("Entity", entry);
-                    }
-                    return snapshot;
-                }
-
-                if (elementType == NodeType.PARAM_PLAYER) {
-                    if (resolved instanceof AbstractClientPlayerEntity player) {
-                        String name = GameProfileCompatibilityBridge.getName(player.getGameProfile());
-                        if (name != null) {
-                            snapshot.setParameterValueAndPropagate("Player", name);
-                        }
-                        if (data != null) {
-                            data.targetEntity = player;
-                            data.targetBlockPos = player.getBlockPos();
-                        }
-                        return snapshot;
-                    }
-                    return null;
-                }
-
-                if (elementType == NodeType.PARAM_ITEM) {
-                    if (resolved instanceof ItemEntity itemEntity) {
-                        ItemStack stack = itemEntity.getStack();
-                        if (stack != null && !stack.isEmpty()) {
-                            Identifier itemId = Registries.ITEM.getId(stack.getItem());
-                            if (itemId != null) {
-                                snapshot.setParameterValueAndPropagate("Item", itemId.toString());
-                            }
-                            if (data != null) {
-                                data.targetEntity = itemEntity;
-                                data.targetBlockPos = itemEntity.getBlockPos();
-                            }
-                            return snapshot;
-                        }
-                    }
-                    return null;
-                }
-            } catch (Exception ignored) {
-                return null;
-            }
-        }
-
-        if (elementType == NodeType.PARAM_GUI) {
-            ListSlotEntry slotEntry = parseListSlotEntry(entry);
-            if (slotEntry == null) {
-                return null;
-            }
-            Node snapshot = new Node(NodeType.PARAM_INVENTORY_SLOT, 0, 0);
-            snapshot.setSocketsHidden(true);
-            snapshot.setParameterValueAndPropagate("Slot", Integer.toString(slotEntry.slotIndex));
-            snapshot.setParameterValueAndPropagate(
-                "Mode",
-                InventorySlotModeHelper.buildStoredModeValue("player_inventory", slotEntry.selectionType == SlotSelectionType.PLAYER_INVENTORY)
-            );
-            if (data != null) {
-                data.slotIndex = slotEntry.slotIndex;
-                data.slotSelectionType = slotEntry.selectionType;
-            }
-            return snapshot;
-        }
-        return null;
-    }
-
-    private Node resolveListItemValueNode(Node listNode, CompletableFuture<Void> future, boolean reportErrors, RuntimeParameterData data) {
-        if (listNode == null) {
-            return null;
-        }
-        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
-        String listName = getParameterString(listNode, "List");
-        String safeListName = listName == null ? "" : listName.trim();
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (list == null || list.isEmpty()) {
-            if (reportErrors && client != null) {
-                sendNodeErrorMessage(client, "List \"" + safeListName + "\" is empty or missing.");
-            }
-            if (reportErrors && future != null && !future.isDone()) {
-                future.complete(null);
-            }
-            return null;
-        }
-
-        int index = parseNodeInt(listNode, "Index", 1);
-        if (index <= 0 || index > list.size()) {
-            if (reportErrors && client != null) {
-                sendNodeErrorMessage(client, "List \"" + safeListName + "\" has no item " + index + ".");
-            }
-            if (reportErrors && future != null && !future.isDone()) {
-                future.complete(null);
-            }
-            return null;
-        }
-
-        return buildListEntrySnapshot(list, index, reportErrors, data, future);
-    }
-
-    private boolean applyNumericOperation(Node snapshot, double amount, String operation, String[] error) {
-        if (snapshot == null) {
-            return false;
-        }
-        NodeParameter numericParam = null;
-        for (NodeParameter param : snapshot.getParameters()) {
-            if (param == null) {
-                continue;
-            }
-            if (param.getType() == ParameterType.INTEGER || param.getType() == ParameterType.DOUBLE) {
-                if (numericParam != null) {
-                    return false;
-                }
-                numericParam = param;
-            }
-        }
-        if (numericParam == null) {
-            return false;
-        }
-        String op = normalizeOperation(operation);
-        if (numericParam.getType() == ParameterType.INTEGER) {
-            if (!isWholeNumber(amount)) {
-                if (error != null && error.length > 0) {
-                    error[0] = "Change Variable requires a whole number for integer values.";
-                }
-                return false;
-            }
-            int step = (int) Math.round(amount);
-            int current = numericParam.getIntValue();
-            switch (op) {
-                case "+":
-                    numericParam.setIntValue(current + step);
-                    break;
-                case "-":
-                    numericParam.setIntValue(current - step);
-                    break;
-                case "*":
-                    numericParam.setIntValue(current * step);
-                    break;
-                case "/":
-                    if (step == 0) {
-                        if (error != null && error.length > 0) {
-                            error[0] = "Change Variable cannot divide by 0.";
-                        }
-                        return false;
-                    }
-                    numericParam.setIntValue(current / step);
-                    break;
-                case "%":
-                    if (step == 0) {
-                        if (error != null && error.length > 0) {
-                            error[0] = "Change Variable cannot divide by 0.";
-                        }
-                        return false;
-                    }
-                    numericParam.setIntValue(current % step);
-                    break;
-                default:
-                    numericParam.setIntValue(current + step);
-                    break;
-            }
-        } else {
-            double current = numericParam.getDoubleValue();
-            switch (op) {
-                case "+":
-                    numericParam.setDoubleValue(current + amount);
-                    break;
-                case "-":
-                    numericParam.setDoubleValue(current - amount);
-                    break;
-                case "*":
-                    numericParam.setDoubleValue(current * amount);
-                    break;
-                case "/":
-                    if (Math.abs(amount) < 1.0E-9) {
-                        if (error != null && error.length > 0) {
-                            error[0] = "Change Variable cannot divide by 0.";
-                        }
-                        return false;
-                    }
-                    numericParam.setDoubleValue(current / amount);
-                    break;
-                case "%":
-                    if (Math.abs(amount) < 1.0E-9) {
-                        if (error != null && error.length > 0) {
-                            error[0] = "Change Variable cannot divide by 0.";
-                        }
-                        return false;
-                    }
-                    numericParam.setDoubleValue(current % amount);
-                    break;
-                default:
-                    numericParam.setDoubleValue(current + amount);
-                    break;
-            }
-        }
-        return true;
-    }
-
-    private boolean isWholeNumber(double value) {
-        return Math.abs(value - Math.rint(value)) < 1.0E-9;
-    }
-
     private static Method resolveClientWorldGetEntityByUuid() {
         try {
             Method method = net.minecraft.client.world.ClientWorld.class.getMethod("getEntity", java.util.UUID.class);
@@ -7005,6 +5897,54 @@ public class Node {
         return new NodeEntityActionCommandExecutor(this);
     }
 
+    private NodeVariableListCommandExecutor variableListCommandExecutor() {
+        return new NodeVariableListCommandExecutor(this);
+    }
+
+    static final class ListValueEntry {
+        final NodeType elementType;
+        final String entry;
+
+        ListValueEntry(NodeType elementType, String entry) {
+            this.elementType = elementType;
+            this.entry = entry;
+        }
+    }
+
+    private enum RemoveListMode {
+        FIRST,
+        LAST,
+        INDEX,
+        VALUE
+    }
+
+    private void executeSetVariableCommand(CompletableFuture<Void> future) {
+        variableListCommandExecutor().executeSetVariableCommand(future);
+    }
+
+    private void executeChangeVariableCommand(CompletableFuture<Void> future) {
+        variableListCommandExecutor().executeChangeVariableCommand(future);
+    }
+
+    private void executeAddToListCommand(CompletableFuture<Void> future) {
+        variableListCommandExecutor().executeAddToListCommand(future);
+    }
+
+    private void executeRemoveFromListCommand(CompletableFuture<Void> future, RemoveListMode mode) {
+        variableListCommandExecutor().executeRemoveFromListCommand(
+            future,
+            NodeVariableListCommandExecutor.RemoveListMode.valueOf(mode.name())
+        );
+    }
+
+    private void executeCreateListCommand(CompletableFuture<Void> future) {
+        variableListCommandExecutor().executeCreateListCommand(future);
+    }
+
+    Node resolveListItemValueNode(Node listNode, CompletableFuture<Void> future, boolean reportErrors, RuntimeParameterData data) {
+        return variableListCommandExecutor().resolveListItemValueNode(listNode, future, reportErrors, data);
+    }
+
     private void executeLookCommand(CompletableFuture<Void> future) {
         movementCommandExecutor().executeLookCommand(future);
     }
@@ -7041,12 +5981,98 @@ public class Node {
         entityActionCommandExecutor().executeInteractCommand(future);
     }
 
+    private void executeBreakCommand(CompletableFuture<Void> future) {
+        entityActionCommandExecutor().executeBreakCommand(future);
+    }
+
+    private void executeTradeCommand(CompletableFuture<Void> future) {
+        entityActionCommandExecutor().executeTradeCommand(future);
+    }
+
+    private void executeSwingCommand(CompletableFuture<Void> future) {
+        entityActionCommandExecutor().executeSwingCommand(future);
+    }
+
+    private void executeEquipArmorCommand(CompletableFuture<Void> future) {
+        entityActionCommandExecutor().executeEquipArmorCommand(future);
+    }
+
+    private void executeEquipHandCommand(CompletableFuture<Void> future) {
+        entityActionCommandExecutor().executeEquipHandCommand(future);
+    }
+
+    boolean canAffordTrade(net.minecraft.entity.player.PlayerEntity player,
+                           net.minecraft.screen.MerchantScreenHandler screenHandler,
+                           net.minecraft.village.TradeOffer offer) {
+        return entityActionCommandExecutor().canAffordTrade(player, screenHandler, offer);
+    }
+
+    static int getRequiredFirstBuyCountForTests(net.minecraft.village.TradeOffer offer) {
+        return NodeEntityActionCommandExecutor.getRequiredFirstBuyCountForTests(offer);
+    }
+
+    static int getRequiredSecondBuyCountForTests(net.minecraft.village.TradeOffer offer) {
+        return NodeEntityActionCommandExecutor.getRequiredSecondBuyCountForTests(offer);
+    }
+
+    static int resolveRequiredTradeCountForTests(int displayedCount, int originalCount) {
+        return NodeEntityActionCommandExecutor.resolveRequiredTradeCountForTests(displayedCount, originalCount);
+    }
+
+    static boolean isCreateListCollectionTarget(NodeType parameterType) {
+        return NodeVariableListCommandExecutor.isCreateListCollectionTarget(parameterType);
+    }
+
+    private static Method resolveDoAttackMethod() {
+        return NodeEntityActionCommandExecutor.resolveDoAttackMethod();
+    }
+
+    private static Method resolveSyncSelectedSlotMethod() {
+        return NodeEntityActionCommandExecutor.resolveSyncSelectedSlotMethod();
+    }
+
+    static void syncSelectedHotbarSlot(MinecraftClient client) {
+        NodeEntityActionCommandExecutor.syncSelectedHotbarSlot(client);
+    }
+
+    static void performMainHandAttack(MinecraftClient client) {
+        NodeEntityActionCommandExecutor.performMainHandAttack(client);
+    }
+
     private void executeUseCommand(CompletableFuture<Void> future) {
         worldActionCommandExecutor().executeUseCommand(future);
     }
 
     private void executePlaceHandCommand(CompletableFuture<Void> future) {
         worldActionCommandExecutor().executePlaceHandCommand(future);
+    }
+
+    private void executePlaceCommand(CompletableFuture<Void> future) {
+        worldActionCommandExecutor().executePlaceCommand(future);
+    }
+
+    private void executeBuildCommand(CompletableFuture<Void> future) {
+        worldActionCommandExecutor().executeBuildCommand(future);
+    }
+
+    private void executeExploreCommand(CompletableFuture<Void> future) {
+        worldActionCommandExecutor().executeExploreCommand(future);
+    }
+
+    private void executeFollowCommand(CompletableFuture<Void> future) {
+        worldActionCommandExecutor().executeFollowCommand(future);
+    }
+
+    boolean parameterProvidesCoordinates(Node parameterNode) {
+        return worldActionCommandExecutor().parameterProvidesCoordinates(parameterNode);
+    }
+
+    boolean parameterProvidesCoordinates(NodeType parameterType) {
+        return worldActionCommandExecutor().parameterProvidesCoordinates(parameterType);
+    }
+
+    boolean blockParameterProvidesPlacementCoordinates(Node parameterNode) {
+        return worldActionCommandExecutor().blockParameterProvidesPlacementCoordinates(parameterNode);
     }
 
     boolean ensureStackSelectedInMainHand(net.minecraft.client.MinecraftClient client,
@@ -7968,612 +6994,6 @@ public class Node {
             this.produced = produced;
             this.errorMessage = errorMessage;
         }
-    }
-
-    private void executePlaceCommand(CompletableFuture<Void> future) {
-        Node blockParameterNode = getAttachedParameter(0);
-        Node coordinateParameterNode = getAttachedParameter(1);
-        boolean coordinateHandledByBlockParam = coordinateParameterNode == null && parameterProvidesCoordinates(blockParameterNode);
-
-        if (blockParameterNode != null) {
-            EnumSet<ParameterUsage> blockUsages = coordinateHandledByBlockParam
-                ? EnumSet.of(ParameterUsage.POSITION)
-                : EnumSet.noneOf(ParameterUsage.class);
-            if (preprocessParameterSlot(0, blockUsages, future, true) == ParameterHandlingResult.COMPLETE) {
-                return;
-            }
-        } else {
-            runtimeState.runtimeParameterData = null;
-        }
-
-        if (coordinateParameterNode != null) {
-            NodeType coordType = coordinateParameterNode.getType();
-            EnumSet<ParameterUsage> coordinateUsages;
-            if (coordType == NodeType.PARAM_ROTATION
-                || coordType == NodeType.PARAM_DIRECTION
-                || coordType == NodeType.PARAM_BLOCK_FACE) {
-                coordinateUsages = EnumSet.of(ParameterUsage.LOOK_ORIENTATION);
-            } else if (parameterProvidesCoordinates(coordinateParameterNode)) {
-                coordinateUsages = EnumSet.of(ParameterUsage.POSITION);
-            } else {
-                coordinateUsages = EnumSet.noneOf(ParameterUsage.class);
-            }
-            if (preprocessParameterSlot(1, coordinateUsages, future, blockParameterNode == null) == ParameterHandlingResult.COMPLETE) {
-                return;
-            }
-        }
-
-        boolean inheritPlacementCoordinates = coordinateHandledByBlockParam
-            || (coordinateParameterNode != null
-                && parameterProvidesCoordinates(coordinateParameterNode)
-                && coordinateParameterNode.getType() != NodeType.PARAM_ROTATION
-                && coordinateParameterNode.getType() != NodeType.PARAM_DIRECTION
-                && coordinateParameterNode.getType() != NodeType.PARAM_BLOCK_FACE);
-        String block = "stone";
-        int x = 0, y = 0, z = 0;
-
-        NodeParameter blockParam = getParameter("Block");
-        NodeParameter xParam = getParameter("X");
-        NodeParameter yParam = getParameter("Y");
-        NodeParameter zParam = getParameter("Z");
-        Hand hand = resolveHand(getParameter("Hand"), Hand.MAIN_HAND);
-
-        if (blockParam != null) block = blockParam.getStringValue();
-        if (xParam != null) x = xParam.getIntValue();
-        if (yParam != null) y = yParam.getIntValue();
-        if (zParam != null) z = zParam.getIntValue();
-
-        RuntimeParameterData parameterData = runtimeState.runtimeParameterData;
-        if (parameterData != null) {
-            if (parameterData.targetBlockId != null && !parameterData.targetBlockId.isEmpty()) {
-                block = parameterData.targetBlockId;
-                setParameterValueAndPropagate("Block", block);
-            }
-            if (inheritPlacementCoordinates && parameterData.targetBlockPos != null) {
-                BlockPos resolved = parameterData.targetBlockPos;
-                x = resolved.getX();
-                y = resolved.getY();
-                z = resolved.getZ();
-            }
-        }
-
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.player.networkHandler == null || client.interactionManager == null || client.world == null) {
-            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
-            return;
-        }
-
-        if (blockParameterNode != null && blockParameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
-            String resolvedBlockId = resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
-            if (resolvedBlockId == null || resolvedBlockId.isEmpty()) {
-                if (future != null && !future.isDone()) {
-                    future.complete(null);
-                }
-                return;
-            }
-            block = resolvedBlockId;
-            setParameterValueAndPropagate("Block", block);
-        }
-
-        String originalBlockId = block;
-        if (isAnySelectionValue(originalBlockId)) {
-            String anyBlock = resolveAnyBlockId(client, hand);
-            if (anyBlock != null && !anyBlock.isEmpty()) {
-                block = anyBlock;
-                originalBlockId = block;
-                setParameterValueAndPropagate("Block", block);
-            }
-        }
-        block = normalizeResourceId(block, "minecraft");
-        if (!Objects.equals(originalBlockId, block)) {
-            setParameterValueAndPropagate("Block", block);
-        }
-
-        if (block == null || block.isEmpty() || isAnySelectionValue(block)) {
-            sendNodeErrorMessage(client, "Cannot place block: no block selected.");
-            future.complete(null);
-            return;
-        }
-
-        if (blockParameterNode != null && isBlockPlacementParameter(blockParameterNode)) {
-            try {
-                ensureBlockInHand(client, block, Hand.MAIN_HAND);
-            } catch (PlacementFailure e) {
-                sendNodeErrorMessage(client, e.getMessage());
-                future.complete(null);
-                return;
-            }
-        }
-
-        if (!inheritPlacementCoordinates
-            && coordinateParameterNode != null
-            && (coordinateParameterNode.getType() == NodeType.PARAM_ROTATION
-                || coordinateParameterNode.getType() == NodeType.PARAM_DIRECTION
-                || coordinateParameterNode.getType() == NodeType.PARAM_BLOCK_FACE)) {
-            try {
-                float yaw = parameterData != null && parameterData.resolvedYaw != null
-                    ? parameterData.resolvedYaw
-                    : client.player.getYaw();
-                float pitch = parameterData != null && parameterData.resolvedPitch != null
-                    ? parameterData.resolvedPitch
-                    : client.player.getPitch();
-                double reachDistance = Math.sqrt(getPlacementReachSquared(client));
-                double lookDistance = parameterData != null && parameterData.resolvedLookDistance != null
-                    ? parameterData.resolvedLookDistance
-                    : reachDistance;
-                BlockHitResult hit = supplyFromClient(client, () ->
-                    raycastBlockFromOrientation(client, yaw, pitch, lookDistance)
-                );
-                if (hit != null) {
-                    runOnClientThread(client, () -> {
-                        client.player.setYaw(yaw);
-                        client.player.setPitch(pitch);
-                        client.player.setHeadYaw(yaw);
-                        ActionResult result = client.interactionManager.interactBlock(client.player, hand, hit);
-                        if (result.isAccepted()) {
-                            client.player.swingHand(hand);
-                            if (client.player.networkHandler != null) {
-                                client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
-                            }
-                        }
-                    });
-                }
-                future.complete(null);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                future.completeExceptionally(e);
-            }
-            return;
-        }
-
-
-        BlockPos targetPos = new BlockPos(x, y, z);
-        if (parameterData != null) {
-            parameterData.targetBlockPos = targetPos;
-            if (parameterData.targetBlockId == null || parameterData.targetBlockId.isEmpty()) {
-                parameterData.targetBlockId = block;
-            }
-        }
-        double reachSquared = getPlacementReachSquared(client);
-
-        Block desiredBlock = resolveBlockForPlacement(block);
-        if (desiredBlock == null) {
-            sendNodeErrorMessage(client, "Cannot place block: unknown block \"" + block + "\".");
-            future.complete(null);
-            return;
-        }
-
-        final BlockPos placementPos = targetPos;
-        final Block resolvedBlock = desiredBlock;
-        final String resolvedBlockId = block;
-        final Hand resolvedHand = hand;
-        final double resolvedReachSquared = reachSquared;
-
-        new Thread(() -> {
-            try {
-                BlockHitResult placementHitResult = supplyFromClient(client, () ->
-                    preparePlacementHitResult(client, placementPos, resolvedBlockId, resolvedHand, resolvedReachSquared)
-                );
-                runOnClientThread(client, () -> {
-                    if (client.world.getBlockState(placementPos).isOf(resolvedBlock)) {
-                        return;
-                    }
-
-                    ActionResult result = client.interactionManager.interactBlock(client.player, resolvedHand, placementHitResult);
-                    if (!result.isAccepted()) {
-                        throw new PlacementFailure("Cannot place block at " + formatBlockPos(placementPos) + ": placement rejected (" + result + ").");
-                    }
-                    if (client.player != null) {
-                        client.player.swingHand(resolvedHand);
-                        if (client.player.networkHandler != null) {
-                            client.player.networkHandler.sendPacket(new HandSwingC2SPacket(resolvedHand));
-                        }
-                    }
-                });
-                boolean placed = waitForBlockPlacement(client, placementPos, resolvedBlock);
-                if (!placed) {
-                    sendNodeErrorMessage(client, "Attempted to place block \"" + resolvedBlockId + "\" at " + formatBlockPos(placementPos) + " but it did not appear. Make sure the space is clear and within reach.");
-                }
-                future.complete(null);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                future.completeExceptionally(e);
-            } catch (PlacementFailure e) {
-                sendNodeErrorMessage(client, e.getMessage());
-                future.complete(null);
-            } catch (RuntimeException e) {
-                sendNodeErrorMessage(client, "Failed to place block \"" + resolvedBlockId + "\": " + e.getMessage());
-                future.complete(null);
-            }
-        }, "Pathmind-Place").start();
-    }
-
-    boolean parameterProvidesCoordinates(Node parameterNode) {
-        if (parameterNode == null) {
-            return false;
-        }
-        EnumSet<NodeValueTrait> traits = parameterNode.getProvidedTraits();
-        if (traits.isEmpty()) {
-            return false;
-        }
-        return traits.contains(NodeValueTrait.COORDINATE)
-            || traits.contains(NodeValueTrait.DIRECTION)
-            || traits.contains(NodeValueTrait.ROTATION)
-            || traits.contains(NodeValueTrait.BLOCK)
-            || traits.contains(NodeValueTrait.ITEM)
-            || traits.contains(NodeValueTrait.ENTITY)
-            || traits.contains(NodeValueTrait.PLAYER)
-            || traits.contains(NodeValueTrait.WAYPOINT)
-            || traits.contains(NodeValueTrait.SCHEMATIC)
-            || traits.contains(NodeValueTrait.LIST_ITEM);
-    }
-
-    boolean parameterProvidesCoordinates(NodeType parameterType) {
-        if (parameterType == null) {
-            return false;
-        }
-        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(parameterType);
-        if (traits.isEmpty()) {
-            return false;
-        }
-        return traits.contains(NodeValueTrait.COORDINATE)
-            || traits.contains(NodeValueTrait.DIRECTION)
-            || traits.contains(NodeValueTrait.ROTATION)
-            || traits.contains(NodeValueTrait.BLOCK)
-            || traits.contains(NodeValueTrait.ITEM)
-            || traits.contains(NodeValueTrait.ENTITY)
-            || traits.contains(NodeValueTrait.PLAYER)
-            || traits.contains(NodeValueTrait.WAYPOINT)
-            || traits.contains(NodeValueTrait.SCHEMATIC)
-            || traits.contains(NodeValueTrait.LIST_ITEM);
-    }
-
-    private boolean isBlockPlacementParameter(Node parameterNode) {
-        if (parameterNode == null) {
-            return false;
-        }
-        NodeType parameterType = parameterNode.getType();
-        return parameterType == NodeType.PARAM_BLOCK
-            || parameterType == NodeType.PARAM_PLACE_TARGET;
-    }
-
-    boolean blockParameterProvidesPlacementCoordinates(Node parameterNode) {
-        return parameterNode != null && parameterNode.getType() == NodeType.PARAM_PLACE_TARGET;
-    }
-
-    String resolveBlockIdFromInventorySlotParameter(net.minecraft.client.MinecraftClient client,
-                                                           Node parameterNode) {
-        if (client == null || client.player == null || parameterNode == null) {
-            return null;
-        }
-        SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
-        if (selectionType == SlotSelectionType.GUI_CONTAINER) {
-            sendNodeErrorMessage(client, type.getDisplayName() + " can only use player inventory slots.");
-            return null;
-        }
-        PlayerInventory inventory = client.player.getInventory();
-        int slotValue = clampInventorySlot(inventory, parseNodeInt(parameterNode, "Slot", 0));
-        ItemStack stack = inventory.getStack(slotValue);
-        if (stack.isEmpty()) {
-            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " is empty.");
-            return null;
-        }
-        if (!(stack.getItem() instanceof BlockItem)) {
-            sendNodeErrorMessage(client, "Selected slot for " + type.getDisplayName() + " does not contain a block.");
-            return null;
-        }
-        if (runtimeState.runtimeParameterData == null) {
-            runtimeState.runtimeParameterData = new RuntimeParameterData();
-        }
-        runtimeState.runtimeParameterData.slotIndex = slotValue;
-        runtimeState.runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
-        if (!ensureStackSelectedInMainHand(client, inventory, slotValue, stack)) {
-            sendNodeErrorMessage(client, "Failed to prepare selected block for " + type.getDisplayName() + ".");
-            return null;
-        }
-        Identifier id = Registries.ITEM.getId(stack.getItem());
-        return id != null ? id.toString() : null;
-    }
-
-    String resolveBlockIdFromParameterNode(Node parameterNode) {
-        if (parameterNode == null) {
-            return null;
-        }
-        NodeType parameterType = parameterNode.getType();
-        switch (parameterType) {
-            case PARAM_BLOCK:
-                for (String entry : splitMultiValueList(getBlockParameterValue(parameterNode))) {
-                    return entry;
-                }
-                return null;
-            case PARAM_PLACE_TARGET:
-                return getParameterString(parameterNode, "Block");
-            default:
-                return null;
-        }
-    }
-
-    String normalizePlacementBlockId(String blockId) {
-        if (blockId == null) {
-            return null;
-        }
-        String sanitized = sanitizeResourceId(blockId);
-        if (sanitized == null || sanitized.isEmpty()) {
-            return "";
-        }
-        return normalizeResourceId(sanitized, "minecraft");
-    }
-
-    String getBlockIdFromHand(net.minecraft.client.MinecraftClient client, Hand hand) {
-        if (client == null || client.player == null) {
-            return null;
-        }
-        ItemStack stack = client.player.getStackInHand(hand);
-        if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
-            return null;
-        }
-        Identifier id = Registries.ITEM.getId(stack.getItem());
-        return id != null ? id.toString() : null;
-    }
-
-    String resolveAnyBlockId(net.minecraft.client.MinecraftClient client, Hand preferredHand) {
-        if (client == null || client.player == null) {
-            return null;
-        }
-        String fromHand = getBlockIdFromHand(client, preferredHand);
-        if (fromHand != null && !fromHand.isEmpty()) {
-            return fromHand;
-        }
-        PlayerInventory inventory = client.player.getInventory();
-        if (inventory == null) {
-            return null;
-        }
-        for (int i = 0; i < inventory.size(); i++) {
-            ItemStack stack = inventory.getStack(i);
-            if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
-                continue;
-            }
-            Identifier id = Registries.ITEM.getId(stack.getItem());
-            if (id != null) {
-                return id.toString();
-            }
-        }
-        return null;
-    }
-    
-    private void executeBuildCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        if (mode == null) {
-            future.completeExceptionally(new RuntimeException("No mode set for BUILD node"));
-            return;
-        }
-        
-        String schematic = "house.schematic";
-        NodeParameter schematicParam = getParameter("Schematic");
-        if (schematicParam != null) {
-            schematic = schematicParam.getStringValue();
-        }
-        BlockPos buildOrigin = resolveBuildOrigin();
-        if (buildOrigin == null) {
-            future.completeExceptionally(new RuntimeException("Unable to resolve build origin"));
-            return;
-        }
-
-        boolean usePlayerOriginCommand = runtimeState.runtimeParameterData != null
-            ? runtimeState.runtimeParameterData.targetVector == null && mode == NodeMode.BUILD_PLAYER
-            : mode == NodeMode.BUILD_PLAYER;
-        String command = usePlayerOriginCommand
-            ? String.format("#build %s", schematic)
-            : String.format("#build %s %d %d %d", schematic, buildOrigin.getX(), buildOrigin.getY(), buildOrigin.getZ());
-
-        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
-            executeCommand(command);
-            future.complete(null);
-            return;
-        }
-
-        Object baritone = getBaritone();
-        if (baritone == null) {
-            future.completeExceptionally(new RuntimeException("Baritone not available"));
-            return;
-        }
-
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_BUILD, future);
-        Object builderProcess = BaritoneApiProxy.getBuilderProcess(baritone);
-        if (builderProcess != null && BaritoneApiProxy.build(builderProcess, schematic, buildOrigin)) {
-            return;
-        }
-        executeCommand(command);
-    }
-
-    private BlockPos resolveBuildOrigin() {
-        Vec3d targetVector = runtimeState.runtimeParameterData != null ? runtimeState.runtimeParameterData.targetVector : null;
-        if (targetVector != null) {
-            return BlockPos.ofFloored(targetVector);
-        }
-
-        switch (mode) {
-            case BUILD_PLAYER:
-                return getPlayerBuildOrigin();
-            case BUILD_XYZ:
-                int x = 0;
-                int y = 0;
-                int z = 0;
-                NodeParameter xParam = getParameter("X");
-                NodeParameter yParam = getParameter("Y");
-                NodeParameter zParam = getParameter("Z");
-
-                if (xParam != null) {
-                    x = xParam.getIntValue();
-                }
-                if (yParam != null) {
-                    y = yParam.getIntValue();
-                }
-                if (zParam != null) {
-                    z = zParam.getIntValue();
-                }
-                return new BlockPos(x, y, z);
-            default:
-                return null;
-        }
-    }
-
-    private BlockPos getPlayerBuildOrigin() {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null) {
-            return null;
-        }
-        return client.player.getBlockPos();
-    }
-    
-    private void executeExploreCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        if (mode == null) {
-            future.completeExceptionally(new RuntimeException("No mode set for EXPLORE node"));
-            return;
-        }
-
-        if (!isBaritoneApiAvailable() && isBaritoneModAvailable()) {
-            switch (mode) {
-                case EXPLORE_CURRENT: {
-                    String command = "#explore";
-                    executeCommand(command);
-                    future.complete(null);
-                    return;
-                }
-                case EXPLORE_XYZ: {
-                    int x = 0, z = 0;
-                    NodeParameter xParam = getParameter("X");
-                    NodeParameter zParam = getParameter("Z");
-
-                    if (xParam != null) x = xParam.getIntValue();
-                    if (zParam != null) z = zParam.getIntValue();
-
-                    String command = String.format("#explore %d %d", x, z);
-                    executeCommand(command);
-                    future.complete(null);
-                    return;
-                }
-                case EXPLORE_FILTER: {
-                    String filter = "explore.txt";
-                    NodeParameter filterParam = getParameter("Filter");
-                    if (filterParam != null) {
-                        filter = filterParam.getStringValue();
-                    }
-                    executeCommand("#explore " + filter);
-                    future.complete(null);
-                    return;
-                }
-                default:
-                    future.completeExceptionally(new RuntimeException("Unknown EXPLORE mode: " + mode));
-                    return;
-            }
-        }
-        
-        Object baritone = getBaritone();
-        if (baritone == null) {
-            future.completeExceptionally(new RuntimeException("Baritone not available"));
-            return;
-        }
-        
-        resetBaritonePathing(baritone);
-        Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_EXPLORE, future);
-        
-        switch (mode) {
-            case EXPLORE_CURRENT:
-                BaritoneApiProxy.explore(exploreProcess, 0, 0); // 0,0 means from current position
-                break;
-                
-            case EXPLORE_XYZ:
-                int x = 0, z = 0;
-                NodeParameter xParam = getParameter("X");
-                NodeParameter zParam = getParameter("Z");
-                
-                if (xParam != null) x = xParam.getIntValue();
-                if (zParam != null) z = zParam.getIntValue();
-                
-                BaritoneApiProxy.explore(exploreProcess, x, z);
-                break;
-                
-            case EXPLORE_FILTER:
-                String filter = "explore.txt";
-                NodeParameter filterParam = getParameter("Filter");
-                if (filterParam != null) {
-                    filter = filterParam.getStringValue();
-                }
-                
-                // For filter-based exploration, we need to use a different approach
-                executeCommand("#explore " + filter);
-                future.complete(null); // Command-based exploration completes immediately
-                return;
-                
-            default:
-                future.completeExceptionally(new RuntimeException("Unknown EXPLORE mode: " + mode));
-                return;
-        }
-    }
-    
-    private void executeFollowCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        if (mode == null) {
-            future.completeExceptionally(new RuntimeException("No mode set for FOLLOW node"));
-            return;
-        }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        
-        String command;
-        switch (mode) {
-            case FOLLOW_PLAYER:
-                String player = "Self";
-                NodeParameter playerParam = getParameter("Player");
-                if (playerParam != null) {
-                    player = playerParam.getStringValue();
-                }
-
-                if (isAnyPlayerValue(player)) {
-                    command = "#follow players";
-                } else {
-                    if (isSelfPlayerValue(player)) {
-                        player = client != null && client.player != null
-                            ? GameProfileCompatibilityBridge.getName(client.player.getGameProfile())
-                            : "Self";
-                    }
-                    command = "#follow player " + player;
-                }
-                break;
-                
-            case FOLLOW_PLAYERS:
-                command = "#follow players";
-                break;
-                
-            case FOLLOW_ENTITIES:
-                command = "#follow entities";
-                break;
-                
-            case FOLLOW_ENTITY_TYPE:
-                String entity = "cow";
-                NodeParameter entityParam = getParameter("Entity");
-                if (entityParam != null) {
-                    entity = entityParam.getStringValue();
-                }
-
-                command = "#follow entity " + entity;
-                break;
-                
-            default:
-                future.completeExceptionally(new RuntimeException("Unknown FOLLOW mode: " + mode));
-                return;
-        }
-        
-        executeCommand(command);
-        future.complete(null); // Follow commands complete immediately
     }
     
     private void executeWaitCommand(CompletableFuture<Void> future) {
@@ -9580,7 +8000,7 @@ public class Node {
         Thread.sleep(SNEAK_SYNC_DELAY_MS);
     }
 
-    private BlockHitResult raycastBlockFromOrientation(net.minecraft.client.MinecraftClient client, float yaw, float pitch, double distance) {
+    BlockHitResult raycastBlockFromOrientation(net.minecraft.client.MinecraftClient client, float yaw, float pitch, double distance) {
         if (client == null || client.player == null || client.world == null) {
             return null;
         }
@@ -9606,656 +8026,6 @@ public class Node {
             return blockHit;
         }
         return null;
-    }
-
-    private void executeBreakCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.of(ParameterUsage.POSITION), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
-            NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
-            return;
-        }
-
-        Node parameterNode = getAttachedParameter(0);
-        if (parameterNode == null) {
-            NodeExecutionCompletion.fail(this, client, future, "Break requires a block or coordinate parameter.");
-            return;
-        }
-
-        BlockPos targetPos = null;
-        Direction breakFace = null;
-        if (runtimeState.runtimeParameterData != null) {
-            if (runtimeState.runtimeParameterData.targetBlockPos != null) {
-                targetPos = runtimeState.runtimeParameterData.targetBlockPos;
-            } else if (runtimeState.runtimeParameterData.targetVector != null) {
-                Vec3d vec = runtimeState.runtimeParameterData.targetVector;
-                targetPos = new BlockPos(MathHelper.floor(vec.x), MathHelper.floor(vec.y), MathHelper.floor(vec.z));
-            }
-        }
-
-        if (targetPos == null && providesTrait(parameterNode, NodeValueTrait.BLOCK)) {
-            List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
-            if (selections.isEmpty()) {
-                NodeExecutionCompletion.fail(this, client, future, "No block selected for Break.");
-                return;
-            }
-            Optional<BlockHitResult> currentHit = getCurrentBlockHitResult();
-            if (currentHit.isPresent()) {
-                BlockHitResult blockHit = currentHit.get();
-                BlockPos hitPos = blockHit.getBlockPos();
-                if (hitPos != null) {
-                    BlockState hitState = client.world.getBlockState(hitPos);
-                    boolean matches = false;
-                    for (BlockSelection selection : selections) {
-                        if (selection.matches(hitState)) {
-                            matches = true;
-                            break;
-                        }
-                    }
-                    if (matches) {
-                        targetPos = hitPos;
-                        breakFace = blockHit.getSide();
-                    }
-                }
-            }
-            if (targetPos == null) {
-                Optional<BlockPos> nearest = findNearestBlock(client, selections, Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED));
-                if (nearest.isPresent()) {
-                    targetPos = nearest.get();
-                }
-            }
-        }
-
-        if (targetPos == null) {
-            NodeExecutionCompletion.fail(this, client, future, "No matching block found in reach for Break.");
-            return;
-        }
-
-        if (runtimeState.runtimeParameterData == null) {
-            runtimeState.runtimeParameterData = new RuntimeParameterData();
-        }
-        runtimeState.runtimeParameterData.targetBlockPos = targetPos;
-
-        Vec3d eyePos = client.player.getEyePos();
-        Vec3d center = Vec3d.ofCenter(targetPos);
-        if (eyePos.squaredDistanceTo(center) > DEFAULT_REACH_DISTANCE_SQUARED) {
-            NodeExecutionCompletion.fail(this, client, future, "Target block is out of reach.");
-            return;
-        }
-
-        if (breakFace == null) {
-            Vec3d delta = center.subtract(eyePos);
-            breakFace = Direction.getFacing(delta.x, delta.y, delta.z);
-            if (breakFace == null) {
-                breakFace = Direction.UP;
-            }
-        }
-
-        BlockState state = client.world.getBlockState(targetPos);
-        if (state.isAir()) {
-            NodeExecutionCompletion.complete(future);
-            return;
-        }
-        float delta = state.calcBlockBreakingDelta(client.player, client.world, targetPos);
-        if (delta <= 0.0F) {
-            NodeExecutionCompletion.fail(this, client, future, "Block cannot be broken.");
-            return;
-        }
-        int ticksToBreak = Math.max(1, (int) Math.ceil(1.0F / delta));
-
-        Direction finalBreakFace = breakFace;
-        BlockPos finalTargetPos = targetPos;
-        new Thread(() -> {
-            try {
-                runOnClientThread(client, () -> {
-                    orientPlayerTowardsRuntimeTarget(client, runtimeState.runtimeParameterData);
-                    if (client.interactionManager != null) {
-                        client.interactionManager.attackBlock(finalTargetPos, finalBreakFace);
-                    }
-                    client.player.swingHand(Hand.MAIN_HAND);
-                });
-
-                for (int i = 0; i < ticksToBreak; i++) {
-                    Thread.sleep(50L);
-                    Boolean isAir = supplyFromClient(client,
-                        () -> client.world == null || client.world.getBlockState(finalTargetPos).isAir());
-                    if (Boolean.TRUE.equals(isAir)) {
-                        break;
-                    }
-                    runOnClientThread(client, () -> {
-                        if (client.interactionManager != null) {
-                            client.interactionManager.updateBlockBreakingProgress(finalTargetPos, finalBreakFace);
-                        }
-                    });
-                }
-
-                runOnClientThread(client, () -> {
-                    if (client.player != null && client.player.networkHandler != null) {
-                        client.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                            PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
-                            finalTargetPos,
-                            finalBreakFace
-                        ));
-                    }
-                });
-                NodeExecutionCompletion.complete(future);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                NodeExecutionCompletion.completeExceptionally(future, e);
-            }
-        }, "Pathmind-Break").start();
-    }
-
-    private void executeTradeCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        ensureVillagerTradeNumberParameter();
-
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.interactionManager == null) {
-            NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
-            return;
-        }
-
-        // Check if a merchant screen is open
-        net.minecraft.client.gui.screen.Screen currentScreen = client.currentScreen;
-        if (!(currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen)) {
-            NodeExecutionCompletion.fail(this, client, future, "No villager trading screen is open.");
-            return;
-        }
-
-        net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen =
-            (net.minecraft.client.gui.screen.ingame.MerchantScreen) currentScreen;
-
-        // Get the screen handler from merchant screen
-        net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
-        if (screenHandler == null) {
-            NodeExecutionCompletion.fail(this, client, future, "Cannot access merchant screen handler.");
-            return;
-        }
-
-        // Get the trade offers
-        net.minecraft.village.TradeOfferList tradeOffers = screenHandler.getRecipes();
-        if (tradeOffers == null || tradeOffers.isEmpty()) {
-            NodeExecutionCompletion.fail(this, client, future, "No trades available from this villager.");
-            return;
-        }
-        int selectedTradeNumber = getConfiguredVillagerTradeNumber();
-        int tradeIndex = selectedTradeNumber - 1;
-        if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "Trade #" + selectedTradeNumber + " is not available.");
-            return;
-        }
-        net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
-        if (selectedOffer.isDisabled()) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "Trade #" + selectedTradeNumber + " is out of stock.");
-            return;
-        }
-        if (!canAffordTrade(client.player, screenHandler, selectedOffer)) {
-            NodeExecutionCompletion.fail(this, client, future,
-                "Not enough items for trade #" + selectedTradeNumber + ".");
-            return;
-        }
-        List<Integer> preferredTradeIndexes = Collections.singletonList(tradeIndex);
-
-        int tradesToExecute = getConfiguredVillagerTradeCount();
-
-        new Thread(() -> {
-            try {
-                int remainingTrades = tradesToExecute;
-                while (remainingTrades > 0) {
-                    boolean tradedThisPass = false;
-                    boolean anyMatchStillAvailable = false;
-                    for (Integer preferredTradeIndex : preferredTradeIndexes) {
-                        if (preferredTradeIndex == null || preferredTradeIndex < 0 || preferredTradeIndex >= tradeOffers.size()) {
-                            continue;
-                        }
-                        net.minecraft.village.TradeOffer offer = tradeOffers.get(preferredTradeIndex);
-                        if (offer == null) {
-                            continue;
-                        }
-                        if (!offer.isDisabled()) {
-                            anyMatchStillAvailable = true;
-                        }
-                        int executableTrades = getMaxExecutableTradeCount(client.player, screenHandler, offer);
-                        if (executableTrades <= 0) {
-                            continue;
-                        }
-
-                        int batchSize = Math.min(remainingTrades, executableTrades);
-                        selectMerchantTrade(client, screenHandler, preferredTradeIndex);
-                        Thread.sleep(60);
-
-                        int completedInBatch = 0;
-                        for (int i = 0; i < batchSize; i++) {
-                            if (offer.isDisabled() || !canAffordTrade(client.player, screenHandler, offer)) {
-                                break;
-                            }
-                            if (!quickMoveMerchantTradeResult(client, screenHandler)) {
-                                break;
-                            }
-                            completedInBatch++;
-                            remainingTrades--;
-                            tradedThisPass = true;
-                            if (remainingTrades <= 0) {
-                                break;
-                            }
-                            Thread.sleep(70);
-                        }
-
-                        if (completedInBatch > 0 && remainingTrades > 0) {
-                            Thread.sleep(120);
-                        }
-                        if (remainingTrades <= 0) {
-                            break;
-                        }
-                    }
-
-                    if (!tradedThisPass) {
-                        if (!anyMatchStillAvailable) {
-                            sendNodeErrorMessage(client, "All matching trades are out of stock.");
-                        } else {
-                            sendNodeErrorMessage(client, "Not enough items to complete the requested trades.");
-                        }
-                        break;
-                    }
-                }
-
-                NodeExecutionCompletion.complete(future);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                NodeExecutionCompletion.completeExceptionally(future, e);
-            }
-        }, "Pathmind-Trade").start();
-    }
-
-    private void selectMerchantTrade(net.minecraft.client.MinecraftClient client,
-                                     net.minecraft.screen.MerchantScreenHandler screenHandler,
-                                     int tradeIndex) throws InterruptedException {
-        runOnClientThread(client, () -> {
-            screenHandler.setRecipeIndex(tradeIndex);
-            screenHandler.switchTo(tradeIndex);
-            if (client.player != null && client.player.networkHandler != null) {
-                client.player.networkHandler.sendPacket(
-                    new net.minecraft.network.packet.c2s.play.SelectMerchantTradeC2SPacket(tradeIndex)
-                );
-            }
-        });
-    }
-
-    private boolean quickMoveMerchantTradeResult(net.minecraft.client.MinecraftClient client,
-                                                 net.minecraft.screen.MerchantScreenHandler screenHandler) throws InterruptedException {
-        if (client == null || client.player == null || client.interactionManager == null || screenHandler == null) {
-            return false;
-        }
-        final boolean[] moved = {false};
-        runOnClientThread(client, () -> {
-            final int outputSlot = 2;
-            net.minecraft.screen.slot.Slot output = screenHandler.getSlot(outputSlot);
-            if (output == null) {
-                return;
-            }
-            net.minecraft.item.ItemStack outputStack = output.getStack();
-            if (outputStack == null || outputStack.isEmpty()) {
-                return;
-            }
-            client.interactionManager.clickSlot(
-                screenHandler.syncId,
-                outputSlot,
-                0,
-                net.minecraft.screen.slot.SlotActionType.QUICK_MOVE,
-                client.player
-            );
-            moved[0] = true;
-        });
-        return moved[0];
-    }
-
-    private int getMaxExecutableTradeCount(net.minecraft.entity.player.PlayerEntity player,
-                                           net.minecraft.screen.MerchantScreenHandler screenHandler,
-                                           net.minecraft.village.TradeOffer offer) {
-        if (player == null || screenHandler == null || offer == null || offer.isDisabled()) {
-            return 0;
-        }
-
-        int maxTrades = Integer.MAX_VALUE;
-        net.minecraft.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
-        if (!firstBuyItem.isEmpty()) {
-            int required = Math.max(1, firstBuyItem.getCount());
-            int available = countAvailableForTrade(player.getInventory(), screenHandler, firstBuyItem);
-            maxTrades = Math.min(maxTrades, available / required);
-        }
-
-        net.minecraft.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
-        if (!secondBuyItem.isEmpty()) {
-            int required = Math.max(1, secondBuyItem.getCount());
-            int available = countAvailableForTrade(player.getInventory(), screenHandler, secondBuyItem);
-            maxTrades = Math.min(maxTrades, available / required);
-        }
-
-        maxTrades = Math.min(maxTrades, Math.max(0, offer.getMaxUses() - offer.getUses()));
-        return maxTrades == Integer.MAX_VALUE ? 0 : Math.max(0, maxTrades);
-    }
-
-    private boolean canAffordTrade(net.minecraft.entity.player.PlayerEntity player,
-                                   net.minecraft.screen.MerchantScreenHandler screenHandler,
-                                   net.minecraft.village.TradeOffer offer) {
-        if (player == null || offer == null || screenHandler == null) {
-            return false;
-        }
-
-        net.minecraft.entity.player.PlayerInventory inventory = player.getInventory();
-
-        net.minecraft.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
-        if (!firstBuyItem.isEmpty()) {
-            int required = firstBuyItem.getCount();
-            int available = countAvailableForTrade(inventory, screenHandler, firstBuyItem);
-            if (available < required) {
-                return false;
-            }
-        }
-
-        net.minecraft.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
-        if (!secondBuyItem.isEmpty()) {
-            int required = secondBuyItem.getCount();
-            int available = countAvailableForTrade(inventory, screenHandler, secondBuyItem);
-            if (available < required) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static net.minecraft.item.ItemStack getRequiredFirstBuyItem(net.minecraft.village.TradeOffer offer) {
-        return offer == null ? net.minecraft.item.ItemStack.EMPTY : offer.getDisplayedFirstBuyItem();
-    }
-
-    private static net.minecraft.item.ItemStack getRequiredSecondBuyItem(net.minecraft.village.TradeOffer offer) {
-        return offer == null ? net.minecraft.item.ItemStack.EMPTY : offer.getDisplayedSecondBuyItem();
-    }
-
-    static int getRequiredFirstBuyCountForTests(net.minecraft.village.TradeOffer offer) {
-        if (offer == null) {
-            return 0;
-        }
-        return resolveRequiredTradeCount(
-            getRequiredFirstBuyItem(offer).getCount(),
-            offer.getFirstBuyItem().itemStack().getCount()
-        );
-    }
-
-    static int getRequiredSecondBuyCountForTests(net.minecraft.village.TradeOffer offer) {
-        if (offer == null) {
-            return 0;
-        }
-        java.util.Optional<net.minecraft.village.TradedItem> secondBuyItem = offer.getSecondBuyItem();
-        int originalCount = secondBuyItem.map(item -> item.itemStack().getCount()).orElse(0);
-        return resolveRequiredTradeCount(getRequiredSecondBuyItem(offer).getCount(), originalCount);
-    }
-
-    static int resolveRequiredTradeCountForTests(int displayedCount, int originalCount) {
-        return resolveRequiredTradeCount(displayedCount, originalCount);
-    }
-
-    private static int resolveRequiredTradeCount(int displayedCount, int originalCount) {
-        return displayedCount > 0 ? displayedCount : Math.max(0, originalCount);
-    }
-
-    private int countAvailableForTrade(net.minecraft.entity.player.PlayerInventory inventory,
-                                       net.minecraft.screen.MerchantScreenHandler screenHandler,
-                                       net.minecraft.item.ItemStack requiredStack) {
-        int available = 0;
-        for (int i = 0; i < inventory.size(); i++) {
-            net.minecraft.item.ItemStack stack = inventory.getStack(i);
-            if (net.minecraft.item.ItemStack.areItemsEqual(stack, requiredStack)) {
-                available += stack.getCount();
-            }
-        }
-
-        // Include items already moved into merchant input slots (0 and 1).
-        for (int slotIndex = 0; slotIndex <= 1; slotIndex++) {
-            net.minecraft.item.ItemStack stack = screenHandler.getSlot(slotIndex).getStack();
-            if (net.minecraft.item.ItemStack.areItemsEqual(stack, requiredStack)) {
-                available += stack.getCount();
-            }
-        }
-
-        net.minecraft.item.ItemStack cursorStack = screenHandler.getCursorStack();
-        if (net.minecraft.item.ItemStack.areItemsEqual(cursorStack, requiredStack)) {
-            available += cursorStack.getCount();
-        }
-
-        return available;
-    }
-
-    private void executeSwingCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null) {
-            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
-            return;
-        }
-
-        Hand hand = resolveHand(getParameter("Hand"), Hand.MAIN_HAND);
-        boolean holdDurationEnabled = isAmountInputEnabled();
-        double durationSeconds = holdDurationEnabled
-            ? Math.max(0.0, getDoubleParameter("Duration", 0.0))
-            : 0.0;
-        int legacyCount = Math.max(1, getIntParameter("Count", 1));
-        double legacyIntervalSeconds = Math.max(0.0, getDoubleParameter("IntervalSeconds", 0.0));
-
-        new Thread(() -> {
-            boolean releaseAttackKey = false;
-            try {
-                if (holdDurationEnabled && durationSeconds > 0.0) {
-                    if (hand == Hand.MAIN_HAND) {
-                        long durationMs = (long) Math.ceil(durationSeconds * 1000.0);
-                        long deadline = System.currentTimeMillis() + durationMs;
-                        runOnClientThread(client, () -> {
-                            syncSelectedHotbarSlot(client);
-                            performMainHandAttack(client);
-                            if (client.options != null && client.options.attackKey != null) {
-                                client.options.attackKey.setPressed(true);
-                            }
-                        });
-                        releaseAttackKey = true;
-                        while (System.currentTimeMillis() < deadline) {
-                            if (shouldAbortForRepeatUntilGuard()) {
-                                break;
-                            }
-                            long remainingMs = deadline - System.currentTimeMillis();
-                            Thread.sleep(Math.min(CONTROL_POLL_INTERVAL_MS, Math.max(1L, remainingMs)));
-                        }
-                    } else {
-                        long durationMs = (long) Math.ceil(durationSeconds * 1000.0);
-                        long deadline = System.currentTimeMillis() + durationMs;
-                        boolean swung = false;
-                        while (!swung || System.currentTimeMillis() < deadline) {
-                            runOnClientThread(client, () -> {
-                                client.player.swingHand(hand);
-                                if (client.player.networkHandler != null) {
-                                    client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
-                                }
-                            });
-                            swung = true;
-                            if (shouldAbortForRepeatUntilGuard()) {
-                                break;
-                            }
-                            long remainingMs = deadline - System.currentTimeMillis();
-                            if (remainingMs <= 0L) {
-                                break;
-                            }
-                            Thread.sleep(Math.min(50L, remainingMs));
-                        }
-                    }
-                } else {
-                    for (int i = 0; i < legacyCount; i++) {
-                        runOnClientThread(client, () -> {
-                            if (hand == Hand.MAIN_HAND) {
-                                syncSelectedHotbarSlot(client);
-                                performMainHandAttack(client);
-                            } else {
-                                client.player.swingHand(hand);
-                                if (client.player.networkHandler != null) {
-                                    client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
-                                }
-                            }
-                        });
-
-                        if (legacyIntervalSeconds > 0.0 && i < legacyCount - 1) {
-                            Thread.sleep((long) (legacyIntervalSeconds * 1000));
-                        }
-                    }
-                }
-                future.complete(null);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                future.completeExceptionally(e);
-            } finally {
-                if (releaseAttackKey) {
-                    try {
-                        runOnClientThread(client, () -> {
-                            if (client.options != null && client.options.attackKey != null) {
-                                client.options.attackKey.setPressed(false);
-                            }
-                        });
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-            }
-        }, "Pathmind-Swing").start();
-    }
-
-    private static Method resolveDoAttackMethod() {
-        try {
-            return net.minecraft.client.MinecraftClient.class.getMethod("doAttack");
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-    }
-
-    private static Method resolveSyncSelectedSlotMethod() {
-        try {
-            return net.minecraft.client.network.ClientPlayerInteractionManager.class.getMethod("syncSelectedSlot");
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-    }
-
-    static void syncSelectedHotbarSlot(MinecraftClient client) {
-        if (client == null) {
-            return;
-        }
-        if (client.player != null && client.player.networkHandler != null) {
-            try {
-                int selectedSlot = PlayerInventoryBridge.getSelectedSlot(client.player.getInventory());
-                if (selectedSlot >= 0) {
-                    client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(selectedSlot));
-                }
-            } catch (IllegalStateException ignored) {
-                // Fall back to interaction-manager sync below.
-            }
-        }
-        if (client.interactionManager == null || SYNC_SELECTED_SLOT_METHOD == null) {
-            return;
-        }
-        try {
-            SYNC_SELECTED_SLOT_METHOD.invoke(client.interactionManager);
-        } catch (ReflectiveOperationException ignored) {
-            // Older mappings may not expose slot sync by name.
-        }
-    }
-
-    private static void performMainHandAttack(MinecraftClient client) {
-        if (client == null || client.player == null) {
-            return;
-        }
-        InputUtil.Key attackKey = InputUtil.Type.MOUSE.createFromCode(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-        KeyBinding.onKeyPressed(attackKey);
-        try {
-            if (DO_ATTACK_METHOD != null) {
-                DO_ATTACK_METHOD.invoke(client);
-                return;
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // Fall back to the direct attack logic below.
-        }
-        if (client.interactionManager != null) {
-            HitResult target = client.crosshairTarget;
-            if (target instanceof EntityHitResult entityHit) {
-                client.interactionManager.attackEntity(client.player, entityHit.getEntity());
-                return;
-            }
-        }
-        client.player.swingHand(Hand.MAIN_HAND);
-        if (client.player.networkHandler != null) {
-            client.player.networkHandler.sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
-        }
-    }
-    
-    private void executeEquipArmorCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null) {
-            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
-            return;
-        }
-        
-        PlayerInventory inventory = client.player.getInventory();
-        int sourceSlot = clampInventorySlot(inventory, getIntParameter("SourceSlot", 0));
-        EquipmentSlot equipmentSlot = parseEquipmentSlot(getParameter("ArmorSlot"), EquipmentSlot.HEAD);
-        
-        ItemStack sourceStack = inventory.getStack(sourceSlot);
-        if (sourceStack.isEmpty()) {
-            future.complete(null);
-            return;
-        }
-        
-        ItemStack current = client.player.getEquippedStack(equipmentSlot);
-        inventory.setStack(sourceSlot, current);
-        client.player.equipStack(equipmentSlot, sourceStack);
-        inventory.markDirty();
-        client.player.playerScreenHandler.sendContentUpdates();
-        future.complete(null);
-    }
-    
-    private void executeEquipHandCommand(CompletableFuture<Void> future) {
-        if (preprocessAttachedParameter(EnumSet.noneOf(ParameterUsage.class), future) == ParameterHandlingResult.COMPLETE) {
-            return;
-        }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null) {
-            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
-            return;
-        }
-        
-        PlayerInventory inventory = client.player.getInventory();
-        int sourceSlot = clampInventorySlot(inventory, getIntParameter("SourceSlot", 0));
-        Hand hand = resolveHand(getParameter("Hand"), Hand.MAIN_HAND);
-        
-        ItemStack sourceStack = inventory.getStack(sourceSlot);
-        if (sourceStack.isEmpty()) {
-            future.complete(null);
-            return;
-        }
-        
-        ItemStack handStack = client.player.getStackInHand(hand);
-        client.player.setStackInHand(hand, sourceStack);
-        inventory.setStack(sourceSlot, handStack);
-        inventory.markDirty();
-        client.player.playerScreenHandler.sendContentUpdates();
-        future.complete(null);
     }
     
     private void completeSensorEvaluation(CompletableFuture<Void> future) {
@@ -11053,7 +8823,7 @@ public class Node {
         }
     }
 
-    private ExecutionManager.RuntimeList resolveRuntimeList(Node listNode) {
+    ExecutionManager.RuntimeList resolveRuntimeList(Node listNode) {
         if (listNode == null) {
             return null;
         }
@@ -11116,7 +8886,7 @@ public class Node {
         return parsed;
     }
 
-    private ListSlotEntry parseListSlotEntry(String entry) {
+    ListSlotEntry parseListSlotEntry(String entry) {
         if (entry == null) {
             return null;
         }
@@ -11148,7 +8918,7 @@ public class Node {
         }
     }
 
-    private Entity resolveEntityByUuid(net.minecraft.client.MinecraftClient client, java.util.UUID uuid) {
+    Entity resolveEntityByUuid(net.minecraft.client.MinecraftClient client, java.util.UUID uuid) {
         if (client == null || client.world == null || uuid == null) {
             return null;
         }
@@ -11291,7 +9061,7 @@ public class Node {
         return face == null ? Optional.empty() : Optional.of(face);
     }
 
-    private Optional<BlockHitResult> getCurrentBlockHitResult() {
+    Optional<BlockHitResult> getCurrentBlockHitResult() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.player == null || client.world == null) {
             return Optional.empty();
@@ -12426,7 +10196,7 @@ public class Node {
         return snapshot;
     }
 
-    private Optional<Boolean> compareParameterNodes(Node left, Node right) {
+    Optional<Boolean> compareParameterNodes(Node left, Node right) {
         if (left == null || right == null) {
             return Optional.empty();
         }

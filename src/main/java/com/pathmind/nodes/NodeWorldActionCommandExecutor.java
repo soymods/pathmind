@@ -1,6 +1,9 @@
 package com.pathmind.nodes;
 
+import com.pathmind.execution.PreciseCompletionTracker;
+import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
+import com.pathmind.util.GameProfileCompatibilityBridge;
 import com.pathmind.util.PlayerInventoryBridge;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -28,6 +31,7 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 import java.util.EnumSet;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 final class NodeWorldActionCommandExecutor {
@@ -275,8 +279,8 @@ final class NodeWorldActionCommandExecutor {
     void executePlaceHandCommand(CompletableFuture<Void> future) {
         Node blockParameterNode = owner.getAttachedParameter(0);
         Node coordinateParameterNode = owner.getAttachedParameter(1);
-        boolean blockProvidesCoordinates = owner.blockParameterProvidesPlacementCoordinates(blockParameterNode);
-        boolean coordinateProvidesCoordinates = owner.parameterProvidesCoordinates(coordinateParameterNode);
+        boolean blockProvidesCoordinates = blockParameterProvidesPlacementCoordinates(blockParameterNode);
+        boolean coordinateProvidesCoordinates = parameterProvidesCoordinates(coordinateParameterNode);
         boolean coordinateHandledByBlockParam = coordinateParameterNode == null && blockProvidesCoordinates;
 
         if (blockParameterNode != null) {
@@ -307,7 +311,7 @@ final class NodeWorldActionCommandExecutor {
 
         String inventorySlotBlockId = null;
         if (blockParameterNode != null && blockParameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
-            inventorySlotBlockId = owner.resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
+            inventorySlotBlockId = resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
             if (inventorySlotBlockId == null || inventorySlotBlockId.isEmpty()) {
                 future.complete(null);
                 return;
@@ -326,7 +330,7 @@ final class NodeWorldActionCommandExecutor {
             directedPlacementPos = parameterData.targetBlockPos;
         }
 
-        String parameterBlockId = owner.resolveBlockIdFromParameterNode(blockParameterNode);
+        String parameterBlockId = resolveBlockIdFromParameterNode(blockParameterNode);
         if ((parameterBlockId == null || parameterBlockId.isEmpty()) && inventorySlotBlockId != null) {
             parameterBlockId = inventorySlotBlockId;
         }
@@ -337,7 +341,7 @@ final class NodeWorldActionCommandExecutor {
                 parameterBlockId = parameterData.targetBlockIds.get(0);
             }
         }
-        parameterBlockId = owner.normalizePlacementBlockId(parameterBlockId);
+        parameterBlockId = normalizePlacementBlockId(parameterBlockId);
         if (parameterBlockId != null && parameterBlockId.isEmpty()) {
             parameterBlockId = null;
         }
@@ -413,13 +417,13 @@ final class NodeWorldActionCommandExecutor {
 
         String blockIdToUse = parameterBlockId;
         if (blockIdToUse == null || blockIdToUse.isEmpty() || Node.isAnySelectionValue(blockIdToUse)) {
-            String anyBlock = owner.resolveAnyBlockId(client, hand);
+            String anyBlock = resolveAnyBlockId(client, hand);
             if (anyBlock != null && !anyBlock.isEmpty()) {
                 blockIdToUse = anyBlock;
             }
         }
         if (blockIdToUse == null || blockIdToUse.isEmpty() || Node.isAnySelectionValue(blockIdToUse)) {
-            blockIdToUse = owner.getBlockIdFromHand(client, hand);
+            blockIdToUse = getBlockIdFromHand(client, hand);
         }
         if (blockIdToUse == null || blockIdToUse.isEmpty() || Node.isAnySelectionValue(blockIdToUse)) {
             owner.sendNodeErrorMessage(client, "Cannot place block: no block selected.");
@@ -460,7 +464,7 @@ final class NodeWorldActionCommandExecutor {
                         }
                         ActionResult result = client.interactionManager.interactBlock(client.player, resolvedHand, placementHitResult);
                         if (!result.isAccepted()) {
-                            throw new Node.PlacementFailure("Cannot place block at " + Node.formatBlockPos(placementPos) + ": placement rejected (" + result + ").");
+                            throw new Node.PlacementFailure("Cannot place block at " + formatBlockPos(placementPos) + ": placement rejected (" + result + ").");
                         }
                         if (shouldSwing) {
                             client.player.swingHand(resolvedHand);
@@ -476,7 +480,7 @@ final class NodeWorldActionCommandExecutor {
                 }
                 boolean placed = owner.waitForBlockPlacement(client, placementPos, resolvedBlock);
                 if (!placed) {
-                    owner.sendNodeErrorMessage(client, "Attempted to place block \"" + resolvedBlockId + "\" at " + Node.formatBlockPos(placementPos) + " but it did not appear. Make sure the space is clear and within reach.");
+                    owner.sendNodeErrorMessage(client, "Attempted to place block \"" + resolvedBlockId + "\" at " + formatBlockPos(placementPos) + " but it did not appear. Make sure the space is clear and within reach.");
                 }
                 future.complete(null);
             } catch (InterruptedException e) {
@@ -894,6 +898,611 @@ final class NodeWorldActionCommandExecutor {
             }
         }
         return false;
+    }
+    void executePlaceCommand(CompletableFuture<Void> future) {
+        Node blockParameterNode = owner.getAttachedParameter(0);
+        Node coordinateParameterNode = owner.getAttachedParameter(1);
+        boolean coordinateHandledByBlockParam = coordinateParameterNode == null && parameterProvidesCoordinates(blockParameterNode);
+
+        if (blockParameterNode != null) {
+            EnumSet<Node.ParameterUsage> blockUsages = coordinateHandledByBlockParam
+                ? EnumSet.of(Node.ParameterUsage.POSITION)
+                : EnumSet.noneOf(Node.ParameterUsage.class);
+            if (owner.preprocessParameterSlot(0, blockUsages, future, true) == Node.ParameterHandlingResult.COMPLETE) {
+                return;
+            }
+        } else {
+            owner.runtimeState().runtimeParameterData = null;
+        }
+
+        if (coordinateParameterNode != null) {
+            NodeType coordType = coordinateParameterNode.getType();
+            EnumSet<Node.ParameterUsage> coordinateUsages;
+            if (coordType == NodeType.PARAM_ROTATION
+                || coordType == NodeType.PARAM_DIRECTION
+                || coordType == NodeType.PARAM_BLOCK_FACE) {
+                coordinateUsages = EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION);
+            } else if (parameterProvidesCoordinates(coordinateParameterNode)) {
+                coordinateUsages = EnumSet.of(Node.ParameterUsage.POSITION);
+            } else {
+                coordinateUsages = EnumSet.noneOf(Node.ParameterUsage.class);
+            }
+            if (owner.preprocessParameterSlot(1, coordinateUsages, future, blockParameterNode == null) == Node.ParameterHandlingResult.COMPLETE) {
+                return;
+            }
+        }
+
+        boolean inheritPlacementCoordinates = coordinateHandledByBlockParam
+            || (coordinateParameterNode != null
+                && parameterProvidesCoordinates(coordinateParameterNode)
+                && coordinateParameterNode.getType() != NodeType.PARAM_ROTATION
+                && coordinateParameterNode.getType() != NodeType.PARAM_DIRECTION
+                && coordinateParameterNode.getType() != NodeType.PARAM_BLOCK_FACE);
+        String block = "stone";
+        int x = 0, y = 0, z = 0;
+
+        NodeParameter blockParam = owner.getParameter("Block");
+        NodeParameter xParam = owner.getParameter("X");
+        NodeParameter yParam = owner.getParameter("Y");
+        NodeParameter zParam = owner.getParameter("Z");
+        Hand hand = owner.resolveHand(owner.getParameter("Hand"), Hand.MAIN_HAND);
+
+        if (blockParam != null) block = blockParam.getStringValue();
+        if (xParam != null) x = xParam.getIntValue();
+        if (yParam != null) y = yParam.getIntValue();
+        if (zParam != null) z = zParam.getIntValue();
+
+        RuntimeParameterData parameterData = owner.runtimeState().runtimeParameterData;
+        if (parameterData != null) {
+            if (parameterData.targetBlockId != null && !parameterData.targetBlockId.isEmpty()) {
+                block = parameterData.targetBlockId;
+                owner.setParameterValueAndPropagate("Block", block);
+            }
+            if (inheritPlacementCoordinates && parameterData.targetBlockPos != null) {
+                BlockPos resolved = parameterData.targetBlockPos;
+                x = resolved.getX();
+                y = resolved.getY();
+                z = resolved.getZ();
+            }
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.player.networkHandler == null || client.interactionManager == null || client.world == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        if (blockParameterNode != null && blockParameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
+            String resolvedBlockId = resolveBlockIdFromInventorySlotParameter(client, blockParameterNode);
+            if (resolvedBlockId == null || resolvedBlockId.isEmpty()) {
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return;
+            }
+            block = resolvedBlockId;
+            owner.setParameterValueAndPropagate("Block", block);
+        }
+
+        String originalBlockId = block;
+        if (Node.isAnySelectionValue(originalBlockId)) {
+            String anyBlock = resolveAnyBlockId(client, hand);
+            if (anyBlock != null && !anyBlock.isEmpty()) {
+                block = anyBlock;
+                originalBlockId = block;
+                owner.setParameterValueAndPropagate("Block", block);
+            }
+        }
+        block = owner.normalizeResourceId(block, "minecraft");
+        if (!Objects.equals(originalBlockId, block)) {
+            owner.setParameterValueAndPropagate("Block", block);
+        }
+
+        if (block == null || block.isEmpty() || Node.isAnySelectionValue(block)) {
+            owner.sendNodeErrorMessage(client, "Cannot place block: no block selected.");
+            future.complete(null);
+            return;
+        }
+
+        if (blockParameterNode != null && isBlockPlacementParameter(blockParameterNode)) {
+            try {
+                ensureBlockInHand(client, block, Hand.MAIN_HAND);
+            } catch (Node.PlacementFailure e) {
+                owner.sendNodeErrorMessage(client, e.getMessage());
+                future.complete(null);
+                return;
+            }
+        }
+
+        if (!inheritPlacementCoordinates
+            && coordinateParameterNode != null
+            && (coordinateParameterNode.getType() == NodeType.PARAM_ROTATION
+                || coordinateParameterNode.getType() == NodeType.PARAM_DIRECTION
+                || coordinateParameterNode.getType() == NodeType.PARAM_BLOCK_FACE)) {
+            try {
+                float yaw = parameterData != null && parameterData.resolvedYaw != null
+                    ? parameterData.resolvedYaw
+                    : client.player.getYaw();
+                float pitch = parameterData != null && parameterData.resolvedPitch != null
+                    ? parameterData.resolvedPitch
+                    : client.player.getPitch();
+                double reachDistance = Math.sqrt(getPlacementReachSquared(client));
+                double lookDistance = parameterData != null && parameterData.resolvedLookDistance != null
+                    ? parameterData.resolvedLookDistance
+                    : reachDistance;
+                BlockHitResult hit = owner.supplyFromClient(client, () ->
+                    owner.raycastBlockFromOrientation(client, yaw, pitch, lookDistance)
+                );
+                if (hit != null) {
+                    owner.runOnClientThread(client, () -> {
+                        client.player.setYaw(yaw);
+                        client.player.setPitch(pitch);
+                        client.player.setHeadYaw(yaw);
+                        ActionResult result = client.interactionManager.interactBlock(client.player, hand, hit);
+                        if (result.isAccepted()) {
+                            client.player.swingHand(hand);
+                            if (client.player.networkHandler != null) {
+                                client.player.networkHandler.sendPacket(new HandSwingC2SPacket(hand));
+                            }
+                        }
+                    });
+                }
+                future.complete(null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            }
+            return;
+        }
+
+
+        BlockPos targetPos = new BlockPos(x, y, z);
+        if (parameterData != null) {
+            parameterData.targetBlockPos = targetPos;
+            if (parameterData.targetBlockId == null || parameterData.targetBlockId.isEmpty()) {
+                parameterData.targetBlockId = block;
+            }
+        }
+        double reachSquared = getPlacementReachSquared(client);
+
+        Block desiredBlock = resolveBlockForPlacement(block);
+        if (desiredBlock == null) {
+            owner.sendNodeErrorMessage(client, "Cannot place block: unknown block \"" + block + "\".");
+            future.complete(null);
+            return;
+        }
+
+        final BlockPos placementPos = targetPos;
+        final Block resolvedBlock = desiredBlock;
+        final String resolvedBlockId = block;
+        final Hand resolvedHand = hand;
+        final double resolvedReachSquared = reachSquared;
+
+        new Thread(() -> {
+            try {
+                BlockHitResult placementHitResult = owner.supplyFromClient(client, () ->
+                    preparePlacementHitResult(client, placementPos, resolvedBlockId, resolvedHand, resolvedReachSquared)
+                );
+                owner.runOnClientThread(client, () -> {
+                    if (client.world.getBlockState(placementPos).isOf(resolvedBlock)) {
+                        return;
+                    }
+
+                    ActionResult result = client.interactionManager.interactBlock(client.player, resolvedHand, placementHitResult);
+                    if (!result.isAccepted()) {
+                        throw new Node.PlacementFailure("Cannot place block at " + formatBlockPos(placementPos) + ": placement rejected (" + result + ").");
+                    }
+                    if (client.player != null) {
+                        client.player.swingHand(resolvedHand);
+                        if (client.player.networkHandler != null) {
+                            client.player.networkHandler.sendPacket(new HandSwingC2SPacket(resolvedHand));
+                        }
+                    }
+                });
+                boolean placed = waitForBlockPlacement(client, placementPos, resolvedBlock);
+                if (!placed) {
+                    owner.sendNodeErrorMessage(client, "Attempted to place block \"" + resolvedBlockId + "\" at " + formatBlockPos(placementPos) + " but it did not appear. Make sure the space is clear and within reach.");
+                }
+                future.complete(null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
+            } catch (Node.PlacementFailure e) {
+                owner.sendNodeErrorMessage(client, e.getMessage());
+                future.complete(null);
+            } catch (RuntimeException e) {
+                owner.sendNodeErrorMessage(client, "Failed to place block \"" + resolvedBlockId + "\": " + e.getMessage());
+                future.complete(null);
+            }
+        }, "Pathmind-Place").start();
+    }
+
+    boolean parameterProvidesCoordinates(Node parameterNode) {
+        if (parameterNode == null) {
+            return false;
+        }
+        EnumSet<NodeValueTrait> traits = parameterNode.getProvidedTraits();
+        if (traits.isEmpty()) {
+            return false;
+        }
+        return traits.contains(NodeValueTrait.COORDINATE)
+            || traits.contains(NodeValueTrait.DIRECTION)
+            || traits.contains(NodeValueTrait.ROTATION)
+            || traits.contains(NodeValueTrait.BLOCK)
+            || traits.contains(NodeValueTrait.ITEM)
+            || traits.contains(NodeValueTrait.ENTITY)
+            || traits.contains(NodeValueTrait.PLAYER)
+            || traits.contains(NodeValueTrait.WAYPOINT)
+            || traits.contains(NodeValueTrait.SCHEMATIC)
+            || traits.contains(NodeValueTrait.LIST_ITEM);
+    }
+
+    boolean parameterProvidesCoordinates(NodeType parameterType) {
+        if (parameterType == null) {
+            return false;
+        }
+        EnumSet<NodeValueTrait> traits = NodeTraitRegistry.getProvidedTraits(parameterType);
+        if (traits.isEmpty()) {
+            return false;
+        }
+        return traits.contains(NodeValueTrait.COORDINATE)
+            || traits.contains(NodeValueTrait.DIRECTION)
+            || traits.contains(NodeValueTrait.ROTATION)
+            || traits.contains(NodeValueTrait.BLOCK)
+            || traits.contains(NodeValueTrait.ITEM)
+            || traits.contains(NodeValueTrait.ENTITY)
+            || traits.contains(NodeValueTrait.PLAYER)
+            || traits.contains(NodeValueTrait.WAYPOINT)
+            || traits.contains(NodeValueTrait.SCHEMATIC)
+            || traits.contains(NodeValueTrait.LIST_ITEM);
+    }
+
+    private boolean isBlockPlacementParameter(Node parameterNode) {
+        if (parameterNode == null) {
+            return false;
+        }
+        NodeType parameterType = parameterNode.getType();
+        return parameterType == NodeType.PARAM_BLOCK
+            || parameterType == NodeType.PARAM_PLACE_TARGET;
+    }
+
+    boolean blockParameterProvidesPlacementCoordinates(Node parameterNode) {
+        return parameterNode != null && parameterNode.getType() == NodeType.PARAM_PLACE_TARGET;
+    }
+
+    String resolveBlockIdFromInventorySlotParameter(net.minecraft.client.MinecraftClient client,
+                                                           Node parameterNode) {
+        if (client == null || client.player == null || parameterNode == null) {
+            return null;
+        }
+        SlotSelectionType selectionType = owner.resolveInventorySlotSelectionType(parameterNode);
+        if (selectionType == SlotSelectionType.GUI_CONTAINER) {
+            owner.sendNodeErrorMessage(client, owner.getType().getDisplayName() + " can only use player inventory slots.");
+            return null;
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        int slotValue = owner.clampInventorySlot(inventory, Node.parseNodeInt(parameterNode, "Slot", 0));
+        ItemStack stack = inventory.getStack(slotValue);
+        if (stack.isEmpty()) {
+            owner.sendNodeErrorMessage(client, "Selected slot for " + owner.getType().getDisplayName() + " is empty.");
+            return null;
+        }
+        if (!(stack.getItem() instanceof BlockItem)) {
+            owner.sendNodeErrorMessage(client, "Selected slot for " + owner.getType().getDisplayName() + " does not contain a block.");
+            return null;
+        }
+        if (owner.runtimeState().runtimeParameterData == null) {
+            owner.runtimeState().runtimeParameterData = new RuntimeParameterData();
+        }
+        owner.runtimeState().runtimeParameterData.slotIndex = slotValue;
+        owner.runtimeState().runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+        if (!ensureStackSelectedInMainHand(client, inventory, slotValue, stack)) {
+            owner.sendNodeErrorMessage(client, "Failed to prepare selected block for " + owner.getType().getDisplayName() + ".");
+            return null;
+        }
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        return id != null ? id.toString() : null;
+    }
+
+    String resolveBlockIdFromParameterNode(Node parameterNode) {
+        if (parameterNode == null) {
+            return null;
+        }
+        NodeType parameterType = parameterNode.getType();
+        switch (parameterType) {
+            case PARAM_BLOCK:
+                for (String entry : owner.splitMultiValueList(owner.getBlockParameterValue(parameterNode))) {
+                    return entry;
+                }
+                return null;
+            case PARAM_PLACE_TARGET:
+                return Node.getParameterString(parameterNode, "Block");
+            default:
+                return null;
+        }
+    }
+
+    String normalizePlacementBlockId(String blockId) {
+        if (blockId == null) {
+            return null;
+        }
+        String sanitized = owner.sanitizeResourceId(blockId);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return "";
+        }
+        return owner.normalizeResourceId(sanitized, "minecraft");
+    }
+
+    String getBlockIdFromHand(net.minecraft.client.MinecraftClient client, Hand hand) {
+        if (client == null || client.player == null) {
+            return null;
+        }
+        ItemStack stack = client.player.getStackInHand(hand);
+        if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
+            return null;
+        }
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        return id != null ? id.toString() : null;
+    }
+
+    String resolveAnyBlockId(net.minecraft.client.MinecraftClient client, Hand preferredHand) {
+        if (client == null || client.player == null) {
+            return null;
+        }
+        String fromHand = getBlockIdFromHand(client, preferredHand);
+        if (fromHand != null && !fromHand.isEmpty()) {
+            return fromHand;
+        }
+        PlayerInventory inventory = client.player.getInventory();
+        if (inventory == null) {
+            return null;
+        }
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
+                continue;
+            }
+            Identifier id = Registries.ITEM.getId(stack.getItem());
+            if (id != null) {
+                return id.toString();
+            }
+        }
+        return null;
+    }
+    
+    void executeBuildCommand(CompletableFuture<Void> future) {
+        if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.POSITION), future) == Node.ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        if (owner.getMode() == null) {
+            future.completeExceptionally(new RuntimeException("No mode set for BUILD node"));
+            return;
+        }
+        
+        String schematic = "house.schematic";
+        NodeParameter schematicParam = owner.getParameter("Schematic");
+        if (schematicParam != null) {
+            schematic = schematicParam.getStringValue();
+        }
+        BlockPos buildOrigin = resolveBuildOrigin();
+        if (buildOrigin == null) {
+            future.completeExceptionally(new RuntimeException("Unable to resolve build origin"));
+            return;
+        }
+
+        boolean usePlayerOriginCommand = owner.runtimeState().runtimeParameterData != null
+            ? owner.runtimeState().runtimeParameterData.targetVector == null && owner.getMode() == NodeMode.BUILD_PLAYER
+            : owner.getMode() == NodeMode.BUILD_PLAYER;
+        String command = usePlayerOriginCommand
+            ? String.format("#build %s", schematic)
+            : String.format("#build %s %d %d %d", schematic, buildOrigin.getX(), buildOrigin.getY(), buildOrigin.getZ());
+
+        if (!owner.isBaritoneApiAvailable() && owner.isBaritoneModAvailable()) {
+            owner.executeCommand(command);
+            future.complete(null);
+            return;
+        }
+
+        Object baritone = owner.getBaritone();
+        if (baritone == null) {
+            future.completeExceptionally(new RuntimeException("Baritone not available"));
+            return;
+        }
+
+        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_BUILD, future);
+        Object builderProcess = BaritoneApiProxy.getBuilderProcess(baritone);
+        if (builderProcess != null && BaritoneApiProxy.build(builderProcess, schematic, buildOrigin)) {
+            return;
+        }
+        owner.executeCommand(command);
+    }
+
+    private BlockPos resolveBuildOrigin() {
+        Vec3d targetVector = owner.runtimeState().runtimeParameterData != null ? owner.runtimeState().runtimeParameterData.targetVector : null;
+        if (targetVector != null) {
+            return BlockPos.ofFloored(targetVector);
+        }
+
+        switch (owner.getMode()) {
+            case BUILD_PLAYER:
+                return getPlayerBuildOrigin();
+            case BUILD_XYZ:
+                int x = 0;
+                int y = 0;
+                int z = 0;
+                NodeParameter xParam = owner.getParameter("X");
+                NodeParameter yParam = owner.getParameter("Y");
+                NodeParameter zParam = owner.getParameter("Z");
+
+                if (xParam != null) {
+                    x = xParam.getIntValue();
+                }
+                if (yParam != null) {
+                    y = yParam.getIntValue();
+                }
+                if (zParam != null) {
+                    z = zParam.getIntValue();
+                }
+                return new BlockPos(x, y, z);
+            default:
+                return null;
+        }
+    }
+
+    private BlockPos getPlayerBuildOrigin() {
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return null;
+        }
+        return client.player.getBlockPos();
+    }
+    
+    void executeExploreCommand(CompletableFuture<Void> future) {
+        if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.POSITION), future) == Node.ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        if (owner.getMode() == null) {
+            future.completeExceptionally(new RuntimeException("No mode set for EXPLORE node"));
+            return;
+        }
+
+        if (!owner.isBaritoneApiAvailable() && owner.isBaritoneModAvailable()) {
+            switch (owner.getMode()) {
+                case EXPLORE_CURRENT: {
+                    String command = "#explore";
+                    owner.executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case EXPLORE_XYZ: {
+                    int x = 0, z = 0;
+                    NodeParameter xParam = owner.getParameter("X");
+                    NodeParameter zParam = owner.getParameter("Z");
+
+                    if (xParam != null) x = xParam.getIntValue();
+                    if (zParam != null) z = zParam.getIntValue();
+
+                    String command = String.format("#explore %d %d", x, z);
+                    owner.executeCommand(command);
+                    future.complete(null);
+                    return;
+                }
+                case EXPLORE_FILTER: {
+                    String filter = "explore.txt";
+                    NodeParameter filterParam = owner.getParameter("Filter");
+                    if (filterParam != null) {
+                        filter = filterParam.getStringValue();
+                    }
+                    owner.executeCommand("#explore " + filter);
+                    future.complete(null);
+                    return;
+                }
+                default:
+                    future.completeExceptionally(new RuntimeException("Unknown EXPLORE mode: " + owner.getMode()));
+                    return;
+            }
+        }
+        
+        Object baritone = owner.getBaritone();
+        if (baritone == null) {
+            future.completeExceptionally(new RuntimeException("Baritone not available"));
+            return;
+        }
+        
+        owner.resetBaritonePathing(baritone);
+        Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
+        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_EXPLORE, future);
+        
+        switch (owner.getMode()) {
+            case EXPLORE_CURRENT:
+                BaritoneApiProxy.explore(exploreProcess, 0, 0); // 0,0 means from current position
+                break;
+                
+            case EXPLORE_XYZ:
+                int x = 0, z = 0;
+                NodeParameter xParam = owner.getParameter("X");
+                NodeParameter zParam = owner.getParameter("Z");
+                
+                if (xParam != null) x = xParam.getIntValue();
+                if (zParam != null) z = zParam.getIntValue();
+                
+                BaritoneApiProxy.explore(exploreProcess, x, z);
+                break;
+                
+            case EXPLORE_FILTER:
+                String filter = "explore.txt";
+                NodeParameter filterParam = owner.getParameter("Filter");
+                if (filterParam != null) {
+                    filter = filterParam.getStringValue();
+                }
+                
+                // For filter-based exploration, we need to use a different approach
+                owner.executeCommand("#explore " + filter);
+                future.complete(null); // Command-based exploration completes immediately
+                return;
+                
+            default:
+                future.completeExceptionally(new RuntimeException("Unknown EXPLORE mode: " + owner.getMode()));
+                return;
+        }
+    }
+    
+    void executeFollowCommand(CompletableFuture<Void> future) {
+        if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.POSITION), future) == Node.ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        if (owner.getMode() == null) {
+            future.completeExceptionally(new RuntimeException("No mode set for FOLLOW node"));
+            return;
+        }
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        
+        String command;
+        switch (owner.getMode()) {
+            case FOLLOW_PLAYER:
+                String player = "Self";
+                NodeParameter playerParam = owner.getParameter("Player");
+                if (playerParam != null) {
+                    player = playerParam.getStringValue();
+                }
+
+                if (Node.isAnyPlayerValue(player)) {
+                    command = "#follow players";
+                } else {
+                    if (Node.isSelfPlayerValue(player)) {
+                        player = client != null && client.player != null
+                            ? GameProfileCompatibilityBridge.getName(client.player.getGameProfile())
+                            : "Self";
+                    }
+                    command = "#follow player " + player;
+                }
+                break;
+                
+            case FOLLOW_PLAYERS:
+                command = "#follow players";
+                break;
+                
+            case FOLLOW_ENTITIES:
+                command = "#follow entities";
+                break;
+                
+            case FOLLOW_ENTITY_TYPE:
+                String entity = "cow";
+                NodeParameter entityParam = owner.getParameter("Entity");
+                if (entityParam != null) {
+                    entity = entityParam.getStringValue();
+                }
+
+                command = "#follow entity " + entity;
+                break;
+                
+            default:
+                future.completeExceptionally(new RuntimeException("Unknown FOLLOW mode: " + owner.getMode()));
+                return;
+        }
+        
+        owner.executeCommand(command);
+        future.complete(null); // Follow commands complete immediately
     }
 
 }

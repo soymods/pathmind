@@ -141,7 +141,7 @@ Artifacts are written to `build/libs/`.
 ### Build A Specific Minecraft Target
 
 ```bash
-./gradlew build -Pmc_version=1.21.11
+./gradlew build -Pmc_version="1.21.11"
 ```
 
 Convenience tasks:

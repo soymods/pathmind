@@ -4779,7 +4779,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeSearchField.setHeight(textFieldHeight);
         nodeSearchField.render(context, transformedMouseX, transformedMouseY, delta);
 
-        renderNodeSearchDropdown(context, transformedMouseX, transformedMouseY);
+        renderNodeSearchDropdown(context, mouseX, mouseY);
         MatrixStackBridge.pop(matrices);
     }
 

@@ -26,15 +26,23 @@ final class GuiTextureRenderer {
     }
 
     static void drawIcon(DrawContext context, Identifier texture, int x, int y, int size, int color) {
-        drawIcon(context, List.of(texture), x, y, size, color);
+        drawTexture(context, List.of(texture), x, y, size, size, color);
     }
 
     static void drawIcon(DrawContext context, List<Identifier> textures, int x, int y, int size, int color) {
+        drawTexture(context, textures, x, y, size, size, color);
+    }
+
+    static void drawTexture(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
+        drawTexture(context, List.of(texture), x, y, width, height, color);
+    }
+
+    static void drawTexture(DrawContext context, List<Identifier> textures, int x, int y, int width, int height, int color) {
         try {
             RuntimeException lastException = null;
             for (Identifier texture : textures) {
                 try {
-                    BACKEND.draw(context, texture, x, y, size, color);
+                    BACKEND.draw(context, texture, x, y, width, height, color);
                     return;
                 } catch (RuntimeException exception) {
                     lastException = exception;
@@ -84,9 +92,9 @@ final class GuiTextureRenderer {
     }
 
     private interface RendererBackend {
-        void draw(DrawContext context, Identifier texture, int x, int y, int size, int color);
+        void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color);
 
-        RendererBackend NO_OP = (context, texture, x, y, size, color) -> {
+        RendererBackend NO_OP = (context, texture, x, y, width, height, color) -> {
         };
     }
 
@@ -164,7 +172,7 @@ final class GuiTextureRenderer {
         }
 
         @Override
-        public void draw(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+        public void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
             float alpha = ((color >>> 24) & 0xFF) / 255.0f;
             float red = ((color >>> 16) & 0xFF) / 255.0f;
             float green = ((color >>> 8) & 0xFF) / 255.0f;
@@ -172,11 +180,11 @@ final class GuiTextureRenderer {
             RenderStateBridge.setShaderColor(red, green, blue, alpha);
             try {
                 if (drawTextureMethod != null) {
-                    drawTextureMethod.invoke(context, texture, x, y, 0.0f, 0.0f, size, size, size, size);
+                    drawTextureMethod.invoke(context, texture, x, y, 0.0f, 0.0f, width, height, width, height);
                     return;
                 }
                 if (drawGuiTextureMethod != null) {
-                    drawGuiTextureMethod.invoke(context, texture, x, y, size, size);
+                    drawGuiTextureMethod.invoke(context, texture, x, y, width, height);
                     return;
                 }
                 throw new IllegalStateException("No direct DrawContext texture method available");
@@ -286,7 +294,7 @@ final class GuiTextureRenderer {
         }
 
         @Override
-        public void draw(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+        public void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
             boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
                 || (drawTextureMethod != null && !supportsTint);
             if (needsShaderTint) {
@@ -294,13 +302,13 @@ final class GuiTextureRenderer {
             }
             try {
                 if (drawGuiTextureMethod != null && !texture.getPath().startsWith("textures/")) {
-                    drawGuiTextureMethod.invoke(context, createGuiTextureParameters(pipelineInstance, texture, x, y, size, guiTextureSupportsTint, color));
+                    drawGuiTextureMethod.invoke(context, createGuiTextureParameters(pipelineInstance, texture, x, y, width, height, guiTextureSupportsTint, color));
                     return;
                 }
                 if (drawTextureMethod == null) {
                     throw new IllegalStateException("No drawTexture method available for direct texture path");
                 }
-                Object[] parameters = createCommonParameters(pipelineInstance, texture, x, y, size, supportsTint, color);
+                Object[] parameters = createCommonParameters(pipelineInstance, texture, x, y, width, height, supportsTint, color);
                 drawTextureMethod.invoke(context, parameters);
             } catch (IllegalAccessException | InvocationTargetException exception) {
                 throw new RuntimeException("RenderPipeline backend failed", exception);
@@ -409,7 +417,7 @@ final class GuiTextureRenderer {
         }
 
         @Override
-        public void draw(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+        public void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
             boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
                 || (drawTextureMethod != null && !supportsTint);
             if (needsShaderTint) {
@@ -417,13 +425,13 @@ final class GuiTextureRenderer {
             }
             try {
                 if (drawGuiTextureMethod != null && !texture.getPath().startsWith("textures/")) {
-                    drawGuiTextureMethod.invoke(context, createGuiTextureParameters(renderLayerFactory, texture, x, y, size, guiTextureSupportsTint, color));
+                    drawGuiTextureMethod.invoke(context, createGuiTextureParameters(renderLayerFactory, texture, x, y, width, height, guiTextureSupportsTint, color));
                     return;
                 }
                 if (drawTextureMethod == null) {
                     throw new IllegalStateException("No drawTexture method available for direct texture path");
                 }
-                Object[] parameters = createCommonParameters(renderLayerFactory, texture, x, y, size, supportsTint, color);
+                Object[] parameters = createCommonParameters(renderLayerFactory, texture, x, y, width, height, supportsTint, color);
                 drawTextureMethod.invoke(context, parameters);
             } catch (IllegalAccessException | InvocationTargetException exception) {
                 throw new RuntimeException("Legacy RenderLayer backend failed", exception);
@@ -495,7 +503,8 @@ final class GuiTextureRenderer {
         Identifier texture,
         int x,
         int y,
-        int size,
+        int width,
+        int height,
         boolean includeTint,
         int color
     ) {
@@ -506,10 +515,10 @@ final class GuiTextureRenderer {
         parameters[3] = y;
         parameters[4] = 0.0F;
         parameters[5] = 0.0F;
-        parameters[6] = size;
-        parameters[7] = size;
-        parameters[8] = size;
-        parameters[9] = size;
+        parameters[6] = width;
+        parameters[7] = height;
+        parameters[8] = width;
+        parameters[9] = height;
         if (includeTint) {
             parameters[10] = color;
         }
@@ -521,7 +530,8 @@ final class GuiTextureRenderer {
         Identifier texture,
         int x,
         int y,
-        int size,
+        int width,
+        int height,
         boolean includeTint,
         int color
     ) {
@@ -530,8 +540,8 @@ final class GuiTextureRenderer {
         parameters[1] = texture;
         parameters[2] = x;
         parameters[3] = y;
-        parameters[4] = size;
-        parameters[5] = size;
+        parameters[4] = width;
+        parameters[5] = height;
         if (includeTint) {
             parameters[6] = color;
         }

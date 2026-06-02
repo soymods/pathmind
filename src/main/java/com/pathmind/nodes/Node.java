@@ -2771,23 +2771,15 @@ public class Node {
                 }
             }
             case SENSOR_DISTANCE_BETWEEN -> {
-                Node parameterNodeA = getAttachedParameter(0);
-                Node parameterNodeB = getAttachedParameter(1);
+                Node parameterNodeA = resolveSensorParameterNode(getAttachedParameter(0), 0);
+                Node parameterNodeB = resolveSensorParameterNode(getAttachedParameter(1), 1);
                 if (parameterNodeA == null || parameterNodeB == null) {
                     break;
                 }
-                if (!providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
-                    && !providesTrait(parameterNodeA, NodeValueTrait.COORDINATE)
-                    && !providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
-                    && !providesTrait(parameterNodeA, NodeValueTrait.ITEM)
-                    && !providesTrait(parameterNodeA, NodeValueTrait.PLAYER)) {
+                if (!isDistanceBetweenSupportedTarget(parameterNodeA)) {
                     break;
                 }
-                if (!providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
-                    && !providesTrait(parameterNodeB, NodeValueTrait.COORDINATE)
-                    && !providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
-                    && !providesTrait(parameterNodeB, NodeValueTrait.ITEM)
-                    && !providesTrait(parameterNodeB, NodeValueTrait.PLAYER)) {
+                if (!isDistanceBetweenSupportedTarget(parameterNodeB)) {
                     break;
                 }
                 Optional<Vec3d> resolvedA = resolveDistanceBetweenTarget(parameterNodeA);
@@ -4070,6 +4062,14 @@ public class Node {
         if (parameterNode == null) {
             return Optional.empty();
         }
+        int slotIndex = parameterNode.getParentParameterSlotIndex();
+        if (slotIndex < 0) {
+            slotIndex = 0;
+        }
+        parameterNode = resolveSensorParameterNode(parameterNode, slotIndex);
+        if (parameterNode == null) {
+            return Optional.empty();
+        }
         if (parameterNode.getType() != NodeType.PARAM_ENTITY) {
             return resolvePositionTarget(parameterNode, null, null);
         }
@@ -4149,6 +4149,15 @@ public class Node {
             return Optional.of(pos);
         }
         return Optional.of(Vec3d.ofCenter(nearest.getBlockPos()));
+    }
+
+    boolean isDistanceBetweenSupportedTarget(Node parameterNode) {
+        return parameterNode != null
+            && (providesTrait(parameterNode, NodeValueTrait.ENTITY)
+                || providesTrait(parameterNode, NodeValueTrait.COORDINATE)
+                || providesTrait(parameterNode, NodeValueTrait.BLOCK)
+                || providesTrait(parameterNode, NodeValueTrait.ITEM)
+                || providesTrait(parameterNode, NodeValueTrait.PLAYER));
     }
 
     private void applyVectorToCoordinateParameters(Vec3d targetVec) {

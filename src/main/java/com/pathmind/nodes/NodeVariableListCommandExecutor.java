@@ -86,24 +86,16 @@ final class NodeVariableListCommandExecutor {
             values = valueNode.exportParameterValues();
             valueType = valueNode.getResolvedValueType();
         } else if (valueType == NodeType.SENSOR_DISTANCE_BETWEEN) {
-            Node parameterNodeA = valueNode.getAttachedParameter(0);
-            Node parameterNodeB = valueNode.getAttachedParameter(1);
+            Node parameterNodeA = valueNode.resolveSensorParameterNode(valueNode.getAttachedParameter(0), 0);
+            Node parameterNodeB = valueNode.resolveSensorParameterNode(valueNode.getAttachedParameter(1), 1);
             if (parameterNodeA == null || parameterNodeB == null) {
                 owner.setNextOutputSocket(Node.NO_OUTPUT);
                 NodeExecutionCompletion.fail(owner, client, future,
                     tr("pathmind.error.distanceBetweenRequiresTwoParameters"));
                 return;
             }
-            if ((!valueNode.providesTrait(parameterNodeA, NodeValueTrait.ENTITY)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.COORDINATE)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.BLOCK)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.ITEM)
-                && !valueNode.providesTrait(parameterNodeA, NodeValueTrait.PLAYER))
-                || (!valueNode.providesTrait(parameterNodeB, NodeValueTrait.ENTITY)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.COORDINATE)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.BLOCK)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.ITEM)
-                && !valueNode.providesTrait(parameterNodeB, NodeValueTrait.PLAYER))) {
+            if (!valueNode.isDistanceBetweenSupportedTarget(parameterNodeA)
+                || !valueNode.isDistanceBetweenSupportedTarget(parameterNodeB)) {
                 owner.setNextOutputSocket(Node.NO_OUTPUT);
                 NodeExecutionCompletion.fail(owner, client, future,
                     tr("pathmind.error.distanceBetweenInvalidParameters"));

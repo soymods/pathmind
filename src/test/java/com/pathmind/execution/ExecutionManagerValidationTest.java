@@ -261,6 +261,36 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void distanceBetweenExportsDistanceForVariableBackedCoordinateTargets() {
+        Node distanceBetween = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
+        Node variableA = new Node(NodeType.VARIABLE, 0, 0);
+        variableA.getParameter("Variable").setStringValue("target_a");
+        Node variableB = new Node(NodeType.VARIABLE, 0, 0);
+        variableB.getParameter("Variable").setStringValue("target_b");
+
+        assertTrue(distanceBetween.attachParameter(variableA, 0));
+        assertTrue(distanceBetween.attachParameter(variableB, 1));
+
+        manager.setRuntimeVariableForAnyActiveChain(
+            "target_a",
+            new ExecutionManager.RuntimeVariable(
+                NodeType.PARAM_COORDINATE,
+                Map.of("X", "0", "x", "0", "Y", "64", "y", "64", "Z", "0", "z", "0")
+            )
+        );
+        manager.setRuntimeVariableForAnyActiveChain(
+            "target_b",
+            new ExecutionManager.RuntimeVariable(
+                NodeType.PARAM_COORDINATE,
+                Map.of("X", "3", "x", "3", "Y", "64", "y", "64", "Z", "4", "z", "4")
+            )
+        );
+
+        Map<String, String> values = distanceBetween.exportParameterValues();
+        assertEquals("5.0", values.get("Distance"));
+    }
+
+    @Test
     void equalsTreatsStoredCoordinateAndCoordinateNodeAsEquivalent() {
         Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
         Node variable = new Node(NodeType.VARIABLE, 0, 0);

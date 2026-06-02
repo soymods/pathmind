@@ -1386,6 +1386,7 @@ public class Node {
             || type == NodeType.WAIT
             || type == NodeType.PARAM_DURATION
             || type == NodeType.USE
+            || type == NodeType.PRESS_KEY
             || type == NodeType.SWING
             || type == NodeType.DROP_ITEM;
     }
@@ -1468,7 +1469,7 @@ public class Node {
             return "Number";
         }
         return switch (type) {
-           case NodeType.USE, NodeType.SWING -> "Hold Duration";
+           case NodeType.USE, NodeType.PRESS_KEY, NodeType.SWING -> "Hold Duration";
             case NodeType.SENSOR_CHAT_MESSAGE -> "Seconds";
             case NodeType.SENSOR_HEALTH_BELOW -> "Health";
             case NodeType.SENSOR_HUNGER_BELOW -> "Hunger";
@@ -1490,7 +1491,7 @@ public class Node {
         }
         return switch (type) {
             case NodeType.MOVE_ITEM, NodeType.CONTROL_REPEAT, NodeType.DROP_ITEM -> "Count";
-            case NodeType.WAIT, NodeType.PARAM_DURATION, NodeType.SWING -> "Duration";
+            case NodeType.WAIT, NodeType.PARAM_DURATION, NodeType.SWING, NodeType.PRESS_KEY -> "Duration";
             case NodeType.USE -> "UseDurationSeconds";
             default -> "Amount";
         };
@@ -1523,6 +1524,7 @@ public class Node {
             || type == NodeType.SENSOR_ITEM_IN_SLOT
             || type == NodeType.SENSOR_CHAT_MESSAGE
             || type == NodeType.USE
+            || type == NodeType.PRESS_KEY
             || type == NodeType.SWING
             || type == NodeType.DROP_ITEM;
     }

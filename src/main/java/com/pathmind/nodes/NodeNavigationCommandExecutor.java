@@ -182,7 +182,7 @@ final class NodeNavigationCommandExecutor {
             return;
         }
         if (mode == null) {
-            NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("No mode set for TRAVEL node"));
+            failTravelNode(future, "No mode set for TRAVEL node");
             return;
         }
 
@@ -191,14 +191,14 @@ final class NodeNavigationCommandExecutor {
             return;
         }
         if (travelTarget == null || travelTarget.pos() == null) {
-            NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("No target resolved for TRAVEL node"));
+            failTravelNode(future, "No target resolved for TRAVEL node");
             return;
         }
         BlockPos targetPos = travelTarget.pos();
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.player == null || client.world == null) {
-            NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Pathmind Nav unavailable"));
+            failTravelNode(future, "Pathmind Nav unavailable");
             return;
         }
         if (isPlayerAtCoordinates(targetPos.getX(), targetPos.getY(), targetPos.getZ())) {
@@ -212,19 +212,29 @@ final class NodeNavigationCommandExecutor {
         navigator.setBlockBreakingAllowed(isGotoAllowBreakWhileExecuting());
         navigator.setBlockPlacingAllowed(isGotoAllowPlaceWhileExecuting());
 
+        CompletableFuture<Void> navFuture = new CompletableFuture<>();
         boolean started = travelTarget.nearBlock()
-            ? navigator.startGotoNearBlock(targetPos, "Node Travel", future)
-            : navigator.startGoto(targetPos, "Node Travel", future);
+            ? navigator.startGotoNearBlock(targetPos, "Node Travel", navFuture)
+            : navigator.startGoto(targetPos, "Node Travel", navFuture);
         if (!started) {
             navigator.setBlockBreakingAllowed(previousBreakAllowed);
             navigator.setBlockPlacingAllowed(previousPlaceAllowed);
-            NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Could not start Pathmind Nav"));
+            failTravelNode(future, "Could not start Pathmind Nav");
             return;
         }
 
-        future.whenComplete((result, throwable) -> {
+        navFuture.whenComplete((result, throwable) -> {
             navigator.setBlockBreakingAllowed(previousBreakAllowed);
             navigator.setBlockPlacingAllowed(previousPlaceAllowed);
+            if (throwable == null) {
+                NodeExecutionCompletion.complete(future);
+                return;
+            }
+            String message = throwable.getMessage();
+            if (message == null || message.isBlank()) {
+                message = "Travel failed";
+            }
+            failTravelNode(future, message);
         });
     }
 
@@ -249,35 +259,29 @@ final class NodeNavigationCommandExecutor {
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         switch (mode) {
             case GOTO_XYZ: {
-                int x = getIntParameter("X", 0);
-                int y = getIntParameter("Y", 64);
-                int z = getIntParameter("Z", 0);
-                return new TravelTarget(new BlockPos(x, y, z), false);
+                return new TravelTarget(resolveClosestCoordinateTarget("X", "Y", "Z", 0, 64, 0), false);
             }
             case GOTO_XZ: {
                 if (client == null || client.player == null) {
-                    NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Player unavailable for TRAVEL XZ target"));
+                    failTravelNode(future, "Player unavailable for TRAVEL XZ target");
                     return null;
                 }
-                int x = getIntParameter("X", 0);
-                int z = getIntParameter("Z", 0);
-                return new TravelTarget(new BlockPos(x, client.player.getBlockY(), z), false);
+                return new TravelTarget(resolveClosestCoordinateTarget("X", null, "Z", 0, client.player.getBlockY(), 0), false);
             }
             case GOTO_Y: {
                 if (client == null || client.player == null) {
-                    NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Player unavailable for TRAVEL Y target"));
+                    failTravelNode(future, "Player unavailable for TRAVEL Y target");
                     return null;
                 }
-                int y = getIntParameter("Y", 64);
                 BlockPos playerPos = client.player.getBlockPos();
-                return new TravelTarget(new BlockPos(playerPos.getX(), y, playerPos.getZ()), false);
+                return new TravelTarget(resolveClosestCoordinateTarget(null, "Y", null, playerPos.getX(), 64, playerPos.getZ()), false);
             }
             case GOTO_BLOCK: {
                 BlockPos targetBlock = resolveGotoFallbackTargetFromBlockId(getStringParameter("Block", null), future);
                 return new TravelTarget(targetBlock, true);
             }
             default:
-                NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Unknown TRAVEL mode: " + mode));
+                failTravelNode(future, "Unknown TRAVEL mode: " + mode);
                 return null;
         }
     }
@@ -710,53 +714,37 @@ final class NodeNavigationCommandExecutor {
             return null;
         }
 
-        List<String> blockIds = splitMultiValueList(blockId);
-        if (!blockIds.isEmpty()) {
-            blockId = blockIds.get(0);
-        }
-
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client == null || client.world == null) {
             return null;
         }
 
-        String sanitized = sanitizeResourceId(blockId);
-        String normalized = (sanitized != null && !sanitized.isEmpty())
-            ? normalizeResourceId(sanitized, "minecraft")
-            : null;
-
-        if (normalized == null || normalized.isEmpty()) {
+        ResolvedBlockTarget resolved = resolveNearestBlockTarget(blockId, client);
+        if (resolved == null) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.navigateBlockNoSelection"));
             return null;
         }
-
-        Identifier identifier = Identifier.tryParse(normalized);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        if (resolved.invalidValue() != null) {
             NodeExecutionCompletion.fail(owner, client, future,
-                tr("pathmind.error.navigateBlockUnknownIdentifier", blockId));
+                tr("pathmind.error.navigateBlockUnknownIdentifier", resolved.invalidValue()));
+            return null;
+        }
+        if (resolved.pos() == null) {
+            NodeExecutionCompletion.fail(owner, client, future,
+                tr("pathmind.error.noTargetFoundNearby", resolved.normalizedId(), type.getDisplayName()));
             return null;
         }
 
-        Block targetBlock = Registries.BLOCK.get(identifier);
-        List<BlockSelection> selections = new ArrayList<>();
-        BlockSelection.parse(blockId).ifPresent(selections::add);
-        Optional<BlockPos> nearest = findNearestBlock(client, selections, Node.PARAMETER_SEARCH_RADIUS);
-        if (nearest.isEmpty()) {
-            NodeExecutionCompletion.fail(owner, client, future,
-                tr("pathmind.error.noTargetFoundNearby", normalized, type.getDisplayName()));
-            return null;
-        }
-
-        setParameterValueAndPropagate("Block", normalized);
+        setParameterValueAndPropagate("Block", resolved.normalizedId());
 
         if (client.player != null) {
             BlockPos playerBlockPos = client.player.getBlockPos();
-            BlockPos targetPos = nearest.get();
+            BlockPos targetPos = resolved.pos();
             if (playerBlockPos.equals(targetPos)) {
                 NodeExecutionCompletion.complete(future);
                 return null;
             }
-            if (targetBlock != null && client.world.getBlockState(targetPos).isOf(targetBlock)) {
+            if (resolved.targetBlock() != null && client.world.getBlockState(targetPos).isOf(resolved.targetBlock())) {
                 double distanceSq = client.player.squaredDistanceTo(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
                 if (distanceSq <= 2.25D) {
                     NodeExecutionCompletion.complete(future);
@@ -765,7 +753,7 @@ final class NodeNavigationCommandExecutor {
             }
         }
 
-        return nearest.get();
+        return resolved.pos();
     }
 
     private boolean gotoSpecificEntity(Entity targetEntity, Object customGoalProcess, CompletableFuture<Void> future) {
@@ -949,44 +937,33 @@ final class NodeNavigationCommandExecutor {
         if (blockId == null || blockId.isEmpty()) {
             return false;
         }
-        List<String> blockIds = splitMultiValueList(blockId);
-        if (!blockIds.isEmpty()) {
-            blockId = blockIds.get(0);
-        }
 
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         RuntimeParameterData parameterData = runtimeState.runtimeParameterData;
         BlockPos targetPos = parameterData != null ? parameterData.targetBlockPos : null;
-        String sanitized = sanitizeResourceId(blockId);
-        String normalized = (sanitized != null && !sanitized.isEmpty())
-            ? normalizeResourceId(sanitized, "minecraft")
-            : null;
+        String normalized = null;
         Block targetBlock = null;
 
         if (client != null && client.world != null) {
-            if (normalized == null || normalized.isEmpty()) {
+            ResolvedBlockTarget resolved = resolveNearestBlockTarget(blockId, client);
+            if (resolved == null) {
                 NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.navigateBlockNoSelection"));
                 return true;
             }
-
-            Identifier identifier = Identifier.tryParse(normalized);
-            if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+            if (resolved.invalidValue() != null) {
                 NodeExecutionCompletion.fail(owner, client, future,
-                    tr("pathmind.error.navigateBlockUnknownIdentifier", blockId));
+                    tr("pathmind.error.navigateBlockUnknownIdentifier", resolved.invalidValue()));
                 return true;
             }
-
-            targetBlock = Registries.BLOCK.get(identifier);
+            normalized = resolved.normalizedId();
+            targetBlock = resolved.targetBlock();
             if (targetPos == null) {
-                List<BlockSelection> selections = new ArrayList<>();
-                BlockSelection.parse(blockId).ifPresent(selections::add);
-                Optional<BlockPos> nearest = findNearestBlock(client, selections, Node.PARAMETER_SEARCH_RADIUS);
-                if (nearest.isEmpty()) {
+                if (resolved.pos() == null) {
                     NodeExecutionCompletion.fail(owner, client, future,
                         tr("pathmind.error.noTargetFoundNearby", normalized, type.getDisplayName()));
                     return true;
                 }
-                targetPos = nearest.get();
+                targetPos = resolved.pos();
             }
 
             setParameterValueAndPropagate("Block", normalized);
@@ -1481,6 +1458,126 @@ final class NodeNavigationCommandExecutor {
 
     private String normalizeResourceId(String value, String defaultNamespace) {
         return owner.normalizeResourceId(value, defaultNamespace);
+    }
+
+    private record ResolvedBlockTarget(BlockPos pos, String normalizedId, Block targetBlock, String invalidValue) {
+    }
+
+    private ResolvedBlockTarget resolveNearestBlockTarget(String rawBlockId, net.minecraft.client.MinecraftClient client) {
+        List<BlockSelection> selections = new ArrayList<>();
+        String firstNormalized = null;
+        for (String blockId : splitMultiValueList(rawBlockId)) {
+            String sanitized = sanitizeResourceId(blockId);
+            String normalized = (sanitized != null && !sanitized.isEmpty())
+                ? normalizeResourceId(sanitized, "minecraft")
+                : null;
+            if (normalized == null || normalized.isEmpty()) {
+                continue;
+            }
+
+            Optional<BlockSelection> parsedSelection = BlockSelection.parse(blockId);
+            if (parsedSelection.isEmpty()) {
+                return new ResolvedBlockTarget(null, null, null, blockId);
+            }
+            if (firstNormalized == null) {
+                firstNormalized = parsedSelection.get().asString();
+            }
+            selections.add(parsedSelection.get());
+        }
+
+        if (selections.isEmpty()) {
+            return null;
+        }
+
+        Optional<BlockPos> nearest = findNearestBlock(client, selections, Node.PARAMETER_SEARCH_RADIUS);
+        if (nearest.isEmpty()) {
+            return new ResolvedBlockTarget(null, firstNormalized, null, null);
+        }
+
+        BlockPos nearestPos = nearest.get();
+        net.minecraft.block.BlockState state = client.world.getBlockState(nearestPos);
+        for (BlockSelection selection : selections) {
+            if (selection.matches(state)) {
+                return new ResolvedBlockTarget(nearestPos, selection.asString(), selection.getBlock(), null);
+            }
+        }
+
+        BlockSelection firstSelection = selections.get(0);
+        return new ResolvedBlockTarget(nearestPos, firstSelection.asString(), firstSelection.getBlock(), null);
+    }
+
+    private BlockPos resolveClosestCoordinateTarget(String xName, String yName, String zName,
+                                                    int defaultX, int defaultY, int defaultZ) {
+        List<Integer> xs = resolveCoordinateCandidates(xName, defaultX);
+        List<Integer> ys = resolveCoordinateCandidates(yName, defaultY);
+        List<Integer> zs = resolveCoordinateCandidates(zName, defaultZ);
+        int candidateCount = Math.max(xs.size(), Math.max(ys.size(), zs.size()));
+        if (candidateCount <= 1) {
+            return new BlockPos(xs.get(0), ys.get(0), zs.get(0));
+        }
+
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return new BlockPos(xs.get(0), ys.get(0), zs.get(0));
+        }
+
+        BlockPos playerPos = client.player.getBlockPos();
+        BlockPos bestPos = null;
+        double bestDistanceSq = Double.MAX_VALUE;
+        for (int i = 0; i < candidateCount; i++) {
+            BlockPos candidate = new BlockPos(valueAt(xs, i), valueAt(ys, i), valueAt(zs, i));
+            double distanceSq = playerPos.getSquaredDistance(candidate);
+            if (distanceSq < bestDistanceSq) {
+                bestDistanceSq = distanceSq;
+                bestPos = candidate;
+            }
+        }
+        return bestPos != null ? bestPos : new BlockPos(xs.get(0), ys.get(0), zs.get(0));
+    }
+
+    private List<Integer> resolveCoordinateCandidates(String parameterName, int defaultValue) {
+        List<Integer> values = new ArrayList<>();
+        if (parameterName == null) {
+            values.add(defaultValue);
+            return values;
+        }
+
+        String rawValue = getStringParameter(parameterName, null);
+        List<String> entries = splitMultiValueList(rawValue);
+        if (entries.isEmpty()) {
+            values.add(getIntParameter(parameterName, defaultValue));
+            return values;
+        }
+
+        for (String entry : entries) {
+            Integer parsed = Node.parseIntOrNull(entry);
+            if (parsed == null) {
+                try {
+                    parsed = (int) Math.round(Double.parseDouble(entry.trim()));
+                } catch (NumberFormatException ignored) {
+                    parsed = defaultValue;
+                }
+            }
+            values.add(parsed);
+        }
+        if (values.isEmpty()) {
+            values.add(defaultValue);
+        }
+        return values;
+    }
+
+    private int valueAt(List<Integer> values, int index) {
+        if (values.isEmpty()) {
+            return 0;
+        }
+        if (values.size() == 1) {
+            return values.get(0);
+        }
+        return values.get(Math.min(index, values.size() - 1));
+    }
+
+    private void failTravelNode(CompletableFuture<Void> future, String message) {
+        NodeExecutionCompletion.fail(owner, net.minecraft.client.MinecraftClient.getInstance(), future, message);
     }
 
     private Optional<BlockPos> findNearestBlock(net.minecraft.client.MinecraftClient client, List<BlockSelection> selections, double range) {

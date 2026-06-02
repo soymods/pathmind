@@ -179,7 +179,10 @@ final class NodeParameterDefinitionRegistry {
         registerType(NodeType.WALK,
             of("Duration", ParameterType.DOUBLE, "1.0"),
             of("Distance", ParameterType.DOUBLE, "0.0"));
-        registerType(NodeType.PRESS_KEY, of("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
+        registerType(NodeType.PRESS_KEY,
+            of("Key", ParameterType.STRING, "GLFW_KEY_SPACE"),
+            of("Duration", ParameterType.DOUBLE, "0.0"),
+            of("UseAmount", ParameterType.BOOLEAN, "false"));
         registerType(NodeType.CONTROL_REPEAT, of("Count", ParameterType.INTEGER, "10"));
         registerType(NodeType.EVENT_FUNCTION, of("Name", ParameterType.STRING, "function"));
         registerType(NodeType.EVENT_CALL, of("Name", ParameterType.STRING, "function"));

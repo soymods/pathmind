@@ -18,7 +18,11 @@ final class NodeAttributeParameters {
         if (type == NodeType.PARAM_BOOLEAN && "Toggle".equalsIgnoreCase(name)) {
             return "Value";
         }
-        if (type == NodeType.USE && "UseDurationSeconds".equalsIgnoreCase(name)) {
+        if (type == NodeType.PARAM_DISTANCE && "Distance".equalsIgnoreCase(name)) {
+            return "Blocks";
+        }
+        if ((type == NodeType.USE && "UseDurationSeconds".equalsIgnoreCase(name))
+            || (type == NodeType.PRESS_KEY && "Duration".equalsIgnoreCase(name))) {
             return "Hold Duration";
         }
         if (type == NodeType.PARAM_MESSAGE && "Text".equalsIgnoreCase(name)) {
@@ -120,6 +124,12 @@ final class NodeAttributeParameters {
         if (type == NodeType.USE) {
             String paramName = parameter.getName();
             if ("UseDurationSeconds".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
+                return "";
+            }
+        }
+        if (type == NodeType.PRESS_KEY) {
+            String paramName = parameter.getName();
+            if ("Duration".equalsIgnoreCase(paramName) || "UseAmount".equalsIgnoreCase(paramName)) {
                 return "";
             }
         }

@@ -42,6 +42,7 @@ import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.util.RecipeCompatibilityBridge;
 import net.minecraft.client.util.InputUtil;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.EntityPose;
 import net.minecraft.entity.player.PlayerEntity;
@@ -3643,8 +3644,6 @@ public class Node {
 
     public CompletableFuture<Void> execute(int executionId) {
         CompletableFuture<Void> future = new CompletableFuture<>();
-
-        // Execute on the main Minecraft thread
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
 
         if (hasParameterSlot()) {
@@ -3663,6 +3662,17 @@ public class Node {
             return future;
         }
 
+        if (!requiresClientThreadExecution()) {
+            try {
+                ExecutionManager.getInstance().runWithExecutionContext(executionId,
+                    () -> NodeCommandDispatcher.execute(this, future));
+            } catch (Exception e) {
+                LOGGER.warn("Error executing node {}: {}", type, e.getMessage(), e);
+                NodeExecutionCompletion.completeExceptionally(future, e);
+            }
+            return future;
+        }
+
         if (client != null) {
             client.execute(() -> {
                 try {
@@ -3678,6 +3688,24 @@ public class Node {
         }
 
         return future;
+    }
+
+    private boolean requiresClientThreadExecution() {
+        return switch (type) {
+            case EVENT_CALL,
+                EVENT_FUNCTION,
+                SET_VARIABLE,
+                CHANGE_VARIABLE,
+                CONTROL_REPEAT,
+                CONTROL_FOREVER,
+                START_CHAIN,
+                RUN_PRESET,
+                CUSTOM_NODE,
+                TEMPLATE,
+                STOP_CHAIN,
+                STOP_ALL -> false;
+            default -> true;
+        };
     }
 
     ParameterHandlingResult preprocessAttachedParameter(EnumSet<ParameterUsage> usages, CompletableFuture<Void> future) {
@@ -7077,8 +7105,33 @@ public class Node {
     void executeCommand(String command) {
         try {
             net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-            if (client != null && client.player != null) {
-                client.player.networkHandler.sendChatMessage(command);
+            if (client != null && client.player != null && command != null) {
+                String trimmed = command.trim();
+                if (trimmed.isEmpty()) {
+                    return;
+                }
+                if (trimmed.startsWith("/")) {
+                    String rawCommand = trimmed.substring(1).trim();
+                    if (rawCommand.isEmpty()) {
+                        return;
+                    }
+                    if (!ClientSendMessageEvents.ALLOW_COMMAND.invoker().allowSendCommandMessage(rawCommand)) {
+                        ClientSendMessageEvents.COMMAND_CANCELED.invoker().onSendCommandMessageCanceled(rawCommand);
+                        return;
+                    }
+                    String modified = ClientSendMessageEvents.MODIFY_COMMAND.invoker().modifySendCommandMessage(rawCommand);
+                    ClientSendMessageEvents.COMMAND.invoker().onSendCommandMessage(modified);
+                    client.player.networkHandler.sendChatCommand(modified);
+                    return;
+                }
+
+                if (!ClientSendMessageEvents.ALLOW_CHAT.invoker().allowSendChatMessage(trimmed)) {
+                    ClientSendMessageEvents.CHAT_CANCELED.invoker().onSendChatMessageCanceled(trimmed);
+                    return;
+                }
+                String modified = ClientSendMessageEvents.MODIFY_CHAT.invoker().modifySendChatMessage(trimmed);
+                ClientSendMessageEvents.CHAT.invoker().onSendChatMessage(modified);
+                client.player.networkHandler.sendChatMessage(modified);
             }
         } catch (Exception e) {
             LOGGER.warn("Error executing command: {}", e.getMessage(), e);

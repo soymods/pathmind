@@ -672,6 +672,13 @@ final class NodeInventoryCommandExecutor {
 
         Node counterpart = getAttachedParameter(parameterSlotIndex == 0 ? 1 : 0);
         if (counterpart != null && counterpart.getType() != NodeType.PARAM_ITEM) {
+            if (counterpart.getType() == NodeType.PARAM_GUI) {
+                GuiSelectionMode guiMode = GuiSelectionMode.fromId(getParameterString(counterpart, "GUI"));
+                if (guiMode == GuiSelectionMode.PLAYER_INVENTORY) {
+                    return SlotSelectionType.GUI_CONTAINER;
+                }
+                return SlotSelectionType.PLAYER_INVENTORY;
+            }
             SlotSelectionType counterpartSelection = resolveInventorySlotSelectionType(counterpart);
             if (counterpartSelection == SlotSelectionType.GUI_CONTAINER) {
                 return SlotSelectionType.PLAYER_INVENTORY;
@@ -684,6 +691,10 @@ final class NodeInventoryCommandExecutor {
         return parameterSlotIndex == 0
             ? SlotSelectionType.PLAYER_INVENTORY
             : resolveInventorySlotSelectionType(parameterNode);
+    }
+
+    SlotSelectionType resolveMoveItemSlotSelectionTypeForTests(Node parameterNode, int parameterSlotIndex) {
+        return resolveMoveItemSlotSelectionType(parameterNode, parameterSlotIndex);
     }
 
     private boolean hasOpenGuiContainer() {

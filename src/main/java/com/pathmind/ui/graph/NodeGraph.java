@@ -23,6 +23,7 @@ import com.pathmind.util.BlockSelection;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.GuiSelectionMode;
+import com.pathmind.util.LegacyVariableSyntaxCompat;
 import com.pathmind.util.TextRenderUtil;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.MinecraftClient;
@@ -5690,7 +5691,7 @@ public class NodeGraph {
             String display = editingAxis
                 ? value
                 : trimTextToWidth(value, textRenderer, fieldWidth - 6);
-            int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
+            int variableHighlightColor = UITheme.ACCENT_AMBER;
             Set<String> coordVariableNames = collectRuntimeVariableNames(node);
             InlineVariableRender coordRenderData = null;
             if (shouldBuildInlineExpressionRender(value, coordVariableNames)) {
@@ -5846,7 +5847,7 @@ public class NodeGraph {
             }
             valueColor = UITheme.TEXT_TERTIARY;
         }
-            int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
+            int variableHighlightColor = UITheme.ACCENT_AMBER;
         Set<String> amountVariableNames = collectRuntimeVariableNames(node);
         InlineVariableRender amountRenderData = null;
         if (amountEnabled && !showPlaceholder && shouldBuildInlineExpressionRender(value, amountVariableNames)) {
@@ -6097,7 +6098,7 @@ public class NodeGraph {
         int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = UITheme.TEXT_EDITING;
-        int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
+        int variableHighlightColor = UITheme.ACCENT_AMBER;
 
         boolean editing = isEditingMessageField() && messageEditingNode == node;
         if (editing) {
@@ -6226,6 +6227,7 @@ public class NodeGraph {
     }
 
     private InlineVariableRender buildInlineVariableRender(String rawText, Set<String> variableNames, int baseColor, int highlightColor) {
+        rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (rawText == null || rawText.isEmpty()) {
             return new InlineVariableRender(rawText == null ? "" : rawText, Collections.emptyList(), new int[0]);
         }
@@ -6235,25 +6237,25 @@ public class NodeGraph {
         int operatorColor = UITheme.DROP_ACCENT_GREEN;
         int cursor = 0;
         while (cursor < rawText.length()) {
-            int tildeIndex = rawText.indexOf('~', cursor);
-            if (tildeIndex < 0) {
+            int variableIndex = rawText.indexOf('$', cursor);
+            if (variableIndex < 0) {
                 appendStyledPlainSegments(rawText.substring(cursor), baseColor, operatorColor, segments, displayBuilder);
                 break;
             }
-            if (tildeIndex > cursor) {
-                appendStyledPlainSegments(rawText.substring(cursor, tildeIndex), baseColor, operatorColor, segments, displayBuilder);
+            if (variableIndex > cursor) {
+                appendStyledPlainSegments(rawText.substring(cursor, variableIndex), baseColor, operatorColor, segments, displayBuilder);
             }
-            VariableReferenceMatch match = findInlineVariableReference(rawText, tildeIndex, variableNames);
+            VariableReferenceMatch match = findInlineVariableReference(rawText, variableIndex, variableNames);
             if (match != null) {
-                removedPositions.add(tildeIndex);
+                removedPositions.add(variableIndex);
                 segments.add(new InlineTextSegment(match.name, highlightColor));
                 displayBuilder.append(match.name);
                 cursor = match.endIndex;
                 continue;
             }
-            segments.add(new InlineTextSegment("~", baseColor));
-            displayBuilder.append("~");
-            cursor = tildeIndex + 1;
+            segments.add(new InlineTextSegment("$", baseColor));
+            displayBuilder.append("$");
+            cursor = variableIndex + 1;
         }
         int[] removed = new int[removedPositions.size()];
         for (int i = 0; i < removedPositions.size(); i++) {
@@ -6263,6 +6265,7 @@ public class NodeGraph {
     }
 
     private boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames) {
+        rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (compactViewportMode) {
             return false;
         }
@@ -6272,7 +6275,7 @@ public class NodeGraph {
         if (containsInlineArithmeticOperator(rawText)) {
             return true;
         }
-        return variableNames != null && !variableNames.isEmpty() && rawText.indexOf('~') >= 0;
+        return variableNames != null && !variableNames.isEmpty() && rawText.indexOf('$') >= 0;
     }
 
     private boolean isInlineVariableChar(char character) {
@@ -6323,12 +6326,12 @@ public class NodeGraph {
         }
     }
 
-    private VariableReferenceMatch findInlineVariableReference(String rawText, int tildeIndex, Set<String> variableNames) {
-        if (rawText == null || tildeIndex < 0 || tildeIndex >= rawText.length() || rawText.charAt(tildeIndex) != '~'
+    private VariableReferenceMatch findInlineVariableReference(String rawText, int variableIndex, Set<String> variableNames) {
+        if (rawText == null || variableIndex < 0 || variableIndex >= rawText.length() || rawText.charAt(variableIndex) != '$'
             || variableNames == null || variableNames.isEmpty()) {
             return null;
         }
-        int nameStart = tildeIndex + 1;
+        int nameStart = variableIndex + 1;
         if (nameStart >= rawText.length()) {
             return null;
         }
@@ -6355,18 +6358,19 @@ public class NodeGraph {
     }
 
     private boolean isSingleKnownInlineVariableReference(String rawText, Set<String> variableNames) {
+        rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (rawText == null || variableNames == null || variableNames.isEmpty()) {
             return false;
         }
         String trimmed = rawText.trim();
-        if (!trimmed.equals(rawText) || !trimmed.startsWith("~")) {
+        if (!trimmed.equals(rawText) || !trimmed.startsWith("$")) {
             return false;
         }
         VariableReferenceMatch match = findInlineVariableReference(trimmed, 0, variableNames);
         return match != null && match.endIndex == trimmed.length();
     }
 
-    /** Returns true if value is empty or a valid arithmetic expression using numbers and/or known ~variable references. */
+    /** Returns true if value is empty or a valid arithmetic expression using numbers and/or known $variable references. */
     private boolean isNumericOrVariableReference(String value, Node node, boolean allowDecimal, boolean requireCoordinateValid) {
         if (value == null) {
             value = "";
@@ -6382,6 +6386,7 @@ public class NodeGraph {
     }
 
     private boolean isValidNumericExpression(String value, Set<String> variableNames, boolean allowDecimal, boolean requireCoordinateValid) {
+        value = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(value);
         if (value == null) {
             return false;
         }
@@ -6481,12 +6486,12 @@ public class NodeGraph {
     private static final class InlineVariableRender {
         private final String displayText;
         private final List<InlineTextSegment> segments;
-        private final int[] removedTildePositions;
+        private final int[] removedVariablePrefixPositions;
 
-        private InlineVariableRender(String displayText, List<InlineTextSegment> segments, int[] removedTildePositions) {
+        private InlineVariableRender(String displayText, List<InlineTextSegment> segments, int[] removedVariablePrefixPositions) {
             this.displayText = displayText == null ? "" : displayText;
             this.segments = segments == null ? Collections.emptyList() : segments;
-            this.removedTildePositions = removedTildePositions == null ? new int[0] : removedTildePositions;
+            this.removedVariablePrefixPositions = removedVariablePrefixPositions == null ? new int[0] : removedVariablePrefixPositions;
         }
 
         private int toDisplayIndex(int rawIndex) {
@@ -6494,7 +6499,7 @@ public class NodeGraph {
                 return 0;
             }
             int removed = 0;
-            for (int pos : removedTildePositions) {
+            for (int pos : removedVariablePrefixPositions) {
                 if (pos < rawIndex) {
                     removed++;
                 } else {
@@ -6617,7 +6622,7 @@ public class NodeGraph {
                 skipWhitespace();
                 return parseNumber(true);
             }
-            if (peek() == '~') {
+            if (peek() == '$') {
                 VariableReferenceMatch match = matchVariableAt(index);
                 if (match == null) {
                     return false;
@@ -6660,11 +6665,11 @@ public class NodeGraph {
             return true;
         }
 
-        private VariableReferenceMatch matchVariableAt(int tildeIndex) {
-            if (tildeIndex < 0 || tildeIndex >= input.length() || input.charAt(tildeIndex) != '~') {
+        private VariableReferenceMatch matchVariableAt(int variableIndex) {
+            if (variableIndex < 0 || variableIndex >= input.length() || input.charAt(variableIndex) != '$') {
                 return null;
             }
-            int nameStart = tildeIndex + 1;
+            int nameStart = variableIndex + 1;
             VariableReferenceMatch bestMatch = null;
             for (String variableName : variableNames) {
                 if (variableName == null || variableName.isEmpty()) {
@@ -7508,7 +7513,7 @@ public class NodeGraph {
         display = editing
             ? display
             : trimTextToWidth(display, textRenderer, fieldWidth - reservedRightPadding);
-        int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
+        int variableHighlightColor = UITheme.ACCENT_AMBER;
         Set<String> stopTargetVariableNames = collectRuntimeVariableNames(node);
         InlineVariableRender stopTargetRenderData = null;
         if (shouldBuildInlineExpressionRender(value, stopTargetVariableNames)) {
@@ -7715,7 +7720,7 @@ public class NodeGraph {
         display = editing
             ? display
             : trimTextToWidth(display, textRenderer, fieldWidth - 6);
-        int variableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
+        int variableHighlightColor = UITheme.ACCENT_AMBER;
         Set<String> variableFieldVariableNames = collectRuntimeVariableNames(node);
         InlineVariableRender variableFieldRenderData = null;
         if (shouldBuildInlineExpressionRender(value, variableFieldVariableNames)) {
@@ -8579,7 +8584,8 @@ public class NodeGraph {
         String value = amountEditBuffer == null ? "" : amountEditBuffer.trim();
         if ((amountEditingNode.getType() == NodeType.PARAM_DURATION
             || amountEditingNode.getType() == NodeType.USE
-            || amountEditingNode.getType() == NodeType.SWING) && !value.startsWith("~")) {
+            || amountEditingNode.getType() == NodeType.SWING)
+            && !LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(value).startsWith("$")) {
             // Accept locale decimal input like "1,5" for duration-style fields.
             value = value.replace(',', '.');
         }

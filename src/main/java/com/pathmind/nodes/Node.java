@@ -38,6 +38,7 @@ import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.InventorySlotModeHelper;
+import com.pathmind.util.LegacyVariableSyntaxCompat;
 import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.util.RecipeCompatibilityBridge;
@@ -5931,7 +5932,7 @@ public class Node {
         return node.resolveRuntimeVariablesInText(value);
     }
 
-    /** Returns the raw parameter value without resolving ~variable references (for error messages). */
+    /** Returns the raw parameter value without resolving $variable references (for error messages). */
     private static String getParameterStringRaw(Node node, String name) {
         if (node == null || name == null) {
             return null;
@@ -6046,7 +6047,7 @@ public class Node {
         if (rawValue == null) {
             return Optional.empty();
         }
-        String trimmedRaw = rawValue.trim();
+        String trimmedRaw = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawValue.trim());
         if (trimmedRaw.isEmpty()) {
             return Optional.empty();
         }
@@ -6061,7 +6062,7 @@ public class Node {
             return Optional.empty();
         }
 
-        String variableName = trimmedRaw.startsWith("~") ? trimmedRaw.substring(1).trim() : trimmedRaw;
+        String variableName = trimmedRaw.startsWith("$") ? trimmedRaw.substring(1).trim() : trimmedRaw;
         if (variableName.isEmpty()) {
             return Optional.empty();
         }

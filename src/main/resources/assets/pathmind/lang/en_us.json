@@ -37,7 +37,7 @@
   "pathmind.error.distanceBetweenInvalidParameters": "Distance Between only accepts coordinate, entity, user, block, or item parameters.",
   "pathmind.error.distanceBetweenRequiresTwoParameters": "Distance Between requires two parameters (coordinate, entity, user, block, or item).",
   "pathmind.error.distanceBetweenTargetsUnresolved": "Distance Between could not resolve one or both targets.",
-  "pathmind.error.enterNumberExpressionOrVariable": "Please enter a number, arithmetic expression, or variable (~variable_name).",
+  "pathmind.error.enterNumberExpressionOrVariable": "Please enter a number, arithmetic expression, or variable ($variable_name).",
   "pathmind.error.entityTooFarToInteract": "%s is too far away to interact with.",
   "pathmind.error.failedPrepareSelectedBlock": "Failed to prepare selected block for %s.",
   "pathmind.error.failedPrepareSelectedItem": "Failed to prepare selected item for %s.",

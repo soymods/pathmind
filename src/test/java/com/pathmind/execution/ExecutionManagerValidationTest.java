@@ -127,7 +127,7 @@ class ExecutionManagerValidationTest {
     @Test
     void repeatCountResolvesGlobalRuntimeVariableNames() throws Exception {
         Node repeat = new Node(NodeType.CONTROL_REPEAT, 0, 0);
-        repeat.getParameter("Count").setStringValue("~length");
+        repeat.getParameter("Count").setStringValue("$length");
 
         ExecutionManager.RuntimeVariable variable = new ExecutionManager.RuntimeVariable(
             NodeType.PARAM_AMOUNT,
@@ -175,7 +175,7 @@ class ExecutionManagerValidationTest {
         variable.getParameter("Variable").setStringValue("lhs_compare");
 
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        amount.getParameter("Amount").setStringValue("~rhs_compare");
+        amount.getParameter("Amount").setStringValue("$rhs_compare");
 
         assertTrue(equals.attachParameter(variable, 0));
         assertTrue(equals.attachParameter(amount, 1));
@@ -206,7 +206,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~look_dir");
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "$look_dir");
         assertEquals("90 -30", resolved);
     }
 
@@ -224,7 +224,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~look_dir");
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "$look_dir");
         assertEquals("180 15", resolved);
     }
 
@@ -436,7 +436,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~stored_block_upper");
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "$stored_block_upper");
         assertEquals("minecraft:stone", resolved);
     }
 
@@ -634,7 +634,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        assertEquals("position=10 64 -3", resolveRuntimeVariablesInText.invoke(message, "position=~position"));
+        assertEquals("position=10 64 -3", resolveRuntimeVariablesInText.invoke(message, "position=$position"));
     }
 
     @Test

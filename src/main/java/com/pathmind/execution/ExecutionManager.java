@@ -9,11 +9,14 @@ import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
+import com.pathmind.screen.PathmindScreens;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.validation.GraphValidator;
+
+import net.minecraft.client.MinecraftClient;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -2327,7 +2330,9 @@ public class ExecutionManager {
             return false;
         }
 
-        if (workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        boolean editorOpen = client != null && PathmindScreens.isVisualEditorScreen(client.currentScreen);
+        if (editorOpen && workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
             Node workspaceStart = findStartNodeByNumber(workspaceNodes, lastStartNodeNumber);
             if (workspaceStart != null && workspaceStart.getType() == NodeType.START) {
                 return executeBranch(workspaceStart, workspaceNodes, workspaceConnections, lastStartPreset);

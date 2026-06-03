@@ -47,9 +47,9 @@ final class NodeDirectionParameters {
         ensureDirectionParameter(node, "direction_cardinal", "Direction", ParameterType.STRING, "", 1);
         ensureDirectionParameter(node, "direction_yaw", "Yaw", ParameterType.DOUBLE, "0.0", 2);
         ensureDirectionParameter(node, "direction_pitch", "Pitch", ParameterType.DOUBLE, "0.0", 3);
-        ensureDirectionParameter(node, "direction_yaw_offset", "YawOffset", ParameterType.DOUBLE, "0.0", 4);
-        ensureDirectionParameter(node, "direction_pitch_offset", "PitchOffset", ParameterType.DOUBLE, "0.0", 5);
-        ensureDirectionParameter(node, "direction_distance", "Distance", ParameterType.DOUBLE, Double.toString(defaultDirectionDistance), 6);
+        removeDirectionParameter(node, "YawOffset");
+        removeDirectionParameter(node, "PitchOffset");
+        ensureDirectionParameter(node, "direction_distance", "Distance", ParameterType.DOUBLE, Double.toString(defaultDirectionDistance), 4);
     }
 
     private static void ensureDirectionParameter(Node node, String id, String name, ParameterType parameterType, String defaultValue, int targetIndex) {
@@ -60,5 +60,9 @@ final class NodeDirectionParameters {
         NodeParameter parameter = new NodeParameter(id, name, parameterType, defaultValue);
         int insertIndex = Math.max(0, Math.min(targetIndex, parameters.size()));
         parameters.add(insertIndex, parameter);
+    }
+
+    private static void removeDirectionParameter(Node node, String name) {
+        node.getParameters().removeIf(parameter -> parameter != null && name.equalsIgnoreCase(parameter.getName()));
     }
 }

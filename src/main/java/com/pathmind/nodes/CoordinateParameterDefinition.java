@@ -71,7 +71,12 @@ final class CoordinateParameterDefinition {
         }
 
         for (String entry : entries) {
-            Integer parsed = Node.parseIntOrNull(entry);
+            Integer parsed = resolveCoordinateEntry(parameterNode, parameterName, entry);
+            if (parsed != null) {
+                values.add(parsed);
+                continue;
+            }
+            parsed = Node.parseIntOrNull(entry);
             if (parsed == null) {
                 Double asDouble = Node.parseDoubleOrNull(entry);
                 parsed = asDouble != null ? (int) Math.round(asDouble) : 0;
@@ -82,6 +87,32 @@ final class CoordinateParameterDefinition {
             values.add(0);
         }
         return values;
+    }
+
+    private static Integer resolveCoordinateEntry(Node parameterNode, String parameterName, String entry) {
+        if (!RelativeInputSupport.supportsRelativeCoordinate(parameterNode, parameterName)) {
+            return null;
+        }
+        Double resolved = RelativeInputSupport.resolveRelativeExpression(entry, currentAxisValue(parameterName));
+        return resolved != null ? (int) Math.round(resolved) : null;
+    }
+
+    private static int currentAxisValue(String parameterName) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return 0;
+        }
+        BlockPos playerPos = client.player.getBlockPos();
+        if ("X".equalsIgnoreCase(parameterName)) {
+            return playerPos.getX();
+        }
+        if ("Y".equalsIgnoreCase(parameterName)) {
+            return playerPos.getY();
+        }
+        if ("Z".equalsIgnoreCase(parameterName)) {
+            return playerPos.getZ();
+        }
+        return 0;
     }
 
     private static int valueAt(List<Integer> values, int index) {

@@ -12,6 +12,7 @@ import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
+import com.pathmind.nodes.RelativeInputSupport;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.menu.ContextMenuRenderer;
 import com.pathmind.ui.animation.AnimatedValue;
@@ -4274,8 +4275,15 @@ public class NodeGraph {
                         int paramVariableHighlightColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.85f) : getSelectedNodeAccentColor();
                         Set<String> paramVariableNames = collectRuntimeVariableNames(node);
                         InlineVariableRender paramRenderData = null;
-                        if (shouldBuildInlineExpressionRender(value, paramVariableNames)) {
-                            InlineVariableRender candidate = buildInlineVariableRender(value, paramVariableNames, valueColor, paramVariableHighlightColor);
+                        boolean allowRelativeMarker = supportsRelativeInlineParameter(node, param);
+                        if (shouldBuildInlineExpressionRender(value, paramVariableNames, allowRelativeMarker)) {
+                            InlineVariableRender candidate = buildInlineVariableRender(
+                                value,
+                                paramVariableNames,
+                                valueColor,
+                                paramVariableHighlightColor,
+                                allowRelativeMarker
+                            );
                             if (editingThis) {
                                 paramRenderData = candidate;
                                 displayValue = paramRenderData.displayText;
@@ -6227,6 +6235,11 @@ public class NodeGraph {
     }
 
     private InlineVariableRender buildInlineVariableRender(String rawText, Set<String> variableNames, int baseColor, int highlightColor) {
+        return buildInlineVariableRender(rawText, variableNames, baseColor, highlightColor, false);
+    }
+
+    private InlineVariableRender buildInlineVariableRender(String rawText, Set<String> variableNames, int baseColor, int highlightColor,
+                                                           boolean allowRelativeMarker) {
         rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (rawText == null || rawText.isEmpty()) {
             return new InlineVariableRender(rawText == null ? "" : rawText, Collections.emptyList(), new int[0]);
@@ -6235,27 +6248,53 @@ public class NodeGraph {
         List<Integer> removedPositions = new ArrayList<>();
         StringBuilder displayBuilder = new StringBuilder();
         int operatorColor = UITheme.DROP_ACCENT_GREEN;
+        int relativeColor = UITheme.TEXT_RELATIVE_MARKER;
         int cursor = 0;
+        int plainStart = 0;
         while (cursor < rawText.length()) {
-            int variableIndex = rawText.indexOf('$', cursor);
-            if (variableIndex < 0) {
-                appendStyledPlainSegments(rawText.substring(cursor), baseColor, operatorColor, segments, displayBuilder);
-                break;
-            }
-            if (variableIndex > cursor) {
-                appendStyledPlainSegments(rawText.substring(cursor, variableIndex), baseColor, operatorColor, segments, displayBuilder);
-            }
-            VariableReferenceMatch match = findInlineVariableReference(rawText, variableIndex, variableNames);
-            if (match != null) {
-                removedPositions.add(variableIndex);
-                segments.add(new InlineTextSegment(match.name, highlightColor));
-                displayBuilder.append(match.name);
-                cursor = match.endIndex;
+            char current = rawText.charAt(cursor);
+            if (current == '$') {
+                if (cursor > plainStart) {
+                    appendStyledPlainSegment(rawText.substring(plainStart, cursor), baseColor, segments, displayBuilder);
+                }
+                VariableReferenceMatch match = findInlineVariableReference(rawText, cursor, variableNames);
+                if (match != null) {
+                    removedPositions.add(cursor);
+                    segments.add(new InlineTextSegment(match.name, highlightColor));
+                    displayBuilder.append(match.name);
+                    cursor = match.endIndex;
+                } else {
+                    segments.add(new InlineTextSegment("$", baseColor));
+                    displayBuilder.append("$");
+                    cursor++;
+                }
+                plainStart = cursor;
                 continue;
             }
-            segments.add(new InlineTextSegment("$", baseColor));
-            displayBuilder.append("$");
-            cursor = variableIndex + 1;
+            if (isInlineArithmeticOperator(current)) {
+                if (cursor > plainStart) {
+                    appendStyledPlainSegment(rawText.substring(plainStart, cursor), baseColor, segments, displayBuilder);
+                }
+                segments.add(new InlineTextSegment(Character.toString(current), operatorColor));
+                displayBuilder.append(current);
+                cursor++;
+                plainStart = cursor;
+                continue;
+            }
+            if (allowRelativeMarker && current == '~') {
+                if (cursor > plainStart) {
+                    appendStyledPlainSegment(rawText.substring(plainStart, cursor), baseColor, segments, displayBuilder);
+                }
+                segments.add(new InlineTextSegment("~", relativeColor));
+                displayBuilder.append('~');
+                cursor++;
+                plainStart = cursor;
+                continue;
+            }
+            cursor++;
+        }
+        if (plainStart < rawText.length()) {
+            appendStyledPlainSegment(rawText.substring(plainStart), baseColor, segments, displayBuilder);
         }
         int[] removed = new int[removedPositions.size()];
         for (int i = 0; i < removedPositions.size(); i++) {
@@ -6265,6 +6304,10 @@ public class NodeGraph {
     }
 
     private boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames) {
+        return shouldBuildInlineExpressionRender(rawText, variableNames, false);
+    }
+
+    private boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames, boolean allowRelativeMarker) {
         rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (compactViewportMode) {
             return false;
@@ -6273,6 +6316,9 @@ public class NodeGraph {
             return false;
         }
         if (containsInlineArithmeticOperator(rawText)) {
+            return true;
+        }
+        if (allowRelativeMarker && rawText.indexOf('~') >= 0) {
             return true;
         }
         return variableNames != null && !variableNames.isEmpty() && rawText.indexOf('$') >= 0;
@@ -6298,32 +6344,12 @@ public class NodeGraph {
         return character == '+' || character == '-' || character == '*' || character == '/' || character == '^';
     }
 
-    private void appendStyledPlainSegments(String text, int baseColor, int operatorColor,
-                                           List<InlineTextSegment> segments, StringBuilder displayBuilder) {
+    private void appendStyledPlainSegment(String text, int baseColor, List<InlineTextSegment> segments, StringBuilder displayBuilder) {
         if (text == null || text.isEmpty()) {
             return;
         }
-        int start = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char current = text.charAt(i);
-            if (!isInlineArithmeticOperator(current)) {
-                continue;
-            }
-            if (i > start) {
-                String plain = text.substring(start, i);
-                segments.add(new InlineTextSegment(plain, baseColor));
-                displayBuilder.append(plain);
-            }
-            String operator = Character.toString(current);
-            segments.add(new InlineTextSegment(operator, operatorColor));
-            displayBuilder.append(operator);
-            start = i + 1;
-        }
-        if (start < text.length()) {
-            String tail = text.substring(start);
-            segments.add(new InlineTextSegment(tail, baseColor));
-            displayBuilder.append(tail);
-        }
+        segments.add(new InlineTextSegment(text, baseColor));
+        displayBuilder.append(text);
     }
 
     private VariableReferenceMatch findInlineVariableReference(String rawText, int variableIndex, Set<String> variableNames) {
@@ -6368,6 +6394,15 @@ public class NodeGraph {
         }
         VariableReferenceMatch match = findInlineVariableReference(trimmed, 0, variableNames);
         return match != null && match.endIndex == trimmed.length();
+    }
+
+    private boolean supportsRelativeInlineParameter(Node node, NodeParameter parameter) {
+        if (node == null || parameter == null) {
+            return false;
+        }
+        String parameterName = parameter.getName();
+        return RelativeInputSupport.supportsRelativeCoordinate(node, parameterName)
+            || RelativeInputSupport.supportsRelativeLook(node, parameterName);
     }
 
     /** Returns true if value is empty or a valid arithmetic expression using numbers and/or known $variable references. */

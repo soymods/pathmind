@@ -3594,8 +3594,6 @@ public class Node {
         }
         if ("Yaw".equalsIgnoreCase(parameterName)
             || "Pitch".equalsIgnoreCase(parameterName)
-            || "YawOffset".equalsIgnoreCase(parameterName)
-            || "PitchOffset".equalsIgnoreCase(parameterName)
             || "Distance".equalsIgnoreCase(parameterName)) {
             return getParameterDisplayName(parameter) + ": " + parameter.getDisplayValue();
         }
@@ -3612,8 +3610,6 @@ public class Node {
         String parameterName = parameter.getName();
         if ("Yaw".equalsIgnoreCase(parameterName)
             || "Pitch".equalsIgnoreCase(parameterName)
-            || "YawOffset".equalsIgnoreCase(parameterName)
-            || "PitchOffset".equalsIgnoreCase(parameterName)
             || "Distance".equalsIgnoreCase(parameterName)) {
             return getParameterDisplayValue(parameter);
         }
@@ -4056,18 +4052,14 @@ public class Node {
         String yValue = getParameterString(parameterNode, "Y");
         String zValue = getParameterString(parameterNode, "Z");
         if (xValue != null && yValue != null && zValue != null) {
-            try {
-                int x = Integer.parseInt(xValue.trim());
-                int y = Integer.parseInt(yValue.trim());
-                int z = Integer.parseInt(zValue.trim());
-                BlockPos pos = new BlockPos(x, y, z);
-                if (data != null) {
-                    data.targetBlockPos = pos;
-                }
-                return Optional.of(Vec3d.ofCenter(pos));
-            } catch (NumberFormatException ignored) {
-                // fall through to empty optional
+            int x = parseNodeInt(parameterNode, "X", 0);
+            int y = parseNodeInt(parameterNode, "Y", 0);
+            int z = parseNodeInt(parameterNode, "Z", 0);
+            BlockPos pos = new BlockPos(x, y, z);
+            if (data != null) {
+                data.targetBlockPos = pos;
             }
+            return Optional.of(Vec3d.ofCenter(pos));
         }
 
         return Optional.empty();
@@ -4702,6 +4694,10 @@ public class Node {
         if (value == null || value.isEmpty()) {
             return defaultValue;
         }
+        Integer relativeCoordinate = resolveRelativeCoordinateValue(node, name, value);
+        if (relativeCoordinate != null) {
+            return relativeCoordinate;
+        }
         Double evaluated = evaluateNumericExpression(value);
         if (evaluated != null) {
             return (int) Math.round(evaluated);
@@ -4789,6 +4785,14 @@ public class Node {
         String value = getParameterString(node, name);
         if (value == null || value.isEmpty()) {
             return null;
+        }
+        Float relativeLook = resolveRelativeLookValue(node, name, value);
+        if (relativeLook != null) {
+            return relativeLook;
+        }
+        Double evaluated = evaluateNumericExpression(value);
+        if (evaluated != null) {
+            return evaluated.floatValue();
         }
         try {
             return Float.parseFloat(value.trim());
@@ -6141,6 +6145,56 @@ public class Node {
         }
         NumericExpressionParser parser = new NumericExpressionParser(value);
         return parser.parse();
+    }
+
+    private static Integer resolveRelativeCoordinateValue(Node node, String name, String value) {
+        if (!RelativeInputSupport.supportsRelativeCoordinate(node, name)
+            || !RelativeInputSupport.isRelativeExpression(value)) {
+            return null;
+        }
+        Double resolved = RelativeInputSupport.resolveRelativeExpression(value, getCurrentCoordinateAxisValue(name));
+        return resolved != null ? (int) Math.round(resolved) : null;
+    }
+
+    private static Float resolveRelativeLookValue(Node node, String name, String value) {
+        if (!RelativeInputSupport.supportsRelativeLook(node, name)
+            || !RelativeInputSupport.isRelativeExpression(value)) {
+            return null;
+        }
+        Double resolved = RelativeInputSupport.resolveRelativeExpression(value, getCurrentLookAxisValue(name));
+        return resolved != null ? resolved.floatValue() : null;
+    }
+
+    private static int getCurrentCoordinateAxisValue(String name) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return 0;
+        }
+        BlockPos playerPos = client.player.getBlockPos();
+        if ("X".equalsIgnoreCase(name)) {
+            return playerPos.getX();
+        }
+        if ("Y".equalsIgnoreCase(name)) {
+            return playerPos.getY();
+        }
+        if ("Z".equalsIgnoreCase(name)) {
+            return playerPos.getZ();
+        }
+        return 0;
+    }
+
+    private static float getCurrentLookAxisValue(String name) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null) {
+            return 0.0F;
+        }
+        if ("Yaw".equalsIgnoreCase(name)) {
+            return client.player.getYaw();
+        }
+        if ("Pitch".equalsIgnoreCase(name)) {
+            return client.player.getPitch();
+        }
+        return 0.0F;
     }
 
     private static final class NumericExpressionParser {

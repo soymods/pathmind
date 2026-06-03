@@ -89,8 +89,6 @@ final class NodeAttributeParameters {
             }
             if (("Yaw".equalsIgnoreCase(parameterName)
                 || "Pitch".equalsIgnoreCase(parameterName)
-                || "YawOffset".equalsIgnoreCase(parameterName)
-                || "PitchOffset".equalsIgnoreCase(parameterName)
                 || "Distance".equalsIgnoreCase(parameterName))
                 && !exactMode) {
                 return "";

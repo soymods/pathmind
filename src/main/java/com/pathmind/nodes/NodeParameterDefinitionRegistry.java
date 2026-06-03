@@ -274,8 +274,6 @@ final class NodeParameterDefinitionRegistry {
             of("direction_cardinal", "Direction", ParameterType.STRING, ""),
             of("direction_yaw", "Yaw", ParameterType.DOUBLE, "0.0"),
             of("direction_pitch", "Pitch", ParameterType.DOUBLE, "0.0"),
-            of("direction_yaw_offset", "YawOffset", ParameterType.DOUBLE, "0.0"),
-            of("direction_pitch_offset", "PitchOffset", ParameterType.DOUBLE, "0.0"),
             of("direction_distance", "Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
         registerType(NodeType.PARAM_BLOCK_FACE, of("Face", ParameterType.STRING, "north"));
         registerType(NodeType.PARAM_ROTATION,

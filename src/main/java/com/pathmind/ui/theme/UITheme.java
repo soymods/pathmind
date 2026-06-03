@@ -208,6 +208,9 @@ public final class UITheme {
     /** Selection highlight for text inputs */
     public static final int TEXT_SELECTION_BG = 0x805577D6;
 
+    /** Syntax highlight for relative-origin markers like ~+1 */
+    public static final int TEXT_RELATIVE_MARKER = 0xFF8FD8FF;
+
     /** Selection highlight for danger inputs */
     public static final int TEXT_SELECTION_DANGER_BG = 0x80E2A0A0;
 

@@ -108,13 +108,15 @@ final class OrientationParameterDefinition {
             return Optional.empty();
         }
 
-        Float yawOffset = Node.parseNodeFloat(parameterNode, "YawOffset");
-        Float pitchOffset = Node.parseNodeFloat(parameterNode, "PitchOffset");
-        if (yawOffset != null) {
-            yaw += yawOffset;
-        }
-        if (pitchOffset != null) {
-            pitch += pitchOffset;
+        if (parameterType != NodeType.PARAM_DIRECTION) {
+            Float yawOffset = Node.parseNodeFloat(parameterNode, "YawOffset");
+            Float pitchOffset = Node.parseNodeFloat(parameterNode, "PitchOffset");
+            if (yawOffset != null) {
+                yaw += yawOffset;
+            }
+            if (pitchOffset != null) {
+                pitch += pitchOffset;
+            }
         }
 
         double distance = Math.max(0.0, Node.parseNodeDouble(parameterNode, "Distance", defaultDirectionDistance(parameterType, parameterNode)));

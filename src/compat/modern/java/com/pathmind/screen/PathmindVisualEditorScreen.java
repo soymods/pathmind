@@ -695,7 +695,6 @@ public class PathmindVisualEditorScreen extends Screen {
             validationPanelOpen = false;
             clearPresetInputFieldFocus();
         }
-        boolean rawJsonButtonHovered = renderRawJsonToggleButton(context, chromeMouseX, chromeMouseY, false);
         if (!rawJsonMode) {
             renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
@@ -714,13 +713,8 @@ public class PathmindVisualEditorScreen extends Screen {
             if (showWorkspaceTooltips && !isPopupObscuringWorkspace() && !validationPanelOpen) {
                 if (validationButtonHovered) {
                     drawWorkspaceTooltip(context, "Checks", chromeMouseX, chromeMouseY);
-                } else if (rawJsonButtonHovered) {
-                    drawWorkspaceTooltip(context, "Raw JSON", chromeMouseX, chromeMouseY);
                 }
             }
-        }
-        if (rawJsonMode && showWorkspaceTooltips && rawJsonButtonHovered) {
-            drawWorkspaceTooltip(context, "Exit Raw JSON", chromeMouseX, chromeMouseY);
         }
         renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
 
@@ -1425,10 +1419,6 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (!rawJsonMode && !isPopupObscuringWorkspace() && button == 0) {
-            if (isRawJsonButtonClicked((int) mouseX, (int) mouseY, button)) {
-                toggleRawJsonMode();
-                return true;
-            }
             if (isPointInZoomMinus((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = false;
                 nodeGraph.zoomOut(getWorkspaceCenterX(), getWorkspaceCenterY());
@@ -1467,10 +1457,6 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (rawJsonMode && button == 0) {
-            if (isRawJsonButtonClicked((int) mouseX, (int) mouseY, button)) {
-                toggleRawJsonMode();
-                return true;
-            }
             if (isRawJsonSaveButtonClicked((int) mouseX, (int) mouseY, button)) {
                 saveRawJsonChanges();
                 return true;

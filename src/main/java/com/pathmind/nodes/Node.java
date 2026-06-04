@@ -420,6 +420,9 @@ public class Node {
     private static final String PARAM_ID_ROTATION_DISTANCE = "rotation_distance";
     private static final String PARAM_ID_LOOK_YAW = "look_yaw";
     private static final String PARAM_ID_LOOK_PITCH = "look_pitch";
+    private static final String LOOK_DIRECTION_SOURCE_KEY = "__pathmind_source";
+    private static final String LOOK_DIRECTION_AXIS_KEY = "__pathmind_look_axis";
+    private static final String LOOK_DIRECTION_SOURCE_VALUE = "look_direction";
     private static final String PARAM_ID_INVENTORY_SLOT_INDEX = "inventory_slot_index";
     private static final String PARAM_ID_INVENTORY_SLOT_MODE = "inventory_slot_mode";
     private static final String PARAM_ID_HOTBAR_SLOT = "hotbar_slot";
@@ -705,6 +708,7 @@ public class Node {
             && type != NodeType.PARAM_DURATION
             && type != NodeType.SENSOR_POSITION_OF
             && type != NodeType.SENSOR_DISTANCE_BETWEEN
+            && type != NodeType.SENSOR_LOOK_DIRECTION
             && type != NodeType.SENSOR_FIND_TRADE
             && type != NodeType.SENSOR_SLOT_ITEM_COUNT;
     }
@@ -763,7 +767,6 @@ public class Node {
             || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
             || type == NodeType.SENSOR_TARGETED_BLOCK
             || type == NodeType.SENSOR_TARGETED_ENTITY
-            || type == NodeType.SENSOR_LOOK_DIRECTION
             || type == NodeType.SENSOR_CURRENT_HAND
             || type == NodeType.SENSOR_IS_ON_GROUND
             || isComparisonOperator()
@@ -1204,7 +1207,7 @@ public class Node {
     }
 
     public boolean showsModeFieldAboveParameterSlot() {
-        return type == NodeType.SENSOR_POSITION_OF
+        return (type == NodeType.SENSOR_POSITION_OF || type == NodeType.SENSOR_LOOK_DIRECTION)
             && supportsModeSelection()
             && !isInlineParameterNode()
             && !shouldRenderInlineParameters()
@@ -1243,7 +1246,7 @@ public class Node {
     }
 
     public String getModeFieldLabelText() {
-        if (type == NodeType.SENSOR_POSITION_OF) {
+        if (type == NodeType.SENSOR_POSITION_OF || type == NodeType.SENSOR_LOOK_DIRECTION) {
             return "Axis:";
         }
         return "Mode:";
@@ -2259,6 +2262,15 @@ public class Node {
                 }
                 yield values;
             }
+            case LOOK -> {
+                if (slotIndex == 0 && parameterNode != null) {
+                    Map<String, String> remapped = remapSingleAxisLookValues(values, parameterNode);
+                    if (remapped != values) {
+                        yield remapped;
+                    }
+                }
+                yield values;
+            }
             default -> values;
         };
     }
@@ -2938,6 +2950,9 @@ public class Node {
     }
 
     public int getBooleanToggleTop() {
+        if (hasParameterSlot()) {
+            return NodeSlotLayout.parameterSlotsBottom(this) + PARAMETER_SLOT_BOTTOM_PADDING + BOOLEAN_TOGGLE_TOP_MARGIN;
+        }
         return getY() + HEADER_HEIGHT + BOOLEAN_TOGGLE_TOP_MARGIN;
     }
 
@@ -2954,9 +2969,6 @@ public class Node {
     }
 
     public boolean supportsModeSelection() {
-        if (type == NodeType.SENSOR_LOOK_DIRECTION) {
-            return false;
-        }
         NodeMode[] modes = NodeMode.getModesForNodeType(type);
         return modes.length > 0;
     }
@@ -3964,6 +3976,9 @@ public class Node {
         }
 
         Node snapshot = createRuntimeVariableSnapshot(runtimeVariable);
+        if (type == NodeType.LOOK) {
+            snapshot = createLookVariableSnapshot(snapshot, runtimeVariable);
+        }
         if (snapshot == null) {
             sendVariableError(tr("pathmind.error.variableNoValue", variableName.trim()), future);
             return null;
@@ -3981,6 +3996,84 @@ public class Node {
         }
 
         return snapshot;
+    }
+
+    private Node createLookVariableSnapshot(Node snapshot, ExecutionManager.RuntimeVariable runtimeVariable) {
+        if (snapshot == null || runtimeVariable == null || runtimeVariable.getType() != NodeType.PARAM_AMOUNT) {
+            return snapshot;
+        }
+        Map<String, String> values = runtimeVariable.getValues();
+        if (values == null || values.isEmpty()) {
+            return snapshot;
+        }
+        String source = values.get(LOOK_DIRECTION_SOURCE_KEY);
+        String axis = values.get(LOOK_DIRECTION_AXIS_KEY);
+        if (!LOOK_DIRECTION_SOURCE_VALUE.equals(source) || axis == null || axis.isEmpty()) {
+            return snapshot;
+        }
+
+        String amount = values.get("Amount");
+        if (amount == null || amount.isEmpty()) {
+            amount = values.get(normalizeParameterKey("Amount"));
+        }
+        if (amount == null || amount.isEmpty()) {
+            return snapshot;
+        }
+
+        Node rotationSnapshot = new Node(NodeType.PARAM_ROTATION, 0, 0);
+        rotationSnapshot.setSocketsHidden(true);
+        if ("Yaw".equalsIgnoreCase(axis)) {
+            rotationSnapshot.setParameterValueAndPropagate("Yaw", amount);
+            rotationSnapshot.setParameterValueAndPropagate("Pitch", "");
+        } else if ("Pitch".equalsIgnoreCase(axis)) {
+            rotationSnapshot.setParameterValueAndPropagate("Yaw", "");
+            rotationSnapshot.setParameterValueAndPropagate("Pitch", amount);
+        } else {
+            return snapshot;
+        }
+        return rotationSnapshot;
+    }
+
+    private Map<String, String> remapSingleAxisLookValues(Map<String, String> values, Node parameterNode) {
+        if (values == null || values.isEmpty() || parameterNode == null) {
+            return values;
+        }
+        String axis = null;
+        if (parameterNode.getType() == NodeType.SENSOR_LOOK_DIRECTION && parameterNode.isSensorLookSingleAxisMode()) {
+            axis = parameterNode.getSensorLookComponentKey();
+        } else {
+            String source = values.get(LOOK_DIRECTION_SOURCE_KEY);
+            if (LOOK_DIRECTION_SOURCE_VALUE.equals(source)) {
+                axis = values.get(LOOK_DIRECTION_AXIS_KEY);
+            }
+        }
+        if (axis == null || axis.isEmpty()) {
+            return values;
+        }
+
+        String amount = values.get("Amount");
+        if (amount == null || amount.isEmpty()) {
+            amount = values.get(normalizeParameterKey("Amount"));
+        }
+        if (amount == null || amount.isEmpty()) {
+            return values;
+        }
+
+        Map<String, String> remapped = new HashMap<>(values);
+        if ("Yaw".equalsIgnoreCase(axis)) {
+            remapped.put("Yaw", amount);
+            remapped.put(normalizeParameterKey("Yaw"), amount);
+            remapped.remove("Pitch");
+            remapped.remove(normalizeParameterKey("Pitch"));
+        } else if ("Pitch".equalsIgnoreCase(axis)) {
+            remapped.put("Pitch", amount);
+            remapped.put(normalizeParameterKey("Pitch"), amount);
+            remapped.remove("Yaw");
+            remapped.remove(normalizeParameterKey("Yaw"));
+        } else {
+            return values;
+        }
+        return remapped;
     }
 
     private void sendVariableError(String message, CompletableFuture<Void> future) {

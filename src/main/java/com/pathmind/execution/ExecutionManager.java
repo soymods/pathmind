@@ -451,29 +451,7 @@ public class ExecutionManager {
         if (rootNode == null || eventName == null || eventName.isEmpty()) {
             return false;
         }
-        if (!CHAT_MESSAGE_EVENT_NAME.equals(eventName)) {
-            return true;
-        }
-
-        Node userFilter = rootNode.getAttachedParameter(0);
-        if (userFilter == null) {
-            return true;
-        }
-        if (userFilter.getType() != NodeType.PARAM_PLAYER) {
-            return true;
-        }
-
-        RuntimeVariable senderVariable = runtimeVariables != null ? runtimeVariables.get(CHAT_SENDER_VARIABLE_NAME) : null;
-        String senderName = senderVariable != null ? getRuntimeValue(senderVariable, "Player") : "";
-        if (senderName.isEmpty()) {
-            return false;
-        }
-
-        String expectedPlayer = getNodeParameterValue(userFilter, "Player");
-        if (expectedPlayer.isEmpty() || "any".equalsIgnoreCase(expectedPlayer)) {
-            return true;
-        }
-        return expectedPlayer.equalsIgnoreCase(senderName);
+        return true;
     }
 
     public boolean setRuntimeList(Node startNode, String name, RuntimeList list) {

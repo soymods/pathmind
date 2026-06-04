@@ -3381,6 +3381,7 @@ public class NodeGraph {
             && node.getType() != NodeType.OPERATOR_MOD
             && node.getType() != NodeType.PARAM_DURATION
             && node.getType() != NodeType.SENSOR_POSITION_OF
+            && node.getType() != NodeType.SENSOR_LOOK_DIRECTION
             && node.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
             && node.getType() != NodeType.SENSOR_SLOT_ITEM_COUNT;
     }

@@ -67,6 +67,12 @@ final class NodeDimensionCalculator {
         if (node.hasParameterSlot()) {
             computedWidth = applyParameterSlotWidth(node, layoutState, computedWidth);
         }
+        if (node.showsModeFieldAboveParameterSlot() && !node.hasParameterSlot()) {
+            int modeWidth = node.getModeDisplayLabel().length() * Node.CHAR_PIXEL_WIDTH
+                + 24
+                + 2 * Node.PARAMETER_SLOT_MARGIN_HORIZONTAL;
+            computedWidth = Math.max(computedWidth, modeWidth);
+        }
         if (node.hasCoordinateInputFields()) {
             int coordinateWidth = node.getCoordinateFieldTotalWidth() + 2 * Node.PARAMETER_SLOT_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, coordinateWidth);
@@ -226,6 +232,14 @@ final class NodeDimensionCalculator {
             contentHeight += Node.EVENT_NAME_FIELD_TOP_MARGIN + Node.EVENT_NAME_FIELD_HEIGHT + Node.EVENT_NAME_FIELD_BOTTOM_MARGIN;
         } else if (node.hasParameterSlot()) {
             contentHeight = applyParameterSlotHeight(node, contentHeight, hasSlots);
+            if (node.hasBooleanToggle()) {
+                contentHeight += node.getBooleanToggleAreaHeight();
+            }
+        } else if (node.showsModeFieldAboveParameterSlot()) {
+            contentHeight += node.getModeFieldDisplayHeight();
+            if (hasSlots) {
+                contentHeight += Node.SLOT_AREA_PADDING_TOP;
+            }
         } else if (node.hasAmountInputField()) {
             if (type != NodeType.CONTROL_REPEAT) {
                 contentHeight += node.getAmountFieldDisplayHeight();

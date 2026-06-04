@@ -33,6 +33,10 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 final class NodeVariableListCommandExecutor {
+    private static final String LOOK_DIRECTION_SOURCE_KEY = "__pathmind_source";
+    private static final String LOOK_DIRECTION_AXIS_KEY = "__pathmind_look_axis";
+    private static final String LOOK_DIRECTION_SOURCE_VALUE = "look_direction";
+
     private final Node owner;
 
     NodeVariableListCommandExecutor(Node owner) {
@@ -186,6 +190,7 @@ final class NodeVariableListCommandExecutor {
         }
 
         Map<String, String> updatedValues = snapshot.exportParameterValues();
+        preserveSingleAxisLookMetadata(values, updatedValues);
         ExecutionManager.RuntimeVariable updated = new ExecutionManager.RuntimeVariable(valueType, updatedValues);
         manager.setRuntimeVariable(startNode, variableName.trim(), updated);
         NodeExecutionCompletion.complete(future);
@@ -846,7 +851,24 @@ final class NodeVariableListCommandExecutor {
             values.put(key, resolvedValue);
             values.put(Node.normalizeParameterKey(key), resolvedValue);
         }
+        if (source.getType() == NodeType.SENSOR_LOOK_DIRECTION && source.isSensorLookSingleAxisMode()) {
+            values.put(LOOK_DIRECTION_SOURCE_KEY, LOOK_DIRECTION_SOURCE_VALUE);
+            values.put(LOOK_DIRECTION_AXIS_KEY, source.getSensorLookComponentKey());
+        }
         return values;
+    }
+
+    private void preserveSingleAxisLookMetadata(Map<String, String> sourceValues, Map<String, String> targetValues) {
+        if (sourceValues == null || sourceValues.isEmpty() || targetValues == null) {
+            return;
+        }
+        String source = sourceValues.get(LOOK_DIRECTION_SOURCE_KEY);
+        String axis = sourceValues.get(LOOK_DIRECTION_AXIS_KEY);
+        if (!LOOK_DIRECTION_SOURCE_VALUE.equals(source) || axis == null || axis.isEmpty()) {
+            return;
+        }
+        targetValues.put(LOOK_DIRECTION_SOURCE_KEY, LOOK_DIRECTION_SOURCE_VALUE);
+        targetValues.put(LOOK_DIRECTION_AXIS_KEY, axis);
     }
 
     private Map<String, String> deserializeListEntryValues(String entry) {

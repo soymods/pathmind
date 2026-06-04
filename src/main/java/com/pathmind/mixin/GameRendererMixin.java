@@ -45,7 +45,8 @@ public class GameRendererMixin {
             target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V",
             shift = At.Shift.AFTER
         ),
-        cancellable = false
+        cancellable = false,
+        require = 0
     )
     private void pathmind$afterScreenRender(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci) {
         // This injection point allows us to track when the screen finishes rendering
@@ -59,7 +60,8 @@ public class GameRendererMixin {
             value = "INVOKE",
             target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
         ),
-        index = 0
+        index = 0,
+        require = 0
     )
     private DrawContext pathmind$captureDrawContext(DrawContext context) {
         if (!pathmind$finalRenderPass.get()) {
@@ -74,7 +76,8 @@ public class GameRendererMixin {
             value = "INVOKE",
             target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
         ),
-        index = 1
+        index = 1,
+        require = 0
     )
     private int pathmind$captureMouseX(int mouseX) {
         if (!pathmind$finalRenderPass.get()) {
@@ -89,7 +92,8 @@ public class GameRendererMixin {
             value = "INVOKE",
             target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
         ),
-        index = 2
+        index = 2,
+        require = 0
     )
     private int pathmind$captureMouseY(int mouseY) {
         if (!pathmind$finalRenderPass.get()) {
@@ -104,7 +108,8 @@ public class GameRendererMixin {
             value = "INVOKE",
             target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
         ),
-        index = 3
+        index = 3,
+        require = 0
     )
     private float pathmind$captureDelta(float delta) {
         if (!pathmind$finalRenderPass.get()) {
@@ -119,7 +124,8 @@ public class GameRendererMixin {
     @Inject(
         method = "render",
         at = @At("TAIL"),
-        cancellable = false
+        cancellable = false,
+        require = 0
     )
     private void pathmind$finalScreenRender(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci) {
         if (pathmind$finalRenderPass.get()) {

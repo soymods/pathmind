@@ -265,6 +265,12 @@ public class PathmindVisualEditorScreen extends Screen {
     private String draggingPresetTabName = null;
     private int draggingPresetTabPointerOffsetX = 0;
     private int draggingPresetTabCurrentX = 0;
+    private String pendingPresetDropdownDragName = null;
+    private int pendingPresetDropdownPressMouseX = 0;
+    private int pendingPresetDropdownPressMouseY = 0;
+    private String draggingPresetDropdownName = null;
+    private int draggingPresetDropdownCurrentX = 0;
+    private int draggingPresetDropdownCurrentY = 0;
     private String animatingPresetDeletionName = null;
     private long animatingPresetDeletionExecuteAtMs = 0L;
     private String activePresetName = "";
@@ -794,6 +800,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (isDraggingFromSidebar && (draggingNodeType != null || draggingSidebarNode != null)) {
             renderDraggingNode(context, mouseX, mouseY);
         }
+        renderDraggedPresetDropdownTab(context, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
         NodeErrorNotificationOverlay.getInstance().render(context, this.textRenderer, this.width, this.height);
         if (currentSettings != null && Boolean.TRUE.equals(currentSettings.showProfilerOverlay)) {
@@ -1379,7 +1386,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 0 && presetDropdownOpen) {
-            if (handlePresetDropdownSelection(mouseX, mouseY)) {
+            if (handlePresetDropdownMouseDown(mouseX, mouseY)) {
                 return true;
             }
             presetDropdownOpen = false;
@@ -1981,6 +1988,14 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
         }
+        if (button == 0 && pendingPresetDropdownDragName != null) {
+            updatePendingPresetDropdownDrag((int) mouseX, (int) mouseY);
+            return true;
+        }
+        if (button == 0 && draggingPresetDropdownName != null) {
+            updatePresetDropdownDrag((int) mouseX, (int) mouseY);
+            return true;
+        }
         if (draggingPresetTabName != null) {
             updatePresetTabDrag((int) mouseX);
             return true;
@@ -2108,6 +2123,21 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (draggingPresetTabName != null) {
             endPresetTabDrag();
+            return true;
+        }
+
+        if (button == 0 && draggingPresetDropdownName != null) {
+            finishPresetDropdownDrag((int) mouseX, (int) mouseY);
+            return true;
+        }
+
+        if (button == 0 && pendingPresetDropdownDragName != null) {
+            String presetName = pendingPresetDropdownDragName;
+            clearPresetDropdownDragState();
+            presetDropdownOpen = false;
+            if (!presetName.equals(activePresetName)) {
+                switchPreset(presetName);
+            }
             return true;
         }
 
@@ -3039,6 +3069,102 @@ public class PathmindVisualEditorScreen extends Screen {
         draggingPresetTabPointerOffsetX = 0;
         draggingPresetTabCurrentX = 0;
         clearPendingPresetTabInteraction();
+    }
+
+    private void clearPresetDropdownDragState() {
+        pendingPresetDropdownDragName = null;
+        pendingPresetDropdownPressMouseX = 0;
+        pendingPresetDropdownPressMouseY = 0;
+        draggingPresetDropdownName = null;
+        draggingPresetDropdownCurrentX = 0;
+        draggingPresetDropdownCurrentY = 0;
+    }
+
+    private void updatePendingPresetDropdownDrag(int mouseX, int mouseY) {
+        if (pendingPresetDropdownDragName == null || draggingPresetDropdownName != null) {
+            return;
+        }
+        int dx = Math.abs(mouseX - pendingPresetDropdownPressMouseX);
+        int dy = Math.abs(mouseY - pendingPresetDropdownPressMouseY);
+        if (dx < PRESET_TAB_DRAG_THRESHOLD && dy < PRESET_TAB_DRAG_THRESHOLD) {
+            return;
+        }
+        draggingPresetDropdownName = pendingPresetDropdownDragName;
+        draggingPresetDropdownCurrentX = mouseX;
+        draggingPresetDropdownCurrentY = mouseY;
+        pendingPresetDropdownDragName = null;
+    }
+
+    private void updatePresetDropdownDrag(int mouseX, int mouseY) {
+        draggingPresetDropdownCurrentX = mouseX;
+        draggingPresetDropdownCurrentY = mouseY;
+    }
+
+    private void finishPresetDropdownDrag(int mouseX, int mouseY) {
+        String presetName = draggingPresetDropdownName;
+        if (presetName == null || presetName.isEmpty()) {
+            clearPresetDropdownDragState();
+            return;
+        }
+        if (isPointInPresetTabBarDropZone(mouseX, mouseY)) {
+            insertPresetTabAtDropPosition(presetName, mouseX);
+            presetDropdownOpen = false;
+        }
+        clearPresetDropdownDragState();
+    }
+
+    private boolean isPointInPresetTabBarDropZone(int mouseX, int mouseY) {
+        int startX = getPresetTabStartX();
+        int rightLimit = getPresetTabRightLimit();
+        return isPointInRect(mouseX, mouseY, startX, TAB_BAR_TOP - 4, Math.max(0, rightLimit - startX), TAB_HEIGHT + 8);
+    }
+
+    private void insertPresetTabAtDropPosition(String presetName, int mouseX) {
+        if (presetName == null || presetName.isEmpty() || !availablePresets.contains(presetName)) {
+            return;
+        }
+        if (isPresetDeleteDisabled(presetName)) {
+            return;
+        }
+        int targetIndex = getPresetTabDropIndex(mouseX);
+        presetTabOrder.remove(presetName);
+        int clampedTarget = MathHelper.clamp(targetIndex, 1, presetTabOrder.size());
+        presetTabOrder.add(clampedTarget, presetName);
+        normalizePresetTabOrder();
+        presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f)).setValue(1f);
+    }
+
+    private int getPresetTabDropIndex(int mouseX) {
+        int startX = getPresetTabStartX();
+        int rightLimit = getPresetTabRightLimit();
+        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
+        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
+        int[] xs = computePresetTabXs(widths, startX);
+        int targetIndex = 0;
+        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
+            String tabName = tabs.get(i);
+            if (tabName != null && tabName.equals(draggingPresetDropdownName)) {
+                continue;
+            }
+            if (mouseX > xs[i] + widths[i] / 2) {
+                targetIndex++;
+            }
+        }
+        return targetIndex;
+    }
+
+    private void renderDraggedPresetDropdownTab(DrawContext context, int mouseX, int mouseY) {
+        if (draggingPresetDropdownName == null) {
+            return;
+        }
+        int width = MathHelper.clamp(
+            this.textRenderer.getWidth(draggingPresetDropdownName) + PRESET_TAB_TEXT_PADDING * 2,
+            TAB_MIN_WIDTH,
+            TAB_MAX_WIDTH
+        );
+        int x = draggingPresetDropdownCurrentX - width / 2;
+        int y = draggingPresetDropdownCurrentY - TAB_HEIGHT / 2;
+        drawPresetTab(context, mouseX, mouseY, draggingPresetDropdownName, x, y, width, true);
     }
 
     private int[] computePresetTabXs(int[] widths, int startX) {
@@ -4974,7 +5100,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return isPresetDeleteDisabled(presetName);
     }
 
-    private boolean handlePresetDropdownSelection(double mouseX, double mouseY) {
+    private boolean handlePresetDropdownMouseDown(double mouseX, double mouseY) {
         int dropdownX = getPresetDropdownX();
         int optionStartY = getPresetDropdownY();
         DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
@@ -5002,10 +5128,9 @@ public class PathmindVisualEditorScreen extends Screen {
                     }
                     return true;
                 }
-                presetDropdownOpen = false;
-                if (!selectedPreset.equals(activePresetName)) {
-                    switchPreset(selectedPreset);
-                }
+                pendingPresetDropdownDragName = selectedPreset;
+                pendingPresetDropdownPressMouseX = (int) mouseX;
+                pendingPresetDropdownPressMouseY = (int) mouseY;
                 return true;
             }
         } else if (index == availablePresets.size()) {

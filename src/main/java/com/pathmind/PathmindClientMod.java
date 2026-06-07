@@ -553,6 +553,11 @@ public class PathmindClientMod implements ClientModInitializer {
         // Allow execution to continue for normal in-game GUIs so GUI nodes can work,
         // but freeze Pathmind when the vanilla pause menu is open in multiplayer too.
         manager.setSingleplayerPaused((client.isInSingleplayer() && editorOpen) || isPauseMenuOpen(client));
+        if (editorOpen) {
+            stopGraphsKeyDown = false;
+            playGraphsKeyDown = false;
+            return;
+        }
 
         boolean typing = shouldIgnoreKeybinds(client);
 

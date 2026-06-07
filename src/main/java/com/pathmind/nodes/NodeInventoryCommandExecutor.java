@@ -119,20 +119,39 @@ final class NodeInventoryCommandExecutor {
         boolean dropAll = getBooleanParameter("All", false);
         int count = shouldUseDropItemAmount() ? Math.max(1, getIntParameter("Count", 1)) : 1;
         double interval = Math.max(0.0, getDoubleParameter("IntervalSeconds", 0.0));
-        final int dropIterations = count;
-        final boolean dropEntireStack = dropAll;
+        PlayerInventory inventory = client.player.getInventory();
+        ScreenHandler handler = client.player.currentScreenHandler;
+        ClientPlayerInteractionManager interactionManager = client.interactionManager;
+        SlotResolution selectedSlot = resolveInventorySlot(
+            handler,
+            inventory,
+            inventory != null ? PlayerInventoryBridge.getSelectedSlot(inventory) : 0,
+            SlotSelectionType.PLAYER_INVENTORY
+        );
+        if (interactionManager == null || handler == null || inventory == null || selectedSlot == null || selectedSlot.slot == null) {
+            future.completeExceptionally(new RuntimeException("Interaction manager unavailable"));
+            return;
+        }
+        final boolean dropEntireStack = dropAll
+            || (selectedSlot.slot.getStack() != null && count >= selectedSlot.slot.getStack().getCount());
+        final int requestedCount = count;
 
         new Thread(() -> {
             try {
-                for (int i = 0; i < dropIterations; i++) {
+                if (interval <= 0.0) {
                     runOnClientThread(client, () -> {
-                        client.player.dropSelectedItem(dropEntireStack);
-                        client.player.getInventory().markDirty();
-                        client.player.playerScreenHandler.sendContentUpdates();
+                        dropSlotCount(client, interactionManager, handler, inventory, selectedSlot.handlerSlotIndex, requestedCount, dropEntireStack);
                     });
-
-                    if (interval > 0.0 && i < dropIterations - 1) {
-                        Thread.sleep((long) (interval * 1000));
+                } else {
+                    int dropIterations = dropEntireStack ? 1 : requestedCount;
+                    for (int i = 0; i < dropIterations; i++) {
+                        final boolean entireStackThisClick = dropEntireStack;
+                        runOnClientThread(client, () -> {
+                            dropSlotCount(client, interactionManager, handler, inventory, selectedSlot.handlerSlotIndex, 1, entireStackThisClick);
+                        });
+                        if (i < dropIterations - 1) {
+                            Thread.sleep((long) (interval * 1000));
+                        }
                     }
                 }
                 future.complete(null);
@@ -989,21 +1008,19 @@ final class NodeInventoryCommandExecutor {
 
         new Thread(() -> {
             try {
-                for (int i = 0; i < dropIterations; i++) {
-                    final boolean entireStackThisClick = dropEntireStack;
+                if (interval <= 0.0) {
                     runOnClientThread(client, () -> {
-                        interactionManager.clickSlot(
-                            handler.syncId,
-                            resolution.handlerSlotIndex,
-                            entireStackThisClick ? 1 : 0,
-                            SlotActionType.THROW,
-                            client.player
-                        );
-                        inventory.markDirty();
-                        client.player.playerScreenHandler.sendContentUpdates();
+                        dropSlotCount(client, interactionManager, handler, inventory, resolution.handlerSlotIndex, requestedCount, dropEntireStack);
                     });
-                    if (interval > 0.0 && i < dropIterations - 1) {
-                        Thread.sleep((long) (interval * 1000));
+                } else {
+                    for (int i = 0; i < dropIterations; i++) {
+                        final boolean entireStackThisClick = dropEntireStack;
+                        runOnClientThread(client, () -> {
+                            dropSlotCount(client, interactionManager, handler, inventory, resolution.handlerSlotIndex, 1, entireStackThisClick);
+                        });
+                        if (i < dropIterations - 1) {
+                            Thread.sleep((long) (interval * 1000));
+                        }
                     }
                 }
                 future.complete(null);
@@ -1012,6 +1029,162 @@ final class NodeInventoryCommandExecutor {
                 future.completeExceptionally(e);
             }
         }, "Pathmind-Drop").start();
+    }
+
+    private void dropSlotCount(net.minecraft.client.MinecraftClient client,
+                               ClientPlayerInteractionManager interactionManager,
+                               ScreenHandler handler,
+                               PlayerInventory inventory,
+                               int handlerSlotIndex,
+                               int requestedCount,
+                               boolean dropEntireStack) {
+        if (client == null || client.player == null || interactionManager == null || handler == null || inventory == null) {
+            return;
+        }
+        if (handlerSlotIndex < 0 || handlerSlotIndex >= handler.slots.size()) {
+            return;
+        }
+
+        Slot slot = handler.getSlot(handlerSlotIndex);
+        ItemStack stack = slot == null ? ItemStack.EMPTY : slot.getStack();
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+
+        int available = stack.getCount();
+        int count = MathHelper.clamp(requestedCount, 1, available);
+        if (dropEntireStack || count >= available) {
+            interactionManager.clickSlot(handler.syncId, handlerSlotIndex, 1, SlotActionType.THROW, client.player);
+            finishInventoryClickUpdates(client, inventory);
+            return;
+        }
+
+        if (count == 1) {
+            interactionManager.clickSlot(handler.syncId, handlerSlotIndex, 0, SlotActionType.THROW, client.player);
+            finishInventoryClickUpdates(client, inventory);
+            return;
+        }
+
+        if (!dropPartialStackAsSingleCursorClick(client, interactionManager, handler, inventory, handlerSlotIndex, count)) {
+            for (int i = 0; i < count; i++) {
+                interactionManager.clickSlot(handler.syncId, handlerSlotIndex, 0, SlotActionType.THROW, client.player);
+            }
+            finishInventoryClickUpdates(client, inventory);
+        }
+    }
+
+    private boolean dropPartialStackAsSingleCursorClick(net.minecraft.client.MinecraftClient client,
+                                                        ClientPlayerInteractionManager interactionManager,
+                                                        ScreenHandler handler,
+                                                        PlayerInventory inventory,
+                                                        int sourceSlot,
+                                                        int requestedCount) {
+        if (handler.getCursorStack() != null && !handler.getCursorStack().isEmpty()) {
+            return false;
+        }
+
+        Slot source = handler.getSlot(sourceSlot);
+        ItemStack sourceStack = source == null ? ItemStack.EMPTY : source.getStack();
+        if (sourceStack == null || sourceStack.isEmpty() || requestedCount <= 1 || requestedCount >= sourceStack.getCount()) {
+            return false;
+        }
+
+        int scratchSlot = findEmptyPlayerHandlerSlot(handler, sourceSlot);
+        if (scratchSlot < 0) {
+            return false;
+        }
+
+        int sourceCount = sourceStack.getCount();
+        if (!canSplitByHalving(sourceCount, requestedCount)) {
+            return false;
+        }
+
+        interactionManager.clickSlot(handler.syncId, sourceSlot, 1, SlotActionType.PICKUP, client.player);
+        if (handler.getCursorStack() != null
+            && !handler.getCursorStack().isEmpty()
+            && handler.getCursorStack().getCount() == requestedCount) {
+            interactionManager.clickSlot(handler.syncId, -999, 0, SlotActionType.PICKUP, client.player);
+            finishInventoryClickUpdates(client, inventory);
+            return true;
+        }
+
+        interactionManager.clickSlot(handler.syncId, scratchSlot, 0, SlotActionType.PICKUP, client.player);
+        interactionManager.clickSlot(handler.syncId, scratchSlot, 1, SlotActionType.PICKUP, client.player);
+        while (handler.getCursorStack() != null
+            && !handler.getCursorStack().isEmpty()
+            && handler.getCursorStack().getCount() > requestedCount) {
+            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, client.player);
+            interactionManager.clickSlot(handler.syncId, scratchSlot, 1, SlotActionType.PICKUP, client.player);
+        }
+
+        ItemStack cursorStack = handler.getCursorStack();
+        if (cursorStack == null || cursorStack.isEmpty() || cursorStack.getCount() != requestedCount) {
+            restoreCursorToSource(interactionManager, handler, client.player, sourceSlot);
+            restoreScratchToSource(interactionManager, handler, client.player, scratchSlot, sourceSlot);
+            finishInventoryClickUpdates(client, inventory);
+            return false;
+        }
+
+        interactionManager.clickSlot(handler.syncId, -999, 0, SlotActionType.PICKUP, client.player);
+        restoreScratchToSource(interactionManager, handler, client.player, scratchSlot, sourceSlot);
+        finishInventoryClickUpdates(client, inventory);
+        return true;
+    }
+
+    private boolean canSplitByHalving(int sourceCount, int requestedCount) {
+        int cursorCount = (sourceCount + 1) / 2;
+        while (cursorCount > requestedCount) {
+            cursorCount = (cursorCount + 1) / 2;
+        }
+        return cursorCount == requestedCount;
+    }
+
+    private int findEmptyPlayerHandlerSlot(ScreenHandler handler, int excludedSlot) {
+        if (handler == null) {
+            return -1;
+        }
+        for (int i = 0; i < handler.slots.size(); i++) {
+            if (i == excludedSlot) {
+                continue;
+            }
+            Slot slot = handler.getSlot(i);
+            if (slot != null && slot.inventory instanceof PlayerInventory && !slot.hasStack()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void restoreCursorToSource(ClientPlayerInteractionManager interactionManager,
+                                       ScreenHandler handler,
+                                       PlayerEntity player,
+                                       int sourceSlot) {
+        if (handler.getCursorStack() != null && !handler.getCursorStack().isEmpty()) {
+            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
+        }
+    }
+
+    private void restoreScratchToSource(ClientPlayerInteractionManager interactionManager,
+                                        ScreenHandler handler,
+                                        PlayerEntity player,
+                                        int scratchSlot,
+                                        int sourceSlot) {
+        if (scratchSlot < 0 || scratchSlot >= handler.slots.size()) {
+            return;
+        }
+        Slot scratch = handler.getSlot(scratchSlot);
+        if (scratch != null && scratch.hasStack()) {
+            interactionManager.clickSlot(handler.syncId, scratchSlot, 0, SlotActionType.PICKUP, player);
+            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
+        }
+    }
+
+    private void finishInventoryClickUpdates(net.minecraft.client.MinecraftClient client, PlayerInventory inventory) {
+        if (client == null || client.player == null || inventory == null) {
+            return;
+        }
+        inventory.markDirty();
+        client.player.playerScreenHandler.sendContentUpdates();
     }
 
     boolean resolveMoveItemSlotFromItemParameter(Node parameterNode, int slotIndex,

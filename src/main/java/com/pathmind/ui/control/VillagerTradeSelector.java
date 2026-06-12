@@ -85,7 +85,6 @@ public class VillagerTradeSelector {
 
     private boolean dropdownOpen = false;
     private final AnimatedValue dropdownAnimation = AnimatedValue.forHover();
-    private final DropdownLayoutHelper.SmoothScrollState dropdownSmoothScroll = new DropdownLayoutHelper.SmoothScrollState();
     private int dropdownScrollIndex = 0;
     private int dropdownHoverIndex = -1;
 
@@ -1093,7 +1092,9 @@ public class VillagerTradeSelector {
     }
 
     private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float alpha) {
-        float animProgress = DropdownLayoutHelper.updateOpenAnimation(dropdownAnimation, dropdownOpen);
+        dropdownAnimation.animateTo(dropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
+        dropdownAnimation.tick();
+        float animProgress = AnimationHelper.easeOutQuad(dropdownAnimation.getValue());
         if (animProgress <= 0.001f) {
             return;
         }
@@ -1112,26 +1113,19 @@ public class VillagerTradeSelector {
         int visibleCount = layout.visibleCount;
         dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, layout.maxScrollOffset));
         int dropdownHeight = layout.height;
+        int animatedHeight = Math.max(1, (int) (dropdownHeight * animProgress));
 
-        DropdownLayoutHelper.enableRevealScissor(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, animProgress, 1);
-        float dropdownAlpha = alpha * animProgress;
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
-
-        float smoothScrollOffset = DropdownLayoutHelper.updateSmoothScroll(dropdownSmoothScroll, dropdownScrollIndex, layout.maxScrollOffset);
-        DropdownLayoutHelper.ScrollWindow scrollWindow = DropdownLayoutHelper.getSmoothScrollWindow(
-            smoothScrollOffset,
-            visibleCount,
-            totalOptions,
-            DROPDOWN_OPTION_HEIGHT
-        );
+        context.enableScissor(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + animatedHeight + 1);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
+        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         dropdownHoverIndex = -1;
         int rowRight = DropdownLayoutHelper.getScrollbarHitLeft(dropdownX, dropdownWidth, layout.maxScrollOffset);
-        for (int optionIndex = scrollWindow.firstIndex; optionIndex < scrollWindow.endIndex; optionIndex++) {
+        for (int i = 0; i < visibleCount; i++) {
+            int optionIndex = dropdownScrollIndex + i;
             ProfessionOption option = professions.get(optionIndex);
-            int optionTop = dropdownY + (optionIndex - scrollWindow.firstIndex) * DROPDOWN_OPTION_HEIGHT + scrollWindow.pixelOffset;
+            int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
             boolean hovered = animProgress >= 1f &&
                               mouseX >= dropdownX && mouseX < rowRight &&
                               mouseY >= optionTop && mouseY <= optionTop + DROPDOWN_OPTION_HEIGHT;
@@ -1142,13 +1136,13 @@ public class VillagerTradeSelector {
             if (hovered) {
                 bg = adjustColor(bg, 1.2f);
             }
-            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, dropdownAlpha));
+            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, alpha));
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(option.displayName),
                 dropdownX + TEXT_PADDING,
                 optionTop + 5,
-                applyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
+                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -1160,10 +1154,10 @@ public class VillagerTradeSelector {
             dropdownHeight,
             totalOptions,
             layout.visibleCount,
-            Math.round(smoothScrollOffset),
+            dropdownScrollIndex,
             layout.maxScrollOffset,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha),
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, dropdownAlpha)
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha),
+            applyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
         );
         DropdownLayoutHelper.drawOutline(
             context,
@@ -1171,7 +1165,7 @@ public class VillagerTradeSelector {
             dropdownY,
             dropdownWidth,
             dropdownHeight,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha)
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha)
         );
         context.disableScissor();
     }

@@ -1,0 +1,428 @@
+package com.pathmind.util;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Mouse;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.client.util.Window;
+import org.lwjgl.glfw.GLFW;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
+/**
+ * Bridges input helpers that shifted across 1.21.x.
+ */
+public final class InputCompatibilityBridge {
+    private static final Method SCREEN_HAS_CONTROL_DOWN = resolveScreenMethod("hasControlDown");
+    private static final Method SCREEN_HAS_SHIFT_DOWN = resolveScreenMethod("hasShiftDown");
+    private static final Method IS_KEY_PRESSED_WINDOW = resolveIsKeyPressed(Window.class);
+    private static final Method IS_KEY_PRESSED_HANDLE = resolveIsKeyPressed(long.class);
+    private static final Method SCREEN_KEY_PRESSED_LEGACY = resolveScreenKeyPressedLegacy();
+    private static final Constructor<?> KEY_INPUT_CONSTRUCTOR = resolveKeyInputConstructor();
+    private static final Method SCREEN_KEY_PRESSED_MODERN = resolveScreenKeyPressedModern();
+    private static final Method SCREEN_MOUSE_CLICKED = resolveScreenMouseMethod("mouseClicked");
+    private static final Method SCREEN_MOUSE_RELEASED = resolveScreenMouseMethod("mouseReleased");
+    private static final Method MOUSE_CURSOR_POS_CALLBACK = resolveMouseCursorPosCallback();
+    private static final Method MOUSE_BUTTON_CALLBACK = resolveMouseButtonCallback();
+    private static final Constructor<?> SCREEN_CLICK_CONSTRUCTOR = resolveScreenClickConstructor();
+    private static final Constructor<?> MOUSE_INPUT_CONSTRUCTOR = resolveMouseInputConstructor();
+
+    private InputCompatibilityBridge() {
+    }
+
+    public static boolean hasControlDown() {
+        Boolean screenValue = invokeScreenBoolean(SCREEN_HAS_CONTROL_DOWN);
+        if (screenValue != null) {
+            return screenValue;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        return isKeyPressed(client, InputUtil.GLFW_KEY_LEFT_CONTROL)
+            || isKeyPressed(client, InputUtil.GLFW_KEY_RIGHT_CONTROL);
+    }
+
+    public static boolean hasShiftDown() {
+        Boolean screenValue = invokeScreenBoolean(SCREEN_HAS_SHIFT_DOWN);
+        if (screenValue != null) {
+            return screenValue;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        return isKeyPressed(client, InputUtil.GLFW_KEY_LEFT_SHIFT)
+            || isKeyPressed(client, InputUtil.GLFW_KEY_RIGHT_SHIFT);
+    }
+
+    public static boolean isKeyPressed(MinecraftClient client, int keyCode) {
+        if (client == null) {
+            return false;
+        }
+        Window window = client.getWindow();
+        if (window == null) {
+            return false;
+        }
+        if (IS_KEY_PRESSED_WINDOW != null) {
+            try {
+                Object result = IS_KEY_PRESSED_WINDOW.invoke(null, window, keyCode);
+                return result instanceof Boolean value && value;
+            } catch (IllegalAccessException | InvocationTargetException ignored) {
+                return false;
+            }
+        }
+        if (IS_KEY_PRESSED_HANDLE != null) {
+            try {
+                Object result = IS_KEY_PRESSED_HANDLE.invoke(null, window.getHandle(), keyCode);
+                return result instanceof Boolean value && value;
+            } catch (IllegalAccessException | InvocationTargetException ignored) {
+                return false;
+            }
+        }
+        return GLFW.glfwGetKey(window.getHandle(), keyCode) == GLFW.GLFW_PRESS;
+    }
+
+    public static boolean isMouseButtonPressed(MinecraftClient client, int buttonCode) {
+        if (client == null) {
+            return false;
+        }
+        Window window = client.getWindow();
+        if (window == null) {
+            return false;
+        }
+        return GLFW.glfwGetMouseButton(window.getHandle(), buttonCode) == GLFW.GLFW_PRESS;
+    }
+
+    public static boolean dispatchMouseButton(MinecraftClient client, int buttonCode, int action, int mods) {
+        if (client == null) {
+            return false;
+        }
+        Window window = client.getWindow();
+        if (window == null) {
+            return false;
+        }
+        Mouse mouse = client.mouse;
+        if (mouse == null || MOUSE_BUTTON_CALLBACK == null) {
+            return false;
+        }
+        try {
+            Class<?>[] parameterTypes = MOUSE_BUTTON_CALLBACK.getParameterTypes();
+            if (parameterTypes.length == 4 && parameterTypes[1] == int.class) {
+                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.getHandle(), buttonCode, action, mods);
+                return true;
+            }
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == long.class
+                && parameterTypes[2] == int.class
+                && MOUSE_INPUT_CONSTRUCTOR != null) {
+                Object mouseInput = MOUSE_INPUT_CONSTRUCTOR.newInstance(buttonCode, action);
+                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.getHandle(), mouseInput, mods);
+                return true;
+            }
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
+            return false;
+        }
+        return false;
+    }
+
+    public static boolean dispatchCursorPos(MinecraftClient client, double x, double y) {
+        if (client == null) {
+            return false;
+        }
+        Window window = client.getWindow();
+        if (window == null) {
+            return false;
+        }
+        Mouse mouse = client.mouse;
+        if (mouse == null || MOUSE_CURSOR_POS_CALLBACK == null) {
+            return false;
+        }
+        GLFW.glfwSetCursorPos(window.getHandle(), x, y);
+        try {
+            MOUSE_CURSOR_POS_CALLBACK.invoke(mouse, window.getHandle(), x, y);
+            return true;
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+            return false;
+        }
+    }
+
+    public static boolean dispatchScreenMouseClicked(Screen screen, double x, double y, int button) {
+        return dispatchScreenMouseEvent(screen, SCREEN_MOUSE_CLICKED, x, y, button, true);
+    }
+
+    public static boolean dispatchScreenMouseReleased(Screen screen, double x, double y, int button) {
+        return dispatchScreenMouseEvent(screen, SCREEN_MOUSE_RELEASED, x, y, button, false);
+    }
+
+    public static boolean dispatchScreenKeyPressed(Screen screen, int keyCode, int scanCode, int modifiers) {
+        if (screen == null) {
+            return false;
+        }
+        if (SCREEN_KEY_PRESSED_LEGACY != null) {
+            try {
+                Object result = SCREEN_KEY_PRESSED_LEGACY.invoke(screen, keyCode, scanCode, modifiers);
+                return result instanceof Boolean value && value;
+            } catch (IllegalAccessException | InvocationTargetException ignored) {
+                return false;
+            }
+        }
+        if (SCREEN_KEY_PRESSED_MODERN != null && KEY_INPUT_CONSTRUCTOR != null) {
+            try {
+                Object keyInput = KEY_INPUT_CONSTRUCTOR.newInstance(keyCode, scanCode, modifiers);
+                Object result = SCREEN_KEY_PRESSED_MODERN.invoke(screen, keyInput);
+                return result instanceof Boolean value && value;
+            } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static Method resolveScreenMethod(String name) {
+        try {
+            Method method = Screen.class.getMethod(name);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Boolean invokeScreenBoolean(Method method) {
+        if (method == null) {
+            return null;
+        }
+        try {
+            Object result = method.invoke(null);
+            return result instanceof Boolean value ? value : null;
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveIsKeyPressed(Class<?> firstParam) {
+        try {
+            Method method = InputUtil.class.getMethod("isKeyPressed", firstParam, int.class);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveScreenMouseMethod(String name) {
+        for (Method method : Screen.class.getMethods()) {
+            if (!method.getName().equals(name)) {
+                continue;
+            }
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == double.class
+                && parameterTypes[1] == double.class
+                && parameterTypes[2] == int.class) {
+                method.setAccessible(true);
+                return method;
+            }
+            if (name.equals("mouseClicked")
+                && parameterTypes.length == 2
+                && parameterTypes[1] == boolean.class
+                && isScreenClickClass(parameterTypes[0])) {
+                method.setAccessible(true);
+                return method;
+            }
+            if (name.equals("mouseReleased")
+                && parameterTypes.length == 1
+                && isScreenClickClass(parameterTypes[0])) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static Method resolveScreenKeyPressedLegacy() {
+        try {
+            Method method = Screen.class.getMethod("keyPressed", int.class, int.class, int.class);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Constructor<?> resolveKeyInputConstructor() {
+        try {
+            Class<?> keyInputClass = Class.forName("net.minecraft.client.input.KeyInput");
+            Constructor<?> constructor = keyInputClass.getConstructor(int.class, int.class, int.class);
+            constructor.setAccessible(true);
+            return constructor;
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveScreenKeyPressedModern() {
+        if (KEY_INPUT_CONSTRUCTOR == null) {
+            return null;
+        }
+        Class<?> keyInputClass = KEY_INPUT_CONSTRUCTOR.getDeclaringClass();
+        try {
+            Method method = Screen.class.getMethod("keyPressed", keyInputClass);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean dispatchScreenMouseEvent(Screen screen, Method method, double x, double y, int button, boolean inBounds) {
+        if (screen == null || method == null) {
+            return false;
+        }
+        try {
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == double.class
+                && parameterTypes[1] == double.class
+                && parameterTypes[2] == int.class) {
+                Object result = method.invoke(screen, x, y, button);
+                return !(result instanceof Boolean value) || value;
+            }
+            Object click = createScreenClick(x, y, button);
+            if (click == null) {
+                return false;
+            }
+            Object result;
+            if (parameterTypes.length == 2) {
+                result = method.invoke(screen, click, inBounds);
+            } else {
+                result = method.invoke(screen, click);
+            }
+            return !(result instanceof Boolean value) || value;
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+            return false;
+        }
+    }
+
+    private static Constructor<?> resolveScreenClickConstructor() {
+        try {
+            Class<?> clickClass = Class.forName("net.minecraft.client.gui.Click");
+            for (Constructor<?> constructor : clickClass.getDeclaredConstructors()) {
+                Class<?>[] parameterTypes = constructor.getParameterTypes();
+                if (parameterTypes.length != 3) {
+                    continue;
+                }
+                int doubleCount = 0;
+                int intCount = 0;
+                for (Class<?> parameterType : parameterTypes) {
+                    if (parameterType == double.class) {
+                        doubleCount++;
+                    } else if (parameterType == int.class) {
+                        intCount++;
+                    }
+                }
+                if (doubleCount == 2 && intCount == 1) {
+                    constructor.setAccessible(true);
+                    return constructor;
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static boolean isScreenClickClass(Class<?> type) {
+        return type != null && "net.minecraft.client.gui.Click".equals(type.getName());
+    }
+
+    private static Object createScreenClick(double x, double y, int button) {
+        if (SCREEN_CLICK_CONSTRUCTOR == null) {
+            return null;
+        }
+        Class<?>[] parameterTypes = SCREEN_CLICK_CONSTRUCTOR.getParameterTypes();
+        Object[] arguments = new Object[parameterTypes.length];
+        boolean xAssigned = false;
+        for (int i = 0; i < parameterTypes.length; i++) {
+            Class<?> parameterType = parameterTypes[i];
+            if (parameterType == double.class) {
+                arguments[i] = xAssigned ? y : x;
+                xAssigned = true;
+            } else if (parameterType == int.class) {
+                arguments[i] = button;
+            } else {
+                return null;
+            }
+        }
+        try {
+            return SCREEN_CLICK_CONSTRUCTOR.newInstance(arguments);
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveMouseButtonCallback() {
+        for (Method method : Mouse.class.getDeclaredMethods()) {
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (method.getReturnType() != void.class) {
+                continue;
+            }
+            if (parameterTypes.length == 4
+                && parameterTypes[0] == long.class
+                && parameterTypes[1] == int.class
+                && parameterTypes[2] == int.class
+                && parameterTypes[3] == int.class) {
+                method.setAccessible(true);
+                return method;
+            }
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == long.class
+                && parameterTypes[2] == int.class) {
+                Constructor<?> constructor = resolveTwoIntConstructor(parameterTypes[1]);
+                if (constructor != null) {
+                    method.setAccessible(true);
+                    return method;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Method resolveMouseCursorPosCallback() {
+        for (Method method : Mouse.class.getDeclaredMethods()) {
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (method.getReturnType() != void.class) {
+                continue;
+            }
+            if (parameterTypes.length == 3
+                && parameterTypes[0] == long.class
+                && parameterTypes[1] == double.class
+                && parameterTypes[2] == double.class) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static Constructor<?> resolveMouseInputConstructor() {
+        if (MOUSE_BUTTON_CALLBACK == null) {
+            return null;
+        }
+        Class<?>[] parameterTypes = MOUSE_BUTTON_CALLBACK.getParameterTypes();
+        if (parameterTypes.length != 3) {
+            return null;
+        }
+        return resolveTwoIntConstructor(parameterTypes[1]);
+    }
+
+    private static Constructor<?> resolveTwoIntConstructor(Class<?> type) {
+        if (type == null || type.isPrimitive()) {
+            return null;
+        }
+        try {
+            Constructor<?> constructor = type.getDeclaredConstructor(int.class, int.class);
+            constructor.setAccessible(true);
+            return constructor;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+}

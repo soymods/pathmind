@@ -1,0 +1,107 @@
+package com.pathmind.screen;
+
+import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.BaritoneDependencyChecker;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.text.Text;
+import net.minecraft.util.Util;
+
+/**
+ * Warning screen displayed when the user tries to use Baritone-only features without the Baritone API.
+ */
+public class MissingBaritoneApiScreen extends Screen {
+    private static final int BUTTON_WIDTH = 150;
+    private static final int BUTTON_HEIGHT = 20;
+    private static final int BUTTON_SPACING = 8;
+
+    private final Screen parent;
+    private boolean systemCursorHidden = false;
+
+    public MissingBaritoneApiScreen(Screen parent) {
+        super(Text.translatable("pathmind.screen.missingBaritone.title"));
+        this.parent = parent;
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        ensureCustomCursorHidden();
+        int centerX = this.width / 2;
+        int startY = this.height / 2 + 10;
+
+        addDrawableChild(ButtonWidget.builder(
+            Text.translatable("pathmind.button.openLink"),
+            button -> openDownloadLink()
+        ).dimensions(centerX - BUTTON_WIDTH - BUTTON_SPACING / 2, startY, BUTTON_WIDTH, BUTTON_HEIGHT).build());
+
+        addDrawableChild(ButtonWidget.builder(
+            Text.translatable("pathmind.button.copyLink"),
+            button -> copyDownloadLink()
+        ).dimensions(centerX + BUTTON_SPACING / 2, startY, BUTTON_WIDTH, BUTTON_HEIGHT).build());
+
+        addDrawableChild(ButtonWidget.builder(
+            Text.translatable("pathmind.button.close"),
+            button -> close()
+        ).dimensions(centerX - (BUTTON_WIDTH / 2), startY + BUTTON_HEIGHT + BUTTON_SPACING, BUTTON_WIDTH, BUTTON_HEIGHT).build());
+    }
+
+    private void openDownloadLink() {
+        Util.getOperatingSystem().open(BaritoneDependencyChecker.DOWNLOAD_URL);
+    }
+
+    private void copyDownloadLink() {
+        MinecraftClient client = this.client;
+        if (client != null && client.keyboard != null) {
+            client.keyboard.setClipboard(BaritoneDependencyChecker.DOWNLOAD_URL);
+        }
+    }
+
+    @Override
+    public void close() {
+        restoreSystemCursor();
+        if (this.client != null) {
+            this.client.setScreen(parent);
+        }
+    }
+
+    @Override
+    public void removed() {
+        restoreSystemCursor();
+        super.removed();
+    }
+
+    @Override
+    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Solid background to avoid blur issues with shader mods
+        context.fill(0, 0, this.width, this.height, 0xC0101010);
+
+        int centerX = this.width / 2;
+        int messageY = this.height / 2 - 40;
+
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("pathmind.popup.missingBaritone.title"), centerX, messageY, UITheme.TEXT_HEADER);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("pathmind.popup.missingBaritone.message"), centerX, messageY + 16, UITheme.TEXT_PRIMARY);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(BaritoneDependencyChecker.DOWNLOAD_URL), centerX, messageY + 32, UITheme.LINK_COLOR);
+
+        super.render(context, mouseX, mouseY, delta);
+        PathmindCursor.renderDefault(context, mouseX, mouseY);
+    }
+
+    private void ensureCustomCursorHidden() {
+        if (systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.hideSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = true;
+    }
+
+    private void restoreSystemCursor() {
+        if (!systemCursorHidden) {
+            return;
+        }
+        PathmindCursor.showSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        systemCursorHidden = false;
+    }
+}

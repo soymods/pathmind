@@ -87,16 +87,8 @@ final class NodeInventoryCommandExecutor {
             slot = MathHelper.clamp(resolvedSlot, 0, PlayerInventory.getHotbarSize() - 1);
         }
 
-        final int targetSlot = slot;
-        try {
-            runOnClientThread(client, () -> HotbarSlotSynchronizer.selectHotbarSlot(client, targetSlot));
-            future.complete(null);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            future.completeExceptionally(e);
-        } catch (RuntimeException e) {
-            future.completeExceptionally(e);
-        }
+        HotbarSlotSynchronizer.selectHotbarSlot(client, slot);
+        future.complete(null);
     }
     
     void executeDropItemCommand(CompletableFuture<Void> future) {
@@ -127,39 +119,20 @@ final class NodeInventoryCommandExecutor {
         boolean dropAll = getBooleanParameter("All", false);
         int count = shouldUseDropItemAmount() ? Math.max(1, getIntParameter("Count", 1)) : 1;
         double interval = Math.max(0.0, getDoubleParameter("IntervalSeconds", 0.0));
-        PlayerInventory inventory = client.player.getInventory();
-        ScreenHandler handler = client.player.currentScreenHandler;
-        ClientPlayerInteractionManager interactionManager = client.interactionManager;
-        SlotResolution selectedSlot = resolveInventorySlot(
-            handler,
-            inventory,
-            inventory != null ? PlayerInventoryBridge.getSelectedSlot(inventory) : 0,
-            SlotSelectionType.PLAYER_INVENTORY
-        );
-        if (interactionManager == null || handler == null || inventory == null || selectedSlot == null || selectedSlot.slot == null) {
-            future.completeExceptionally(new RuntimeException("Interaction manager unavailable"));
-            return;
-        }
-        final boolean dropEntireStack = dropAll
-            || (selectedSlot.slot.getStack() != null && count >= selectedSlot.slot.getStack().getCount());
-        final int requestedCount = count;
+        final int dropIterations = count;
+        final boolean dropEntireStack = dropAll;
 
         new Thread(() -> {
             try {
-                if (interval <= 0.0) {
+                for (int i = 0; i < dropIterations; i++) {
                     runOnClientThread(client, () -> {
-                        dropSlotCount(client, interactionManager, handler, inventory, selectedSlot.handlerSlotIndex, requestedCount, dropEntireStack);
+                        client.player.dropSelectedItem(dropEntireStack);
+                        client.player.getInventory().markDirty();
+                        client.player.playerScreenHandler.sendContentUpdates();
                     });
-                } else {
-                    int dropIterations = dropEntireStack ? 1 : requestedCount;
-                    for (int i = 0; i < dropIterations; i++) {
-                        final boolean entireStackThisClick = dropEntireStack;
-                        runOnClientThread(client, () -> {
-                            dropSlotCount(client, interactionManager, handler, inventory, selectedSlot.handlerSlotIndex, 1, entireStackThisClick);
-                        });
-                        if (i < dropIterations - 1) {
-                            Thread.sleep((long) (interval * 1000));
-                        }
+
+                    if (interval > 0.0 && i < dropIterations - 1) {
+                        Thread.sleep((long) (interval * 1000));
                     }
                 }
                 future.complete(null);
@@ -699,13 +672,6 @@ final class NodeInventoryCommandExecutor {
 
         Node counterpart = getAttachedParameter(parameterSlotIndex == 0 ? 1 : 0);
         if (counterpart != null && counterpart.getType() != NodeType.PARAM_ITEM) {
-            if (counterpart.getType() == NodeType.PARAM_GUI) {
-                GuiSelectionMode guiMode = GuiSelectionMode.fromId(getParameterString(counterpart, "GUI"));
-                if (guiMode == GuiSelectionMode.PLAYER_INVENTORY) {
-                    return SlotSelectionType.GUI_CONTAINER;
-                }
-                return SlotSelectionType.PLAYER_INVENTORY;
-            }
             SlotSelectionType counterpartSelection = resolveInventorySlotSelectionType(counterpart);
             if (counterpartSelection == SlotSelectionType.GUI_CONTAINER) {
                 return SlotSelectionType.PLAYER_INVENTORY;
@@ -718,10 +684,6 @@ final class NodeInventoryCommandExecutor {
         return parameterSlotIndex == 0
             ? SlotSelectionType.PLAYER_INVENTORY
             : resolveInventorySlotSelectionType(parameterNode);
-    }
-
-    SlotSelectionType resolveMoveItemSlotSelectionTypeForTests(Node parameterNode, int parameterSlotIndex) {
-        return resolveMoveItemSlotSelectionType(parameterNode, parameterSlotIndex);
     }
 
     private boolean hasOpenGuiContainer() {
@@ -743,7 +705,6 @@ final class NodeInventoryCommandExecutor {
     }
 
     SlotSelectionType resolveInventorySlotSelectionType(Node parameterNode) {
-        parameterNode = resolveVariableSelectionParameterNode(parameterNode);
         if (parameterNode == null) {
             return SlotSelectionType.PLAYER_INVENTORY;
         }
@@ -800,18 +761,6 @@ final class NodeInventoryCommandExecutor {
             return SlotSelectionType.GUI_CONTAINER;
         }
         return SlotSelectionType.PLAYER_INVENTORY;
-    }
-
-    private Node resolveVariableSelectionParameterNode(Node parameterNode) {
-        if (parameterNode == null || parameterNode.getType() != NodeType.VARIABLE) {
-            return parameterNode;
-        }
-        int slotIndex = parameterNode.getParentParameterSlotIndex();
-        if (slotIndex < 0) {
-            slotIndex = 0;
-        }
-        Node resolved = owner.resolveVariableValueNode(parameterNode, slotIndex, null);
-        return resolved != null ? resolved : parameterNode;
     }
 
     SlotResolution resolveInventorySlot(ScreenHandler handler, PlayerInventory inventory, int slotValue, SlotSelectionType selectionType) {
@@ -1016,19 +965,21 @@ final class NodeInventoryCommandExecutor {
 
         new Thread(() -> {
             try {
-                if (interval <= 0.0) {
+                for (int i = 0; i < dropIterations; i++) {
+                    final boolean entireStackThisClick = dropEntireStack;
                     runOnClientThread(client, () -> {
-                        dropSlotCount(client, interactionManager, handler, inventory, resolution.handlerSlotIndex, requestedCount, dropEntireStack);
+                        interactionManager.clickSlot(
+                            handler.syncId,
+                            resolution.handlerSlotIndex,
+                            entireStackThisClick ? 1 : 0,
+                            SlotActionType.THROW,
+                            client.player
+                        );
+                        inventory.markDirty();
+                        client.player.playerScreenHandler.sendContentUpdates();
                     });
-                } else {
-                    for (int i = 0; i < dropIterations; i++) {
-                        final boolean entireStackThisClick = dropEntireStack;
-                        runOnClientThread(client, () -> {
-                            dropSlotCount(client, interactionManager, handler, inventory, resolution.handlerSlotIndex, 1, entireStackThisClick);
-                        });
-                        if (i < dropIterations - 1) {
-                            Thread.sleep((long) (interval * 1000));
-                        }
+                    if (interval > 0.0 && i < dropIterations - 1) {
+                        Thread.sleep((long) (interval * 1000));
                     }
                 }
                 future.complete(null);
@@ -1037,162 +988,6 @@ final class NodeInventoryCommandExecutor {
                 future.completeExceptionally(e);
             }
         }, "Pathmind-Drop").start();
-    }
-
-    private void dropSlotCount(net.minecraft.client.MinecraftClient client,
-                               ClientPlayerInteractionManager interactionManager,
-                               ScreenHandler handler,
-                               PlayerInventory inventory,
-                               int handlerSlotIndex,
-                               int requestedCount,
-                               boolean dropEntireStack) {
-        if (client == null || client.player == null || interactionManager == null || handler == null || inventory == null) {
-            return;
-        }
-        if (handlerSlotIndex < 0 || handlerSlotIndex >= handler.slots.size()) {
-            return;
-        }
-
-        Slot slot = handler.getSlot(handlerSlotIndex);
-        ItemStack stack = slot == null ? ItemStack.EMPTY : slot.getStack();
-        if (stack == null || stack.isEmpty()) {
-            return;
-        }
-
-        int available = stack.getCount();
-        int count = MathHelper.clamp(requestedCount, 1, available);
-        if (dropEntireStack || count >= available) {
-            interactionManager.clickSlot(handler.syncId, handlerSlotIndex, 1, SlotActionType.THROW, client.player);
-            finishInventoryClickUpdates(client, inventory);
-            return;
-        }
-
-        if (count == 1) {
-            interactionManager.clickSlot(handler.syncId, handlerSlotIndex, 0, SlotActionType.THROW, client.player);
-            finishInventoryClickUpdates(client, inventory);
-            return;
-        }
-
-        if (!dropPartialStackAsSingleCursorClick(client, interactionManager, handler, inventory, handlerSlotIndex, count)) {
-            for (int i = 0; i < count; i++) {
-                interactionManager.clickSlot(handler.syncId, handlerSlotIndex, 0, SlotActionType.THROW, client.player);
-            }
-            finishInventoryClickUpdates(client, inventory);
-        }
-    }
-
-    private boolean dropPartialStackAsSingleCursorClick(net.minecraft.client.MinecraftClient client,
-                                                        ClientPlayerInteractionManager interactionManager,
-                                                        ScreenHandler handler,
-                                                        PlayerInventory inventory,
-                                                        int sourceSlot,
-                                                        int requestedCount) {
-        if (handler.getCursorStack() != null && !handler.getCursorStack().isEmpty()) {
-            return false;
-        }
-
-        Slot source = handler.getSlot(sourceSlot);
-        ItemStack sourceStack = source == null ? ItemStack.EMPTY : source.getStack();
-        if (sourceStack == null || sourceStack.isEmpty() || requestedCount <= 1 || requestedCount >= sourceStack.getCount()) {
-            return false;
-        }
-
-        int scratchSlot = findEmptyPlayerHandlerSlot(handler, sourceSlot);
-        if (scratchSlot < 0) {
-            return false;
-        }
-
-        int sourceCount = sourceStack.getCount();
-        if (!canSplitByHalving(sourceCount, requestedCount)) {
-            return false;
-        }
-
-        interactionManager.clickSlot(handler.syncId, sourceSlot, 1, SlotActionType.PICKUP, client.player);
-        if (handler.getCursorStack() != null
-            && !handler.getCursorStack().isEmpty()
-            && handler.getCursorStack().getCount() == requestedCount) {
-            interactionManager.clickSlot(handler.syncId, -999, 0, SlotActionType.PICKUP, client.player);
-            finishInventoryClickUpdates(client, inventory);
-            return true;
-        }
-
-        interactionManager.clickSlot(handler.syncId, scratchSlot, 0, SlotActionType.PICKUP, client.player);
-        interactionManager.clickSlot(handler.syncId, scratchSlot, 1, SlotActionType.PICKUP, client.player);
-        while (handler.getCursorStack() != null
-            && !handler.getCursorStack().isEmpty()
-            && handler.getCursorStack().getCount() > requestedCount) {
-            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, client.player);
-            interactionManager.clickSlot(handler.syncId, scratchSlot, 1, SlotActionType.PICKUP, client.player);
-        }
-
-        ItemStack cursorStack = handler.getCursorStack();
-        if (cursorStack == null || cursorStack.isEmpty() || cursorStack.getCount() != requestedCount) {
-            restoreCursorToSource(interactionManager, handler, client.player, sourceSlot);
-            restoreScratchToSource(interactionManager, handler, client.player, scratchSlot, sourceSlot);
-            finishInventoryClickUpdates(client, inventory);
-            return false;
-        }
-
-        interactionManager.clickSlot(handler.syncId, -999, 0, SlotActionType.PICKUP, client.player);
-        restoreScratchToSource(interactionManager, handler, client.player, scratchSlot, sourceSlot);
-        finishInventoryClickUpdates(client, inventory);
-        return true;
-    }
-
-    private boolean canSplitByHalving(int sourceCount, int requestedCount) {
-        int cursorCount = (sourceCount + 1) / 2;
-        while (cursorCount > requestedCount) {
-            cursorCount = (cursorCount + 1) / 2;
-        }
-        return cursorCount == requestedCount;
-    }
-
-    private int findEmptyPlayerHandlerSlot(ScreenHandler handler, int excludedSlot) {
-        if (handler == null) {
-            return -1;
-        }
-        for (int i = 0; i < handler.slots.size(); i++) {
-            if (i == excludedSlot) {
-                continue;
-            }
-            Slot slot = handler.getSlot(i);
-            if (slot != null && slot.inventory instanceof PlayerInventory && !slot.hasStack()) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private void restoreCursorToSource(ClientPlayerInteractionManager interactionManager,
-                                       ScreenHandler handler,
-                                       PlayerEntity player,
-                                       int sourceSlot) {
-        if (handler.getCursorStack() != null && !handler.getCursorStack().isEmpty()) {
-            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
-        }
-    }
-
-    private void restoreScratchToSource(ClientPlayerInteractionManager interactionManager,
-                                        ScreenHandler handler,
-                                        PlayerEntity player,
-                                        int scratchSlot,
-                                        int sourceSlot) {
-        if (scratchSlot < 0 || scratchSlot >= handler.slots.size()) {
-            return;
-        }
-        Slot scratch = handler.getSlot(scratchSlot);
-        if (scratch != null && scratch.hasStack()) {
-            interactionManager.clickSlot(handler.syncId, scratchSlot, 0, SlotActionType.PICKUP, player);
-            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
-        }
-    }
-
-    private void finishInventoryClickUpdates(net.minecraft.client.MinecraftClient client, PlayerInventory inventory) {
-        if (client == null || client.player == null || inventory == null) {
-            return;
-        }
-        inventory.markDirty();
-        client.player.playerScreenHandler.sendContentUpdates();
     }
 
     boolean resolveMoveItemSlotFromItemParameter(Node parameterNode, int slotIndex,
@@ -1301,89 +1096,42 @@ final class NodeInventoryCommandExecutor {
         }
 
         PlayerInventory inventory = client.player.getInventory();
-        if (parameterNode.getType() == NodeType.OPERATOR_BOOLEAN_OR) {
-            UseSelectionResult orResult = resolveUseSelectionFromOr(parameterNode, inventory);
-            if (orResult != null) {
-                applyUseSelectionResult(orResult);
-                return true;
-            }
-            sendParameterSearchFailure("None of the OR options are available in inventory for " + type.getDisplayName() + ".", future);
-            return false;
-        }
-
-        UseSelectionResult result = resolveUseSelectionResult(parameterNode, inventory, client, future, true);
-        if (result == null) {
-            return false;
-        }
-        applyUseSelectionResult(result);
-        return true;
-    }
-
-    private UseSelectionResult resolveUseSelectionFromOr(Node orNode, PlayerInventory inventory) {
-        if (orNode == null || inventory == null) {
-            return null;
-        }
-        java.util.List<Integer> slotIndices = new java.util.ArrayList<>(orNode.getAttachedParameterSlotIndices());
-        java.util.Collections.sort(slotIndices);
-        for (Integer slotIndex : slotIndices) {
-            Node child = orNode.getAttachedParameter(slotIndex);
-            if (child == null) {
-                continue;
-            }
-            child = resolveVariableSelectionParameterNode(child);
-            UseSelectionResult result = resolveUseSelectionResult(
-                child,
-                inventory,
-                net.minecraft.client.MinecraftClient.getInstance(),
-                null,
-                false
-            );
-            if (result != null) {
-                return result;
-            }
-        }
-        return null;
-    }
-
-    private UseSelectionResult resolveUseSelectionResult(Node parameterNode,
-                                                         PlayerInventory inventory,
-                                                         net.minecraft.client.MinecraftClient client,
-                                                         CompletableFuture<Void> future,
-                                                         boolean reportErrors) {
-        if (parameterNode == null || inventory == null) {
-            return null;
-        }
         EnumSet<NodeValueTrait> traits = parameterNode.getProvidedTraits();
         boolean isListItem = parameterNode.getType() == NodeType.LIST_ITEM;
         boolean treatAsItem = traits.contains(NodeValueTrait.ITEM)
             || (isListItem && runtimeState.runtimeParameterData != null && runtimeState.runtimeParameterData.targetItemId != null);
         if (traits.contains(NodeValueTrait.BLOCK)) {
-            String rawBlock = getParameterString(parameterNode, "Block");
-            boolean anySelection = isAnySelectionValue(rawBlock);
-            List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
-            if (selections.isEmpty() && !anySelection) {
-                if (reportErrors) {
+            {
+                String rawBlock = getParameterString(parameterNode, "Block");
+                boolean anySelection = isAnySelectionValue(rawBlock);
+                List<BlockSelection> selections = resolveBlocksFromParameter(parameterNode);
+                if (selections.isEmpty() && !anySelection) {
                     sendParameterSearchFailure(tr("pathmind.error.noBlockSelectedOnParameter", type.getDisplayName()), future);
+                    return false;
                 }
-                return null;
-            }
 
-            ItemSearchResult result = anySelection || selections.isEmpty()
-                ? findFirstBlockItemSlot(inventory)
-                : findUseBlockSlot(inventory, selections);
+                ItemSearchResult result = null;
+                if (anySelection || selections.isEmpty()) {
+                    result = findFirstBlockItemSlot(inventory);
+                } else {
+                    result = findUseBlockSlot(inventory, selections);
+                }
 
-            if (result == null) {
-                if (reportErrors) {
+                if (result == null) {
                     String reference = anySelection ? tr("pathmind.error.blockReference") : selections.stream()
                         .map(BlockSelection::getBlockIdString)
                         .filter(id -> id != null && !id.isEmpty())
                         .findFirst()
                         .orElse(tr("pathmind.error.blockReference"));
                     sendParameterSearchFailure(tr("pathmind.error.noItemFoundInInventory", reference, type.getDisplayName()), future);
+                    return false;
                 }
-                return null;
+                runtimeState.runtimeParameterData.slotIndex = result.slotIndex();
+                runtimeState.runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                runtimeState.runtimeParameterData.targetItem = result.item();
+                runtimeState.runtimeParameterData.targetItemId = result.itemId();
+                return true;
             }
-            return new UseSelectionResult(result.slotIndex(), SlotSelectionType.PLAYER_INVENTORY, result.item(), result.itemId());
         }
         if (treatAsItem) {
             List<String> itemIds;
@@ -1393,55 +1141,40 @@ final class NodeInventoryCommandExecutor {
                 itemIds = resolveItemIdsFromParameter(parameterNode);
             }
             if (itemIds.isEmpty()) {
-                if (reportErrors) {
-                    sendParameterSearchFailure(tr("pathmind.error.noItemSelectedOnParameter", type.getDisplayName()), future);
-                }
-                return null;
+                sendParameterSearchFailure(tr("pathmind.error.noItemSelectedOnParameter", type.getDisplayName()), future);
+                return false;
             }
-            ItemSearchResult result = findUseItemSlot(inventory, itemIds);
-            if (result == null) {
-                if (reportErrors) {
+                ItemSearchResult result = findUseItemSlot(inventory, itemIds);
+                if (result == null) {
                     String reference = String.join(", ", itemIds);
                     sendParameterSearchFailure(tr("pathmind.error.noItemFoundInInventory", reference, type.getDisplayName()), future);
+                    return false;
                 }
-                return null;
-            }
-            return new UseSelectionResult(result.slotIndex(), SlotSelectionType.PLAYER_INVENTORY, result.item(), result.itemId());
+                runtimeState.runtimeParameterData.slotIndex = result.slotIndex();
+                runtimeState.runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                runtimeState.runtimeParameterData.targetItem = result.item();
+                runtimeState.runtimeParameterData.targetItemId = result.itemId();
+                return true;
         }
         if (traits.contains(NodeValueTrait.INVENTORY_SLOT)) {
-            SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
-            if (selectionType == SlotSelectionType.GUI_CONTAINER) {
-                if (reportErrors) {
+                SlotSelectionType selectionType = resolveInventorySlotSelectionType(parameterNode);
+                if (selectionType == SlotSelectionType.GUI_CONTAINER) {
                     sendNodeErrorMessage(client, tr("pathmind.error.useOnlyPlayerInventorySlots"));
                     if (future != null && !future.isDone()) {
                         future.complete(null);
                     }
+                    return false;
                 }
-                return null;
-            }
-            int slotValue = clampInventorySlot(inventory, parseNodeInt(parameterNode, "Slot", 0));
-            return new UseSelectionResult(slotValue, SlotSelectionType.PLAYER_INVENTORY, null, null);
+                int slotValue = clampInventorySlot(inventory, parseNodeInt(parameterNode, "Slot", 0));
+                runtimeState.runtimeParameterData.slotIndex = slotValue;
+                runtimeState.runtimeParameterData.slotSelectionType = SlotSelectionType.PLAYER_INVENTORY;
+                return true;
         }
-        if (reportErrors) {
-            sendIncompatibleParameterMessage(parameterNode);
-        }
-        return null;
+        sendIncompatibleParameterMessage(parameterNode);
+        return false;
     }
 
     private record ItemSearchResult(int slotIndex, Item item, String itemId) {
-    }
-
-    private record UseSelectionResult(int slotIndex, SlotSelectionType selectionType, Item item, String itemId) {
-    }
-
-    private void applyUseSelectionResult(UseSelectionResult result) {
-        if (result == null) {
-            return;
-        }
-        runtimeState.runtimeParameterData.slotIndex = result.slotIndex();
-        runtimeState.runtimeParameterData.slotSelectionType = result.selectionType();
-        runtimeState.runtimeParameterData.targetItem = result.item();
-        runtimeState.runtimeParameterData.targetItemId = result.itemId();
     }
 
     private ItemSearchResult findUseItemSlot(PlayerInventory inventory, List<String> itemIds) {

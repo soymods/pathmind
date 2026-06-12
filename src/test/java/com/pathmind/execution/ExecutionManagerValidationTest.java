@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -127,7 +126,7 @@ class ExecutionManagerValidationTest {
     @Test
     void repeatCountResolvesGlobalRuntimeVariableNames() throws Exception {
         Node repeat = new Node(NodeType.CONTROL_REPEAT, 0, 0);
-        repeat.getParameter("Count").setStringValue("$length");
+        repeat.getParameter("Count").setStringValue("~length");
 
         ExecutionManager.RuntimeVariable variable = new ExecutionManager.RuntimeVariable(
             NodeType.PARAM_AMOUNT,
@@ -175,7 +174,7 @@ class ExecutionManagerValidationTest {
         variable.getParameter("Variable").setStringValue("lhs_compare");
 
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        amount.getParameter("Amount").setStringValue("$rhs_compare");
+        amount.getParameter("Amount").setStringValue("~rhs_compare");
 
         assertTrue(equals.attachParameter(variable, 0));
         assertTrue(equals.attachParameter(amount, 1));
@@ -206,7 +205,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "$look_dir");
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~look_dir");
         assertEquals("90 -30", resolved);
     }
 
@@ -224,7 +223,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "$look_dir");
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~look_dir");
         assertEquals("180 15", resolved);
     }
 
@@ -259,36 +258,6 @@ class ExecutionManagerValidationTest {
         );
 
         assertTrue(equals.evaluateSensor());
-    }
-
-    @Test
-    void distanceBetweenExportsDistanceForVariableBackedCoordinateTargets() {
-        Node distanceBetween = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
-        Node variableA = new Node(NodeType.VARIABLE, 0, 0);
-        variableA.getParameter("Variable").setStringValue("target_a");
-        Node variableB = new Node(NodeType.VARIABLE, 0, 0);
-        variableB.getParameter("Variable").setStringValue("target_b");
-
-        assertTrue(distanceBetween.attachParameter(variableA, 0));
-        assertTrue(distanceBetween.attachParameter(variableB, 1));
-
-        manager.setRuntimeVariableForAnyActiveChain(
-            "target_a",
-            new ExecutionManager.RuntimeVariable(
-                NodeType.PARAM_COORDINATE,
-                Map.of("X", "0", "x", "0", "Y", "64", "y", "64", "Z", "0", "z", "0")
-            )
-        );
-        manager.setRuntimeVariableForAnyActiveChain(
-            "target_b",
-            new ExecutionManager.RuntimeVariable(
-                NodeType.PARAM_COORDINATE,
-                Map.of("X", "3", "x", "3", "Y", "64", "y", "64", "Z", "4", "z", "4")
-            )
-        );
-
-        Map<String, String> values = distanceBetween.exportParameterValues();
-        assertEquals("5.0", values.get("Distance"));
     }
 
     @Test
@@ -436,7 +405,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "$stored_block_upper");
+        String resolved = (String) resolveRuntimeVariablesInText.invoke(message, "~stored_block_upper");
         assertEquals("minecraft:stone", resolved);
     }
 
@@ -552,57 +521,6 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
-    void setVariableStoresResolvedListItemValueInsteadOfListSelectorMetadata() throws Exception {
-        Node start = new Node(NodeType.START, 0, 0);
-        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
-        setVariable.setOwningStartNode(start);
-
-        Class<?> controllerClass = Arrays.stream(ExecutionManager.class.getDeclaredClasses())
-            .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
-            .findFirst()
-            .orElseThrow();
-        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
-        constructor.setAccessible(true);
-        Object controller = constructor.newInstance(start, 1);
-
-        Field activeChainsField = ExecutionManager.class.getDeclaredField("activeChains");
-        activeChainsField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Map<Node, Object> activeChains = (Map<Node, Object>) activeChainsField.get(manager);
-        activeChains.put(start, controller);
-
-        Node variable = new Node(NodeType.VARIABLE, 0, 0);
-        variable.getParameter("Variable").setStringValue("stored_item");
-
-        Node listItem = new Node(NodeType.LIST_ITEM, 0, 0);
-        listItem.getParameter("List").setStringValue("source_list");
-        listItem.getParameter("Index").setStringValue("1");
-
-        assertTrue(setVariable.attachParameter(variable, 0));
-        assertTrue(setVariable.attachParameter(listItem, 1));
-
-        manager.setRuntimeList(start, "source_list", new ExecutionManager.RuntimeList(
-            NodeType.PARAM_ITEM,
-            List.of("pm_list:{\"Item\":\"minecraft:stone\",\"item\":\"minecraft:stone\"}")
-        ));
-
-        Method executeSetVariable = Node.class.getDeclaredMethod("executeSetVariableCommand", CompletableFuture.class);
-        executeSetVariable.setAccessible(true);
-
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        executeSetVariable.invoke(setVariable, future);
-        future.get(1, TimeUnit.SECONDS);
-
-        ExecutionManager.RuntimeVariable stored = manager.getRuntimeVariable(start, "stored_item");
-        assertNotNull(stored);
-        assertEquals(NodeType.PARAM_ITEM, stored.getType());
-        assertEquals("minecraft:stone", stored.getValues().get("Item"));
-        assertEquals("minecraft:stone", stored.getValues().get("item"));
-        assertFalse(stored.getValues().containsKey("List"));
-        assertFalse(stored.getValues().containsKey("Index"));
-    }
-
-    @Test
     void messageFormattingDereferencesRuntimeListItemVariables() throws Exception {
         Node start = new Node(NodeType.START, 0, 0);
         Node message = new Node(NodeType.MESSAGE, 100, 0);
@@ -634,7 +552,7 @@ class ExecutionManagerValidationTest {
         Method resolveRuntimeVariablesInText = Node.class.getDeclaredMethod("resolveRuntimeVariablesInText", String.class);
         resolveRuntimeVariablesInText.setAccessible(true);
 
-        assertEquals("position=10 64 -3", resolveRuntimeVariablesInText.invoke(message, "position=$position"));
+        assertEquals("position=10 64 -3", resolveRuntimeVariablesInText.invoke(message, "position=~position"));
     }
 
     @Test
@@ -856,79 +774,6 @@ class ExecutionManagerValidationTest {
 
         assertNotNull(future);
         assertEquals(2, activeChains.size());
-    }
-
-    @Test
-    void externalBranchInheritsAndUpdatesCallerRuntimeVariableScope() throws Exception {
-        Node parentStart = new Node(NodeType.START, 0, 0);
-        parentStart.setStartNodeNumber(1);
-        Node activeCaller = new Node(NodeType.RUN_PRESET, 100, 0);
-        activeCaller.setOwningStartNode(parentStart);
-
-        Class<?> controllerClass = Arrays.stream(ExecutionManager.class.getDeclaredClasses())
-            .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
-            .findFirst()
-            .orElseThrow();
-        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
-        constructor.setAccessible(true);
-        Object parentController = constructor.newInstance(parentStart, 41);
-
-        Field activeChainsField = ExecutionManager.class.getDeclaredField("activeChains");
-        activeChainsField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Map<Node, Object> activeChains = (Map<Node, Object>) activeChainsField.get(manager);
-        activeChains.put(parentStart, parentController);
-
-        Field activeExecutionNodesField = ExecutionManager.class.getDeclaredField("activeExecutionNodes");
-        activeExecutionNodesField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Map<Integer, Node> activeExecutionNodes = (Map<Integer, Node>) activeExecutionNodesField.get(manager);
-        activeExecutionNodes.put(41, activeCaller);
-
-        manager.setRuntimeVariable(parentStart, "distance", new ExecutionManager.RuntimeVariable(
-            NodeType.PARAM_AMOUNT,
-            Map.of("Amount", "4", "amount", "4")
-        ));
-
-        Node nestedStart = new Node(NodeType.START, 0, 0);
-        nestedStart.setStartNodeNumber(1);
-        Node forever = new Node(NodeType.CONTROL_FOREVER, 120, 0);
-        Node wait = new Node(NodeType.WAIT, 220, 0);
-        wait.getParameter("Duration").setStringValue("5.0");
-        assertTrue(forever.attachActionNode(wait));
-        NodeConnection connection = new NodeConnection(nestedStart, forever, 0, 0);
-
-        CompletableFuture<Void>[] futureHolder = new CompletableFuture[1];
-        manager.runWithExecutionContext(41, () -> futureHolder[0] = manager.executeExternalBranchAndWait(
-            nestedStart,
-            List.of(nestedStart, forever, wait),
-            List.of(connection),
-            "NestedPreset"
-        ));
-
-        CompletableFuture<Void> future = futureHolder[0];
-        assertNotNull(future);
-        assertEquals(2, activeChains.size());
-
-        Node launchedStart = activeChains.keySet().stream()
-            .filter(node -> node != parentStart)
-            .findFirst()
-            .orElseThrow();
-
-        ExecutionManager.RuntimeVariable inherited = manager.getRuntimeVariable(launchedStart, "distance");
-        assertNotNull(inherited);
-        assertEquals("4", inherited.getValues().get("Amount"));
-
-        assertTrue(manager.setRuntimeVariable(launchedStart, "distance", new ExecutionManager.RuntimeVariable(
-            NodeType.PARAM_AMOUNT,
-            Map.of("Amount", "9", "amount", "9")
-        )));
-        ExecutionManager.RuntimeVariable updatedParent = manager.getRuntimeVariable(parentStart, "distance");
-        assertNotNull(updatedParent);
-        assertEquals("9", updatedParent.getValues().get("Amount"));
-
-        manager.requestStopAll();
-        future.cancel(true);
     }
 
     @Test

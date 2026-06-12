@@ -50,6 +50,7 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_HEALTH_BELOW,
         NodeType.SENSOR_HUNGER_BELOW,
         NodeType.SENSOR_FABRIC_EVENT,
+        NodeType.SENSOR_GUI_FILLED,
         NodeType.SENSOR_TARGETED_BLOCK,
         NodeType.SENSOR_TARGETED_ENTITY,
         NodeType.SENSOR_TARGETED_BLOCK_FACE,
@@ -63,12 +64,10 @@ public final class NodeTraitRegistry {
         NodeType.SENSOR_DISTANCE_BETWEEN,
         NodeType.SENSOR_ITEM_IN_INVENTORY,
         NodeType.SENSOR_ITEM_IN_SLOT,
-        NodeType.SENSOR_FIND_TRADE,
         NodeType.SENSOR_SLOT_ITEM_COUNT,
         NodeType.SENSOR_ATTRIBUTE_DETECTION,
         NodeType.SENSOR_CHAT_MESSAGE,
-        NodeType.SENSOR_JOINED_SERVER,
-        NodeType.SENSOR_GUI_FILLED
+        NodeType.SENSOR_JOINED_SERVER
     );
 
     private static final EnumMap<NodeType, EnumSet<NodeValueTrait>> PROVIDED_TRAITS;
@@ -114,12 +113,10 @@ public final class NodeTraitRegistry {
 
         traits.put(NodeType.OPERATOR_RANDOM, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_MOD, EnumSet.of(NodeValueTrait.NUMBER));
-        traits.put(NodeType.CHANGE_VARIABLE, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.OPERATOR_BOOLEAN_OR, EnumSet.of(NodeValueTrait.BOOLEAN));
         traits.put(NodeType.OPERATOR_BOOLEAN_AND, EnumSet.of(NodeValueTrait.BOOLEAN));
         traits.put(NodeType.OPERATOR_BOOLEAN_XOR, EnumSet.of(NodeValueTrait.BOOLEAN));
         traits.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.NUMBER));
-        traits.put(NodeType.SENSOR_FIND_TRADE, EnumSet.of(NodeValueTrait.NUMBER));
         traits.put(NodeType.LIST_ITEM, EnumSet.of(
             NodeValueTrait.LIST_ITEM,
             NodeValueTrait.ANY,
@@ -206,7 +203,6 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_ITEM_IN_INVENTORY, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_ITEM_IN_SLOT, EnumSet.of(NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT));
         accepted.put(NodeType.SENSOR_SLOT_ITEM_COUNT, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
-        accepted.put(NodeType.SENSOR_FIND_TRADE, EnumSet.of(NodeValueTrait.ITEM));
         accepted.put(NodeType.SENSOR_ATTRIBUTE_DETECTION, EnumSet.of(
             NodeValueTrait.ENTITY,
             NodeValueTrait.PLAYER,
@@ -216,7 +212,6 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.SENSOR_IN_STOCK, EnumSet.of(NodeValueTrait.VILLAGER_TRADE));
         accepted.put(NodeType.SENSOR_CHAT_MESSAGE, EnumSet.of(NodeValueTrait.PLAYER, NodeValueTrait.MESSAGE, NodeValueTrait.NUMBER));
         accepted.put(NodeType.SENSOR_JOINED_SERVER, EnumSet.of(NodeValueTrait.PLAYER));
-        accepted.put(NodeType.SENSOR_GUI_FILLED, EnumSet.of(NodeValueTrait.GUI));
         accepted.put(NodeType.SENSOR_KEY_PRESSED, EnumSet.of(NodeValueTrait.KEY));
         accepted.put(NodeType.SENSOR_IS_RENDERED, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
         accepted.put(NodeType.SENSOR_IS_VISIBLE, EnumSet.of(NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER));
@@ -338,6 +333,7 @@ public final class NodeTraitRegistry {
         accepted.put(NodeType.EQUIP_HAND, EnumSet.of(NodeValueTrait.INVENTORY_SLOT));
 
         accepted.put(NodeType.SET_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE, NodeValueTrait.ANY));
+        accepted.put(NodeType.CHANGE_VARIABLE, EnumSet.of(NodeValueTrait.VARIABLE));
         accepted.put(NodeType.ADD_TO_LIST, EnumSet.of(NodeValueTrait.ANY));
         accepted.put(NodeType.REMOVE_FROM_LIST, EnumSet.of(NodeValueTrait.ANY));
         accepted.put(NodeType.CREATE_LIST, EnumSet.of(NodeValueTrait.ANY));
@@ -348,6 +344,7 @@ public final class NodeTraitRegistry {
 
         EnumMap<NodeType, Integer> slotCounts = new EnumMap<>(NodeType.class);
         slotCounts.put(NodeType.SET_VARIABLE, 2);
+        slotCounts.put(NodeType.CHANGE_VARIABLE, 1);
         slotCounts.put(NodeType.ADD_TO_LIST, 1);
         slotCounts.put(NodeType.REMOVE_FROM_LIST, 1);
         slotCounts.put(NodeType.OPERATOR_MOD, 2);
@@ -366,16 +363,15 @@ public final class NodeTraitRegistry {
         slotCounts.put(NodeType.PRESS_KEY, 1);
         slotCounts.put(NodeType.SENSOR_CHAT_MESSAGE, 2);
         slotCounts.put(NodeType.SENSOR_JOINED_SERVER, 1);
-        slotCounts.put(NodeType.SENSOR_GUI_FILLED, 1);
         slotCounts.put(NodeType.SENSOR_ITEM_IN_SLOT, 2);
         slotCounts.put(NodeType.SENSOR_SLOT_ITEM_COUNT, 1);
-        slotCounts.put(NodeType.SENSOR_FIND_TRADE, 1);
         slotCounts.put(NodeType.SENSOR_DISTANCE_BETWEEN, 2);
         slotCounts.put(NodeType.PARAM_BLOCK_FACE, 1);
         PARAMETER_SLOT_COUNTS = slotCounts;
 
         EnumMap<NodeType, String[]> slotLabels = new EnumMap<>(NodeType.class);
         slotLabels.put(NodeType.SET_VARIABLE, new String[]{"Variable", "Value"});
+        slotLabels.put(NodeType.CHANGE_VARIABLE, new String[]{"Variable"});
         slotLabels.put(NodeType.OPERATOR_BOOLEAN_NOT, new String[]{"Value"});
         slotLabels.put(NodeType.OPERATOR_BOOLEAN_OR, new String[]{"Left", "Right"});
         slotLabels.put(NodeType.OPERATOR_BOOLEAN_AND, new String[]{"Left", "Right"});
@@ -393,10 +389,8 @@ public final class NodeTraitRegistry {
         slotLabels.put(NodeType.PRESS_KEY, new String[]{"Button"});
         slotLabels.put(NodeType.SENSOR_CHAT_MESSAGE, new String[]{"User", "Message"});
         slotLabels.put(NodeType.SENSOR_JOINED_SERVER, new String[]{"User"});
-        slotLabels.put(NodeType.SENSOR_GUI_FILLED, new String[]{"GUI"});
         slotLabels.put(NodeType.SENSOR_ITEM_IN_SLOT, new String[]{"Item", "Selection"});
         slotLabels.put(NodeType.SENSOR_SLOT_ITEM_COUNT, new String[]{"Slot"});
-        slotLabels.put(NodeType.SENSOR_FIND_TRADE, new String[]{"Item"});
         slotLabels.put(NodeType.SENSOR_ATTRIBUTE_DETECTION, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_POSITION_OF, new String[]{"Target"});
         slotLabels.put(NodeType.SENSOR_DISTANCE_BETWEEN, new String[]{"Target A", "Target B"});
@@ -440,7 +434,6 @@ public final class NodeTraitRegistry {
             || type == NodeType.SENSOR_LOOK_DIRECTION
             || type == NodeType.SENSOR_CURRENT_HAND
             || type == NodeType.SENSOR_IS_ON_GROUND
-            || type == NodeType.SENSOR_FIND_TRADE
             || type == NodeType.SENSOR_SLOT_ITEM_COUNT) {
             return true;
         }
@@ -505,6 +498,9 @@ public final class NodeTraitRegistry {
         if (hostType == NodeType.SET_VARIABLE && slotIndex == 0) {
             return EnumSet.of(NodeValueTrait.VARIABLE);
         }
+        if (hostType == NodeType.CHANGE_VARIABLE && slotIndex == 0) {
+            return EnumSet.of(NodeValueTrait.VARIABLE);
+        }
         return EnumSet.copyOf(traits);
     }
 
@@ -546,6 +542,9 @@ public final class NodeTraitRegistry {
         if (hostType == NodeType.SET_VARIABLE) {
             return slotIndex == 0 || slotIndex == 1;
         }
+        if (hostType == NodeType.CHANGE_VARIABLE) {
+            return slotIndex == 0;
+        }
         if (hostType == NodeType.OPERATOR_MOD) {
             return slotIndex == 0 || slotIndex == 1;
         }
@@ -575,9 +574,6 @@ public final class NodeTraitRegistry {
         }
         if (hostType == NodeType.SENSOR_DISTANCE_BETWEEN) {
             return slotIndex == 0 || slotIndex == 1;
-        }
-        if (hostType == NodeType.EVENT_FUNCTION) {
-            return false;
         }
         return slotIndex == 0;
     }

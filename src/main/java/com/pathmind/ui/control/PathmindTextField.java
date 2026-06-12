@@ -29,7 +29,7 @@ public class PathmindTextField extends TextFieldWidget {
         }
 
         TextFieldWidgetAccessor accessor = (TextFieldWidgetAccessor) this;
-        int innerX = getInnerX();
+        int innerX = this.getX() + (this.drawsBackground() ? 4 : 0);
         int innerWidth = Math.max(0, this.getInnerWidth());
         int textY = this.getY() + Math.max(0, (this.getHeight() - this.pathmindTextRenderer.fontHeight) / 2);
         int textColor = accessor.pathmind$isEditable() ? accessor.pathmind$getEditableColor() : accessor.pathmind$getUneditableColor();
@@ -37,14 +37,13 @@ public class PathmindTextField extends TextFieldWidget {
         int firstCharacterIndex = MathHelper.clamp(accessor.pathmind$getFirstCharacterIndex(), 0, text.length());
         String visibleText = this.pathmindTextRenderer.trimToWidth(text.substring(firstCharacterIndex), innerWidth);
 
-        renderSelection(context, accessor, text, firstCharacterIndex, innerX, innerWidth, textY);
+        renderSelection(context, accessor, textY);
         renderText(context, accessor, innerX, textY, innerWidth, textColor, visibleText);
-        renderSuggestion(context, accessor, textY, textColor, text, visibleText, firstCharacterIndex, innerX, innerWidth);
-        renderCaret(context, text, firstCharacterIndex, innerX, innerWidth, textY);
+        renderSuggestion(context, accessor, textY, textColor, text, visibleText);
+        renderCaret(context, textY);
     }
 
-    private void renderSelection(DrawContext context, TextFieldWidgetAccessor accessor, String text,
-                                 int firstCharacterIndex, int innerX, int innerWidth, int textY) {
+    private void renderSelection(DrawContext context, TextFieldWidgetAccessor accessor, int textY) {
         int selectionStart = accessor.pathmind$getSelectionStart();
         int selectionEnd = accessor.pathmind$getSelectionEnd();
         if (selectionStart == selectionEnd) {
@@ -52,15 +51,15 @@ public class PathmindTextField extends TextFieldWidget {
         }
         int start = Math.min(selectionStart, selectionEnd);
         int end = Math.max(selectionStart, selectionEnd);
-        int left = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, start);
-        int right = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, end);
+        int left = this.getCharacterX(start);
+        int right = this.getCharacterX(end);
         if (right < left) {
             int swap = left;
             left = right;
             right = swap;
         }
-        int fieldLeft = innerX;
-        int fieldRight = innerX + innerWidth;
+        int fieldLeft = this.getX() + (this.drawsBackground() ? 4 : 0);
+        int fieldRight = fieldLeft + Math.max(0, this.getInnerWidth());
         left = MathHelper.clamp(left, fieldLeft, fieldRight);
         right = MathHelper.clamp(right, fieldLeft, fieldRight);
         if (right > left) {
@@ -86,13 +85,13 @@ public class PathmindTextField extends TextFieldWidget {
     }
 
     private void renderSuggestion(DrawContext context, TextFieldWidgetAccessor accessor, int textY, int textColor,
-                                  String text, String visibleText, int firstCharacterIndex, int innerX, int innerWidth) {
+                                  String text, String visibleText) {
         String suggestion = accessor.pathmind$getSuggestion();
         if (suggestion == null || suggestion.isEmpty() || this.getCursor() != text.length()) {
             return;
         }
-        int suggestionX = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, this.getCursor());
-        int fieldRight = innerX + innerWidth;
+        int suggestionX = this.getCharacterX(this.getCursor());
+        int fieldRight = this.getX() + (this.drawsBackground() ? 4 : 0) + Math.max(0, this.getInnerWidth());
         if (suggestionX >= fieldRight) {
             return;
         }
@@ -107,31 +106,17 @@ public class PathmindTextField extends TextFieldWidget {
         context.drawText(this.pathmindTextRenderer, visibleSuggestion, suggestionX, textY, (textColor & 0x00FFFFFF) | 0x77000000, false);
     }
 
-    private void renderCaret(DrawContext context, String text, int firstCharacterIndex, int innerX, int innerWidth, int textY) {
+    private void renderCaret(DrawContext context, int textY) {
         if (!this.isFocused() || ((Util.getMeasuringTimeMs() / 300L) & 1L) != 0L) {
             return;
         }
-        int caretX = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, this.getCursor());
-        int fieldLeft = innerX;
-        int fieldRight = innerX + innerWidth;
+        int caretX = this.getCharacterX(this.getCursor());
+        int fieldLeft = this.getX() + (this.drawsBackground() ? 4 : 0);
+        int fieldRight = fieldLeft + Math.max(0, this.getInnerWidth());
         if (caretX < fieldLeft || caretX > fieldRight) {
             return;
         }
         UIStyleHelper.drawTextCaret(context, caretX, textY, textY + this.pathmindTextRenderer.fontHeight, fieldRight, 0xFFFFFFFF);
-    }
-
-    private int getInnerX() {
-        return this.getX() + (this.drawsBackground() ? 4 : 0);
-    }
-
-    private int getVisibleCharacterX(String text, int firstCharacterIndex, int innerX, int innerWidth, int characterIndex) {
-        int clampedIndex = MathHelper.clamp(characterIndex, 0, text.length());
-        if (clampedIndex <= firstCharacterIndex) {
-            return innerX;
-        }
-        String textBeforeCharacter = text.substring(firstCharacterIndex, clampedIndex);
-        String visiblePrefix = this.pathmindTextRenderer.trimToWidth(textBeforeCharacter, innerWidth);
-        return innerX + this.pathmindTextRenderer.getWidth(visiblePrefix);
     }
 
     private boolean usesTextShadow() {

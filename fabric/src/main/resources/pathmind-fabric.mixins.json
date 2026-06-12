@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.pathmind.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "pathmind-fabric.refmap.json",
+  "mixins": [],
+  "client": [
+    "ChatScreenMixin",
+    "NavigatorWorldRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

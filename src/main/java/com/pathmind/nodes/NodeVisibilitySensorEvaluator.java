@@ -28,7 +28,6 @@ import java.util.Locale;
 import java.util.Optional;
 
 final class NodeVisibilitySensorEvaluator {
-    private static final double BLOCK_SAMPLE_INSET = 0.08D;
     private final Node owner;
 
     NodeVisibilitySensorEvaluator(Node owner) {
@@ -343,22 +342,11 @@ final class NodeVisibilitySensorEvaluator {
         if (client == null || client.player == null || client.world == null) {
             return false;
         }
-        for (Vec3d target : getBlockVisibilitySamplePoints(pos)) {
-            if (isBlockSampleVisible(client, pos, target, requireInFieldOfView)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isBlockSampleVisible(MinecraftClient client, BlockPos pos, Vec3d target, boolean requireInFieldOfView) {
-        if (client == null || client.player == null || client.world == null || pos == null || target == null) {
-            return false;
-        }
+        Vec3d cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
+        Vec3d target = Vec3d.ofCenter(pos);
         if (requireInFieldOfView && !isPointInPlayerFieldOfView(client, target)) {
             return false;
         }
-        Vec3d cameraPos = CameraCompatibilityBridge.getPos(client.gameRenderer.getCamera());
         RaycastContext context = new RaycastContext(
             cameraPos,
             target,
@@ -374,36 +362,6 @@ final class NodeVisibilitySensorEvaluator {
             return true;
         }
         return hit.getType() == HitResult.Type.BLOCK && hit.getBlockPos().equals(pos);
-    }
-
-    private List<Vec3d> getBlockVisibilitySamplePoints(BlockPos pos) {
-        double minX = pos.getX() + BLOCK_SAMPLE_INSET;
-        double minY = pos.getY() + BLOCK_SAMPLE_INSET;
-        double minZ = pos.getZ() + BLOCK_SAMPLE_INSET;
-        double maxX = pos.getX() + 1.0D - BLOCK_SAMPLE_INSET;
-        double maxY = pos.getY() + 1.0D - BLOCK_SAMPLE_INSET;
-        double maxZ = pos.getZ() + 1.0D - BLOCK_SAMPLE_INSET;
-        double midX = (minX + maxX) * 0.5D;
-        double midY = (minY + maxY) * 0.5D;
-        double midZ = (minZ + maxZ) * 0.5D;
-
-        return List.of(
-            new Vec3d(midX, midY, midZ),
-            new Vec3d(midX, maxY, midZ),
-            new Vec3d(midX, minY, midZ),
-            new Vec3d(minX, midY, midZ),
-            new Vec3d(maxX, midY, midZ),
-            new Vec3d(midX, midY, minZ),
-            new Vec3d(midX, midY, maxZ),
-            new Vec3d(minX, maxY, minZ),
-            new Vec3d(minX, maxY, maxZ),
-            new Vec3d(maxX, maxY, minZ),
-            new Vec3d(maxX, maxY, maxZ),
-            new Vec3d(minX, minY, minZ),
-            new Vec3d(minX, minY, maxZ),
-            new Vec3d(maxX, minY, minZ),
-            new Vec3d(maxX, minY, maxZ)
-        );
     }
 
     private boolean isItemRendered(MinecraftClient client, Item item) {

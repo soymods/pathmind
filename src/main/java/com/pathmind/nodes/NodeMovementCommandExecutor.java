@@ -82,14 +82,18 @@ final class NodeMovementCommandExecutor {
                 });
 
                 if (useDistance) {
-                    net.minecraft.util.math.BlockPos startBlockPos = owner.supplyFromClient(client,
+                    Vec3d startPos = owner.supplyFromClient(client,
                         () -> {
                             if (client.player == null) {
                                 return null;
                             }
-                            return client.player.getBlockPos();
+                            Vec3d pos = EntityCompatibilityBridge.getPos(client.player);
+                            if (pos != null) {
+                                return pos;
+                            }
+                            return new Vec3d(client.player.getX(), client.player.getY(), client.player.getZ());
                         });
-                    if (startBlockPos != null) {
+                    if (startPos != null) {
                         double targetDistanceSquared = distance * distance;
                         long startTime = System.currentTimeMillis();
                         // Always keep a finite timeout fallback so a stalled distance-based walk
@@ -109,21 +113,24 @@ final class NodeMovementCommandExecutor {
                                 stopReason = "timeout";
                                 break;
                             }
-                            net.minecraft.util.math.BlockPos currentBlockPos = owner.supplyFromClient(client,
+                            Vec3d currentPos = owner.supplyFromClient(client,
                                 () -> {
                                     if (client.player == null) {
                                         return null;
                                     }
-                                    return client.player.getBlockPos();
+                                    Vec3d pos = EntityCompatibilityBridge.getPos(client.player);
+                                    if (pos != null) {
+                                        return pos;
+                                    }
+                                    return new Vec3d(client.player.getX(), client.player.getY(), client.player.getZ());
                                 });
-                            if (currentBlockPos == null) {
+                            if (currentPos == null) {
                                 stopReason = "currentPosNull";
                                 break;
                             }
-                            double dx = currentBlockPos.getX() - startBlockPos.getX();
-                            double dy = currentBlockPos.getY() - startBlockPos.getY();
-                            double dz = currentBlockPos.getZ() - startBlockPos.getZ();
-                            if ((dx * dx + dy * dy + dz * dz) >= targetDistanceSquared) {
+                            double dx = currentPos.x - startPos.x;
+                            double dz = currentPos.z - startPos.z;
+                            if ((dx * dx + dz * dz) >= targetDistanceSquared) {
                                 stopReason = "distanceReached";
                                 break;
                             }
@@ -196,10 +203,6 @@ final class NodeMovementCommandExecutor {
             ? parameterData.resolvedButtonValue
             : owner.getStringParameter("Key", "GLFW_KEY_SPACE");
         boolean useMouseButton = parameterData != null && parameterData.resolvedButtonIsMouse;
-        boolean useHoldDuration = owner.isAmountInputEnabled();
-        long holdDurationMs = useHoldDuration
-            ? Math.max(0L, Math.round(owner.getDoubleParameter("Duration", 0.0) * 1000.0))
-            : 75L;
 
         if (useMouseButton) {
             Integer mouseButton = owner.resolveMouseButtonCode(buttonValue);
@@ -226,7 +229,7 @@ final class NodeMovementCommandExecutor {
                     KeyBinding.setKeyPressed(inputKey, false);
                     future.complete(null);
                 });
-            }, holdDurationMs, TimeUnit.MILLISECONDS);
+            }, 75L, TimeUnit.MILLISECONDS);
             return;
         }
 
@@ -238,24 +241,7 @@ final class NodeMovementCommandExecutor {
         }
 
         InputUtil.Key inputKey = InputUtil.Type.KEYSYM.createFromCode(keyCode);
-        boolean[] handledByScreen = {false};
-        try {
-            owner.runOnClientThread(client, () -> {
-                if (client.currentScreen != null) {
-                    handledByScreen[0] = InputCompatibilityBridge.dispatchScreenKeyPressed(client.currentScreen, keyCode, 0, 0);
-                }
-                KeyBinding.onKeyPressed(inputKey);
-            });
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            future.completeExceptionally(e);
-            return;
-        }
-
-        if (handledByScreen[0]) {
-            future.complete(null);
-            return;
-        }
+        KeyBinding.onKeyPressed(inputKey);
 
         boolean keyAlreadyDown = InputCompatibilityBridge.isKeyPressed(client, keyCode);
         if (keyAlreadyDown) {
@@ -274,7 +260,7 @@ final class NodeMovementCommandExecutor {
                 KeyBinding.setKeyPressed(inputKey, false);
                 future.complete(null);
             });
-        }, holdDurationMs, TimeUnit.MILLISECONDS);
+        }, 75L, TimeUnit.MILLISECONDS);
     }
     
     void executeCrouchCommand(CompletableFuture<Void> future) {

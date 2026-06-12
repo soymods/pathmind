@@ -1,0 +1,307 @@
+package com.pathmind.nodes;
+
+import static com.pathmind.util.PathmindI18n.tr;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.ingame.MerchantScreen;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.screen.MerchantScreenHandler;
+import net.minecraft.util.Identifier;
+import net.minecraft.village.TradeOffer;
+import net.minecraft.village.TradeOfferList;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+final class NodeVillagerTradeSensorEvaluator {
+    private final Node owner;
+
+    NodeVillagerTradeSensorEvaluator(Node owner) {
+        this.owner = owner;
+    }
+
+    boolean evaluateVillagerTrade() {
+        TradeOfferList tradeOffers = getOpenTradeOffers();
+        if (tradeOffers == null || tradeOffers.isEmpty()) {
+            return false;
+        }
+        if (owner.shouldUseLegacyVillagerTradeSelection()) {
+            return findTradeIndexFromLegacySelection(tradeOffers, false, false) >= 0;
+        }
+        int tradeIndex = owner.getConfiguredVillagerTradeNumber() - 1;
+        return tradeIndex >= 0 && tradeIndex < tradeOffers.size() && tradeOffers.get(tradeIndex) != null;
+    }
+
+    boolean evaluateFindTrade() {
+        return findTradeNumber() > 0;
+    }
+
+    boolean evaluateInStock() {
+        TradeOfferList tradeOffers = getOpenTradeOffers();
+        if (tradeOffers == null || tradeOffers.isEmpty()) {
+            return false;
+        }
+        if (owner.shouldUseLegacyVillagerTradeSelection()) {
+            return findTradeIndexFromLegacySelection(tradeOffers, true, false) >= 0;
+        }
+        int tradeIndex = owner.getConfiguredVillagerTradeNumber() - 1;
+        return tradeIndex >= 0
+            && tradeIndex < tradeOffers.size()
+            && tradeOffers.get(tradeIndex) != null
+            && !tradeOffers.get(tradeIndex).isDisabled();
+    }
+
+    int findTradeNumber() {
+        TradeOfferList tradeOffers = getOpenTradeOffers();
+        if (tradeOffers == null || tradeOffers.isEmpty()) {
+            return 0;
+        }
+        int tradeIndex = findTradeIndexFromItemSelection(tradeOffers, false, false);
+        return tradeIndex >= 0 ? tradeIndex + 1 : 0;
+    }
+
+    private TradeOfferList getOpenTradeOffers() {
+        owner.ensureVillagerTradeNumberParameter();
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return null;
+        }
+        Screen currentScreen = client.currentScreen;
+        if (!(currentScreen instanceof MerchantScreen merchantScreen)) {
+            owner.sendNodeErrorMessage(client, tr("pathmind.error.noVillagerTradingScreen"));
+            return null;
+        }
+        MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+        if (screenHandler == null) {
+            return null;
+        }
+        return screenHandler.getRecipes();
+    }
+
+    private String getTradeKeySellItemId(String tradeKey) {
+        if (tradeKey == null || tradeKey.isEmpty()) {
+            return "";
+        }
+        if (tradeKey.contains("|") && tradeKey.contains("@")) {
+            String[] parts = tradeKey.split("\\|");
+            if (parts.length > 0) {
+                String sellPart = parts[parts.length - 1];
+                int atIndex = sellPart.indexOf('@');
+                if (atIndex > 0) {
+                    return sellPart.substring(0, atIndex);
+                }
+            }
+        }
+        return tradeKey;
+    }
+
+    private String buildTradeKey(ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+        return buildTradeKeyPart(firstBuy) + "|"
+            + buildTradeKeyPart(secondBuy) + "|"
+            + buildTradeKeyPart(sell);
+    }
+
+    private String buildTradeKeyPart(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "none@0";
+        }
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        String itemId = id.toString();
+        return itemId + "@" + stack.getCount();
+    }
+
+    int findTradeIndexFromLegacySelection(TradeOfferList tradeOffers, boolean requireInStock, boolean requireAffordable) {
+        List<Integer> matches = findTradeIndexesFromLegacySelection(tradeOffers, requireInStock, requireAffordable);
+        return matches.isEmpty() ? -1 : matches.getFirst();
+    }
+
+    int findTradeIndexFromItemSelection(TradeOfferList tradeOffers, boolean requireInStock, boolean requireAffordable) {
+        if (tradeOffers == null || tradeOffers.isEmpty()) {
+            return -1;
+        }
+        Node parameterNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
+        if (parameterNode == null || !owner.providesTrait(parameterNode, NodeValueTrait.ITEM)) {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client != null) {
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresItemParameter", owner.getType().getDisplayName()));
+            }
+            return -1;
+        }
+        List<String> itemIds = owner.resolveItemIdsFromParameter(parameterNode);
+        if (itemIds.isEmpty()) {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client != null) {
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.noItemSpecifiedForNode", owner.getType().getDisplayName()));
+            }
+            return -1;
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        MerchantScreenHandler screenHandler = null;
+        if (client != null && client.currentScreen instanceof MerchantScreen merchantScreen) {
+            screenHandler = merchantScreen.getScreenHandler();
+        }
+
+        for (int i = 0; i < tradeOffers.size(); i++) {
+            TradeOffer offer = tradeOffers.get(i);
+            if (offer == null) {
+                continue;
+            }
+            if (requireInStock && offer.isDisabled()) {
+                continue;
+            }
+            if (requireAffordable && (client == null || client.player == null || screenHandler == null
+                || !owner.canAffordTrade(client.player, screenHandler, offer))) {
+                continue;
+            }
+            if (matchesSellItem(offer.getSellItem(), itemIds)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @SuppressWarnings("unused")
+    private boolean hasMultipleVillagerTradeSelections(Node parameterNode) {
+        if (parameterNode == null || !owner.providesTrait(parameterNode, NodeValueTrait.VILLAGER_TRADE)) {
+            return false;
+        }
+        Set<String> selections = new LinkedHashSet<>();
+        for (String entry : owner.splitMultiValueList(Node.getParameterString(parameterNode, "Trade"))) {
+            if (entry != null && !entry.isEmpty()) {
+                selections.add(entry);
+            }
+        }
+        for (String entry : owner.splitMultiValueList(Node.getParameterString(parameterNode, "Item"))) {
+            if (entry != null && !entry.isEmpty()) {
+                selections.add(entry);
+            }
+        }
+        return selections.size() > 1;
+    }
+
+    private List<Integer> findTradeIndexesFromLegacySelection(TradeOfferList tradeOffers,
+                                                              boolean requireInStock,
+                                                              boolean requireAffordable) {
+        if (tradeOffers == null || tradeOffers.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> desiredItemIds = new ArrayList<>();
+        List<String> desiredTradeKeys = new ArrayList<>();
+        RuntimeParameterData parameterData = owner.runtimeState().runtimeParameterData;
+        if (parameterData != null && parameterData.targetItemId != null && !parameterData.targetItemId.isEmpty()) {
+            desiredItemIds.add(parameterData.targetItemId);
+        }
+        if (parameterData != null && parameterData.targetTradeKey != null && !parameterData.targetTradeKey.isEmpty()) {
+            desiredTradeKeys.add(parameterData.targetTradeKey);
+        }
+
+        Node parameterNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(), 0);
+        if (parameterNode != null && owner.providesTrait(parameterNode, NodeValueTrait.VILLAGER_TRADE)) {
+            for (String entry : owner.splitMultiValueList(Node.getParameterString(parameterNode, "Trade"))) {
+                if (entry.contains("|") && entry.contains("@")) {
+                    if (!desiredTradeKeys.contains(entry)) {
+                        desiredTradeKeys.add(entry);
+                    }
+                    String sellItemId = getTradeKeySellItemId(entry);
+                    if (!sellItemId.isEmpty() && !desiredItemIds.contains(sellItemId)) {
+                        desiredItemIds.add(sellItemId);
+                    }
+                }
+            }
+            for (String entry : owner.splitMultiValueList(Node.getParameterString(parameterNode, "Item"))) {
+                if (entry.contains("|") && entry.contains("@")) {
+                    if (!desiredTradeKeys.contains(entry)) {
+                        desiredTradeKeys.add(entry);
+                    }
+                    String sellItemId = getTradeKeySellItemId(entry);
+                    if (!sellItemId.isEmpty() && !desiredItemIds.contains(sellItemId)) {
+                        desiredItemIds.add(sellItemId);
+                    }
+                } else if (!entry.isEmpty() && !desiredItemIds.contains(entry)) {
+                    desiredItemIds.add(entry);
+                }
+            }
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        MerchantScreenHandler screenHandler = null;
+        if (client != null && client.currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen) {
+            screenHandler = merchantScreen.getScreenHandler();
+        }
+
+        List<Integer> matches = new ArrayList<>();
+        Set<Integer> seenMatches = new LinkedHashSet<>();
+        List<String> orderedSelections = new ArrayList<>(desiredTradeKeys);
+        for (String itemId : desiredItemIds) {
+            if (!orderedSelections.contains(itemId)) {
+                orderedSelections.add(itemId);
+            }
+        }
+
+        for (String desired : orderedSelections) {
+            for (int i = 0; i < tradeOffers.size(); i++) {
+                TradeOffer offer = tradeOffers.get(i);
+                if (!isLegacyTradeSelectionMatch(client, screenHandler, offer, desired, requireInStock, requireAffordable)) {
+                    continue;
+                }
+                if (seenMatches.add(i)) {
+                    matches.add(i);
+                }
+            }
+        }
+
+        if (!matches.isEmpty()) {
+            return matches;
+        }
+
+        for (int i = 0; i < tradeOffers.size(); i++) {
+            TradeOffer offer = tradeOffers.get(i);
+            if (isLegacyTradeSelectionMatch(client, screenHandler, offer, null, requireInStock, requireAffordable)) {
+                matches.add(i);
+            }
+        }
+
+        return matches;
+    }
+
+    private boolean isLegacyTradeSelectionMatch(MinecraftClient client,
+                                                MerchantScreenHandler screenHandler,
+                                                TradeOffer offer,
+                                                String desiredSelection,
+                                                boolean requireInStock,
+                                                boolean requireAffordable) {
+        if (offer == null) {
+            return false;
+        }
+        if (requireInStock && offer.isDisabled()) {
+            return false;
+        }
+        if (requireAffordable && (client == null || client.player == null || screenHandler == null
+            || !owner.canAffordTrade(client.player, screenHandler, offer))) {
+            return false;
+        }
+        if (desiredSelection == null || desiredSelection.isEmpty()) {
+            return true;
+        }
+        String offerKey = buildTradeKey(
+            offer.getDisplayedFirstBuyItem(),
+            offer.getDisplayedSecondBuyItem(),
+            offer.getSellItem()
+        );
+        if (desiredSelection.contains("|") && desiredSelection.contains("@")) {
+            return desiredSelection.equals(offerKey);
+        }
+        return desiredSelection.equals(getTradeKeySellItemId(offerKey));
+    }
+
+    private boolean matchesSellItem(ItemStack stack, List<String> itemIds) {
+        return new NodeInventorySensorEvaluator(owner).stackMatchesAnyItem(stack, itemIds);
+    }
+}

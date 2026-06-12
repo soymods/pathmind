@@ -179,10 +179,7 @@ final class NodeParameterDefinitionRegistry {
         registerType(NodeType.WALK,
             of("Duration", ParameterType.DOUBLE, "1.0"),
             of("Distance", ParameterType.DOUBLE, "0.0"));
-        registerType(NodeType.PRESS_KEY,
-            of("Key", ParameterType.STRING, "GLFW_KEY_SPACE"),
-            of("Duration", ParameterType.DOUBLE, "0.0"),
-            of("UseAmount", ParameterType.BOOLEAN, "false"));
+        registerType(NodeType.PRESS_KEY, of("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
         registerType(NodeType.CONTROL_REPEAT, of("Count", ParameterType.INTEGER, "10"));
         registerType(NodeType.EVENT_FUNCTION, of("Name", ParameterType.STRING, "function"));
         registerType(NodeType.EVENT_CALL, of("Name", ParameterType.STRING, "function"));
@@ -207,6 +204,9 @@ final class NodeParameterDefinitionRegistry {
             of("random_use_rounding", "UseRounding", ParameterType.BOOLEAN, "false"));
         registerTypes(List.of(NodeType.OPERATOR_GREATER, NodeType.OPERATOR_LESS),
             of("Inclusive", ParameterType.BOOLEAN, "false"));
+        registerType(NodeType.CHANGE_VARIABLE,
+            of("change_variable_amount", "Amount", ParameterType.INTEGER, "1"),
+            of("change_variable_operation", "Operation", ParameterType.STRING, "+"));
         registerTypes(
             List.of(NodeType.SENSOR_TOUCHING_BLOCK, NodeType.SENSOR_TOUCHING_ENTITY, NodeType.SENSOR_AT_COORDINATES,
                 NodeType.SENSOR_IS_DAYTIME, NodeType.SENSOR_IS_RAINING, NodeType.SENSOR_ITEM_IN_INVENTORY,
@@ -271,6 +271,8 @@ final class NodeParameterDefinitionRegistry {
             of("direction_cardinal", "Direction", ParameterType.STRING, ""),
             of("direction_yaw", "Yaw", ParameterType.DOUBLE, "0.0"),
             of("direction_pitch", "Pitch", ParameterType.DOUBLE, "0.0"),
+            of("direction_yaw_offset", "YawOffset", ParameterType.DOUBLE, "0.0"),
+            of("direction_pitch_offset", "PitchOffset", ParameterType.DOUBLE, "0.0"),
             of("direction_distance", "Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
         registerType(NodeType.PARAM_BLOCK_FACE, of("Face", ParameterType.STRING, "north"));
         registerType(NodeType.PARAM_ROTATION,

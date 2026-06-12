@@ -35,12 +35,10 @@ public final class SettingsManager {
         public String language = "en_us";
         public String accentColor = "sky";
         public Boolean showGrid = true;
-        public Boolean lowDetailMode = false;
         public Boolean renderConnectionsOnTop = false;
         public Boolean showTooltips = true;
         public Boolean showChatErrors = true;
         public Boolean showHudOverlays = true;
-        public Boolean showProfilerOverlay = false;
         public Boolean skipPresetDeleteConfirm = false;
         public Boolean skipMarketplaceDeleteConfirm = false;
         public Boolean skipMarketplaceUpdateConfirm = false;
@@ -51,9 +49,6 @@ public final class SettingsManager {
         public Boolean createListUseCustomRadius = false;
         public Integer createListRadius = 64;
         public Map<String, Map<String, String>> presetInputValues = new LinkedHashMap<>();
-        public Map<String, String> presetGroupColors = new LinkedHashMap<>();
-        public Map<String, Boolean> presetGroupsExpanded = new LinkedHashMap<>();
-        public java.util.List<String> presetGroupOrder = new java.util.ArrayList<>();
 
         public Settings() {
         }
@@ -208,9 +203,6 @@ public final class SettingsManager {
         if (settings.showGrid == null) {
             settings.showGrid = true;
         }
-        if (settings.lowDetailMode == null) {
-            settings.lowDetailMode = false;
-        }
         if (settings.renderConnectionsOnTop == null) {
             settings.renderConnectionsOnTop = false;
         }
@@ -222,9 +214,6 @@ public final class SettingsManager {
         }
         if (settings.showHudOverlays == null) {
             settings.showHudOverlays = true;
-        }
-        if (settings.showProfilerOverlay == null) {
-            settings.showProfilerOverlay = false;
         }
         if (settings.skipPresetDeleteConfirm == null) {
             settings.skipPresetDeleteConfirm = false;
@@ -263,15 +252,6 @@ public final class SettingsManager {
         }
         if (settings.presetInputValues == null) {
             settings.presetInputValues = new LinkedHashMap<>();
-        }
-        if (settings.presetGroupColors == null) {
-            settings.presetGroupColors = new LinkedHashMap<>();
-        }
-        if (settings.presetGroupsExpanded == null) {
-            settings.presetGroupsExpanded = new LinkedHashMap<>();
-        }
-        if (settings.presetGroupOrder == null) {
-            settings.presetGroupOrder = new java.util.ArrayList<>();
         }
         return settings;
     }

@@ -122,7 +122,7 @@ final class NodeFlowCommandExecutor {
         if (started == 0) {
             future.complete(null);
         } else if (type == NodeType.CUSTOM_NODE || type == NodeType.TEMPLATE) {
-            manager.deferCompletion(CompletableFuture.allOf(nestedFutures.toArray(new CompletableFuture[0])))
+            CompletableFuture.allOf(nestedFutures.toArray(new CompletableFuture[0]))
                 .whenComplete((ignored, throwable) -> {
                     if (throwable != null) {
                         future.completeExceptionally(throwable);

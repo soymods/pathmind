@@ -1,6 +1,5 @@
 package com.pathmind.nodes;
 
-import com.pathmind.data.NodeGraphData;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.util.RecipeCompatibilityBridge;
 import org.junit.jupiter.api.Test;
@@ -510,32 +509,6 @@ class NodeCompatibilityTest {
     }
 
     @Test
-    void moveItemResolvesInventorySlotVariableSelectionMode() {
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node start = new Node(NodeType.START, 0, 0);
-        Node moveItem = new Node(NodeType.MOVE_ITEM, 0, 0);
-        Node variable = new Node(NodeType.VARIABLE, 0, 0);
-
-        moveItem.setOwningStartNode(start);
-        variable.getParameter("Variable").setStringValue("slot");
-        manager.setRuntimeVariable(start, "slot", new ExecutionManager.RuntimeVariable(
-            NodeType.PARAM_INVENTORY_SLOT,
-            Map.of(
-                "Slot", "0",
-                "slot", "0",
-                "SourceSlot", "0",
-                "sourceslot", "0",
-                "Mode", "double_chest|container",
-                "mode", "double_chest|container"
-            )
-        ));
-
-        assertTrue(moveItem.attachParameter(variable, 0));
-
-        assertEquals(SlotSelectionType.GUI_CONTAINER, moveItem.resolveInventorySlotSelectionType(variable));
-    }
-
-    @Test
     void equalsFailsWhenCoordinateAndGroupContainsMismatch() {
         Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
         Node position = coordinateNode(10, 64, 10);
@@ -561,71 +534,6 @@ class NodeCompatibilityTest {
         assertTrue(and.attachParameter(left, 0));
         assertTrue(and.attachParameter(right, 1));
         assertTrue(and.evaluateSensor());
-    }
-
-    @Test
-    void standaloneCalculateStoresResolvedRuntimeVariableExpression() {
-        Node start = new Node(NodeType.START, 0, 0);
-        Node setVariable1 = new Node(NodeType.SET_VARIABLE, 0, 0);
-        Node variable1 = new Node(NodeType.VARIABLE, 0, 0);
-        Node amount1 = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        Node setVariable2 = new Node(NodeType.SET_VARIABLE, 0, 0);
-        Node variable2 = new Node(NodeType.VARIABLE, 0, 0);
-        Node amount2 = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
-        Node message = new Node(NodeType.MESSAGE, 0, 0);
-
-        setVariable1.setOwningStartNode(start);
-        setVariable2.setOwningStartNode(start);
-        calculate.setOwningStartNode(start);
-        message.setOwningStartNode(start);
-
-        variable1.getParameter("Variable").setStringValue("variable1");
-        amount1.getParameter("Amount").setStringValue("1");
-        assertTrue(setVariable1.attachParameter(variable1, 0));
-        assertTrue(setVariable1.attachParameter(amount1, 1));
-
-        variable2.getParameter("Variable").setStringValue("variable2");
-        amount2.getParameter("Amount").setStringValue("4");
-        assertTrue(setVariable2.attachParameter(variable2, 0));
-        assertTrue(setVariable2.attachParameter(amount2, 1));
-
-        calculate.setMessageLine(0, "A = $variable1*$variable2");
-
-        java.util.concurrent.CompletableFuture<Void> setFirst = new java.util.concurrent.CompletableFuture<>();
-        new NodeVariableListCommandExecutor(setVariable1).executeSetVariableCommand(setFirst);
-        assertTrue(setFirst.isDone());
-        assertFalse(setFirst.isCompletedExceptionally());
-
-        java.util.concurrent.CompletableFuture<Void> setSecond = new java.util.concurrent.CompletableFuture<>();
-        new NodeVariableListCommandExecutor(setVariable2).executeSetVariableCommand(setSecond);
-        assertTrue(setSecond.isDone());
-        assertFalse(setSecond.isCompletedExceptionally());
-
-        java.util.concurrent.CompletableFuture<Void> calculated = new java.util.concurrent.CompletableFuture<>();
-        new NodeVariableListCommandExecutor(calculate)
-            .executeChangeVariableCommand(calculated);
-        assertTrue(calculated.isDone());
-        assertFalse(calculated.isCompletedExceptionally());
-
-        assertEquals("4", message.resolveRuntimeVariablesInText("$A"));
-    }
-
-    @Test
-    void executionSnapshotPreservesCalculateMessageLines() throws Exception {
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
-        calculate.setMessageLine(0, "A = $variable1*$variable2");
-
-        Method createGraphSnapshot = ExecutionManager.class.getDeclaredMethod("createGraphSnapshot", List.class, List.class);
-        createGraphSnapshot.setAccessible(true);
-        NodeGraphData snapshot = (NodeGraphData) createGraphSnapshot.invoke(manager, List.of(calculate), List.of());
-        NodeGraphData.NodeData clonedCalculate = snapshot.getNodes().stream()
-            .filter(node -> calculate.getId().equals(node.getId()))
-            .findFirst()
-            .orElseThrow();
-
-        assertEquals(List.of("A = $variable1*$variable2"), clonedCalculate.getMessageLines());
     }
 
     private Node coordinateNode(int x, int y, int z) {

@@ -11,7 +11,6 @@ import net.minecraft.util.math.Vec3d;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeBehaviorDefinitionRegistryTest {
@@ -196,24 +195,6 @@ class NodeBehaviorDefinitionRegistryTest {
         assertEquals("12.5", values.get("Threshold"));
         assertEquals("12.5", values.get("Value"));
         assertEquals(Optional.of(12.5), comparable);
-    }
-
-    @Test
-    void mathNodeExportsMultipleExpressionsAndComparableNumber() {
-        Node owner = new Node(NodeType.CONTROL_IF, 0, 0);
-        Node math = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
-        math.setMessageLines(java.util.List.of("1 + 2", "4 * 5"));
-        NodeBehaviorDefinition definition = NodeBehaviorDefinitionRegistry.get(NodeType.CHANGE_VARIABLE);
-
-        Map<String, String> values = math.exportParameterValues();
-        Optional<Double> comparable = definition.resolveComparableNumber(owner, math);
-
-        assertEquals("3, 20", values.get("Amount"));
-        assertEquals("3, 20", values.get("Count"));
-        assertEquals("3, 20", values.get("Threshold"));
-        assertEquals("3, 20", values.get("Value"));
-        assertEquals(Optional.of(3.0), comparable);
-        assertFalse(math.hasMessageScopeToggle());
     }
 
     @Test

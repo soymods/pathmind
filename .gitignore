@@ -1,14 +1,25 @@
 # Gradle caches and build outputs
-.gradle/
-.gradle-home/
-build/
-bin/
-run/
+/.gradle/
+/.gradle-home/
+/build/
+/bin/
+/run/
+/buildSrc/.gradle/
+/buildSrc/build/
+/common/.gradle/
+/common/build/
+/common/run/
+/fabric/.gradle/
+/fabric/build/
+/fabric/run/
+/neoforge/.gradle/
+/neoforge/build/
+/neoforge/run/
 
 # IDE / editor files
 *.iml
 .idea/
-.vscode/
+# .vscode/ Provides useful launch garbage
 out/
 
 # Local dependencies downloaded during builds

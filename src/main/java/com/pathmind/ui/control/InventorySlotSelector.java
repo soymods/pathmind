@@ -51,7 +51,6 @@ public class InventorySlotSelector {
 
     private boolean dropdownOpen = false;
     private final AnimatedValue dropdownAnimation = AnimatedValue.forHover();
-    private final DropdownLayoutHelper.SmoothScrollState dropdownSmoothScroll = new DropdownLayoutHelper.SmoothScrollState();
     private int dropdownHoverIndex = -1;
     private int buttonX;
     private int buttonY;
@@ -91,7 +90,6 @@ public class InventorySlotSelector {
         }
         if (this.mode != resolved) {
             this.mode = resolved;
-            this.selectedSlotIsPlayerSection = null;
             if (listener != null) {
                 listener.onModeChanged(this.mode.id);
                 listener.requestLayoutRefresh();
@@ -148,10 +146,11 @@ public class InventorySlotSelector {
         sectionY += gridHeight + INFO_TEXT_MARGIN;
 
         String selectionText = Text.translatable("pathmind.inventorySlot.selectedSlot", selectedSlotId).getString();
-        boolean selectedPlayerSection = getEffectiveSelectedSlotIsPlayerSection();
-        selectionText += " " + Text.translatable(selectedPlayerSection
-            ? "pathmind.inventorySlot.section.inventory"
-            : "pathmind.inventorySlot.section.gui").getString();
+        if (selectedSlotIsPlayerSection != null) {
+            selectionText += " " + Text.translatable(selectedSlotIsPlayerSection
+                ? "pathmind.inventorySlot.section.inventory"
+                : "pathmind.inventorySlot.section.gui").getString();
+        }
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(selectionText),
@@ -232,18 +231,16 @@ public class InventorySlotSelector {
         if (selectedSlotId != slotId) {
             return false;
         }
-        return getEffectiveSelectedSlotIsPlayerSection() == playerSection;
-    }
-
-    private boolean getEffectiveSelectedSlotIsPlayerSection() {
-        if (selectedSlotIsPlayerSection != null) {
-            return selectedSlotIsPlayerSection;
+        if (selectedSlotIsPlayerSection == null) {
+            return true;
         }
-        return mode == InventoryGuiMode.PLAYER_INVENTORY;
+        return selectedSlotIsPlayerSection == playerSection;
     }
 
     private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float alpha) {
-        float animProgress = DropdownLayoutHelper.updateOpenAnimation(dropdownAnimation, dropdownOpen);
+        dropdownAnimation.animateTo(dropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
+        dropdownAnimation.tick();
+        float animProgress = AnimationHelper.easeOutQuad(dropdownAnimation.getValue());
         if (animProgress <= 0.001f) {
             return;
         }
@@ -262,27 +259,20 @@ public class InventorySlotSelector {
         int visibleCount = layout.visibleCount;
         dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, layout.maxScrollOffset));
         int dropdownHeight = layout.height;
+        int animatedHeight = Math.max(1, (int) (dropdownHeight * animProgress));
 
-        DropdownLayoutHelper.enableRevealScissor(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, animProgress, 1);
-        float dropdownAlpha = alpha * animProgress;
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
-
-        float smoothScrollOffset = DropdownLayoutHelper.updateSmoothScroll(dropdownSmoothScroll, dropdownScrollIndex, layout.maxScrollOffset);
-        DropdownLayoutHelper.ScrollWindow scrollWindow = DropdownLayoutHelper.getSmoothScrollWindow(
-            smoothScrollOffset,
-            visibleCount,
-            totalOptions,
-            DROPDOWN_OPTION_HEIGHT
-        );
+        context.enableScissor(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + animatedHeight + 1);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
+        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         dropdownHoverIndex = -1;
         InventoryGuiMode[] modes = InventoryGuiMode.values();
         int rowRight = DropdownLayoutHelper.getScrollbarHitLeft(dropdownX, dropdownWidth, layout.maxScrollOffset);
-        for (int optionIndex = scrollWindow.firstIndex; optionIndex < scrollWindow.endIndex; optionIndex++) {
+        for (int i = 0; i < visibleCount; i++) {
+            int optionIndex = dropdownScrollIndex + i;
             InventoryGuiMode option = modes[optionIndex];
-            int optionTop = dropdownY + (optionIndex - scrollWindow.firstIndex) * DROPDOWN_OPTION_HEIGHT + scrollWindow.pixelOffset;
+            int optionTop = dropdownY + i * DROPDOWN_OPTION_HEIGHT;
             boolean hovered = animProgress >= 1f &&
                               mouseX >= dropdownX && mouseX < rowRight &&
                               mouseY >= optionTop && mouseY <= optionTop + DROPDOWN_OPTION_HEIGHT;
@@ -294,13 +284,13 @@ public class InventorySlotSelector {
             if (hovered) {
                 bg = UITheme.BACKGROUND_TERTIARY;
             }
-            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, dropdownAlpha));
+            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, alpha));
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(option.getDisplayName()),
                 dropdownX + MODE_BUTTON_TEXT_PADDING,
                 optionTop + 5,
-                applyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
+                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -312,10 +302,10 @@ public class InventorySlotSelector {
             dropdownHeight,
             totalOptions,
             layout.visibleCount,
-            Math.round(smoothScrollOffset),
+            dropdownScrollIndex,
             layout.maxScrollOffset,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha),
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, dropdownAlpha)
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha),
+            applyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
         );
         DropdownLayoutHelper.drawOutline(
             context,
@@ -323,7 +313,7 @@ public class InventorySlotSelector {
             dropdownY,
             dropdownWidth,
             dropdownHeight,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha)
+            applyAlpha(UITheme.BORDER_DEFAULT, alpha)
         );
         context.disableScissor();
     }
@@ -411,7 +401,6 @@ public class InventorySlotSelector {
             InventoryGuiMode selected = modes[actualIndex];
             if (selected != mode) {
                 mode = selected;
-                selectedSlotIsPlayerSection = null;
                 if (listener != null) {
                     listener.onModeChanged(mode.id);
                     listener.requestLayoutRefresh();

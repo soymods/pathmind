@@ -203,7 +203,7 @@
   "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramHand": "Main",
   "pathmind.node.type.paramHand.desc": "Représente une sélection de main préférée",
-  "pathmind.node.type.paramInventorySlot": "Emplacement",
+  "pathmind.node.type.paramInventorySlot": "Emplacement d'inventaire",
   "pathmind.node.type.paramInventorySlot.desc": "Représente une référence d'emplacement d'inventaire",
   "pathmind.node.type.paramItem": "Objet",
   "pathmind.node.type.paramItem.desc": "Représente un objet et une quantité",

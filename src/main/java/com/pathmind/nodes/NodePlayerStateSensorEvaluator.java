@@ -1,23 +1,17 @@
 package com.pathmind.nodes;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 
-import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 final class NodePlayerStateSensorEvaluator {
     private static final long FALLING_SENSOR_RETENTION_MS = 1000L;
     private static final double FALLING_SENSOR_MIN_CLEARANCE = 0.6D;
-    private static final double GROUNDED_CLEARANCE_EPSILON = 1.0E-3;
-    private static final Map<UUID, FallingTracker> FALLING_TRACKERS = new ConcurrentHashMap<>();
 
     private final Node owner;
 
@@ -46,16 +40,9 @@ final class NodePlayerStateSensorEvaluator {
     }
 
     Optional<Double> getDistanceFromGround() {
-        return computeDistanceFromGround(true);
-    }
-
-    private Optional<Double> computeDistanceFromGround(boolean treatOnGroundAsZero) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.player == null || client.world == null) {
             return Optional.empty();
-        }
-        if (treatOnGroundAsZero && client.player.isOnGround()) {
-            return Optional.of(0.0);
         }
 
         Box box = client.player.getBoundingBox();
@@ -118,17 +105,17 @@ final class NodePlayerStateSensorEvaluator {
         if (lastDetectedAtMs != Long.MIN_VALUE && nowMs - lastDetectedAtMs <= FALLING_SENSOR_RETENTION_MS) {
             return true;
         }
-        double accumulatedDrop = Math.max(fallDistance, peakY - currentY);
-        if (accumulatedDrop >= requiredDistance) {
-            return true;
+        if (downwardVelocity >= -1.0E-3) {
+            return false;
         }
         if (groundClearance >= FALLING_SENSOR_MIN_CLEARANCE
-            && accumulatedDrop > 1.0E-3) {
+            && (fallDistance > 1.0E-3 || peakY - currentY > 1.0E-3)) {
             return true;
         }
-        return downwardVelocity < -1.0E-3
-            && groundClearance >= FALLING_SENSOR_MIN_CLEARANCE
-            && accumulatedDrop > 1.0E-3;
+        if (fallDistance >= requiredDistance) {
+            return true;
+        }
+        return peakY - currentY >= requiredDistance;
     }
 
     boolean isFalling(double distance) {
@@ -136,40 +123,32 @@ final class NodePlayerStateSensorEvaluator {
         if (client == null || client.player == null) {
             return false;
         }
-        ClientPlayerEntity player = client.player;
-        FallingTracker tracker = FALLING_TRACKERS.computeIfAbsent(player.getUuid(), ignored -> new FallingTracker());
+        NodeRuntimeState runtimeState = owner.runtimeState();
         long now = System.currentTimeMillis();
-        double currentY = player.getY();
-        double groundClearance = computeDistanceFromGround(false).orElse(Double.POSITIVE_INFINITY);
-        double downwardVelocity = player.getVelocity().y;
-        boolean descending = downwardVelocity < -1.0E-3;
-        boolean groundedByFlag = player.isOnGround();
-        boolean groundedByClearance = groundClearance <= GROUNDED_CLEARANCE_EPSILON;
-        if (groundedByFlag || groundedByClearance) {
-            tracker.reset(currentY);
+        double currentY = client.player.getY();
+        if (client.player.isOnGround()) {
+            runtimeState.fallingPeakY = currentY;
+            runtimeState.fallingPeakInitialized = true;
+            runtimeState.lastFallingDetectedAtMs = Long.MIN_VALUE;
             return false;
         }
-        if (player.isSwimming()
-            || player.isSubmergedInWater()
-            || player.isClimbing()
-            || player.getAbilities().flying) {
-            tracker.clear(currentY);
+        if (client.player.isSwimming()
+            || client.player.isSubmergedInWater()
+            || client.player.isClimbing()
+            || client.player.getAbilities().flying) {
+            runtimeState.fallingPeakY = currentY;
+            runtimeState.fallingPeakInitialized = false;
+            runtimeState.lastFallingDetectedAtMs = Long.MIN_VALUE;
             return false;
         }
 
-        if (!tracker.peakInitialized) {
-            tracker.peakY = currentY;
-            tracker.peakInitialized = true;
-        } else if (currentY > tracker.peakY) {
-            tracker.peakY = currentY;
+        if (!runtimeState.fallingPeakInitialized) {
+            runtimeState.fallingPeakY = currentY;
+            runtimeState.fallingPeakInitialized = true;
+        } else if (currentY > runtimeState.fallingPeakY) {
+            runtimeState.fallingPeakY = currentY;
         }
-
-        double downwardMotion = downwardVelocity;
-        if (tracker.previousYInitialized) {
-            downwardMotion = Math.min(downwardMotion, currentY - tracker.previousY);
-        }
-        tracker.previousY = currentY;
-        tracker.previousYInitialized = true;
+        double groundClearance = getDistanceFromGround().orElse(Double.POSITIVE_INFINITY);
 
         boolean falling = isFallingState(
             false,
@@ -177,42 +156,18 @@ final class NodePlayerStateSensorEvaluator {
             false,
             false,
             false,
-            downwardMotion,
-            player.fallDistance,
-            tracker.peakY,
+            client.player.getVelocity().y,
+            client.player.fallDistance,
+            runtimeState.fallingPeakY,
             currentY,
             groundClearance,
             distance,
             now,
-            tracker.lastDetectedAtMs
+            runtimeState.lastFallingDetectedAtMs
         );
         if (falling) {
-            tracker.lastDetectedAtMs = now;
+            runtimeState.lastFallingDetectedAtMs = now;
         }
         return falling;
-    }
-
-    private static final class FallingTracker {
-        double peakY = Double.NaN;
-        boolean peakInitialized;
-        double previousY = Double.NaN;
-        boolean previousYInitialized;
-        long lastDetectedAtMs = Long.MIN_VALUE;
-
-        void reset(double currentY) {
-            peakY = currentY;
-            peakInitialized = true;
-            previousY = currentY;
-            previousYInitialized = true;
-            lastDetectedAtMs = Long.MIN_VALUE;
-        }
-
-        void clear(double currentY) {
-            peakY = currentY;
-            peakInitialized = false;
-            previousY = currentY;
-            previousYInitialized = false;
-            lastDetectedAtMs = Long.MIN_VALUE;
-        }
     }
 }

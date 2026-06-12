@@ -9,14 +9,11 @@ import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
-import com.pathmind.screen.PathmindScreens;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.validation.GraphValidator;
-
-import net.minecraft.client.MinecraftClient;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,16 +27,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Objects;
 
 /**
  * Manages the execution state of the node graph.
@@ -47,10 +41,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ExecutionManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(ExecutionManager.class);
-    private static final Executor CHAIN_COMPLETION_BOUNDARY_EXECUTOR = ForkJoinPool.commonPool();
-    public static final String CHAT_MESSAGE_EVENT_NAME = "chat_message";
-    public static final String CHAT_SENDER_VARIABLE_NAME = "chat_sender";
-    public static final String CHAT_MESSAGE_VARIABLE_NAME = "chat_message";
     private static volatile ExecutionManager instance;
     private Node activeNode;
     private boolean isExecuting;
@@ -92,39 +82,30 @@ public class ExecutionManager {
     private static class ChainController {
         final Node startNode;
         final int rootExecutionId;
-        final ChainController parentScope;
         volatile boolean cancelRequested;
         volatile Node pendingRepeatUntilExitControl;
         final AtomicInteger activeExecutions;
         final Map<String, RuntimeVariable> runtimeVariables;
         final Map<String, RuntimeList> runtimeLists;
         final Map<Node, Set<Integer>> joinBarrierInputs;
-        final Map<String, List<HandlerTemplate>> functionHandlerTemplates;
         final List<Node> graphNodes;
         final List<NodeConnection> graphConnections;
         final List<Node> functionSourceNodes;
         final List<NodeConnection> functionSourceConnections;
 
         ChainController(Node startNode, int rootExecutionId) {
-            this(startNode, rootExecutionId, null, List.of(), List.of());
+            this(startNode, rootExecutionId, List.of(), List.of());
         }
 
         ChainController(Node startNode, int rootExecutionId, List<Node> graphNodes, List<NodeConnection> graphConnections) {
-            this(startNode, rootExecutionId, null, graphNodes, graphConnections);
-        }
-
-        ChainController(Node startNode, int rootExecutionId, ChainController parentScope,
-                        List<Node> graphNodes, List<NodeConnection> graphConnections) {
             this.startNode = startNode;
             this.rootExecutionId = rootExecutionId;
-            this.parentScope = parentScope;
             this.cancelRequested = false;
             this.pendingRepeatUntilExitControl = null;
             this.activeExecutions = new AtomicInteger(1);
             this.runtimeVariables = new ConcurrentHashMap<>();
             this.runtimeLists = new ConcurrentHashMap<>();
             this.joinBarrierInputs = new ConcurrentHashMap<>();
-            this.functionHandlerTemplates = new ConcurrentHashMap<>();
             this.graphNodes = Collections.synchronizedList(new ArrayList<>(graphNodes == null ? List.of() : graphNodes));
             this.graphConnections = Collections.synchronizedList(new ArrayList<>(graphConnections == null ? List.of() : graphConnections));
             this.functionSourceNodes = Collections.synchronizedList(new ArrayList<>(graphNodes == null ? List.of() : graphNodes));
@@ -339,7 +320,13 @@ public class ExecutionManager {
             return false;
         }
         ChainController controller = activeChains.get(startNode);
-        return storeRuntimeVariable(controller, name.trim(), value, true);
+        if (controller == null) {
+            globalRuntimeVariables.put(name.trim(), value);
+            return true;
+        }
+        controller.runtimeVariables.put(name.trim(), value);
+        globalRuntimeVariables.put(name.trim(), value);
+        return true;
     }
 
     public RuntimeVariable getRuntimeVariable(Node startNode, String name) {
@@ -347,19 +334,21 @@ public class ExecutionManager {
             return null;
         }
         ChainController controller = activeChains.get(startNode);
-        return resolveRuntimeVariable(controller, name.trim());
+        if (controller == null) {
+            return globalRuntimeVariables.get(name.trim());
+        }
+        RuntimeVariable value = controller.runtimeVariables.get(name.trim());
+        return value != null ? value : globalRuntimeVariables.get(name.trim());
     }
 
     public boolean setRuntimeVariableForAnyActiveChain(String name, RuntimeVariable value) {
         if (name == null || name.trim().isEmpty() || value == null) {
             return false;
         }
-        ChainController currentController = resolveCurrentChainController();
-        if (currentController != null) {
-            return storeRuntimeVariable(currentController, name.trim(), value, true);
-        }
         for (ChainController controller : activeChains.values()) {
-            return storeRuntimeVariable(controller, name.trim(), value, true);
+            controller.runtimeVariables.put(name.trim(), value);
+            globalRuntimeVariables.put(name.trim(), value);
+            return true;
         }
         globalRuntimeVariables.put(name.trim(), value);
         return false;
@@ -369,15 +358,8 @@ public class ExecutionManager {
         if (name == null || name.trim().isEmpty()) {
             return null;
         }
-        ChainController currentController = resolveCurrentChainController();
-        if (currentController != null) {
-            RuntimeVariable currentValue = resolveRuntimeVariable(currentController, name.trim());
-            if (currentValue != null) {
-                return currentValue;
-            }
-        }
         for (ChainController controller : activeChains.values()) {
-            RuntimeVariable value = resolveRuntimeVariable(controller, name.trim());
+            RuntimeVariable value = controller.runtimeVariables.get(name.trim());
             if (value != null) {
                 return value;
             }
@@ -385,81 +367,18 @@ public class ExecutionManager {
         return globalRuntimeVariables.get(name.trim());
     }
 
-    public boolean triggerEventFunction(String eventName, Map<String, RuntimeVariable> runtimeVariables) {
-        String normalizedEventName = normalizeEventName(eventName);
-        if (normalizedEventName.isEmpty()) {
-            return false;
-        }
-
-        List<EventHandlerLaunchData> handlers = resolveFunctionInvocationHandlers(normalizedEventName, null);
-        if (handlers.isEmpty()) {
-            return false;
-        }
-
-        boolean startFresh = activeChains.isEmpty();
-        if (startFresh) {
-            this.activeNodes = new ArrayList<>();
-            this.activeConnections = new ArrayList<>();
-        }
-
-        this.cancelRequested = false;
-        List<Node> rootNodes = new ArrayList<>();
-        for (EventHandlerLaunchData handler : handlers) {
-            if (handler == null || handler.rootNode == null
-                || !matchesEventFunctionFilter(handler.rootNode, normalizedEventName, runtimeVariables)) {
-                continue;
-            }
-            mergeActiveGraph(handler.branchNodes, handler.branchConnections);
-            rootNodes.add(handler.rootNode);
-        }
-
-        if (rootNodes.isEmpty()) {
-            return false;
-        }
-
-        rebuildConnectionState(this.activeNodes, this.activeConnections);
-        if (startFresh) {
-            startExecution(rootNodes, false);
-        } else {
-            this.isExecuting = true;
-        }
-
-        for (EventHandlerLaunchData handler : handlers) {
-            if (handler == null || handler.rootNode == null
-                || !matchesEventFunctionFilter(handler.rootNode, normalizedEventName, runtimeVariables)) {
-                continue;
-            }
-
-            int executionId = allocateExecutionId();
-            ChainController controller = new ChainController(handler.rootNode, executionId,
-                handler.branchNodes, handler.branchConnections);
-            activeChains.put(handler.rootNode, controller);
-            seedRuntimeVariables(handler.rootNode, runtimeVariables);
-            setEventFunctionActive(handler.rootNode, true);
-
-            CompletableFuture<Void> chainFuture = runChain(handler.rootNode, controller, controller.rootExecutionId);
-            chainFuture.whenComplete((ignored, throwable) -> {
-                setEventFunctionActive(handler.rootNode, false);
-                handleChainCompletion(controller, throwable, controller.rootExecutionId);
-            });
-        }
-
-        return true;
-    }
-
-    private boolean matchesEventFunctionFilter(Node rootNode, String eventName, Map<String, RuntimeVariable> runtimeVariables) {
-        if (rootNode == null || eventName == null || eventName.isEmpty()) {
-            return false;
-        }
-        return true;
-    }
-
     public boolean setRuntimeList(Node startNode, String name, RuntimeList list) {
         if (startNode == null || name == null || name.trim().isEmpty() || list == null) {
             return false;
         }
         ChainController controller = activeChains.get(startNode);
-        return storeRuntimeList(controller, name.trim(), list, true);
+        if (controller == null) {
+            globalRuntimeLists.put(name.trim(), list);
+            return true;
+        }
+        controller.runtimeLists.put(name.trim(), list);
+        globalRuntimeLists.put(name.trim(), list);
+        return true;
     }
 
     public RuntimeList getRuntimeList(Node startNode, String name) {
@@ -467,7 +386,11 @@ public class ExecutionManager {
             return null;
         }
         ChainController controller = activeChains.get(startNode);
-        return resolveRuntimeList(controller, name.trim());
+        if (controller == null) {
+            return globalRuntimeLists.get(name.trim());
+        }
+        RuntimeList list = controller.runtimeLists.get(name.trim());
+        return list != null ? list : globalRuntimeLists.get(name.trim());
     }
 
     public List<RuntimeVariableEntry> getRuntimeVariableEntries() {
@@ -782,7 +705,7 @@ public class ExecutionManager {
         ChainController controller = new ChainController(launchData.rootNode, executionId,
             launchData.branchData.nodes, launchData.branchData.connections);
         activeChains.put(launchData.rootNode, controller);
-        seedPresetInputRuntimeVariables(controller, presetName, nodes, connections);
+        seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -839,7 +762,7 @@ public class ExecutionManager {
         ChainController controller = new ChainController(launchData.rootNode, executionId,
             launchData.branchData.nodes, launchData.branchData.connections);
         activeChains.put(launchData.rootNode, controller);
-        seedPresetInputRuntimeVariables(controller, presetName, nodes, connections);
+        seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -899,11 +822,10 @@ public class ExecutionManager {
         }
 
         int executionId = allocateExecutionId();
-        ChainController parentController = resolveCurrentChainController();
-        ChainController controller = new ChainController(launchData.rootNode, executionId, parentController,
+        ChainController controller = new ChainController(launchData.rootNode, executionId,
             launchData.branchData.nodes, launchData.branchData.connections);
         activeChains.put(launchData.rootNode, controller);
-        seedPresetInputRuntimeVariables(controller, presetName, nodes, connections);
+        seedPresetInputRuntimeVariables(launchData.rootNode, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -911,10 +833,8 @@ public class ExecutionManager {
         return chainFuture;
     }
 
-    private void seedPresetInputRuntimeVariables(ChainController controller, String presetName, List<Node> nodes,
-                                                 List<NodeConnection> connections) {
-        if (controller == null || controller.startNode == null || presetName == null || presetName.isBlank()
-            || nodes == null || connections == null) {
+    private void seedPresetInputRuntimeVariables(Node startNode, String presetName, List<Node> nodes, List<NodeConnection> connections) {
+        if (startNode == null || presetName == null || presetName.isBlank() || nodes == null || connections == null) {
             return;
         }
         NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(presetName, nodes, connections);
@@ -932,7 +852,7 @@ public class ExecutionManager {
             String rawValue = configured != null ? configured : port.getDefaultValue();
             RuntimeVariable runtimeVariable = createPresetInputRuntimeVariable(port, rawValue);
             if (runtimeVariable != null) {
-                storeRuntimeVariable(controller, port.getName().trim(), runtimeVariable, false);
+                setRuntimeVariable(startNode, port.getName().trim(), runtimeVariable);
             }
         }
     }
@@ -1218,18 +1138,6 @@ public class ExecutionManager {
         return CURRENT_EXECUTION_ID.get();
     }
 
-    private ChainController resolveCurrentChainController() {
-        Integer executionId = CURRENT_EXECUTION_ID.get();
-        if (executionId == null || executionId < 0) {
-            return null;
-        }
-        Node activeExecutionNode = activeExecutionNodes.get(executionId);
-        if (activeExecutionNode == null) {
-            return null;
-        }
-        return findChainControllerForStart(activeExecutionNode.getOwningStartNode());
-    }
-
     public boolean isStopRequested() {
         return cancelRequested;
     }
@@ -1412,148 +1320,6 @@ public class ExecutionManager {
             }
         }
 
-        return null;
-    }
-
-    private boolean storeRuntimeVariable(ChainController controller, String name, RuntimeVariable value, boolean preferExistingScope) {
-        if (name == null || name.isEmpty() || value == null) {
-            return false;
-        }
-        if (controller == null) {
-            globalRuntimeVariables.put(name, value);
-            return true;
-        }
-        ChainController target = preferExistingScope ? findControllerDefiningRuntimeVariable(controller, name) : null;
-        if (target == null) {
-            target = controller;
-        }
-        target.runtimeVariables.put(name, value);
-        globalRuntimeVariables.put(name, value);
-        return true;
-    }
-
-    private RuntimeVariable resolveRuntimeVariable(ChainController controller, String name) {
-        if (name == null || name.isEmpty()) {
-            return null;
-        }
-        for (ChainController current = controller; current != null; current = current.parentScope) {
-            RuntimeVariable value = current.runtimeVariables.get(name);
-            if (value != null) {
-                return value;
-            }
-        }
-        return globalRuntimeVariables.get(name);
-    }
-
-    private ChainController findControllerDefiningRuntimeVariable(ChainController controller, String name) {
-        if (controller == null || name == null || name.isEmpty()) {
-            return null;
-        }
-        for (ChainController current = controller; current != null; current = current.parentScope) {
-            if (current.runtimeVariables.containsKey(name)) {
-                return current;
-            }
-        }
-        return null;
-    }
-
-    private void seedRuntimeVariables(Node startNode, Map<String, RuntimeVariable> runtimeVariables) {
-        if (startNode == null || runtimeVariables == null || runtimeVariables.isEmpty()) {
-            return;
-        }
-        for (Map.Entry<String, RuntimeVariable> entry : runtimeVariables.entrySet()) {
-            if (entry == null || entry.getKey() == null || entry.getValue() == null) {
-                continue;
-            }
-            setRuntimeVariable(startNode, entry.getKey(), entry.getValue());
-        }
-    }
-
-    private String getNodeParameterValue(Node node, String key) {
-        if (node == null || key == null || key.isEmpty()) {
-            return "";
-        }
-        NodeParameter parameter = node.getParameter(key);
-        String value = parameter != null ? parameter.getStringValue() : null;
-        if ((value == null || value.isBlank())) {
-            Map<String, String> exported = node.exportParameterValues();
-            if (exported != null) {
-                value = exported.get(key);
-                if (value == null) {
-                    value = exported.get(normalizeRuntimeValueKey(key));
-                }
-            }
-        }
-        return value == null ? "" : value.trim();
-    }
-
-    private String getRuntimeValue(RuntimeVariable variable, String key) {
-        if (variable == null || key == null || key.isEmpty()) {
-            return "";
-        }
-        Map<String, String> values = variable.getValues();
-        if (values == null || values.isEmpty()) {
-            return "";
-        }
-        String direct = values.get(key);
-        if (direct != null && !direct.isBlank()) {
-            return direct.trim();
-        }
-        String normalized = normalizeRuntimeValueKey(key);
-        for (Map.Entry<String, String> entry : values.entrySet()) {
-            if (entry == null || entry.getKey() == null) {
-                continue;
-            }
-            if (!normalizeRuntimeValueKey(entry.getKey()).equals(normalized)) {
-                continue;
-            }
-            String candidate = entry.getValue();
-            if (candidate != null && !candidate.isBlank()) {
-                return candidate.trim();
-            }
-        }
-        return "";
-    }
-
-    private boolean storeRuntimeList(ChainController controller, String name, RuntimeList list, boolean preferExistingScope) {
-        if (name == null || name.isEmpty() || list == null) {
-            return false;
-        }
-        if (controller == null) {
-            globalRuntimeLists.put(name, list);
-            return true;
-        }
-        ChainController target = preferExistingScope ? findControllerDefiningRuntimeList(controller, name) : null;
-        if (target == null) {
-            target = controller;
-        }
-        target.runtimeLists.put(name, list);
-        globalRuntimeLists.put(name, list);
-        return true;
-    }
-
-    private RuntimeList resolveRuntimeList(ChainController controller, String name) {
-        if (name == null || name.isEmpty()) {
-            return null;
-        }
-        for (ChainController current = controller; current != null; current = current.parentScope) {
-            RuntimeList value = current.runtimeLists.get(name);
-            if (value != null) {
-                return value;
-            }
-        }
-        return globalRuntimeLists.get(name);
-    }
-
-    private ChainController findControllerDefiningRuntimeList(ChainController controller, String name) {
-        if (controller == null || name == null || name.isEmpty()) {
-            return null;
-        }
-        for (ChainController current = controller; current != null; current = current.parentScope) {
-            if (current.runtimeLists.containsKey(name)) {
-                return current;
-            }
-        }
         return null;
     }
 
@@ -1878,46 +1644,12 @@ public class ExecutionManager {
 
         CompletableFuture<Void> handlersComplete = CompletableFuture.allOf(
             handlerFutures.toArray(new CompletableFuture[0]));
-        return deferCompletion(handlersComplete);
-    }
-
-    public <T> CompletableFuture<T> deferCompletion(CompletableFuture<T> future) {
-        if (future == null) {
-            return CompletableFuture.completedFuture(null);
-        }
-        return future.handleAsync((result, throwable) -> {
-            if (throwable != null) {
-                throw throwable instanceof CompletionException completionException
-                    ? completionException
-                    : new CompletionException(throwable);
-            }
-            return result;
-        }, CHAIN_COMPLETION_BOUNDARY_EXECUTOR);
+        return handlersComplete;
     }
 
     private List<EventHandlerLaunchData> resolveFunctionInvocationHandlers(String eventName, ChainController controller) {
         if (eventName == null || eventName.isEmpty()) {
             return List.of();
-        }
-
-        if (controller != null) {
-            List<HandlerTemplate> templates = controller.functionHandlerTemplates.computeIfAbsent(
-                eventName,
-                ignored -> buildFunctionHandlerTemplates(eventName, controller)
-            );
-            if (templates.isEmpty()) {
-                return List.of();
-            }
-            List<EventHandlerLaunchData> handlers = new ArrayList<>();
-            for (HandlerTemplate template : templates) {
-                BranchLaunchData launchData = createBranchLaunchData(template.graphSnapshot, template.rootNodeId);
-                if (launchData == null) {
-                    LOGGER.debug("Skipping function handler clone for {}", eventName);
-                    continue;
-                }
-                handlers.add(new EventHandlerLaunchData(launchData));
-            }
-            return handlers;
         }
 
         List<Node> sourceNodes = controller != null && controller.functionSourceNodes != null && !controller.functionSourceNodes.isEmpty()
@@ -1954,39 +1686,6 @@ public class ExecutionManager {
         }
 
         return handlers;
-    }
-
-    private List<HandlerTemplate> buildFunctionHandlerTemplates(String eventName, ChainController controller) {
-        List<Node> sourceNodes = controller != null && controller.functionSourceNodes != null && !controller.functionSourceNodes.isEmpty()
-            ? snapshotList(controller.functionSourceNodes)
-            : (workspaceNodes != null && !workspaceNodes.isEmpty() ? workspaceNodes : activeNodes);
-        List<NodeConnection> sourceConnections = controller != null && controller.functionSourceConnections != null && !controller.functionSourceConnections.isEmpty()
-            ? snapshotList(controller.functionSourceConnections)
-            : (workspaceConnections != null && !workspaceConnections.isEmpty() ? workspaceConnections : activeConnections);
-        if (sourceNodes == null || sourceNodes.isEmpty() || sourceConnections == null) {
-            return List.of();
-        }
-
-        List<NodeConnection> filteredConnections = filterConnections(sourceConnections);
-        List<HandlerTemplate> templates = new ArrayList<>();
-        for (Node candidate : sourceNodes) {
-            if (candidate == null || candidate.getType() != NodeType.EVENT_FUNCTION) {
-                continue;
-            }
-
-            NodeParameter candidateParam = candidate.getParameter("Name");
-            String candidateName = normalizeEventName(candidateParam != null ? candidateParam.getStringValue() : null);
-            if (!candidateName.equals(eventName)) {
-                continue;
-            }
-
-            BranchData handlerBranch = buildBranchData(candidate, sourceNodes, filteredConnections);
-            if (handlerBranch == null || handlerBranch.nodes.isEmpty()) {
-                continue;
-            }
-            templates.add(new HandlerTemplate(createGraphSnapshot(handlerBranch.nodes, handlerBranch.connections), candidate.getId()));
-        }
-        return templates;
     }
 
     private List<Node> resolveFunctionInvocationHandlers(String eventName) {
@@ -2460,9 +2159,7 @@ public class ExecutionManager {
             return false;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        boolean editorOpen = client != null && PathmindScreens.isVisualEditorScreen(client.currentScreen);
-        if (editorOpen && workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
+        if (workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
             Node workspaceStart = findStartNodeByNumber(workspaceNodes, lastStartNodeNumber);
             if (workspaceStart != null && workspaceStart.getType() == NodeType.START) {
                 return executeBranch(workspaceStart, workspaceNodes, workspaceConnections, lastStartPreset);
@@ -2816,33 +2513,6 @@ public class ExecutionManager {
         return new BranchLaunchData(isolatedBranchData, isolatedRootNode);
     }
 
-    private BranchLaunchData createBranchLaunchData(NodeGraphData graphSnapshot, String rootNodeId) {
-        if (graphSnapshot == null || rootNodeId == null || rootNodeId.isEmpty()) {
-            return null;
-        }
-
-        List<Node> clonedNodes = NodeGraphPersistence.convertToNodes(graphSnapshot);
-        if (clonedNodes == null || clonedNodes.isEmpty()) {
-            return null;
-        }
-
-        Map<String, Node> nodeMap = new HashMap<>();
-        for (Node node : clonedNodes) {
-            if (node != null && node.getId() != null) {
-                nodeMap.put(node.getId(), node);
-            }
-        }
-
-        List<NodeConnection> clonedConnections = NodeGraphPersistence.convertToConnections(graphSnapshot, nodeMap);
-        Node isolatedRootNode = findNodeById(clonedNodes, rootNodeId);
-        if (isolatedRootNode == null) {
-            return null;
-        }
-
-        assignRuntimeNodeIds(clonedNodes);
-        return new BranchLaunchData(new BranchData(clonedNodes, clonedConnections), isolatedRootNode);
-    }
-
     private BranchData cloneBranchData(BranchData branchData) {
         if (branchData == null || branchData.nodes == null || branchData.connections == null) {
             return null;
@@ -2876,9 +2546,6 @@ public class ExecutionManager {
             for (Node node : nodes) {
                 if (node == null) {
                     continue;
-                }
-                if (node.getRuntimeSourceNodeId() == null || node.getRuntimeSourceNodeId().isBlank()) {
-                    node.setRuntimeSourceNodeId(node.getId());
                 }
                 // Runtime clones must not reuse persisted IDs or nested preset executions with
                 // forever loops can collide in active-node/connection tracking.
@@ -2923,16 +2590,6 @@ public class ExecutionManager {
         }
     }
 
-    private static final class HandlerTemplate {
-        final NodeGraphData graphSnapshot;
-        final String rootNodeId;
-
-        HandlerTemplate(NodeGraphData graphSnapshot, String rootNodeId) {
-            this.graphSnapshot = graphSnapshot;
-            this.rootNodeId = rootNodeId;
-        }
-    }
-
     private NodeGraphData createGraphSnapshot(List<Node> nodes, List<NodeConnection> connections) {
         NodeGraphData snapshot = new NodeGraphData();
 
@@ -2958,10 +2615,6 @@ public class ExecutionManager {
             nodeData.setParentControlId(node.getParentControlId());
             nodeData.setAttachedActionId(node.getAttachedActionId());
             nodeData.setParentActionControlId(node.getParentActionControlId());
-            nodeData.setStartNodeNumber(node.getStartNodeNumber());
-            nodeData.setStartLaunchMode(node.getStartLaunchMode());
-            nodeData.setStartScreenTarget(node.getStartScreenTarget());
-            nodeData.setRuntimeSourceNodeId(node.getRuntimeSourceNodeId());
             List<NodeGraphData.ParameterAttachmentData> attachmentData = new ArrayList<>();
             Map<Integer, Node> attachedParameters = node.getAttachedParameters();
             if (attachedParameters != null && !attachedParameters.isEmpty()) {
@@ -2987,9 +2640,9 @@ public class ExecutionManager {
             if (node.getType() == NodeType.START) {
                 nodeData.setStartNodeNumber(node.getStartNodeNumber());
             }
-            if (node.hasMessageInputFields()) {
-                nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
-                nodeData.setMessageClientSide(node.hasMessageScopeToggle() ? node.isMessageClientSide() : null);
+            if (node.getType() == NodeType.MESSAGE) {
+                nodeData.setMessageLines(node.getMessageLines());
+                nodeData.setMessageClientSide(node.isMessageClientSide());
             }
             if (node.hasBookTextInput()) {
                 nodeData.setBookText(node.getBookText());

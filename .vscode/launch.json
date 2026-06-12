@@ -1,0 +1,65 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Minecraft Client (:fabric)",
+      "preLaunchTask": "fabric: classes",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/fabric\\run",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "mainClass": "dev.architectury.transformer.TransformerRuntime",
+      "vmArgs": "-Dfabric.dli.config\u003d${workspaceFolder}\\fabric\\.gradle\\loom-cache\\launch.cfg -Dfabric.dli.env\u003dclient -Xms1G -Xmx3G -Dfabric.dli.main\u003dnet.fabricmc.loader.impl.launch.knot.KnotClient -Darchitectury.main.class\u003d${workspaceFolder}\\fabric\\.gradle\\architectury\\.main_class -Darchitectury.runtime.transformer\u003d${workspaceFolder}\\fabric\\.gradle\\architectury\\.transforms -Darchitectury.properties\u003d${workspaceFolder}\\fabric\\.gradle\\architectury\\.properties -Djdk.attach.allowAttachSelf\u003dtrue -javaagent:${workspaceFolder}\\.gradle\\architectury\\architectury-transformer-agent.jar",
+      "args": "",
+      "env": {},
+      "projectName": "fabric"
+    },
+    {
+      "type": "java",
+      "name": "Minecraft Server (:fabric)",
+      "preLaunchTask": "fabric: classes",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/fabric\\run",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "mainClass": "dev.architectury.transformer.TransformerRuntime",
+      "vmArgs": "-Dfabric.dli.config\u003d${workspaceFolder}\\fabric\\.gradle\\loom-cache\\launch.cfg -Dfabric.dli.env\u003dserver -Dfabric.dli.main\u003dnet.fabricmc.loader.impl.launch.knot.KnotServer -Darchitectury.main.class\u003d${workspaceFolder}\\fabric\\.gradle\\architectury\\.main_class -Darchitectury.runtime.transformer\u003d${workspaceFolder}\\fabric\\.gradle\\architectury\\.transforms -Darchitectury.properties\u003d${workspaceFolder}\\fabric\\.gradle\\architectury\\.properties -Djdk.attach.allowAttachSelf\u003dtrue -javaagent:${workspaceFolder}\\.gradle\\architectury\\architectury-transformer-agent.jar",
+      "args": "nogui",
+      "env": {},
+      "projectName": "fabric"
+    },
+    {
+      "type": "java",
+      "name": "Minecraft Client (:neoforge)",
+      "preLaunchTask": "neoforge: classes",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/neoforge\\run",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "mainClass": "dev.architectury.transformer.TransformerRuntime",
+      "vmArgs": "-Dfabric.dli.config\u003d${workspaceFolder}\\neoforge\\.gradle\\loom-cache\\launch.cfg -Dfabric.dli.env\u003dclient -Xms1G -Xmx3G --add-opens java.base/java.lang.invoke\u003dALL-UNNAMED --add-exports jdk.naming.dns/com.sun.jndi.dns\u003djava.naming -Dfabric.dli.main\u003dnet.neoforged.fml.startup.Client -Darchitectury.main.class\u003d${workspaceFolder}\\neoforge\\.gradle\\architectury\\.main_class -Darchitectury.runtime.transformer\u003d${workspaceFolder}\\neoforge\\.gradle\\architectury\\.transforms -Darchitectury.properties\u003d${workspaceFolder}\\neoforge\\.gradle\\architectury\\.properties -Djdk.attach.allowAttachSelf\u003dtrue -javaagent:${workspaceFolder}\\.gradle\\architectury\\architectury-transformer-agent.jar",
+      "args": "",
+      "env": {
+        "MOD_CLASSES": "main%%${workspaceFolder}\\neoforge\\build\\resources\\main;main%%${workspaceFolder}\\neoforge\\build\\classes\\java\\main"
+      },
+      "projectName": "neoforge"
+    },
+    {
+      "type": "java",
+      "name": "Minecraft Server (:neoforge)",
+      "preLaunchTask": "neoforge: classes",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/neoforge\\run",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "mainClass": "dev.architectury.transformer.TransformerRuntime",
+      "vmArgs": "-Dfabric.dli.config\u003d${workspaceFolder}\\neoforge\\.gradle\\loom-cache\\launch.cfg -Dfabric.dli.env\u003dserver --add-opens java.base/java.lang.invoke\u003dALL-UNNAMED --add-exports jdk.naming.dns/com.sun.jndi.dns\u003djava.naming -Dfabric.dli.main\u003dnet.neoforged.fml.startup.Server -Darchitectury.main.class\u003d${workspaceFolder}\\neoforge\\.gradle\\architectury\\.main_class -Darchitectury.runtime.transformer\u003d${workspaceFolder}\\neoforge\\.gradle\\architectury\\.transforms -Darchitectury.properties\u003d${workspaceFolder}\\neoforge\\.gradle\\architectury\\.properties -Djdk.attach.allowAttachSelf\u003dtrue -javaagent:${workspaceFolder}\\.gradle\\architectury\\architectury-transformer-agent.jar",
+      "args": "nogui",
+      "env": {
+        "MOD_CLASSES": "main%%${workspaceFolder}\\neoforge\\build\\resources\\main;main%%${workspaceFolder}\\neoforge\\build\\classes\\java\\main"
+      },
+      "projectName": "neoforge"
+    }
+  ]
+}

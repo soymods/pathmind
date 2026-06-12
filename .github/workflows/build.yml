@@ -53,7 +53,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Unit tests
-        run: ./gradlew test
+        run: ./gradlew :common:test -Pmc_version=1.21.11
 
   build:
     needs:
@@ -85,32 +85,31 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build mod jar for Minecraft ${{ matrix.minecraft_version }}
-        run: ./gradlew assemble -Pmc_version=${{ matrix.minecraft_version }}
+      - name: Build mod jars for Minecraft ${{ matrix.minecraft_version }}
+        run: ./gradlew :fabric:remapJar :neoforge:remapJar -Pmc_version=${{ matrix.minecraft_version }}
 
-      - name: Pick mod jar for Minecraft ${{ matrix.minecraft_version }}
-        id: jar
+      - name: Stage release jars
         shell: bash
         run: |
-          JAR="$(find build/libs -maxdepth 1 -type f -name '*.jar' \
-            | grep -Ev '(-sources|-javadoc|-dev|-shadow|-all)\.jar$' \
-            | sort \
-            | head -n 1)"
+          mkdir -p staging
+          find fabric/build/libs neoforge/build/libs \
+            -maxdepth 1 -type f -name '*.jar' \
+            | grep -Ev '(-sources|-dev|-shadow|-all|-javadoc)\.jar$' \
+            | xargs -I{} cp {} staging/
 
-          if [ -z "$JAR" ]; then
-            echo "No suitable jar found for Minecraft ${{ matrix.minecraft_version }}."
-            find build/libs -maxdepth 1 -type f | sort || true
+          echo "Staged jars for Minecraft ${{ matrix.minecraft_version }}:"
+          ls staging/
+          if [ -z "$(ls -A staging/)" ]; then
+            echo "No suitable jars found."
+            find fabric/build/libs neoforge/build/libs -maxdepth 1 -type f | sort || true
             exit 1
           fi
 
-          echo "jar_path=$JAR" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=$(basename "$JAR")" >> "$GITHUB_OUTPUT"
-
-      - name: Upload mod jar
+      - name: Upload mod jars
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.jar.outputs.artifact_name }}
-          path: ${{ steps.jar.outputs.jar_path }}
+          name: pathmind-mc${{ matrix.minecraft_version }}
+          path: staging/
           if-no-files-found: error
           retention-days: 90
 
@@ -155,14 +154,17 @@ jobs:
             exit 1
           fi
 
-          DOWNLOADS="$(
+          format_downloads_for_platform() {
+            local platform="$1"
+
             printf '%s\n' "${jars[@]}" \
               | sed 's#^.*/##' \
               | jq -R . \
-              | jq -s -r --arg repo "${GITHUB_REPOSITORY}" '
-                  sort_by(capture("\\+mc(?<version>[0-9.]+)\\.jar$").version | split(".") | map(tonumber))
+              | jq -s -r --arg repo "${GITHUB_REPOSITORY}" --arg platform "${platform}" '
+                  map(select(test("-" + $platform + "-")))
+                  | sort_by(capture("\\+mc(?<version>[0-9.]+)\\.jar$").version | split(".") | map(tonumber))
                   | map(
-                      "• `"
+                      "* `"
                       + (capture("\\+mc(?<version>[0-9.]+)\\.jar$").version)
                       + "` - [Download](<https://github.com/"
                       + $repo
@@ -172,12 +174,19 @@ jobs:
                     )
                   | join("\n")
                 '
-          )"
+          }
 
-          if [ -z "${DOWNLOADS:-}" ]; then
+          FABRIC_DOWNLOADS="$(format_downloads_for_platform fabric)"
+          NEOFORGE_DOWNLOADS="$(format_downloads_for_platform neoforge)"
+
+          if [ -z "${FABRIC_DOWNLOADS}${NEOFORGE_DOWNLOADS}" ]; then
             echo "No release download links were available to post."
             exit 1
           fi
+
+          DOWNLOADS="$(printf '**Fabric**\n%s\n\n**Neoforge (BETA)**\n%s' \
+            "${FABRIC_DOWNLOADS:-_No Fabric jars were found._}" \
+            "${NEOFORGE_DOWNLOADS:-_No Neoforge jars were found._}")"
 
           SUMMARY_LINE="$(printf '**Branch:** %s\n**Commit:** [`%s`](<https://github.com/%s/commit/%s>) %s\n**Built:** <t:%s:F>' \
             "${GITHUB_REF_NAME:-${GITHUB_REF}}" \

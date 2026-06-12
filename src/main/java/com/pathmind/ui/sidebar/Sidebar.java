@@ -406,7 +406,6 @@ public class Sidebar {
         ));
         groups.add(createGroup(
             "pathmind.sidebar.group.trading",
-            NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
             NodeType.SENSOR_IN_STOCK
         ));
@@ -666,10 +665,6 @@ public class Sidebar {
             int contentY = contentTop - scrollOffset;
             int sidebarBottom = sidebarStartY + sidebarHeight;
             int nodeBackgroundLeft = currentInnerSidebarWidth + 1; // Keep divider line visible by offsetting fills
-            ScrollbarHelper.Metrics scrollMetrics = getCategoryScrollMetrics();
-            int nodeBackgroundRight = scrollMetrics != null && scrollMetrics.maxScroll() > 0
-                ? scrollMetrics.trackLeft() - 2
-                : totalWidth;
             int contentClipLeft = nodeBackgroundLeft;
             int contentClipRight = Math.min(totalWidth, contentTextRight + 2);
             if (contentClipRight <= contentClipLeft) {
@@ -705,11 +700,11 @@ public class Sidebar {
                     if (contentY >= sidebarBottom) {
                         break;
                     }
-                    boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight
+                    boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth
                         && effectiveMouseY >= contentY && effectiveMouseY < contentY + rowHeight;
                     if (nodeHovered) {
                         hoveredCustomNode = customNode.customNode();
-                        context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
+                        context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                     }
 
                     int indicatorSize = 12;
@@ -765,12 +760,12 @@ public class Sidebar {
                                 break outer;
                             }
 
-                            boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight &&
+                            boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth &&
                                                 effectiveMouseY >= contentY && effectiveMouseY < contentY + rowHeight;
 
                             if (nodeHovered) {
                                 hoveredNodeType = nodeType;
-                                context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
+                                context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                             }
 
                             int indicatorSize = 12;
@@ -813,12 +808,12 @@ public class Sidebar {
                         int rowHeight = row.height();
                         if (contentY >= sidebarBottom) break; // Don't render beyond sidebar
                         
-                        boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight &&
+                        boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= totalWidth &&
                                             effectiveMouseY >= contentY && effectiveMouseY < contentY + rowHeight;
 
                         if (nodeHovered) {
                             hoveredNodeType = nodeType;
-                            context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
+                            context.fill(nodeBackgroundLeft, contentY, totalWidth, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                         }
 
                         int indicatorSize = 12;

@@ -551,14 +551,9 @@ public class PathmindMarketplaceScreen extends Screen {
             : isAuthorDirectoryMode()
                 ? resultCount + " author" + (resultCount == 1 ? "" : "s")
                 : resultCount + " result" + (resultCount == 1 ? "" : "s");
-        int resultMinX = layout.sortButtonX + SORT_BUTTON_WIDTH + 8;
-        int resultMaxX = layout.refreshButtonX - 6;
-        int maxResultWidth = resultMaxX - resultMinX;
-        if (maxResultWidth > this.textRenderer.getWidth("...")) {
-            String displayResultLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, resultLabel, maxResultWidth);
-            int resultX = resultMaxX - this.textRenderer.getWidth(displayResultLabel);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(displayResultLabel), resultX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
-        }
+        int resultWidth = this.textRenderer.getWidth(resultLabel);
+        int resultX = Math.max(layout.sortButtonX + SORT_BUTTON_WIDTH + 8, layout.refreshButtonX - resultWidth - 6);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
 
         boolean refreshHovered = isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE);
         drawIconButton(context, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE, refreshHovered, loading);

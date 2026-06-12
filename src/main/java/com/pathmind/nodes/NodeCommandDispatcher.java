@@ -71,7 +71,7 @@ final class NodeCommandDispatcher {
                 SENSOR_IS_VISIBLE, SENSOR_KEY_PRESSED, SENSOR_CHAT_MESSAGE, SENSOR_JOINED_SERVER,
                 SENSOR_FABRIC_EVENT, SENSOR_ATTRIBUTE_DETECTION, SENSOR_TARGETED_BLOCK,
                 SENSOR_TARGETED_ENTITY, SENSOR_LOOK_DIRECTION, SENSOR_CURRENT_HAND,
-                SENSOR_TARGETED_BLOCK_FACE, SENSOR_FIND_TRADE -> new NodeSensorCommandExecutor(node).executeSensorEvaluation(future);
+                SENSOR_TARGETED_BLOCK_FACE -> new NodeSensorCommandExecutor(node).executeSensorEvaluation(future);
             case CREATE_LIST -> new NodeVariableListCommandExecutor(node).executeCreateListCommand(future);
             case ADD_TO_LIST -> new NodeVariableListCommandExecutor(node).executeAddToListCommand(future);
             case REMOVE_FIRST_FROM_LIST -> new NodeVariableListCommandExecutor(node).executeRemoveFromListCommand(

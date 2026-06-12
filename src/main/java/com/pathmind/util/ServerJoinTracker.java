@@ -5,10 +5,8 @@ import net.minecraft.client.network.PlayerListEntry;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -18,7 +16,6 @@ public final class ServerJoinTracker {
     private static final Object LOCK = new Object();
     private static final Deque<JoinEntry> JOINS = new ArrayDeque<>();
     private static final Set<String> KNOWN_PLAYERS = new HashSet<>();
-    private static final Map<String, Long> CONSUMED_JOINS = new HashMap<>();
     private static final long RETENTION_MS = 10_000L;
     private static final int MAX_ENTRIES = 200;
     private static boolean initialized;
@@ -92,43 +89,6 @@ public final class ServerJoinTracker {
         return false;
     }
 
-    public static boolean consumeRecentJoin(String playerName, double seconds, boolean matchAnyPlayer, String consumerKey) {
-        String normalized = normalizePlayerName(playerName);
-        if (!matchAnyPlayer && normalized == null) {
-            return false;
-        }
-        String normalizedConsumer = normalizeConsumerKey(consumerKey);
-        if (normalizedConsumer == null) {
-            return hasRecentJoin(playerName, seconds, matchAnyPlayer);
-        }
-
-        long now = System.currentTimeMillis();
-        long windowMs = (long) Math.ceil(Math.max(0.0, seconds) * 1000.0);
-        long cutoff = now - windowMs;
-        synchronized (LOCK) {
-            prune(now);
-            pruneConsumed(cutoff);
-            for (JoinEntry entry : JOINS) {
-                if (entry.timestampMs < cutoff) {
-                    continue;
-                }
-                if (!matchAnyPlayer && !entry.playerLower.equals(normalized)) {
-                    continue;
-                }
-
-                String key = normalizedConsumer + ":" + (matchAnyPlayer ? "*" : entry.playerLower);
-                long consumedTimestamp = CONSUMED_JOINS.getOrDefault(key, Long.MIN_VALUE);
-                if (consumedTimestamp >= entry.timestampMs) {
-                    continue;
-                }
-
-                CONSUMED_JOINS.put(key, entry.timestampMs);
-                return true;
-            }
-        }
-        return false;
-    }
-
     public static double getRetentionSeconds() {
         return RETENTION_MS / 1000.0;
     }
@@ -137,7 +97,6 @@ public final class ServerJoinTracker {
         synchronized (LOCK) {
             JOINS.clear();
             KNOWN_PLAYERS.clear();
-            CONSUMED_JOINS.clear();
             initialized = false;
         }
     }
@@ -172,11 +131,6 @@ public final class ServerJoinTracker {
             }
             JOINS.removeFirst();
         }
-        pruneConsumed(cutoff);
-    }
-
-    private static void pruneConsumed(long cutoff) {
-        CONSUMED_JOINS.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() < cutoff);
     }
 
     private static String normalizePlayerName(String playerName) {
@@ -184,17 +138,6 @@ public final class ServerJoinTracker {
             return null;
         }
         String trimmed = playerName.trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        return trimmed.toLowerCase(Locale.ROOT);
-    }
-
-    private static String normalizeConsumerKey(String consumerKey) {
-        if (consumerKey == null) {
-            return null;
-        }
-        String trimmed = consumerKey.trim();
         if (trimmed.isEmpty()) {
             return null;
         }

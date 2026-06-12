@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeRuntimeStateTest {
 
@@ -37,6 +38,9 @@ class NodeRuntimeStateTest {
         runtimeState.repeatExecuteAttachedAction = true;
         runtimeState.lastSensorResult = true;
         runtimeState.nextOutputSocket = 1;
+        runtimeState.fallingPeakY = 42.0;
+        runtimeState.fallingPeakInitialized = true;
+        runtimeState.lastFallingDetectedAtMs = 123L;
 
         runtimeState.resetControlState();
 
@@ -45,5 +49,8 @@ class NodeRuntimeStateTest {
         assertFalse(runtimeState.repeatExecuteAttachedAction);
         assertFalse(runtimeState.lastSensorResult);
         assertEquals(0, runtimeState.nextOutputSocket);
+        assertTrue(Double.isNaN(runtimeState.fallingPeakY));
+        assertFalse(runtimeState.fallingPeakInitialized);
+        assertEquals(Long.MIN_VALUE, runtimeState.lastFallingDetectedAtMs);
     }
 }

@@ -3,8 +3,6 @@ package com.pathmind.nodes;
 import static com.pathmind.util.PathmindI18n.tr;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.screen.slot.SlotActionType;
@@ -496,14 +494,9 @@ final class NodeGuiCommandExecutor {
                         throw new RuntimeException("Cannot close the player GUI without an active player.");
                     }
 
-                    Screen currentScreen = client.currentScreen;
-                    if (currentScreen instanceof AbstractSignEditScreen) {
-                        currentScreen.close();
-                    } else if (currentScreen != null) {
+                    if (client.currentScreen != null) {
                         client.player.closeHandledScreen();
-                        if (client.currentScreen != null) {
-                            currentScreen.close();
-                        }
+                        client.setScreen(null);
                     }
                     break;
                 default:

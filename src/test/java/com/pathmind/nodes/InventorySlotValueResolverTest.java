@@ -33,20 +33,4 @@ class InventorySlotValueResolverTest {
     void invalidSlotValuesReturnNull() {
         assertNull(InventorySlotValueResolver.resolveComparableSlotIndex(Map.of("Slot", "abc")));
     }
-
-    @Test
-    void moveItemInfersContainerSourceWhenGuiTargetIsPlayerInventory() {
-        Node moveItem = new Node(NodeType.MOVE_ITEM, 0, 0);
-        Node sourceItem = new Node(NodeType.PARAM_ITEM, 0, 0);
-        sourceItem.getParameter("Item").setStringValue("minecraft:iron_ingot");
-        Node targetGui = new Node(NodeType.PARAM_GUI, 0, 0);
-        targetGui.getParameter("GUI").setStringValue("player_inventory");
-
-        moveItem.attachParameter(sourceItem, 0);
-        moveItem.attachParameter(targetGui, 1);
-
-        NodeInventoryCommandExecutor executor = new NodeInventoryCommandExecutor(moveItem);
-        assertEquals(SlotSelectionType.GUI_CONTAINER,
-            executor.resolveMoveItemSlotSelectionTypeForTests(sourceItem, 0));
-    }
 }

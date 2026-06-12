@@ -3,12 +3,9 @@ package com.pathmind;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
-import com.pathmind.execution.BackgroundStartRunner;
 import com.pathmind.execution.PathmindNavigator;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.nodes.Node;
-import com.pathmind.nodes.NodeType;
-import com.pathmind.nodes.StartLaunchMode;
 import com.pathmind.screen.PathmindMainMenuIntegration;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
@@ -46,14 +43,9 @@ import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.GameMenuScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.gui.screen.ingame.MerchantScreen;
-import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.client.gui.screen.TitleScreen;
@@ -67,13 +59,10 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * The client-side mod class for Pathmind.
@@ -94,9 +83,6 @@ public class PathmindClientMod implements ClientModInitializer {
     private int recipeCacheWarmupCooldownTicks;
     private boolean playGraphsKeyDown;
     private boolean stopGraphsKeyDown;
-    private boolean pendingClientLaunch;
-    private boolean pendingWorldJoinLaunch;
-    private Screen lastObservedScreen;
 
     private static final String EVT_CLIENT_BLOCK_ENTITY_LOAD = "fabric.client.lifecycle.block_entity_load";
     private static final String EVT_CLIENT_BLOCK_ENTITY_UNLOAD = "fabric.client.lifecycle.block_entity_unload";
@@ -171,8 +157,6 @@ public class PathmindClientMod implements ClientModInitializer {
         PathmindMainMenuIntegration.register();
 
         registerFabricEventForwarders();
-        ClientLifecycleEvents.CLIENT_STARTED.register(client ->
-            pendingClientLaunch = true);
 
         // Register client tick events for keybind handling and event forwarding
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -180,10 +164,7 @@ public class PathmindClientMod implements ClientModInitializer {
             handleRecipeCacheWarmup(client);
             NavigatorChatSuggestions.getInstance().tick(client);
             PathmindNavigator.getInstance().tick(client);
-            handlePendingClientLaunch(client);
-            handlePendingWorldJoinLaunch(client);
             ServerJoinTracker.tick(client);
-            handleScreenLaunchTriggers(client);
             fireFabricEvent(EVT_CLIENT_TICK_END);
         });
 
@@ -191,7 +172,7 @@ public class PathmindClientMod implements ClientModInitializer {
             worldShutdownHandled = false;
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
-            pendingWorldJoinLaunch = true;
+            ServerJoinTracker.recordClientJoin(client);
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.clear();
             }
@@ -202,7 +183,7 @@ public class PathmindClientMod implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            pendingWorldJoinLaunch = false;
+            handleClientShutdown("play disconnect", false);
             PathmindNavigator.getInstance().reset();
             ChatMessageTracker.clear();
             FabricEventTracker.clear();
@@ -215,8 +196,6 @@ public class PathmindClientMod implements ClientModInitializer {
         });
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
-            pendingClientLaunch = false;
-            pendingWorldJoinLaunch = false;
             handleClientShutdown("client stopping", true);
             PathmindNavigator.getInstance().reset();
             ChatMessageTracker.clear();
@@ -235,13 +214,7 @@ public class PathmindClientMod implements ClientModInitializer {
                 return;
             }
             long timestamp = receptionTimestamp != null ? receptionTimestamp.toEpochMilli() : System.currentTimeMillis();
-            String senderName = com.pathmind.util.GameProfileCompatibilityBridge.getName(sender);
-            String rawMessage = message.getString();
-            ChatMessageTracker.record(senderName, rawMessage, timestamp);
-            ExecutionManager.getInstance().triggerEventFunction(
-                ExecutionManager.CHAT_MESSAGE_EVENT_NAME,
-                createChatRuntimeVariables(senderName, rawMessage)
-            );
+            ChatMessageTracker.record(com.pathmind.util.GameProfileCompatibilityBridge.getName(sender), message.getString(), timestamp);
             fireFabricEvent(EVT_MESSAGE_RECEIVE_CHAT);
         });
         
@@ -286,7 +259,7 @@ public class PathmindClientMod implements ClientModInitializer {
     }
 
     public static void renderHudNotifications(DrawContext drawContext, MinecraftClient client) {
-        if (client == null || client.textRenderer == null || nodeErrorNotificationOverlay == null) {
+        if (client == null || client.player == null || client.textRenderer == null || nodeErrorNotificationOverlay == null) {
             return;
         }
 
@@ -304,30 +277,6 @@ public class PathmindClientMod implements ClientModInitializer {
         MatrixStackBridge.translateZ(matrices, 500.0f);
         try {
             nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
-        } finally {
-            MatrixStackBridge.pop(matrices);
-        }
-    }
-
-    public static void renderScreenActiveNodeOverlay(DrawContext drawContext, MinecraftClient client) {
-        if (client == null || client.player != null || client.textRenderer == null || activeNodeOverlay == null) {
-            return;
-        }
-
-        boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays == null
-            || SettingsManager.getCurrent().showHudOverlays;
-        if (!showHudOverlays) {
-            return;
-        }
-
-        int scaledWidth = client.getWindow().getScaledWidth();
-        int scaledHeight = client.getWindow().getScaledHeight();
-        DrawContextBridge.startNewRootLayer(drawContext);
-        Object matrices = drawContext.getMatrices();
-        MatrixStackBridge.push(matrices);
-        MatrixStackBridge.translateZ(matrices, 500.0f);
-        try {
-            activeNodeOverlay.renderCompact(drawContext, client.textRenderer, scaledWidth, scaledHeight);
         } finally {
             MatrixStackBridge.pop(matrices);
         }
@@ -428,98 +377,11 @@ public class PathmindClientMod implements ClientModInitializer {
         UseItemCallbackCompat.register(this::fireFabricEvent, EVT_PLAYER_USE_ITEM);
     }
 
-    private void handlePendingClientLaunch(MinecraftClient client) {
-        if (!pendingClientLaunch) {
-            return;
-        }
-        if (client == null || client.getWindow() == null) {
-            return;
-        }
-
-        pendingClientLaunch = false;
-        BackgroundStartRunner.getInstance().launch(StartLaunchMode.CLIENT_LAUNCH);
-    }
-
-    private void handlePendingWorldJoinLaunch(MinecraftClient client) {
-        if (!pendingWorldJoinLaunch) {
-            return;
-        }
-        if (client == null || client.player == null || client.world == null || client.getNetworkHandler() == null) {
-            return;
-        }
-
-        pendingWorldJoinLaunch = false;
-        ServerJoinTracker.recordClientJoin(client);
-        BackgroundStartRunner.getInstance().launch(StartLaunchMode.WORLD_JOIN);
-    }
-
-    private void handleScreenLaunchTriggers(MinecraftClient client) {
-        if (client == null) {
-            lastObservedScreen = null;
-            return;
-        }
-        Screen currentScreen = client.currentScreen;
-        if (currentScreen == lastObservedScreen) {
-            return;
-        }
-        lastObservedScreen = currentScreen;
-        if (currentScreen == null) {
-            return;
-        }
-        BackgroundStartRunner.getInstance().launch(StartLaunchMode.SCREEN_OPENED, getScreenTargetKey(currentScreen));
-        if (currentScreen instanceof TitleScreen) {
-            BackgroundStartRunner.getInstance().launch(StartLaunchMode.MAIN_MENU_OPEN);
-        }
-    }
-
-    private String getScreenTargetKey(Screen screen) {
-        if (screen instanceof TitleScreen) {
-            return "main_menu";
-        }
-        if (screen instanceof GameMenuScreen) {
-            return "pause_menu";
-        }
-        if (screen instanceof ChatScreen) {
-            return "chat";
-        }
-        if (screen instanceof InventoryScreen) {
-            return "inventory";
-        }
-        if (screen instanceof MerchantScreen) {
-            return "merchant";
-        }
-        if (PathmindScreens.isVisualEditorScreen(screen)) {
-            return "visual_editor";
-        }
-        return screen == null ? "" : screen.getClass().getSimpleName().toLowerCase(Locale.ROOT);
-    }
-
     private void fireFabricEvent(String eventName) {
         if (eventName == null || eventName.isEmpty()) {
             return;
         }
         FabricEventTracker.record(eventName);
-    }
-
-    private Map<String, ExecutionManager.RuntimeVariable> createChatRuntimeVariables(String senderName, String rawMessage) {
-        Map<String, ExecutionManager.RuntimeVariable> variables = new LinkedHashMap<>();
-        variables.put(
-            ExecutionManager.CHAT_SENDER_VARIABLE_NAME,
-            createRuntimeVariable(NodeType.PARAM_PLAYER, "Player", senderName)
-        );
-        variables.put(
-            ExecutionManager.CHAT_MESSAGE_VARIABLE_NAME,
-            createRuntimeVariable(NodeType.PARAM_MESSAGE, "Text", rawMessage)
-        );
-        return variables;
-    }
-
-    private ExecutionManager.RuntimeVariable createRuntimeVariable(NodeType type, String key, String value) {
-        Map<String, String> values = new LinkedHashMap<>();
-        String safeValue = value == null ? "" : value;
-        values.put(key, safeValue);
-        values.put(key.toLowerCase(Locale.ROOT), safeValue);
-        return new ExecutionManager.RuntimeVariable(type, values);
     }
 
     private void handleClientShutdown(String reason) {
@@ -553,36 +415,32 @@ public class PathmindClientMod implements ClientModInitializer {
         // Allow execution to continue for normal in-game GUIs so GUI nodes can work,
         // but freeze Pathmind when the vanilla pause menu is open in multiplayer too.
         manager.setSingleplayerPaused((client.isInSingleplayer() && editorOpen) || isPauseMenuOpen(client));
-        if (editorOpen) {
-            stopGraphsKeyDown = false;
-            playGraphsKeyDown = false;
+
+        if (client.world == null) {
+            if (!PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
+                handleClientShutdown("world unavailable", false);
+            }
             return;
         }
 
-        boolean typing = shouldIgnoreKeybinds(client);
+        // Don't handle k/j keybinds when chat or Pathmind GUI is open
+        boolean chatOrGuiOpen = shouldIgnoreKeybinds(client);
 
-        boolean stopDown = isPathmindKeyDown(client, PathmindKeybinds.STOP_GRAPHS, GLFW.GLFW_KEY_J);
-        if (!typing && stopDown && !stopGraphsKeyDown) {
+        boolean stopDown = PathmindKeybinds.STOP_GRAPHS.isPressed();
+        if (!chatOrGuiOpen && stopDown && !stopGraphsKeyDown) {
             ExecutionManager.getInstance().requestStopAll();
         }
         stopGraphsKeyDown = stopDown;
 
-        boolean playDown = isPathmindKeyDown(client, PathmindKeybinds.PLAY_GRAPHS, GLFW.GLFW_KEY_K);
-        if (!typing && playDown && !playGraphsKeyDown) {
+        if (client.player == null) {
+            return;
+        }
+
+        boolean playDown = PathmindKeybinds.PLAY_GRAPHS.isPressed();
+        if (!chatOrGuiOpen && playDown && !playGraphsKeyDown) {
             ExecutionManager.getInstance().playAllGraphs();
         }
         playGraphsKeyDown = playDown;
-    }
-
-    private boolean isPathmindKeyDown(MinecraftClient client, net.minecraft.client.option.KeyBinding keyBinding, int fallbackKeyCode) {
-        if (keyBinding != null && keyBinding.isPressed()) {
-            return true;
-        }
-        if (client == null || client.getWindow() == null) {
-            return false;
-        }
-        long handle = client.getWindow().getHandle();
-        return handle != 0L && GLFW.glfwGetKey(handle, fallbackKeyCode) == GLFW.GLFW_PRESS;
     }
 
     private boolean isPauseMenuOpen(MinecraftClient client) {
@@ -593,31 +451,15 @@ public class PathmindClientMod implements ClientModInitializer {
         if (client == null || client.currentScreen == null) {
             return false;
         }
+        // Check if chat screen is open
         if (client.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen) {
             return true;
         }
-        return isTextInputFocused(client.currentScreen);
-    }
-
-    private boolean isTextInputFocused(Screen screen) {
-        Element focused = getFocusedElement(screen);
-        if (focused instanceof TextFieldWidget textField) {
-            return textField.isFocused();
+        // Check if Pathmind visual editor is open
+        if (PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
+            return true;
         }
         return false;
-    }
-
-    private Element getFocusedElement(Screen screen) {
-        if (screen == null) {
-            return null;
-        }
-        try {
-            java.lang.reflect.Method method = Screen.class.getMethod("getFocused");
-            Object focused = method.invoke(screen);
-            return focused instanceof Element element ? element : null;
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
     }
 
     private void handleRecipeCacheWarmup(MinecraftClient client) {

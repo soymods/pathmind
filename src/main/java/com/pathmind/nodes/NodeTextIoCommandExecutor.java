@@ -3,7 +3,6 @@ package com.pathmind.nodes;
 import static com.pathmind.util.PathmindI18n.tr;
 
 import com.pathmind.util.PlayerInventoryBridge;
-import com.pathmind.util.LegacyVariableSyntaxCompat;
 import com.pathmind.execution.ExecutionManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
@@ -714,7 +713,6 @@ final class NodeTextIoCommandExecutor {
         if (raw == null || raw.isEmpty()) {
             return raw;
         }
-        raw = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(raw);
         Node startNode = owner.getOwningStartNode();
         if (startNode == null && owner.getParentControl() != null) {
             startNode = owner.getParentControl().getOwningStartNode();
@@ -725,7 +723,7 @@ final class NodeTextIoCommandExecutor {
         boolean containsStructuredReplacement = false;
         while (index < raw.length()) {
             char current = raw.charAt(index);
-            if (current == '$') {
+            if (current == '~') {
                 RuntimeVariableInlineMatch match = findInlineRuntimeVariableReference(raw, index, manager, startNode);
                 if (match != null) {
                     String replacement = formatRuntimeVariableValue(match.variable);
@@ -763,12 +761,12 @@ final class NodeTextIoCommandExecutor {
         return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
     }
 
-    private RuntimeVariableInlineMatch findInlineRuntimeVariableReference(String raw, int variableIndex,
+    private RuntimeVariableInlineMatch findInlineRuntimeVariableReference(String raw, int tildeIndex,
                                                                           ExecutionManager manager, Node startNode) {
-        if (raw == null || manager == null || variableIndex < 0 || variableIndex >= raw.length() || raw.charAt(variableIndex) != '$') {
+        if (raw == null || manager == null || tildeIndex < 0 || tildeIndex >= raw.length() || raw.charAt(tildeIndex) != '~') {
             return null;
         }
-        int nameStart = variableIndex + 1;
+        int nameStart = tildeIndex + 1;
         if (nameStart >= raw.length()) {
             return null;
         }

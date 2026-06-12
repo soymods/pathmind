@@ -16,7 +16,6 @@ final class NodeParameterRepair {
         if (node.getParameter(amountKey) == null) {
             NodeType type = node.getType();
             boolean decimalAmount = type == NodeType.USE
-                || type == NodeType.PRESS_KEY
                 || type == NodeType.SWING
                 || type == NodeType.SENSOR_CHAT_MESSAGE
                 || type == NodeType.SENSOR_FABRIC_EVENT;

@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.pathmind.mixin",
+  "plugin": "com.pathmind.mixin.PathmindMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "pathmind.refmap.json",
+  "mixins": [],
+  "client": [
+    "GameRendererMixin",
+    "InGameHudMixin",
+    "ItemRendererMixin",
+    "TextFieldWidgetAccessor",
+    "ScreenAccessor",
+    "ScreenRenderSealMixin",
+    "UiUtilsOverlayBlockerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

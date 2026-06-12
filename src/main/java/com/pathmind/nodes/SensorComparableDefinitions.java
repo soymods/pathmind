@@ -16,7 +16,7 @@ final class SensorComparableDefinitions {
                 SensorComparableDefinitions::resolveSingleAxisAmount));
             case SENSOR_DISTANCE_BETWEEN, SENSOR_IS_ON_GROUND -> Optional.of(
                 NodeBehaviorDefinitionSupport.numberComparable(SensorComparableDefinitions::resolveDistanceValue));
-            case SENSOR_SLOT_ITEM_COUNT, SENSOR_FIND_TRADE -> Optional.of(
+            case SENSOR_SLOT_ITEM_COUNT -> Optional.of(
                 NodeBehaviorDefinitionSupport.numberComparable(SensorComparableDefinitions::resolveSlotItemCount));
             default -> Optional.empty();
         };

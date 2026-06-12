@@ -127,7 +127,6 @@ public enum NodeType {
     SENSOR_ITEM_IN_INVENTORY("pathmind.node.type.sensorItemInInventory", 0xFF64B5F6, "pathmind.node.type.sensorItemInInventory.desc"),
     SENSOR_ITEM_IN_SLOT("pathmind.node.type.sensorItemInSlot", 0xFF64B5F6, "pathmind.node.type.sensorItemInSlot.desc"),
     SENSOR_SLOT_ITEM_COUNT("pathmind.node.type.sensorSlotItemCount", 0xFF64B5F6, "pathmind.node.type.sensorSlotItemCount.desc"),
-    SENSOR_FIND_TRADE("pathmind.node.type.sensorFindTrade", 0xFF64B5F6, "pathmind.node.type.sensorFindTrade.desc"),
     SENSOR_VILLAGER_TRADE("pathmind.node.type.sensorVillagerTrade", 0xFF64B5F6, "pathmind.node.type.sensorVillagerTrade.desc"),
     SENSOR_IN_STOCK("pathmind.node.type.sensorInStock", 0xFF64B5F6, "pathmind.node.type.sensorInStock.desc"),
     SENSOR_IS_SWIMMING("pathmind.node.type.sensorIsSwimming", 0xFF64B5F6, "pathmind.node.type.sensorIsSwimming.desc"),

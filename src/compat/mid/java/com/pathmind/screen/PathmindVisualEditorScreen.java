@@ -53,7 +53,6 @@ import net.minecraft.client.input.KeyInput;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.OverlayProtection;
 import com.pathmind.util.UiUtilsProxy;
-import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.minecraft.util.Identifier;
@@ -95,16 +94,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int PRESET_TAB_CLOSE_GAP = 4;
     private static final int PRESET_TAB_ADD_WIDTH = 20;
     private static final int PRESET_TAB_HARD_MIN_WIDTH = 24;
-    private static final int PRESET_MENU_BUTTON_SIZE = 18;
-    private static final int PRESET_TAB_TITLE_GAP = 0;
+    private static final int PRESET_TAB_TITLE_GAP = 8;
+    private static final int PRESET_BROWSER_BUTTON_SIZE = 16;
+    private static final int PRESET_BROWSER_BUTTON_GAP = 3;
     private static final int PRESET_TAB_DRAG_THRESHOLD = 4;
-    private static final int PRESET_CONTEXT_MENU_WIDTH = 132;
-    private static final int PRESET_CONTEXT_MENU_ITEM_HEIGHT = 18;
-    private static final int PRESET_CONTEXT_MENU_SEPARATOR_HEIGHT = 5;
-    private static final String[] PRESET_GROUP_COLOR_KEYS = {"sky", "mint", "amber", "rose", "violet"};
-    private static final int[] PRESET_GROUP_COLORS = {0xFF38BDF8, 0xFF34D399, 0xFFF59E0B, 0xFFFB7185, 0xFFA78BFA};
-    private static final String PRESET_GROUP_TAB_PREFIX = "__pathmind_preset_group__:";
-    private static final int PRESET_GROUP_TAB_WIDTH = 10;
     private static final boolean IS_MAC_OS = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT)
             .contains("mac");
@@ -246,7 +239,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private boolean presetDropdownOpen = false;
     private final AnimatedValue presetDropdownAnimation = AnimatedValue.forHover();
     private int presetDropdownScrollOffset = 0;
-    private final DropdownLayoutHelper.SmoothScrollState presetDropdownSmoothScroll = new DropdownLayoutHelper.SmoothScrollState();
     private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
     private List<String> availablePresets = new ArrayList<>();
     private final List<String> presetTabOrder = new ArrayList<>();
@@ -262,17 +254,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private String draggingPresetTabName = null;
     private int draggingPresetTabPointerOffsetX = 0;
     private int draggingPresetTabCurrentX = 0;
-    private String pendingPresetDropdownDragName = null;
-    private int pendingPresetDropdownPressMouseX = 0;
-    private int pendingPresetDropdownPressMouseY = 0;
-    private String draggingPresetDropdownName = null;
-    private int draggingPresetDropdownCurrentX = 0;
-    private int draggingPresetDropdownCurrentY = 0;
-    private boolean presetContextMenuOpen = false;
-    private int presetContextMenuX = 0;
-    private int presetContextMenuY = 0;
-    private String presetContextMenuPresetName = "";
-    private String presetContextMenuGroupKey = "";
     private String animatingPresetDeletionName = null;
     private long animatingPresetDeletionExecuteAtMs = 0L;
     private String activePresetName = "";
@@ -573,7 +554,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
 
         boolean titleHovered = isTitleHovered(mouseX, mouseY);
-        boolean titleActive = titleHovered || presetDropdownOpen;
+        boolean titleActive = titleHovered || infoPopupAnimation.isVisible();
         titleUnderlineAnimation.animateTo(titleActive ? 1f : 0f, UITheme.HOVER_ANIM_MS);
         titleUnderlineAnimation.tick();
         GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
@@ -619,6 +600,7 @@ public class PathmindVisualEditorScreen extends Screen {
         );
         drawTitle(context, mouseX, mouseY, titleUnderlineAnimation.getValue());
         renderWorkspaceTabs(context, mouseX, mouseY);
+        renderPresetDropdown(context, mouseX, mouseY, isPopupObscuringWorkspace());
 
         // Tick all popup animations early so the scrim uses current values
         clearPopupAnimation.tick();
@@ -649,7 +631,6 @@ public class PathmindVisualEditorScreen extends Screen {
         renderValidationPanel(context, mouseX, mouseY, validationResult);
         renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
         renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
-        renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
 
         if (controlsDisabled) {
             DrawContextBridge.startNewRootLayer(context);
@@ -713,23 +694,16 @@ public class PathmindVisualEditorScreen extends Screen {
         // Render context menu on top of everything
         nodeGraph.updateNodeContextMenuHover(mouseX, mouseY);
         nodeGraph.renderNodeContextMenu(context, this.textRenderer);
-        nodeGraph.renderStartModeDropdown(context, this.textRenderer, mouseX, mouseY);
         nodeGraph.updateContextMenuHover(mouseX, mouseY);
         nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
-        renderPresetContextMenu(context, mouseX, mouseY);
         renderNodeSearchField(context, mouseX, mouseY, delta);
         DrawContextBridge.startNewRootLayer(context);
         renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
         if (isDraggingFromSidebar && (draggingNodeType != null || draggingSidebarNode != null)) {
             renderDraggingNode(context, mouseX, mouseY);
         }
-        renderDraggedPresetDropdownTab(context, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
         NodeErrorNotificationOverlay.getInstance().render(context, this.textRenderer, this.width, this.height);
-        if (currentSettings != null && Boolean.TRUE.equals(currentSettings.showProfilerOverlay)) {
-            DrawContextBridge.startNewRootLayer(context);
-            nodeGraph.renderProfilerOverlay(context, this.textRenderer);
-        }
         if (nodeGraph.isScreenCoordinateCaptureActive()) {
             DrawContextBridge.startNewRootLayer(context);
             nodeGraph.renderScreenCoordinateCaptureOverlay(context, this.textRenderer, mouseX, mouseY);
@@ -777,9 +751,6 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         boolean overWorkspace = mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT;
-        if (overWorkspace && InputCompatibilityBridge.hasControlDown()) {
-            return PathmindCursor.CUT_TEXTURE;
-        }
         if (sidebar.isHoveringNode()) {
             NodeType hoveredType = sidebar.getHoveredNodeType();
             if (!sidebar.isHoveringCustomNode() && (shouldBlockBaritoneNode(hoveredType) || shouldBlockUiUtilsNode(hoveredType))) {
@@ -835,7 +806,8 @@ public class PathmindVisualEditorScreen extends Screen {
     }
     
     private boolean shouldShowExecutionControls() {
-        return true;
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client != null && client.player != null;
     }
 
     private boolean handleNodeDoubleClickExecution(Node clickedNode) {
@@ -1144,9 +1116,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderDraggedWorkspaceLayer(DrawContext context, int mouseX, int mouseY, float delta) {
-        if (nodeGraph.isAnyNodeBeingDragged()) {
-            renderNodeGraph(context, mouseX, mouseY, delta, true);
-        }
+        renderNodeGraph(context, mouseX, mouseY, delta, true);
         nodeGraph.renderSelectionBox(context);
     }
     
@@ -1275,21 +1245,12 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (presetContextMenuOpen) {
-            if (button == 0 && handlePresetContextMenuClick((int) mouseX, (int) mouseY)) {
+        if (button == 0 && presetDropdownOpen) {
+            if (isPresetBrowserButtonClicked((int) mouseX, (int) mouseY)) {
+                presetDropdownOpen = false;
                 return true;
             }
-            presetContextMenuOpen = false;
-            return true;
-        }
-
-        if (button == 1 && isPointInPresetTabBarContextZone((int) mouseX, (int) mouseY)) {
-            openPresetContextMenu((int) mouseX, (int) mouseY);
-            return true;
-        }
-
-        if (button == 0 && presetDropdownOpen) {
-            if (handlePresetDropdownMouseDown(mouseX, mouseY)) {
+            if (handlePresetDropdownSelection(mouseX, mouseY)) {
                 return true;
             }
             presetDropdownOpen = false;
@@ -1303,12 +1264,6 @@ public class PathmindVisualEditorScreen extends Screen {
         } else if (button == 0) {
             validationPanelOpen = false;
             clearPresetInputFieldFocus();
-        }
-
-        if (!isPopupObscuringWorkspace() && button == 0
-            && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT
-            && handleStartNodeClick((int) mouseX, (int) mouseY)) {
-            return true;
         }
 
         if (!isPopupObscuringWorkspace() && button == 0 && shouldShowExecutionControls()) {
@@ -1361,8 +1316,12 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 0) {
-            if (isTitleClicked((int) mouseX, (int) mouseY)) {
+            if (isPresetBrowserButtonClicked((int) mouseX, (int) mouseY)) {
                 presetDropdownOpen = !presetDropdownOpen;
+                return true;
+            }
+            if (isTitleClicked((int) mouseX, (int) mouseY)) {
+                openInfoPopup();
                 return true;
             }
         }
@@ -1391,10 +1350,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (nodeGraph.isNodeContextMenuOpen()) {
             return nodeGraph.handleNodeContextMenuClick((int) mouseX, (int) mouseY);
-        }
-
-        if (button == 0 && nodeGraph.handleStartModeDropdownClick((int) mouseX, (int) mouseY)) {
-            return true;
         }
 
         // Handle parameter overlay clicks first
@@ -1498,7 +1453,16 @@ public class PathmindVisualEditorScreen extends Screen {
             }
 
             if (button == 0 && nodeGraph.handleStartButtonClick((int) mouseX, (int) mouseY)) {
-                handleStartNodeLaunchAfterClick();
+                presetDropdownOpen = false;
+                if (nodeGraph.didLastStartButtonTriggerExecution()) {
+                    dismissParameterOverlay();
+                    isDraggingFromSidebar = false;
+                    draggingNodeType = null;
+                    draggingSidebarNode = null;
+                    if (this.client != null) {
+                        this.client.setScreen(null);
+                    }
+                }
                 return true;
             }
             
@@ -1849,14 +1813,6 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
         }
-        if (button == 0 && pendingPresetDropdownDragName != null) {
-            updatePendingPresetDropdownDrag((int) mouseX, (int) mouseY);
-            return true;
-        }
-        if (button == 0 && draggingPresetDropdownName != null) {
-            updatePresetDropdownDrag((int) mouseX, (int) mouseY);
-            return true;
-        }
         if (draggingPresetTabName != null) {
             updatePresetTabDrag((int) mouseX);
             return true;
@@ -1966,21 +1922,6 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (button == 0 && draggingPresetDropdownName != null) {
-            finishPresetDropdownDrag((int) mouseX, (int) mouseY);
-            return true;
-        }
-
-        if (button == 0 && pendingPresetDropdownDragName != null) {
-            String presetName = pendingPresetDropdownDragName;
-            clearPresetDropdownDragState();
-            presetDropdownOpen = false;
-            if (!presetName.equals(activePresetName)) {
-                switchPreset(presetName);
-            }
-            return true;
-        }
-
         if (isInlinePresetRenameActive()) {
             if (inlinePresetRenameField != null) {
                 inlinePresetRenameField.mouseReleased(click);
@@ -1991,10 +1932,6 @@ public class PathmindVisualEditorScreen extends Screen {
         if (button == 0 && pendingPresetTabInteractionName != null) {
             String presetName = pendingPresetTabInteractionName;
             clearPendingPresetTabInteraction();
-            if (isPresetGroupTab(presetName)) {
-                togglePresetGroupExpanded(getPresetGroupKeyFromTab(presetName));
-                return true;
-            }
             if (!presetName.equals(activePresetName)) {
                 switchPreset(presetName);
             }
@@ -2614,14 +2551,14 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!isPopupObscuringWorkspace() && draggingPresetTabName != null) {
             updatePresetTabDrag(mouseX);
         }
-        int x = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - x);
+        List<String> tabs = getRenderedPresetTabs();
         if (tabs.isEmpty()) {
             return;
         }
 
+        int x = getPresetTabStartX();
+        int y = TAB_BAR_TOP;
+        int rightLimit = getPresetTabRightLimit();
         int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
         int[] tabXs = computePresetTabXs(tabWidths, x);
         int dragIndex = draggingPresetTabName == null ? -1 : tabs.indexOf(draggingPresetTabName);
@@ -2672,13 +2609,13 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean handleWorkspaceTabClick(int mouseX, int mouseY) {
-        int x = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - x);
+        List<String> tabs = getRenderedPresetTabs();
         if (tabs.isEmpty()) {
             return false;
         }
+        int x = getPresetTabStartX();
+        int y = TAB_BAR_TOP;
+        int rightLimit = getPresetTabRightLimit();
         int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
         int[] tabXs = computePresetTabXs(tabWidths, x);
         for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
@@ -2692,13 +2629,6 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             x = tabXs[i];
             if (isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT)) {
-                if (isPresetGroupTab(label)) {
-                    pendingPresetTabInteractionName = label;
-                    pendingPresetTabPressMouseX = mouseX;
-                    pendingPresetTabPressMouseY = mouseY;
-                    pendingPresetTabPressTabLeft = x;
-                    return true;
-                }
                 if (!isPresetDeleteDisabled(label)) {
                     int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
                     int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
@@ -2749,7 +2679,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getPresetTabRightLimit() {
-        return Math.max(getPresetTabStartX(), getTitleTextX() - PRESET_TAB_TITLE_GAP);
+        return Math.max(getPresetTabStartX(), getPresetBrowserButtonX() - 1);
     }
 
     private void clearPendingPresetTabInteraction() {
@@ -2797,7 +2727,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (draggingPresetTabName == null) {
             return;
         }
-        List<String> tabs = getRenderedPresetTabsForWidth(getPresetTabRightLimit() - getPresetTabStartX());
+        List<String> tabs = getRenderedPresetTabs();
         int currentIndex = tabs.indexOf(draggingPresetTabName);
         if (currentIndex < 0) {
             endPresetTabDrag();
@@ -2813,10 +2743,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int draggedWidth = widths[currentIndex];
         draggingPresetTabCurrentX = mouseX - draggingPresetTabPointerOffsetX;
         int dragCenter = draggingPresetTabCurrentX + draggedWidth / 2;
-        if (isPresetGroupTab(draggingPresetTabName)) {
-            updatePresetGroupDragOrder(tabs, widths, xs, currentIndex, dragCenter);
-            return;
-        }
         int targetIndex = 0;
         for (int i = 0; i < tabs.size() && i < widths.length; i++) {
             if (i == currentIndex) {
@@ -2839,43 +2765,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
-    private void updatePresetGroupDragOrder(List<String> tabs, int[] widths, int[] xs, int currentIndex, int dragCenter) {
-        if (currentSettings == null || currentSettings.presetGroupOrder == null) {
-            return;
-        }
-        String groupKey = getPresetGroupKeyFromTab(draggingPresetTabName);
-        int orderIndex = currentSettings.presetGroupOrder.indexOf(groupKey);
-        if (orderIndex < 0) {
-            return;
-        }
-        int targetIndex = 0;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (i == currentIndex || !isPresetGroupTab(tabs.get(i))) {
-                continue;
-            }
-            int center = xs[i] + widths[i] / 2;
-            if (dragCenter > center) {
-                targetIndex++;
-            }
-        }
-        int clampedTarget = MathHelper.clamp(targetIndex, 0, currentSettings.presetGroupOrder.size() - 1);
-        if (clampedTarget != orderIndex) {
-            currentSettings.presetGroupOrder.remove(orderIndex);
-            currentSettings.presetGroupOrder.add(clampedTarget, groupKey);
-            SettingsManager.save(currentSettings);
-        }
-    }
-
     private void endPresetTabDrag() {
-        if (draggingPresetTabName != null && draggingPresetTabCurrentX > 0) {
-            int dropX = draggingPresetTabCurrentX + Math.max(1, PRESET_GROUP_TAB_WIDTH / 2);
-            String groupKey = getPresetGroupAt(dropX, TAB_BAR_TOP + TAB_HEIGHT / 2);
-            if (!groupKey.isEmpty() && !isPresetGroupTab(draggingPresetTabName)) {
-                setPresetGroupColor(draggingPresetTabName, groupKey);
-            } else if (!isPresetGroupTab(draggingPresetTabName) && !getPresetGroupKey(draggingPresetTabName).isEmpty() && !isPointInPresetGroupSpan(dropX, TAB_BAR_TOP + TAB_HEIGHT / 2, getPresetGroupKey(draggingPresetTabName))) {
-                setPresetGroupColor(draggingPresetTabName, null);
-            }
-        }
         if (draggingPresetTabName != null && draggingPresetTabCurrentX > 0) {
             presetTabXAnimations
                 .computeIfAbsent(draggingPresetTabName, key -> new AnimatedValue(draggingPresetTabCurrentX))
@@ -2885,497 +2775,6 @@ public class PathmindVisualEditorScreen extends Screen {
         draggingPresetTabPointerOffsetX = 0;
         draggingPresetTabCurrentX = 0;
         clearPendingPresetTabInteraction();
-    }
-
-    private boolean isPointInPresetTabBarContextZone(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetOverflowTabRight();
-        return isPointInRect(mouseX, mouseY, startX, TAB_BAR_TOP - 4, Math.max(0, rightLimit - startX), TAB_HEIGHT + 8);
-    }
-
-    private void openPresetContextMenu(int mouseX, int mouseY) {
-        String target = getPresetTabAt(mouseX, mouseY);
-        String groupTarget = getPresetGroupAt(mouseX, mouseY);
-        presetContextMenuPresetName = target;
-        presetContextMenuGroupKey = groupTarget;
-        presetContextMenuX = MathHelper.clamp(mouseX, 4, Math.max(4, this.width - PRESET_CONTEXT_MENU_WIDTH - 4));
-        presetContextMenuY = MathHelper.clamp(mouseY, 4, Math.max(4, this.height - getPresetContextMenuHeight() - 4));
-        presetContextMenuOpen = true;
-        presetDropdownOpen = false;
-        nodeGraph.closeContextMenu();
-        nodeGraph.closeNodeContextMenu();
-    }
-
-    private String getPresetTabAt(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (isPointInRect(mouseX, mouseY, xs[i], y, widths[i], TAB_HEIGHT)) {
-                String tabName = tabs.get(i);
-                return isPresetGroupTab(tabName) ? null : tabName;
-            }
-        }
-        return null;
-    }
-
-    private String getPresetGroupAt(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (isPointInRect(mouseX, mouseY, xs[i], y, widths[i], TAB_HEIGHT) && isPresetGroupTab(tabs.get(i))) {
-                return getPresetGroupKeyFromTab(tabs.get(i));
-            }
-        }
-        return "";
-    }
-
-    private boolean isPointInPresetGroupSpan(int mouseX, int mouseY, String groupKey) {
-        if (!isValidPresetGroupColorKey(groupKey)) {
-            return false;
-        }
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        int left = -1;
-        int right = -1;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            String tab = tabs.get(i);
-            boolean inGroup = isPresetGroupTab(tab)
-                ? groupKey.equals(getPresetGroupKeyFromTab(tab))
-                : groupKey.equals(getPresetGroupKey(tab));
-            if (inGroup) {
-                if (left < 0) {
-                    left = xs[i];
-                }
-                right = xs[i] + widths[i];
-            } else if (left >= 0) {
-                break;
-            }
-        }
-        return left >= 0 && isPointInRect(mouseX, mouseY, left, y - 4, Math.max(0, right - left), TAB_HEIGHT + 8);
-    }
-
-    private int getPresetContextMenuHeight() {
-        if (presetContextMenuGroupKey != null && !presetContextMenuGroupKey.isEmpty()) {
-            return PRESET_CONTEXT_MENU_ITEM_HEIGHT * (PRESET_GROUP_COLOR_KEYS.length + 3)
-                + PRESET_CONTEXT_MENU_SEPARATOR_HEIGHT;
-        }
-        if (presetContextMenuPresetName == null) {
-            return PRESET_CONTEXT_MENU_ITEM_HEIGHT * 2;
-        }
-        return PRESET_CONTEXT_MENU_ITEM_HEIGHT * (getPresetGroupKey(presetContextMenuPresetName).isEmpty() ? 4 : 5);
-    }
-
-    private void renderPresetContextMenu(DrawContext context, int mouseX, int mouseY) {
-        if (!presetContextMenuOpen) {
-            return;
-        }
-        int height = getPresetContextMenuHeight();
-        context.fill(presetContextMenuX, presetContextMenuY, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH, presetContextMenuY + height, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorderInLayer(context, presetContextMenuX, presetContextMenuY, PRESET_CONTEXT_MENU_WIDTH, height, UITheme.BORDER_DEFAULT);
-        int y = presetContextMenuY;
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, "Create preset", 0, false);
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, "Create group", 0, getNextPresetGroupColorKey().isEmpty());
-        if (presetContextMenuGroupKey != null && !presetContextMenuGroupKey.isEmpty()) {
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, "Delete group", 0, false);
-            y = drawPresetContextSeparator(context, y);
-            for (int i = 0; i < PRESET_GROUP_COLOR_KEYS.length; i++) {
-                y = drawPresetContextMenuItem(context, mouseX, mouseY, y, getPresetGroupColorLabel(PRESET_GROUP_COLOR_KEYS[i]), PRESET_GROUP_COLORS[i], PRESET_GROUP_COLOR_KEYS[i].equals(presetContextMenuGroupKey));
-            }
-            return;
-        }
-        if (presetContextMenuPresetName == null) {
-            return;
-        }
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, "Rename preset", 0, isPresetRenameDisabled(presetContextMenuPresetName));
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, "Delete preset", 0, isPresetDeleteDisabled(presetContextMenuPresetName));
-        if (!getPresetGroupKey(presetContextMenuPresetName).isEmpty()) {
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, "Ungroup", getPresetGroupColor(presetContextMenuPresetName), false);
-        }
-    }
-
-    private int drawPresetContextSeparator(DrawContext context, int y) {
-        int lineY = y + PRESET_CONTEXT_MENU_SEPARATOR_HEIGHT / 2;
-        context.drawHorizontalLine(presetContextMenuX + 5, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH - 6, lineY, UITheme.BORDER_SUBTLE);
-        return y + PRESET_CONTEXT_MENU_SEPARATOR_HEIGHT;
-    }
-
-    private int drawPresetContextMenuItem(DrawContext context, int mouseX, int mouseY, int y, String label, int swatchColor, boolean disabled) {
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, presetContextMenuX, y, PRESET_CONTEXT_MENU_WIDTH, PRESET_CONTEXT_MENU_ITEM_HEIGHT);
-        if (hovered) {
-            context.fill(presetContextMenuX + 1, y + 1, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH - 1, y + PRESET_CONTEXT_MENU_ITEM_HEIGHT, UITheme.BUTTON_DEFAULT_HOVER);
-        }
-        int textColor = disabled ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int textX = presetContextMenuX + 7;
-        if (swatchColor != 0) {
-            context.fill(textX, y + 6, textX + 7, y + 13, swatchColor);
-            textX += 12;
-        }
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, y + 5, textColor);
-        return y + PRESET_CONTEXT_MENU_ITEM_HEIGHT;
-    }
-
-    private boolean handlePresetContextMenuClick(int mouseX, int mouseY) {
-        if (!isPointInRect(mouseX, mouseY, presetContextMenuX, presetContextMenuY, PRESET_CONTEXT_MENU_WIDTH, getPresetContextMenuHeight())) {
-            presetContextMenuOpen = false;
-            return true;
-        }
-        int relativeY = mouseY - presetContextMenuY;
-        if (relativeY < PRESET_CONTEXT_MENU_ITEM_HEIGHT * 2) {
-            int action = relativeY / PRESET_CONTEXT_MENU_ITEM_HEIGHT;
-            presetContextMenuOpen = false;
-            if (action == 0) {
-                openCreatePresetPopup();
-            } else if (action == 1) {
-                createPresetGroup();
-            }
-            return true;
-        }
-        if (presetContextMenuGroupKey != null && !presetContextMenuGroupKey.isEmpty()) {
-            if (relativeY < PRESET_CONTEXT_MENU_ITEM_HEIGHT * 3) {
-                int action = relativeY / PRESET_CONTEXT_MENU_ITEM_HEIGHT;
-                presetContextMenuOpen = false;
-                if (action == 2) {
-                    deletePresetGroup(presetContextMenuGroupKey);
-                }
-                return true;
-            }
-            relativeY -= PRESET_CONTEXT_MENU_ITEM_HEIGHT * 3 + PRESET_CONTEXT_MENU_SEPARATOR_HEIGHT;
-            if (relativeY >= 0 && relativeY < PRESET_CONTEXT_MENU_ITEM_HEIGHT * PRESET_GROUP_COLOR_KEYS.length) {
-                int action = relativeY / PRESET_CONTEXT_MENU_ITEM_HEIGHT;
-                presetContextMenuOpen = false;
-                recolorPresetGroup(presetContextMenuGroupKey, PRESET_GROUP_COLOR_KEYS[action]);
-            }
-            return true;
-        }
-        if (presetContextMenuPresetName == null) {
-            return true;
-        }
-        relativeY -= PRESET_CONTEXT_MENU_ITEM_HEIGHT * 2;
-        int presetActionCount = getPresetGroupKey(presetContextMenuPresetName).isEmpty() ? 2 : 3;
-        if (relativeY < PRESET_CONTEXT_MENU_ITEM_HEIGHT * presetActionCount) {
-            int action = relativeY / PRESET_CONTEXT_MENU_ITEM_HEIGHT;
-            presetContextMenuOpen = false;
-            if (action == 0 && !isPresetRenameDisabled(presetContextMenuPresetName)) {
-                openRenamePresetPopup(presetContextMenuPresetName);
-            } else if (action == 1 && !isPresetDeleteDisabled(presetContextMenuPresetName)) {
-                openPresetDeletePopup(presetContextMenuPresetName);
-            } else if (action == 2) {
-                setPresetGroupColor(presetContextMenuPresetName, null);
-            }
-            return true;
-        }
-        return true;
-    }
-
-    private String getPresetGroupColorLabel(String key) {
-        if ("sky".equals(key)) return "Sky";
-        if ("mint".equals(key)) return "Mint";
-        if ("amber".equals(key)) return "Amber";
-        if ("rose".equals(key)) return "Rose";
-        if ("violet".equals(key)) return "Violet";
-        return key;
-    }
-
-    private String getNextPresetGroupColorKey() {
-        if (currentSettings == null) {
-            return "";
-        }
-        if (currentSettings.presetGroupOrder == null) {
-            currentSettings.presetGroupOrder = new ArrayList<>();
-        }
-        for (String key : PRESET_GROUP_COLOR_KEYS) {
-            if (!currentSettings.presetGroupOrder.contains(key)) {
-                return key;
-            }
-        }
-        return "";
-    }
-
-    private void createPresetGroup() {
-        String key = getNextPresetGroupColorKey();
-        if (key.isEmpty() || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupOrder == null) {
-            currentSettings.presetGroupOrder = new ArrayList<>();
-        }
-        if (currentSettings.presetGroupsExpanded == null) {
-            currentSettings.presetGroupsExpanded = new LinkedHashMap<>();
-        }
-        currentSettings.presetGroupOrder.add(key);
-        currentSettings.presetGroupsExpanded.put(key, true);
-        SettingsManager.save(currentSettings);
-    }
-
-    private void deletePresetGroup(String groupKey) {
-        if (!isValidPresetGroupColorKey(groupKey) || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupOrder != null) {
-            currentSettings.presetGroupOrder.remove(groupKey);
-        }
-        if (currentSettings.presetGroupsExpanded != null) {
-            currentSettings.presetGroupsExpanded.remove(groupKey);
-        }
-        if (currentSettings.presetGroupColors != null) {
-            currentSettings.presetGroupColors.entrySet().removeIf(entry -> groupKey.equals(entry.getValue()));
-        }
-        SettingsManager.save(currentSettings);
-    }
-
-    private void recolorPresetGroup(String oldKey, String newKey) {
-        if (!isValidPresetGroupColorKey(oldKey) || !isValidPresetGroupColorKey(newKey) || currentSettings == null || oldKey.equals(newKey)) {
-            return;
-        }
-        if (currentSettings.presetGroupOrder == null) {
-            currentSettings.presetGroupOrder = new ArrayList<>();
-        }
-        if (currentSettings.presetGroupOrder.contains(newKey)) {
-            return;
-        }
-        int index = currentSettings.presetGroupOrder.indexOf(oldKey);
-        if (index >= 0) {
-            currentSettings.presetGroupOrder.set(index, newKey);
-        }
-        if (currentSettings.presetGroupsExpanded != null) {
-            Boolean expanded = currentSettings.presetGroupsExpanded.remove(oldKey);
-            currentSettings.presetGroupsExpanded.put(newKey, expanded == null || expanded);
-        }
-        if (currentSettings.presetGroupColors != null) {
-            for (Map.Entry<String, String> entry : currentSettings.presetGroupColors.entrySet()) {
-                if (oldKey.equals(entry.getValue())) {
-                    entry.setValue(newKey);
-                }
-            }
-        }
-        SettingsManager.save(currentSettings);
-    }
-
-    private void setPresetGroupColor(String presetName, String colorKey) {
-        if (presetName == null || presetName.isEmpty() || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupColors == null) {
-            currentSettings.presetGroupColors = new LinkedHashMap<>();
-        }
-        if (currentSettings.presetGroupsExpanded == null) {
-            currentSettings.presetGroupsExpanded = new LinkedHashMap<>();
-        }
-        if (colorKey == null || colorKey.isEmpty()) {
-            currentSettings.presetGroupColors.remove(presetName);
-        } else {
-            if (currentSettings.presetGroupOrder == null) {
-                currentSettings.presetGroupOrder = new ArrayList<>();
-            }
-            if (!currentSettings.presetGroupOrder.contains(colorKey)) {
-                currentSettings.presetGroupOrder.add(colorKey);
-            }
-            currentSettings.presetGroupColors.put(presetName, colorKey);
-            currentSettings.presetGroupsExpanded.putIfAbsent(colorKey, true);
-        }
-        SettingsManager.save(currentSettings);
-    }
-
-    private boolean isPresetGroupTab(String tabName) {
-        return tabName != null && tabName.startsWith(PRESET_GROUP_TAB_PREFIX);
-    }
-
-    private String getPresetGroupTabName(String colorKey) {
-        return PRESET_GROUP_TAB_PREFIX + colorKey;
-    }
-
-    private String getPresetGroupKeyFromTab(String tabName) {
-        if (!isPresetGroupTab(tabName)) {
-            return "";
-        }
-        return tabName.substring(PRESET_GROUP_TAB_PREFIX.length());
-    }
-
-    private String getPresetGroupKey(String presetName) {
-        if (presetName == null || currentSettings == null || currentSettings.presetGroupColors == null) {
-            return "";
-        }
-        String key = currentSettings.presetGroupColors.get(presetName);
-        return isValidPresetGroupColorKey(key) ? key : "";
-    }
-
-    private boolean isValidPresetGroupColorKey(String key) {
-        if (key == null || key.isEmpty()) {
-            return false;
-        }
-        for (String candidate : PRESET_GROUP_COLOR_KEYS) {
-            if (candidate.equals(key)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isPresetGroupExpanded(String colorKey) {
-        if (!isValidPresetGroupColorKey(colorKey)) {
-            return true;
-        }
-        if (currentSettings == null || currentSettings.presetGroupsExpanded == null) {
-            return true;
-        }
-        Boolean expanded = currentSettings.presetGroupsExpanded.get(colorKey);
-        return expanded == null || expanded;
-    }
-
-    private void togglePresetGroupExpanded(String colorKey) {
-        if (!isValidPresetGroupColorKey(colorKey) || currentSettings == null) {
-            return;
-        }
-        setPresetGroupExpanded(colorKey, !isPresetGroupExpanded(colorKey));
-    }
-
-    private void setPresetGroupExpanded(String colorKey, boolean expanded) {
-        if (!isValidPresetGroupColorKey(colorKey) || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupsExpanded == null) {
-            currentSettings.presetGroupsExpanded = new LinkedHashMap<>();
-        }
-        currentSettings.presetGroupsExpanded.put(colorKey, expanded);
-        if (expanded) {
-            for (String presetName : availablePresets) {
-                if (colorKey.equals(getPresetGroupKey(presetName))) {
-                    AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
-                    appear.setValue(0f);
-                    appear.animateTo(1f, 180, AnimationHelper::easeOutCubic);
-                }
-            }
-        }
-        SettingsManager.save(currentSettings);
-    }
-
-    private int getPresetGroupColorByKey(String key) {
-        for (int i = 0; i < PRESET_GROUP_COLOR_KEYS.length; i++) {
-            if (PRESET_GROUP_COLOR_KEYS[i].equals(key)) {
-                return PRESET_GROUP_COLORS[i];
-            }
-        }
-        return 0;
-    }
-
-    private int getPresetGroupColor(String presetName) {
-        if (isPresetGroupTab(presetName)) {
-            return getPresetGroupColorByKey(getPresetGroupKeyFromTab(presetName));
-        }
-        return getPresetGroupColorByKey(getPresetGroupKey(presetName));
-    }
-
-    private void clearPresetDropdownDragState() {
-        pendingPresetDropdownDragName = null;
-        pendingPresetDropdownPressMouseX = 0;
-        pendingPresetDropdownPressMouseY = 0;
-        draggingPresetDropdownName = null;
-        draggingPresetDropdownCurrentX = 0;
-        draggingPresetDropdownCurrentY = 0;
-    }
-
-    private void updatePendingPresetDropdownDrag(int mouseX, int mouseY) {
-        if (pendingPresetDropdownDragName == null || draggingPresetDropdownName != null) {
-            return;
-        }
-        int dx = Math.abs(mouseX - pendingPresetDropdownPressMouseX);
-        int dy = Math.abs(mouseY - pendingPresetDropdownPressMouseY);
-        if (dx < PRESET_TAB_DRAG_THRESHOLD && dy < PRESET_TAB_DRAG_THRESHOLD) {
-            return;
-        }
-        draggingPresetDropdownName = pendingPresetDropdownDragName;
-        draggingPresetDropdownCurrentX = mouseX;
-        draggingPresetDropdownCurrentY = mouseY;
-        pendingPresetDropdownDragName = null;
-    }
-
-    private void updatePresetDropdownDrag(int mouseX, int mouseY) {
-        draggingPresetDropdownCurrentX = mouseX;
-        draggingPresetDropdownCurrentY = mouseY;
-    }
-
-    private void finishPresetDropdownDrag(int mouseX, int mouseY) {
-        String presetName = draggingPresetDropdownName;
-        if (presetName == null || presetName.isEmpty()) {
-            clearPresetDropdownDragState();
-            return;
-        }
-        if (isPointInPresetTabBarDropZone(mouseX, mouseY)) {
-            String groupKey = getPresetGroupAt(mouseX, mouseY);
-            if (!groupKey.isEmpty()) {
-                setPresetGroupColor(presetName, groupKey);
-            } else {
-                insertPresetTabAtDropPosition(presetName, mouseX);
-            }
-            presetDropdownOpen = false;
-        }
-        clearPresetDropdownDragState();
-    }
-
-    private boolean isPointInPresetTabBarDropZone(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetTabRightLimit();
-        return isPointInRect(mouseX, mouseY, startX, TAB_BAR_TOP - 4, Math.max(0, rightLimit - startX), TAB_HEIGHT + 8);
-    }
-
-    private void insertPresetTabAtDropPosition(String presetName, int mouseX) {
-        if (presetName == null || presetName.isEmpty() || !availablePresets.contains(presetName)) {
-            return;
-        }
-        if (isPresetDeleteDisabled(presetName)) {
-            return;
-        }
-        int targetIndex = getPresetTabDropIndex(mouseX);
-        presetTabOrder.remove(presetName);
-        int clampedTarget = MathHelper.clamp(targetIndex, 1, presetTabOrder.size());
-        presetTabOrder.add(clampedTarget, presetName);
-        normalizePresetTabOrder();
-        presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f)).setValue(1f);
-    }
-
-    private int getPresetTabDropIndex(int mouseX) {
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        int targetIndex = 0;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            String tabName = tabs.get(i);
-            if (tabName != null && (tabName.equals(draggingPresetDropdownName) || isPresetGroupTab(tabName))) {
-                continue;
-            }
-            if (mouseX > xs[i] + widths[i] / 2) {
-                targetIndex++;
-            }
-        }
-        return targetIndex;
-    }
-
-    private void renderDraggedPresetDropdownTab(DrawContext context, int mouseX, int mouseY) {
-        if (draggingPresetDropdownName == null) {
-            return;
-        }
-        int width = MathHelper.clamp(
-            this.textRenderer.getWidth(draggingPresetDropdownName) + PRESET_TAB_TEXT_PADDING * 2,
-            TAB_MIN_WIDTH,
-            TAB_MAX_WIDTH
-        );
-        int x = draggingPresetDropdownCurrentX - width / 2;
-        int y = draggingPresetDropdownCurrentY - TAB_HEIGHT / 2;
-        drawPresetTab(context, mouseX, mouseY, draggingPresetDropdownName, x, y, width, true);
     }
 
     private int[] computePresetTabXs(int[] widths, int startX) {
@@ -3391,19 +2790,13 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPresetTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
-        if (isPresetGroupTab(label)) {
-            drawPresetGroupTab(context, mouseX, mouseY, label, x, y, tabWidth, dragging);
-            return;
-        }
-        String displayLabel = getPresetTabDisplayLabel(label);
         boolean active = label.equals(activePresetName);
         boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
-        int groupColor = getPresetGroupColor(label);
         int fill = active ? UITheme.BUTTON_ACTIVE_BG : UITheme.BUTTON_DEFAULT_BG;
-        int border = groupColor != 0 ? groupColor : (active ? getAccentColor() : UITheme.BORDER_DEFAULT);
+        int border = active ? getAccentColor() : UITheme.BORDER_DEFAULT;
         if (!active && hovered) {
             fill = UITheme.BUTTON_DEFAULT_HOVER;
-            border = groupColor != 0 ? groupColor : UITheme.BORDER_HIGHLIGHT;
+            border = UITheme.BORDER_HIGHLIGHT;
         }
         if (dragging) {
             fill = UITheme.TOOLBAR_BG_ACTIVE;
@@ -3418,15 +2811,12 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         context.fill(x, y, x + tabWidth, y + TAB_HEIGHT, fillColor);
-        if (groupColor != 0) {
-            context.fill(x + 1, y + 1, x + tabWidth - 1, y + 3, applyAlpha(groupColor, appear));
-        }
         DrawContextBridge.drawBorderInLayer(context, x, y, tabWidth, TAB_HEIGHT, borderColor);
         boolean deletable = !isPresetDeleteDisabled(label);
         int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
         int textMaxWidth = Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
         if (!label.equals(inlinePresetRenameName)) {
-            String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, displayLabel, textMaxWidth);
+            String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
             context.drawText(this.textRenderer, Text.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1, textColor, false);
         }
 
@@ -3445,58 +2835,15 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
-    private void drawPresetGroupTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
-        String groupKey = getPresetGroupKeyFromTab(label);
-        int groupColor = getPresetGroupColorByKey(groupKey);
-        boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
-        float appear = dragging ? 1f : getPresetTabAppearProgress(label);
-        boolean expanded = isPresetGroupExpanded(groupKey);
-        int squareSize = 8;
-        int squareX = x + (tabWidth - squareSize) / 2;
-        int squareY = y + (TAB_HEIGHT - squareSize) / 2;
-        context.fill(squareX + 1, squareY + 1, squareX + squareSize + 1, squareY + squareSize + 1, applyAlpha(UITheme.BACKGROUND_SECONDARY, appear * 0.75f));
-        if (expanded) {
-            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, applyAlpha(UITheme.BACKGROUND_SECONDARY, appear));
-            context.fill(squareX + 3, squareY + 3, squareX + squareSize - 3, squareY + squareSize - 3, applyAlpha(groupColor, appear));
-        } else {
-            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, applyAlpha(groupColor, appear));
-        }
-        DrawContextBridge.drawBorderInLayer(context, squareX, squareY, squareSize, squareSize, applyAlpha(groupColor, appear));
-    }
-
-    private String getPresetTabDisplayLabel(String label) {
-        if (isPresetGroupTab(label)) {
-            return "";
-        }
-        return label;
-    }
-
     private List<String> getRenderedPresetTabs() {
         List<String> tabs = new ArrayList<>();
-        HashSet<String> groupedPresets = new HashSet<>();
-        if (currentSettings != null && currentSettings.presetGroupOrder != null) {
-            for (String groupKey : currentSettings.presetGroupOrder) {
-                if (!isValidPresetGroupColorKey(groupKey)) {
-                    continue;
-                }
-                tabs.add(getPresetGroupTabName(groupKey));
-                if (isPresetGroupExpanded(groupKey)) {
-                    for (String name : presetTabOrder) {
-                        if (availablePresets.contains(name) && groupKey.equals(getPresetGroupKey(name))) {
-                            tabs.add(name);
-                            groupedPresets.add(name);
-                        }
-                    }
-                }
-            }
-        }
         for (String name : presetTabOrder) {
-            if (availablePresets.contains(name) && !groupedPresets.contains(name) && getPresetGroupKey(name).isEmpty()) {
+            if (availablePresets.contains(name)) {
                 tabs.add(name);
             }
         }
         for (String name : availablePresets) {
-            if (!tabs.contains(name) && getPresetGroupKey(name).isEmpty()) {
+            if (!tabs.contains(name)) {
                 tabs.add(name);
             }
         }
@@ -3505,43 +2852,6 @@ public class PathmindVisualEditorScreen extends Screen {
             tabs.add(0, defaultPresetName);
         }
         return tabs;
-    }
-
-    private List<String> getRenderedPresetTabsForWidth(int availableWidth) {
-        List<String> allTabs = getRenderedPresetTabs();
-        if (allTabs.isEmpty() || doPresetTabsFit(allTabs, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-            return allTabs;
-        }
-
-        List<String> visibleTabs = new ArrayList<>();
-        for (String name : allTabs) {
-            List<String> candidate = new ArrayList<>(visibleTabs);
-            candidate.add(name);
-            if (!doPresetTabsFit(candidate, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-                break;
-            }
-            visibleTabs.add(name);
-        }
-
-        if (activePresetName != null && allTabs.contains(activePresetName) && !visibleTabs.contains(activePresetName)) {
-            while (!visibleTabs.isEmpty()) {
-                List<String> candidate = new ArrayList<>(visibleTabs);
-                candidate.add(activePresetName);
-                if (doPresetTabsFit(candidate, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-                    visibleTabs.add(activePresetName);
-                    break;
-                }
-                visibleTabs.remove(visibleTabs.size() - 1);
-            }
-            if (visibleTabs.isEmpty()) {
-                List<String> candidate = new ArrayList<>();
-                candidate.add(activePresetName);
-                if (doPresetTabsFit(candidate, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-                    visibleTabs.add(activePresetName);
-                }
-            }
-        }
-        return visibleTabs;
     }
 
     private boolean isInlinePresetRenameActive() {
@@ -3575,7 +2885,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int[] getPresetTabTitleBounds(String label, int x, int y, int tabWidth) {
         int textMaxWidth = getPresetTabTextMaxWidth(label, tabWidth);
-        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, getPresetTabDisplayLabel(label), textMaxWidth);
+        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, label, textMaxWidth);
         int textX = x + PRESET_TAB_TEXT_PADDING;
         int textY = y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
         int textWidth = Math.max(4, this.textRenderer.getWidth(drawLabel));
@@ -3620,11 +2930,6 @@ public class PathmindVisualEditorScreen extends Screen {
         Optional<String> renamedPreset = PresetManager.renamePreset(currentName, desiredName);
         if (renamedPreset.isEmpty()) {
             return false;
-        }
-        if (currentSettings != null && currentSettings.presetGroupColors != null && currentSettings.presetGroupColors.containsKey(currentName)) {
-            String groupKey = currentSettings.presetGroupColors.remove(currentName);
-            currentSettings.presetGroupColors.put(renamedPreset.get(), groupKey);
-            SettingsManager.save(currentSettings);
         }
 
         refreshAvailablePresets();
@@ -3760,15 +3065,10 @@ public class PathmindVisualEditorScreen extends Screen {
         int preferredTotal = 0;
         for (int i = 0; i < presetCount; i++) {
             String label = tabNames.get(i);
-            int width;
-            if (isPresetGroupTab(label)) {
-                width = PRESET_GROUP_TAB_WIDTH;
-            } else {
-                boolean deletable = !isPresetDeleteDisabled(label);
-                int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
-                width = this.textRenderer.getWidth(label) + PRESET_TAB_TEXT_PADDING * 2 + closeSpace;
-                width = MathHelper.clamp(width, TAB_MIN_WIDTH, TAB_MAX_WIDTH);
-            }
+            boolean deletable = !isPresetDeleteDisabled(label);
+            int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
+            int width = this.textRenderer.getWidth(label) + PRESET_TAB_TEXT_PADDING * 2 + closeSpace;
+            width = MathHelper.clamp(width, TAB_MIN_WIDTH, TAB_MAX_WIDTH);
             preferred[i] = width;
             preferredTotal += width;
         }
@@ -3816,24 +3116,6 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
         return result;
-    }
-
-    private boolean doPresetTabsFit(List<String> tabNames, int availableWidth, int createTabWidth) {
-        if (tabNames == null || tabNames.isEmpty()) {
-            return false;
-        }
-        int total = createTabWidth;
-        for (String label : tabNames) {
-            total += getPresetTabMinimumVisibleWidth(label) + TAB_GAP;
-        }
-        return total <= Math.max(0, availableWidth);
-    }
-
-    private int getPresetTabMinimumVisibleWidth(String label) {
-        if (isPresetGroupTab(label)) {
-            return PRESET_GROUP_TAB_WIDTH;
-        }
-        return PRESET_TAB_HARD_MIN_WIDTH;
     }
 
     private void openTemplateWorkspaceTab(Node templateNode) {
@@ -4266,21 +3548,37 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawTitle(DrawContext context, int mouseX, int mouseY, float underlineProgress) {
-        drawTitleMenuButton(context, mouseX, mouseY, underlineProgress);
+        int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
+        int textX = getTitleTextX();
+        int centerX = textX + textWidth / 2;
+        int textY = getTitleTextY();
+        context.drawCenteredTextWithShadow(this.textRenderer, TITLE_TEXT, centerX, textY, UITheme.TEXT_PRIMARY);
+
+        if (underlineProgress > 0.001f) {
+            int underlineWidth = Math.round(textWidth * underlineProgress);
+            if (underlineWidth > 0) {
+                int underlineStartX = centerX - underlineWidth / 2;
+                int underlineY = textY + this.textRenderer.fontHeight;
+                context.fill(underlineStartX, underlineY, underlineStartX + underlineWidth, underlineY + 1, UITheme.TEXT_PRIMARY);
+            }
+        }
+
+        renderPresetBrowserButton(context, mouseX, mouseY);
     }
 
-    private void drawTitleMenuButton(DrawContext context, int mouseX, int mouseY, float hoverProgress) {
-        int x = getTitleTextX();
-        int y = getTitleTextY();
-        boolean hovered = isTitleHovered(mouseX, mouseY);
-        int iconColor = (hovered || presetDropdownOpen) ? getAccentColor() : UITheme.ICON_MUTED_BRIGHT;
-        int centerX = x + PRESET_MENU_BUTTON_SIZE / 2;
-        int centerY = y + PRESET_MENU_BUTTON_SIZE / 2;
-        int lineHalfWidth = 4;
-        int alphaColor = applyAlpha(iconColor, MathHelper.clamp(0.75f + hoverProgress * 0.25f, 0f, 1f));
-        for (int i = -1; i <= 1; i++) {
-            int lineY = centerY + i * 3;
-            context.drawHorizontalLine(centerX - lineHalfWidth, centerX + lineHalfWidth, lineY, alphaColor);
+    private void renderPresetBrowserButton(DrawContext context, int mouseX, int mouseY) {
+        int buttonX = getPresetBrowserButtonX();
+        int buttonY = getPresetBrowserButtonY();
+        boolean hovered = isPresetBrowserButtonHovered(mouseX, mouseY);
+        boolean active = presetDropdownOpen;
+        int iconColor = (hovered || active) ? getAccentColor() : UITheme.TEXT_PRIMARY;
+        int lineLeft = buttonX + 4;
+        int lineRight = buttonX + PRESET_BROWSER_BUTTON_SIZE - 6;
+        int dotLeft = buttonX + 3;
+        for (int i = 0; i < 3; i++) {
+            int y = buttonY + 4 + i * 4;
+            context.fill(dotLeft, y, dotLeft + 1, y + 1, iconColor);
+            context.fill(lineLeft, y, lineRight, y + 1, iconColor);
         }
     }
 
@@ -5029,7 +4327,10 @@ public class PathmindVisualEditorScreen extends Screen {
             presetDropdownOpen = false;
         }
 
-        float animProgress = DropdownLayoutHelper.updateOpenAnimation(presetDropdownAnimation, presetDropdownOpen);
+        // Update dropdown animation
+        presetDropdownAnimation.animateTo(presetDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
+        presetDropdownAnimation.tick();
+        float animProgress = AnimationHelper.easeOutQuad(presetDropdownAnimation.getValue());
 
         // Don't render options if animation is fully closed
         if (animProgress <= 0.001f) {
@@ -5041,22 +4342,18 @@ public class PathmindVisualEditorScreen extends Screen {
         DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
         presetDropdownScrollOffset = MathHelper.clamp(presetDropdownScrollOffset, 0, layout.maxScrollOffset);
         int fullOptionsHeight = layout.height;
-        int animatedHeight = DropdownLayoutHelper.getRevealHeight(fullOptionsHeight, animProgress);
+        int animatedHeight = (int) (fullOptionsHeight * animProgress);
 
+        // Use scissor to clip the dropdown content during animation
         context.enableScissor(dropdownX, optionStartY, dropdownX + PRESET_DROPDOWN_WIDTH, optionStartY + animatedHeight);
 
         UIStyleHelper.drawScrollContainer(context, dropdownX, optionStartY, PRESET_DROPDOWN_WIDTH, fullOptionsHeight,
             UIStyleHelper.getScrollContainerPalette(getAccentColor(), animProgress, true, false));
 
-        float smoothScrollOffset = DropdownLayoutHelper.updateSmoothScroll(presetDropdownSmoothScroll, presetDropdownScrollOffset, layout.maxScrollOffset);
-        DropdownLayoutHelper.ScrollWindow scrollWindow = DropdownLayoutHelper.getSmoothScrollWindow(
-            smoothScrollOffset,
-            layout.visibleCount,
-            optionCount,
-            PRESET_OPTION_HEIGHT
-        );
-        for (int index = scrollWindow.firstIndex; index < scrollWindow.endIndex; index++) {
-            int optionY = optionStartY + (index - scrollWindow.firstIndex) * PRESET_OPTION_HEIGHT + scrollWindow.pixelOffset;
+        int startIndex = presetDropdownScrollOffset;
+        int endIndex = Math.min(optionCount, startIndex + layout.visibleCount);
+        for (int index = startIndex; index < endIndex; index++) {
+            int optionY = optionStartY + (index - startIndex) * PRESET_OPTION_HEIGHT;
             if (index < availablePresets.size()) {
                 String preset = availablePresets.get(index);
                 boolean optionHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
@@ -5135,7 +4432,7 @@ public class PathmindVisualEditorScreen extends Screen {
             fullOptionsHeight,
             optionCount,
             layout.visibleCount,
-            Math.round(smoothScrollOffset),
+            presetDropdownScrollOffset,
             layout.maxScrollOffset,
             UITheme.BORDER_DEFAULT,
             UITheme.BORDER_HIGHLIGHT
@@ -5153,16 +4450,12 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getPresetDropdownX() {
-        int preferredX = getPresetOverflowTabRight() - PRESET_DROPDOWN_WIDTH;
+        int preferredX = getPresetBrowserButtonX() + PRESET_BROWSER_BUTTON_SIZE - PRESET_DROPDOWN_WIDTH;
         return MathHelper.clamp(preferredX, PRESET_DROPDOWN_MARGIN, this.width - PRESET_DROPDOWN_WIDTH - PRESET_DROPDOWN_MARGIN);
     }
 
     private int getPresetDropdownY() {
-        return TAB_BAR_TOP + TAB_HEIGHT + 2;
-    }
-
-    private int getPresetOverflowTabRight() {
-        return getTitleTextX() + PRESET_MENU_BUTTON_SIZE;
+        return getPresetBrowserButtonY() + PRESET_BROWSER_BUTTON_SIZE + 2;
     }
 
     private int getPlayButtonX() {
@@ -5269,7 +4562,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return isPresetDeleteDisabled(presetName);
     }
 
-    private boolean handlePresetDropdownMouseDown(double mouseX, double mouseY) {
+    private boolean handlePresetDropdownSelection(double mouseX, double mouseY) {
         int dropdownX = getPresetDropdownX();
         int optionStartY = getPresetDropdownY();
         DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
@@ -5297,9 +4590,10 @@ public class PathmindVisualEditorScreen extends Screen {
                     }
                     return true;
                 }
-                pendingPresetDropdownDragName = selectedPreset;
-                pendingPresetDropdownPressMouseX = (int) mouseX;
-                pendingPresetDropdownPressMouseY = (int) mouseY;
+                presetDropdownOpen = false;
+                if (!selectedPreset.equals(activePresetName)) {
+                    switchPreset(selectedPreset);
+                }
                 return true;
             }
         } else if (index == availablePresets.size()) {
@@ -5437,7 +4731,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeSearchField.setHeight(textFieldHeight);
         nodeSearchField.render(context, transformedMouseX, transformedMouseY, delta);
 
-        renderNodeSearchDropdown(context, mouseX, mouseY);
+        renderNodeSearchDropdown(context, transformedMouseX, transformedMouseY);
         MatrixStackBridge.pop(matrices);
     }
 
@@ -6151,10 +5445,6 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!PresetManager.deletePreset(presetName)) {
             return;
         }
-        if (currentSettings != null && currentSettings.presetGroupColors != null) {
-            currentSettings.presetGroupColors.remove(presetName);
-            SettingsManager.save(currentSettings);
-        }
 
         presetDropdownOpen = false;
         closeCreatePresetPopup();
@@ -6590,33 +5880,29 @@ public class PathmindVisualEditorScreen extends Screen {
 
         List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
         int contentTop = panelY + VALIDATION_PANEL_HEADER_HEIGHT;
-        int issueTop = contentTop;
         for (int index = 0; index < visibleIssues.size(); index++) {
             GraphValidationIssue issue = visibleIssues.get(index);
-            List<OrderedText> wrappedLines = getValidationIssueLines(issue, panelWidth);
-            int rowHeight = getValidationIssueRowHeight(wrappedLines);
-            int rowY = issueTop;
+            int rowY = contentTop + index * VALIDATION_PANEL_ROW_HEIGHT;
             boolean clickable = issue != null && issue.hasNodeTarget();
-            boolean hovered = clickable && isPointInRect(mouseX, mouseY, panelX + 1, rowY, panelWidth - 2, rowHeight);
+            boolean hovered = clickable && isPointInRect(mouseX, mouseY, panelX + 1, rowY, panelWidth - 2, VALIDATION_PANEL_ROW_HEIGHT);
             float hoverProgress = getValidationIssueHoverProgress(issue, index, hovered);
             int rowBg = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, UITheme.TOOLBAR_BG_HOVER, hoverProgress);
-            context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + rowHeight, rowBg);
+            context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + VALIDATION_PANEL_ROW_HEIGHT, rowBg);
             context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
 
             int severityColor = issue.getSeverity() == GraphValidationSeverity.ERROR ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
-            int dotTop = rowY + Math.max(7, (rowHeight - 4) / 2);
+            int dotTop = rowY + 7;
             context.fill(panelX + 8, dotTop, panelX + 12, dotTop + 4, severityColor);
 
+            String prefix = issue.getSeverity() == GraphValidationSeverity.ERROR ? "Error" : "Warning";
+            String message = TextRenderUtil.trimWithEllipsis(this.textRenderer,
+                prefix + ": " + issue.getMessage(), panelWidth - 34);
             int rowTextColor = AnimationHelper.lerpColor(UITheme.TEXT_HEADER, UITheme.TEXT_PRIMARY, hoverProgress);
-            int textY = rowY + Math.max(6, (rowHeight - getValidationIssueTextHeight(wrappedLines)) / 2);
-            for (OrderedText line : wrappedLines) {
-                context.drawTextWithShadow(this.textRenderer, line, panelX + 18, textY, rowTextColor);
-                textY += this.textRenderer.fontHeight + 2;
-            }
-            issueTop += rowHeight;
+            context.drawTextWithShadow(this.textRenderer, Text.literal(message), panelX + 18, rowY + 7,
+                rowTextColor);
         }
 
-        int presetInputsTop = issueTop;
+        int presetInputsTop = contentTop + visibleIssues.size() * VALIDATION_PANEL_ROW_HEIGHT;
         presetInputsTop = renderValidationPresetInputs(context, mouseX, mouseY, panelX, panelWidth, presetInputsTop);
 
         int hiddenCount = validationResult.getIssues().size() - visibleIssues.size();
@@ -6650,13 +5936,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
         int contentTop = bounds[1] + VALIDATION_PANEL_HEADER_HEIGHT;
-        int issueTop = contentTop;
         for (int index = 0; index < visibleIssues.size(); index++) {
             GraphValidationIssue issue = visibleIssues.get(index);
-            int rowHeight = getValidationIssueRowHeight(issue, bounds[2]);
-            int rowY = issueTop;
-            if (!isPointInRect(mouseX, mouseY, bounds[0] + 1, rowY, bounds[2] - 2, rowHeight)) {
-                issueTop += rowHeight;
+            int rowY = contentTop + index * VALIDATION_PANEL_ROW_HEIGHT;
+            if (!isPointInRect(mouseX, mouseY, bounds[0] + 1, rowY, bounds[2] - 2, VALIDATION_PANEL_ROW_HEIGHT)) {
                 continue;
             }
             if (issue != null && issue.hasNodeTarget()) {
@@ -6664,7 +5947,7 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             return true;
         }
-        if (handleValidationPresetInputClick(mouseX, mouseY, bounds[0], bounds[2], issueTop)) {
+        if (handleValidationPresetInputClick(mouseX, mouseY, bounds[0], bounds[2], contentTop + visibleIssues.size() * VALIDATION_PANEL_ROW_HEIGHT)) {
             return true;
         }
         return true;
@@ -6680,13 +5963,13 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int[] getValidationPanelBounds(GraphValidationResult validationResult, float progress) {
         List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
-        int issuesHeight = getValidationIssuesHeight(visibleIssues, VALIDATION_PANEL_WIDTH);
+        int rowCount = visibleIssues.size();
         int presetInputHeight = getValidationPresetInputSectionHeight();
-        int footerHeight = validationResult != null && validationResult.getIssues().size() > visibleIssues.size()
+        int footerHeight = validationResult != null && validationResult.getIssues().size() > rowCount
             ? VALIDATION_PANEL_FOOTER_HEIGHT : 0;
         int fullWidth = VALIDATION_PANEL_WIDTH;
         int fullHeight = VALIDATION_PANEL_HEADER_HEIGHT
-            + issuesHeight
+            + rowCount * VALIDATION_PANEL_ROW_HEIGHT
             + presetInputHeight
             + footerHeight
             + VALIDATION_PANEL_BOTTOM_PADDING;
@@ -6695,37 +5978,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int x = getValidationButtonX() + VALIDATION_BUTTON_SIZE - width;
         int y = getValidationButtonY();
         return new int[]{x, y, width, height};
-    }
-
-    private List<OrderedText> getValidationIssueLines(GraphValidationIssue issue, int panelWidth) {
-        if (issue == null) {
-            return List.of(Text.literal("").asOrderedText());
-        }
-        String prefix = issue.getSeverity() == GraphValidationSeverity.ERROR ? "Error" : "Warning";
-        String fullMessage = prefix + ": " + issue.getMessage();
-        int textWidth = Math.max(40, panelWidth - 34);
-        List<OrderedText> wrappedLines = this.textRenderer.wrapLines(Text.literal(fullMessage), textWidth);
-        return wrappedLines.isEmpty() ? List.of(Text.literal(fullMessage).asOrderedText()) : wrappedLines;
-    }
-
-    private int getValidationIssueRowHeight(GraphValidationIssue issue, int panelWidth) {
-        return getValidationIssueRowHeight(getValidationIssueLines(issue, panelWidth));
-    }
-
-    private int getValidationIssueRowHeight(List<OrderedText> wrappedLines) {
-        return Math.max(VALIDATION_PANEL_ROW_HEIGHT, getValidationIssueTextHeight(wrappedLines) + 12);
-    }
-
-    private int getValidationIssueTextHeight(List<OrderedText> wrappedLines) {
-        return wrappedLines.size() * this.textRenderer.fontHeight + Math.max(0, wrappedLines.size() - 1) * 2;
-    }
-
-    private int getValidationIssuesHeight(List<GraphValidationIssue> visibleIssues, int panelWidth) {
-        int totalHeight = 0;
-        for (GraphValidationIssue issue : visibleIssues) {
-            totalHeight += getValidationIssueRowHeight(issue, panelWidth);
-        }
-        return totalHeight;
     }
 
     private int renderValidationPresetInputs(DrawContext context, int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
@@ -7315,15 +6567,8 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, settingDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
-        int lowDetailDividerY = settingDividerY + 22;
-        int lowDetailRowCenterY = (settingDividerY + lowDetailDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, lowDetailRowCenterY, "Low detail mode",
-            Boolean.TRUE.equals(currentSettings.lowDetailMode), popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, lowDetailDividerY,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
-
-        int footerDividerY = lowDetailDividerY + 22;
-        int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
+        int footerDividerY = settingDividerY + 22;
+        int tooltipRowCenterY = (settingDividerY + footerDividerY) / 2;
         renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.showTooltips").getString(), showWorkspaceTooltips, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
@@ -7340,15 +6585,8 @@ public class PathmindVisualEditorScreen extends Screen {
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
-        int profilerDividerY = overlayDividerY + 22;
-        int profilerRowCenterY = (overlayDividerY + profilerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, profilerRowCenterY, "Show profiler overlay",
-            currentSettings != null && Boolean.TRUE.equals(currentSettings.showProfilerOverlay), popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, profilerDividerY,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
-
-        int delayDividerY = profilerDividerY + 26;
-        int delayRowCenterY = (profilerDividerY + delayDividerY) / 2;
+        int delayDividerY = overlayDividerY + 26;
+        int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
         renderNodeDelayRow(context, mouseX, mouseY, contentX, delayRowCenterY, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
@@ -7979,13 +7217,11 @@ public class PathmindVisualEditorScreen extends Screen {
         int accentOptionsY = accentLabelY + 12;
         int sectionDividerY = accentOptionsY + SETTINGS_OPTION_HEIGHT + 10;
         int settingDividerY = sectionDividerY + 22;
-        int lowDetailDividerY = settingDividerY + 22;
-        int footerDividerY = lowDetailDividerY + 22;
+        int footerDividerY = settingDividerY + 22;
         int chatDividerY = footerDividerY + 22;
         int overlayDividerY = chatDividerY + 22;
         int hudDividerY = overlayDividerY + 22;
-        int profilerDividerY = hudDividerY + 22;
-        int delayDividerY = profilerDividerY + 26;
+        int delayDividerY = hudDividerY + 26;
         return delayDividerY + 12;
     }
 
@@ -8594,18 +7830,8 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        int lowDetailDividerY = settingDividerY + 22;
-        int lowDetailRowCenterY = (settingDividerY + lowDetailDividerY) / 2;
-        int lowDetailToggleX = gridToggleX;
-        int lowDetailToggleY = lowDetailRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, lowDetailToggleX, lowDetailToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            currentSettings.lowDetailMode = !Boolean.TRUE.equals(currentSettings.lowDetailMode);
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int footerDividerY = lowDetailDividerY + 22;
-        int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
+        int footerDividerY = settingDividerY + 22;
+        int tooltipRowCenterY = (settingDividerY + footerDividerY) / 2;
         int tooltipToggleX = gridToggleX;
         int tooltipToggleY = tooltipRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
         if (bodyHovered && isPointInRect(mouseXi, mouseYi, tooltipToggleX, tooltipToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
@@ -8637,18 +7863,8 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        int profilerDividerY = overlayDividerY + 22;
-        int profilerRowCenterY = (overlayDividerY + profilerDividerY) / 2;
-        int profilerToggleX = gridToggleX;
-        int profilerToggleY = profilerRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, profilerToggleX, profilerToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            currentSettings.showProfilerOverlay = !Boolean.TRUE.equals(currentSettings.showProfilerOverlay);
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int delayDividerY = profilerDividerY + 26;
-        int delayRowCenterY = (profilerDividerY + delayDividerY) / 2;
+        int delayDividerY = overlayDividerY + 26;
+        int delayRowCenterY = (overlayDividerY + delayDividerY) / 2;
         int sliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
         String delayText = nodeDelayField != null ? nodeDelayField.getText() : Integer.toString(nodeDelayMs);
@@ -8800,36 +8016,19 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void startExecutingAllGraphs() {
-        validationPanelOpen = false;
+        GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
+        if (validationResult.hasErrors()) {
+            validationPanelOpen = true;
+            return;
+        }
         dismissParameterOverlay();
         isDraggingFromSidebar = false;
         draggingNodeType = null;
         draggingSidebarNode = null;
         nodeGraph.save();
         ExecutionManager.getInstance().executeGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
-        if (this.client != null && this.client.player != null) {
+        if (this.client != null) {
             this.client.setScreen(null);
-        }
-    }
-
-    private boolean handleStartNodeClick(int mouseX, int mouseY) {
-        if (!nodeGraph.handleStartButtonClick(mouseX, mouseY)) {
-            return false;
-        }
-        handleStartNodeLaunchAfterClick();
-        return true;
-    }
-
-    private void handleStartNodeLaunchAfterClick() {
-        presetDropdownOpen = false;
-        if (nodeGraph.didLastStartButtonTriggerExecution()) {
-            dismissParameterOverlay();
-            isDraggingFromSidebar = false;
-            draggingNodeType = null;
-            draggingSidebarNode = null;
-            if (this.client != null && this.client.player != null) {
-                this.client.setScreen(null);
-            }
         }
     }
 
@@ -8838,7 +8037,9 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawLanguageDropdown(DrawContext context, int x, int y, int width, String currentLang, boolean hovered) {
-        DropdownLayoutHelper.updateOpenAnimation(languageDropdownAnimation, languageDropdownOpen);
+        // Update dropdown animation
+        languageDropdownAnimation.animateTo(languageDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
+        languageDropdownAnimation.tick();
 
         float hoverProgress = languageDropdownOpen ? 1f : getHoverProgress("settings-language-dropdown-bg", hovered);
         UIStyleHelper.FieldPalette fieldPalette = UIStyleHelper.getDropdownFieldPalette(getAccentColor(), hoverProgress, languageDropdownOpen, false);
@@ -8867,7 +8068,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawLanguageDropdownOptions(DrawContext context, int x, int y, int width, int mouseX, int mouseY) {
         // Get animation progress
-        float animProgress = languageDropdownAnimation.getValue();
+        float animProgress = AnimationHelper.easeOutQuad(languageDropdownAnimation.getValue());
 
         // Don't render options if animation is fully closed
         if (animProgress <= 0.001f) {
@@ -8880,13 +8081,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int dropdownY = y + 22;
         int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
+        int animatedHeight = (int) (fullOptionsHeight * animProgress);
         int scissorLeft = Math.max(x, languageDropdownClipX);
         int scissorTop = Math.max(dropdownY, languageDropdownClipY);
         int scissorRight = Math.min(x + width, languageDropdownClipX + languageDropdownClipWidth);
-        int scissorBottom = Math.min(
-            DropdownLayoutHelper.getRevealBottom(dropdownY, fullOptionsHeight, animProgress, 0),
-            languageDropdownClipY + languageDropdownClipHeight
-        );
+        int scissorBottom = Math.min(dropdownY + animatedHeight, languageDropdownClipY + languageDropdownClipHeight);
 
         if (scissorRight <= scissorLeft || scissorBottom <= scissorTop) {
             MatrixStackBridge.pop(matrices);
@@ -9003,15 +8202,40 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean isTitleHovered(int mouseX, int mouseY) {
-        return isPointInRect(mouseX, mouseY, getTitleTextX(), getTitleTextY(), PRESET_MENU_BUTTON_SIZE, PRESET_MENU_BUTTON_SIZE);
+        int textHeight = this.textRenderer.fontHeight;
+        int textWidth = this.textRenderer.getWidth(TITLE_TEXT);
+        int textX = getTitleTextX();
+        int textY = getTitleTextY() - 1;
+        int hitboxX = textX - TITLE_INTERACTION_PADDING;
+        int hitboxY = textY - TITLE_INTERACTION_PADDING;
+        int hitboxWidth = textWidth + TITLE_INTERACTION_PADDING * 2;
+        int hitboxHeight = textHeight + TITLE_INTERACTION_PADDING * 2;
+        return isPointInRect(mouseX, mouseY, hitboxX, hitboxY, hitboxWidth, hitboxHeight);
     }
 
     private int getTitleTextX() {
-        return this.width - 8 - PRESET_MENU_BUTTON_SIZE;
+        return this.width - 8 - this.textRenderer.getWidth(TITLE_TEXT);
     }
 
     private int getTitleTextY() {
-        return (TITLE_BAR_HEIGHT - PRESET_MENU_BUTTON_SIZE) / 2;
+        return (TITLE_BAR_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
+    }
+
+    private int getPresetBrowserButtonX() {
+        return getTitleTextX() - PRESET_BROWSER_BUTTON_GAP - PRESET_BROWSER_BUTTON_SIZE;
+    }
+
+    private int getPresetBrowserButtonY() {
+        return (TITLE_BAR_HEIGHT - PRESET_BROWSER_BUTTON_SIZE) / 2;
+    }
+
+    private boolean isPresetBrowserButtonHovered(int mouseX, int mouseY) {
+        return isPointInRect(mouseX, mouseY, getPresetBrowserButtonX(), getPresetBrowserButtonY(),
+            PRESET_BROWSER_BUTTON_SIZE, PRESET_BROWSER_BUTTON_SIZE);
+    }
+
+    private boolean isPresetBrowserButtonClicked(int mouseX, int mouseY) {
+        return isPresetBrowserButtonHovered(mouseX, mouseY);
     }
 
     private String getModVersion() {

@@ -1412,14 +1412,7 @@ final class NodeCraftCommandExecutor {
                 break;
             }
 
-            int craftsRemaining = Math.max(1, craftsRequested - attempt);
-            int craftsThisAttempt = getCraftBatchSize(client, gridIngredients, registryManager, craftsRemaining);
-            if (craftsThisAttempt <= 0) {
-                failureMessage = "Cannot craft " + itemDisplayName + ": missing required ingredients.";
-                break;
-            }
-
-            CraftingAttemptResult attemptResult = performCraftingAttempt(client, targetItem, itemDisplayName, gridIngredients, gridSlots, craftMode, registryManager, craftsThisAttempt);
+            CraftingAttemptResult attemptResult = performCraftingAttempt(client, targetItem, itemDisplayName, gridIngredients, gridSlots, craftMode, registryManager);
             if (attemptResult.errorMessage != null) {
                 failureMessage = attemptResult.errorMessage;
                 if (attemptResult.produced > 0) {
@@ -1434,7 +1427,6 @@ final class NodeCraftCommandExecutor {
             }
 
             totalProduced += attemptResult.produced;
-            attempt += Math.max(0, craftsThisAttempt - 1);
 
             if (totalProduced >= desiredCount) {
                 break;
@@ -1454,8 +1446,7 @@ final class NodeCraftCommandExecutor {
                                                          List<GridIngredient> gridIngredients,
                                                          int[] gridSlots,
                                                          NodeMode craftMode,
-                                                         Object registryManager,
-                                                         int craftsThisAttempt) throws InterruptedException {
+                                                         Object registryManager) throws InterruptedException {
         java.util.concurrent.atomic.AtomicReference<String> errorRef = new java.util.concurrent.atomic.AtomicReference<>();
         java.util.concurrent.atomic.AtomicInteger producedRef = new java.util.concurrent.atomic.AtomicInteger();
         java.util.concurrent.atomic.AtomicReference<List<Integer>> plannedSourceSlotsRef = new java.util.concurrent.atomic.AtomicReference<>();
@@ -1474,7 +1465,7 @@ final class NodeCraftCommandExecutor {
             }
 
             clearCraftingGrid(client, interactionManager, handler, gridSlots, craftMode);
-            List<Integer> plannedSourceSlots = planIngredientSourceSlots(handler, gridIngredients, registryManager, craftsThisAttempt);
+            List<Integer> plannedSourceSlots = planIngredientSourceSlots(handler, gridIngredients, registryManager);
             if (plannedSourceSlots == null || plannedSourceSlots.size() != gridIngredients.size()) {
                 errorRef.set("Cannot craft " + itemDisplayName + ": missing required ingredients.");
                 return;
@@ -1534,13 +1525,14 @@ final class NodeCraftCommandExecutor {
 
                 ItemStack sourceBefore = safeCopySlotStack(handler, sourceSlot);
                 ItemStack targetBefore = safeCopySlotStack(handler, targetSlot);
-                placeIngredientStackCount(interactionManager, handler, client.player, sourceSlot, targetSlot, craftsThisAttempt);
+                interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, client.player);
+                interactionManager.clickSlot(handler.syncId, targetSlot, 1, SlotActionType.PICKUP, client.player);
+                interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, client.player);
 
                 ItemStack sourceAfter = safeCopySlotStack(handler, sourceSlot);
                 ItemStack targetAfter = safeCopySlotStack(handler, targetSlot);
                 ItemStack cursorAfter = handler.getCursorStack() == null ? ItemStack.EMPTY : handler.getCursorStack().copy();
-                if (stackMatchesIngredient(targetAfter, ingredient.ingredient(), registryManager)
-                    && targetAfter.getCount() >= craftsThisAttempt) {
+                if (stackMatchesIngredient(targetAfter, ingredient.ingredient(), registryManager)) {
                     placed.set(true);
                     return;
                 }
@@ -1603,7 +1595,7 @@ final class NodeCraftCommandExecutor {
                     return;
                 }
 
-                producedRef.set(Math.max(1, resultStack.getCount()) * Math.max(1, craftsThisAttempt));
+                producedRef.set(resultStack.getCount());
                 interactionManager.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, client.player);
             });
 
@@ -1721,83 +1713,9 @@ final class NodeCraftCommandExecutor {
         return id + " x" + stack.getCount();
     }
 
-    private int getCraftBatchSize(net.minecraft.client.MinecraftClient client,
-                                  List<GridIngredient> gridIngredients,
-                                  Object registryManager,
-                                  int requestedCrafts) throws InterruptedException {
-        if (client == null || requestedCrafts <= 0) {
-            return 0;
-        }
-
-        java.util.concurrent.atomic.AtomicInteger batchSizeRef = new java.util.concurrent.atomic.AtomicInteger();
-        owner.runOnClientThread(client, () -> {
-            ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
-            batchSizeRef.set(calculateCraftBatchSize(handler, gridIngredients, registryManager, requestedCrafts));
-        });
-        return batchSizeRef.get();
-    }
-
-    private int calculateCraftBatchSize(ScreenHandler handler,
-                                        List<GridIngredient> gridIngredients,
-                                        Object registryManager,
-                                        int requestedCrafts) {
-        if (handler == null || gridIngredients == null || gridIngredients.isEmpty() || requestedCrafts <= 0) {
-            return 0;
-        }
-
-        int upperBound = Math.max(1, requestedCrafts);
-        for (GridIngredient ingredient : gridIngredients) {
-            if (ingredient == null || RecipeCompatibilityBridge.isIngredientEmpty(ingredient.ingredient(), registryManager)) {
-                continue;
-            }
-            ItemStack representative = getRepresentativeIngredientStack(ingredient.ingredient(), registryManager);
-            int maxStackCount = representative.isEmpty() ? 64 : Math.max(1, representative.getMaxCount());
-            upperBound = Math.min(upperBound, maxStackCount);
-        }
-
-        for (int batchSize = upperBound; batchSize >= 1; batchSize--) {
-            if (planIngredientSourceSlots(handler, gridIngredients, registryManager, batchSize) != null) {
-                return batchSize;
-            }
-        }
-        return 0;
-    }
-
-    private void placeIngredientStackCount(ClientPlayerInteractionManager interactionManager,
-                                           ScreenHandler handler,
-                                           net.minecraft.entity.player.PlayerEntity player,
-                                           int sourceSlot,
-                                           int targetSlot,
-                                           int count) {
-        if (interactionManager == null || handler == null || player == null || count <= 0) {
-            return;
-        }
-
-        interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
-        int cursorCount = handler.getCursorStack() == null ? 0 : handler.getCursorStack().getCount();
-        if (cursorCount <= count) {
-            interactionManager.clickSlot(handler.syncId, targetSlot, 0, SlotActionType.PICKUP, player);
-            return;
-        }
-
-        for (int placed = 0; placed < count; placed++) {
-            interactionManager.clickSlot(handler.syncId, targetSlot, 1, SlotActionType.PICKUP, player);
-        }
-        if (handler.getCursorStack() != null && !handler.getCursorStack().isEmpty()) {
-            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
-        }
-    }
-
     private List<Integer> planIngredientSourceSlots(ScreenHandler handler,
                                                     List<GridIngredient> gridIngredients,
                                                     Object registryManager) {
-        return planIngredientSourceSlots(handler, gridIngredients, registryManager, 1);
-    }
-
-    private List<Integer> planIngredientSourceSlots(ScreenHandler handler,
-                                                    List<GridIngredient> gridIngredients,
-                                                    Object registryManager,
-                                                    int countPerIngredient) {
         if (handler == null || gridIngredients == null) {
             return null;
         }
@@ -1837,11 +1755,7 @@ final class NodeCraftCommandExecutor {
             }
 
             ItemStack reservedStack = inventoryStacks.get(inventorySlotIndex);
-            if (reservedStack.getCount() < countPerIngredient) {
-                return null;
-            }
-
-            reservedStack.decrement(countPerIngredient);
+            reservedStack.decrement(1);
             reservations.add(new IngredientReservation(handlerSlots.get(inventorySlotIndex)));
         }
 

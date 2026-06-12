@@ -1,0 +1,121 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "presentation": {
+    "reveal": "always",
+    "panel": "shared",
+    "clear": true
+  },
+  "tasks": [
+    {
+      "label": "Build",
+      "detail": "gradlew build (compiles common/fabric/neoforge + runs tests)",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["build"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Compile (no tests)",
+      "detail": "gradlew compileJava for all modules",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["classes"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build JARs (assemble)",
+      "detail": "gradlew assemble - produces the mod jars without running tests",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["assemble"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Fabric Client",
+      "detail": "gradlew :fabric:runClient",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [":fabric:runClient"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run NeoForge Client",
+      "detail": "gradlew :neoforge:runClient",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [":neoforge:runClient"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Fabric Server",
+      "detail": "gradlew :fabric:runServer",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [":fabric:runServer"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run NeoForge Server",
+      "detail": "gradlew :neoforge:runServer",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [":neoforge:runServer"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Clean",
+      "detail": "gradlew clean",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["clean"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Regenerate VSCode run configs",
+      "detail": "gradlew vscode - rewrites .vscode/launch.json from Loom",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["vscode"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "fabric: classes",
+      "detail": "Compile the fabric module (used as a debug pre-launch step)",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [":fabric:classes"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "problemMatcher": []
+    },
+    {
+      "label": "neoforge: classes",
+      "detail": "Compile the neoforge module (used as a debug pre-launch step)",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [":neoforge:classes"],
+      "windows": { "command": ".\\gradlew.bat" },
+      "problemMatcher": []
+    }
+  ]
+}

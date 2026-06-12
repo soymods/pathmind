@@ -2,8 +2,6 @@ package com.pathmind.data;
 
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.NodeMode;
-import com.pathmind.nodes.StartLaunchMode;
-import com.pathmind.nodes.StartScreenTarget;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -124,9 +122,6 @@ public class NodeGraphData {
         private List<ParameterAttachmentData> parameterAttachments;
         private Boolean booleanToggleValue;
         private Integer startNodeNumber;
-        private StartLaunchMode startLaunchMode;
-        private StartScreenTarget startScreenTarget;
-        private String runtimeSourceNodeId;
         private List<String> messageLines;
         private Boolean messageClientSide;
         private String bookText;
@@ -216,30 +211,6 @@ public class NodeGraphData {
 
         public void setStartNodeNumber(Integer startNodeNumber) {
             this.startNodeNumber = startNodeNumber;
-        }
-
-        public StartLaunchMode getStartLaunchMode() {
-            return startLaunchMode;
-        }
-
-        public void setStartLaunchMode(StartLaunchMode startLaunchMode) {
-            this.startLaunchMode = startLaunchMode;
-        }
-
-        public StartScreenTarget getStartScreenTarget() {
-            return startScreenTarget;
-        }
-
-        public void setStartScreenTarget(StartScreenTarget startScreenTarget) {
-            this.startScreenTarget = startScreenTarget;
-        }
-
-        public String getRuntimeSourceNodeId() {
-            return runtimeSourceNodeId;
-        }
-
-        public void setRuntimeSourceNodeId(String runtimeSourceNodeId) {
-            this.runtimeSourceNodeId = runtimeSourceNodeId;
         }
 
         public List<String> getMessageLines() {

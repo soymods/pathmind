@@ -1,0 +1,34 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "All Rights Reserved"
+
+[[mods]]
+modId = "pathmind"
+version = "${version}"
+displayName = "Pathmind"
+description = "A visual node editor for building workflows and automation logic in Minecraft."
+logoFile = "assets/pathmind/logo.png"
+
+[[dependencies.pathmind]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.0,)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.pathmind]]
+modId = "minecraft"
+type = "required"
+versionRange = "[${minecraft_version},)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.pathmind]]
+modId = "architectury"
+type = "required"
+versionRange = "[${architectury_api_version},)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[mixins]]
+config = "pathmind.mixins.json"

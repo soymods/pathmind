@@ -9,7 +9,6 @@ import com.pathmind.nodes.NodeTraitRegistry;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.NodeValueTrait;
 import com.pathmind.nodes.ParameterType;
-import com.pathmind.util.LegacyVariableSyntaxCompat;
 
 import java.io.Reader;
 import java.io.Writer;
@@ -200,7 +199,7 @@ public class NodeGraphPersistence {
                 continue;
             }
             if (saved.getValue() != null) {
-                param.setStringValue(LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(saved.getValue()));
+                param.setStringValue(saved.getValue());
             }
             if (saved.getUserEdited() != null) {
                 param.setUserEdited(saved.getUserEdited());
@@ -226,12 +225,7 @@ public class NodeGraphPersistence {
             if (paramType == null) {
                 continue;
             }
-            NodeParameter param = new NodeParameter(
-                serializedId,
-                saved.getName(),
-                paramType,
-                LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(saved.getValue())
-            );
+            NodeParameter param = new NodeParameter(serializedId, saved.getName(), paramType, saved.getValue());
             if (saved.getUserEdited() != null) {
                 param.setUserEdited(saved.getUserEdited());
             }
@@ -282,14 +276,12 @@ public class NodeGraphPersistence {
                     node.setBooleanToggleValue(true);
                 }
             }
-            if (node.hasMessageInputFields() && nodeData.getMessageLines() != null) {
-                node.setMessageLines(LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(nodeData.getMessageLines()));
-                if (node.hasMessageScopeToggle()) {
-                    node.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
-                }
+            if (node.getType() == NodeType.MESSAGE && nodeData.getMessageLines() != null) {
+                node.setMessageLines(nodeData.getMessageLines());
+                node.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
             }
             if (node.hasBookTextInput() && nodeData.getBookText() != null) {
-                node.setBookText(LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(nodeData.getBookText()));
+                node.setBookText(nodeData.getBookText());
             }
             if (node.isStickyNote()) {
                 node.setStickyNoteText(nodeData.getStickyNoteText());
@@ -328,9 +320,6 @@ public class NodeGraphPersistence {
             if (startNodeNumber != null) {
                 node.setStartNodeNumber(startNodeNumber);
             }
-            node.setStartLaunchMode(nodeData.getStartLaunchMode());
-            node.setStartScreenTarget(nodeData.getStartScreenTarget());
-            node.setRuntimeSourceNodeId(nodeData.getRuntimeSourceNodeId());
             node.recalculateDimensions();
 
             nodes.add(node);
@@ -859,11 +848,9 @@ public class NodeGraphPersistence {
                 nodeData.setBooleanToggleValue(null);
             }
             nodeData.setStartNodeNumber(node.getStartNodeNumber());
-            nodeData.setStartLaunchMode(node.getStartLaunchMode());
-            nodeData.setStartScreenTarget(node.getStartScreenTarget());
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
-                nodeData.setMessageClientSide(node.hasMessageScopeToggle() ? node.isMessageClientSide() : null);
+                nodeData.setMessageClientSide(node.isMessageClientSide());
             } else {
                 nodeData.setMessageLines(null);
                 nodeData.setMessageClientSide(null);
@@ -1055,9 +1042,6 @@ public class NodeGraphPersistence {
             if (node == null || node.getType() != NodeType.VARIABLE) {
                 continue;
             }
-            if (!isVariableInputCandidate(node)) {
-                continue;
-            }
             NodeParameter variableParam = node.getParameter("Variable");
             if (variableParam == null) {
                 continue;
@@ -1077,37 +1061,6 @@ public class NodeGraphPersistence {
             mergeDiscoveredInput(inputs, normalized, inferred);
         }
         return new ArrayList<>(inputs.values());
-    }
-
-    private static boolean isVariableInputCandidate(Node variableNode) {
-        if (variableNode == null) {
-            return false;
-        }
-        Node host = variableNode.getParentParameterHost();
-        if (host == null) {
-            return true;
-        }
-        int slotIndex = resolveAttachedParameterSlotIndex(host, variableNode);
-        if (slotIndex < 0) {
-            return true;
-        }
-        NodeType hostType = host.getType();
-        if ((hostType == NodeType.SET_VARIABLE || hostType == NodeType.CHANGE_VARIABLE) && slotIndex == 0) {
-            return false;
-        }
-        return true;
-    }
-
-    private static int resolveAttachedParameterSlotIndex(Node host, Node parameterNode) {
-        if (host == null || parameterNode == null) {
-            return -1;
-        }
-        for (Map.Entry<Integer, Node> entry : host.getAttachedParameters().entrySet()) {
-            if (entry.getValue() == parameterNode) {
-                return entry.getKey();
-            }
-        }
-        return -1;
     }
 
     private static Map<String, NodeGraphData.CustomNodePort> discoverInitializedCustomNodeInputs(List<Node> nodes) {

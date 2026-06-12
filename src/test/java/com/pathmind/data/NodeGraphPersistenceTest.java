@@ -25,63 +25,6 @@ class NodeGraphPersistenceTest {
     Path tempDir;
 
     @Test
-    void customNodeDefinitionDoesNotExposePureSetVariableTargetAsInput() {
-        Node start = new Node(NodeType.START, 0, 0);
-        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
-        Node variable = new Node(NodeType.VARIABLE, 0, 0);
-        variable.getParameter("Variable").setStringValue("variable");
-        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        amount.getParameter("Amount").setStringValue("1.0");
-
-        assertTrue(setVariable.attachParameter(variable, 0));
-        assertTrue(setVariable.attachParameter(amount, 1));
-
-        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(
-            "variable",
-            List.of(start, setVariable, variable, amount),
-            List.of(new NodeConnection(start, setVariable, 0, 0))
-        );
-
-        assertNotNull(definition);
-        assertTrue(definition.getInputs().isEmpty());
-    }
-
-    @Test
-    void customNodeDefinitionKeepsInitializedVariableAsInputWhenItIsAlsoRead() {
-        Node start = new Node(NodeType.START, 0, 0);
-        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
-        Node targetVariable = new Node(NodeType.VARIABLE, 0, 0);
-        targetVariable.getParameter("Variable").setStringValue("distance");
-        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        amount.getParameter("Amount").setStringValue("1.0");
-        Node equals = new Node(NodeType.OPERATOR_EQUALS, 200, 0);
-        Node readVariable = new Node(NodeType.VARIABLE, 0, 0);
-        readVariable.getParameter("Variable").setStringValue("distance");
-        Node comparison = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        comparison.getParameter("Amount").setStringValue("1.0");
-
-        assertTrue(setVariable.attachParameter(targetVariable, 0));
-        assertTrue(setVariable.attachParameter(amount, 1));
-        assertTrue(equals.attachParameter(readVariable, 0));
-        assertTrue(equals.attachParameter(comparison, 1));
-
-        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(
-            "distance",
-            List.of(start, setVariable, targetVariable, amount, equals, readVariable, comparison),
-            List.of(
-                new NodeConnection(start, setVariable, 0, 0),
-                new NodeConnection(setVariable, equals, 0, 0)
-            )
-        );
-
-        assertNotNull(definition);
-        assertEquals(1, definition.getInputs().size());
-        assertEquals("distance", definition.getInputs().get(0).getName());
-        assertEquals(NodeType.PARAM_AMOUNT.name(), definition.getInputs().get(0).getType());
-        assertEquals("1.0", definition.getInputs().get(0).getDefaultValue());
-    }
-
-    @Test
     void saveAndLoadRoundTripPreservesAttachmentsAndTemplateMetadata() {
         Node start = new Node(NodeType.START, 10, 20);
         start.setStartNodeNumber(7);
@@ -155,23 +98,6 @@ class NodeGraphPersistenceTest {
         assertNotNull(restoredTemplate.getTemplateGraphData());
         assertEquals(1, restoredTemplate.getTemplateGraphData().getNodes().size());
         assertEquals(connections.size(), restoredConnections.size());
-    }
-
-    @Test
-    void saveAndLoadRoundTripPreservesMathNodeExpressions() {
-        Node math = new Node(NodeType.CHANGE_VARIABLE, 32, 48);
-        math.setMessageLines(List.of("1 + 2", "$count * 4", "7 / 2"));
-
-        Path savePath = tempDir.resolve("math-graph.json");
-        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(List.of(math), List.of(), savePath));
-
-        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
-        assertNotNull(loaded);
-
-        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(loaded);
-        assertEquals(1, restoredNodes.size());
-        assertEquals(NodeType.CHANGE_VARIABLE, restoredNodes.getFirst().getType());
-        assertEquals(List.of("1 + 2", "$count * 4", "7 / 2"), restoredNodes.getFirst().getMessageLines());
     }
 
     @Test

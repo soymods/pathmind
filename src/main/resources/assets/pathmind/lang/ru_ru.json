@@ -203,7 +203,7 @@
   "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramHand": "Рука",
   "pathmind.node.type.paramHand.desc": "Представляет предпочтительный выбор руки",
-  "pathmind.node.type.paramInventorySlot": "Слот",
+  "pathmind.node.type.paramInventorySlot": "Слот инвентаря",
   "pathmind.node.type.paramInventorySlot.desc": "Представляет ссылку на слот инвентаря",
   "pathmind.node.type.paramItem": "Предмет",
   "pathmind.node.type.paramItem.desc": "Представляет предмет и количество",

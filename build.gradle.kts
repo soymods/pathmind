@@ -1,30 +1,98 @@
 import org.gradle.api.GradleException
-import org.gradle.api.tasks.GradleBuild
-import org.gradle.api.tasks.TaskProvider
 
 plugins {
-    id("fabric-loom") version "1.14.10"
-    id("maven-publish")
+    id("architectury-plugin") version "3.4.161"
+    id("dev.architectury.loom") version "1.14.473" apply false
+    id("com.gradleup.shadow") version "9.4.1" apply false
 }
 
+// ------------------------------------------------------------
+// Per-version configuration
+// architecturyApiVersion: check at https://api.modrinth.com/v2/project/lhGA9TYQ/version?game_versions=["1.21.x"]
+//   or run: ./gradlew checkArchitecturyVersions
+// neoforgeVersion: check at https://maven.neoforged.net/releases/net/neoforged/neoforge/
+// Set neoforgeVersion to null to disable NeoForge for that MC version.
+// ------------------------------------------------------------
 data class MinecraftVersionSpec(
     val yarnMappings: String,
-    val fabricApiVersion: String
+    val fabricApiVersion: String,
+    val architecturyApiVersion: String,
+    val neoforgeVersion: String?
 )
 
 val supportedMinecraftVersions = linkedMapOf(
-    "1.21" to MinecraftVersionSpec("1.21+build.9", "0.102.0+1.21"),
-    "1.21.1" to MinecraftVersionSpec("1.21.1+build.3", "0.116.7+1.21.1"),
-    "1.21.2" to MinecraftVersionSpec("1.21.2+build.1", "0.106.1+1.21.2"),
-    "1.21.3" to MinecraftVersionSpec("1.21.3+build.2", "0.114.1+1.21.3"),
-    "1.21.4" to MinecraftVersionSpec("1.21.4+build.8", "0.119.4+1.21.4"),
-    "1.21.5" to MinecraftVersionSpec("1.21.5+build.1", "0.128.2+1.21.5"),
-    "1.21.6" to MinecraftVersionSpec("1.21.6+build.1", "0.128.2+1.21.6"),
-    "1.21.7" to MinecraftVersionSpec("1.21.7+build.8", "0.129.0+1.21.7"),
-    "1.21.8" to MinecraftVersionSpec("1.21.8+build.1", "0.133.4+1.21.8"),
-    "1.21.9" to MinecraftVersionSpec("1.21.9+build.1", "0.134.1+1.21.9"),
-    "1.21.10" to MinecraftVersionSpec("1.21.10+build.3", "0.138.4+1.21.10"),
-    "1.21.11" to MinecraftVersionSpec("1.21.11+build.3", "0.140.2+1.21.11")
+    "1.21" to MinecraftVersionSpec(
+        yarnMappings = "1.21+build.9",
+        fabricApiVersion = "0.102.0+1.21",
+        architecturyApiVersion = "13.0.2",
+        neoforgeVersion = "21.0.166"
+    ),
+    "1.21.1" to MinecraftVersionSpec(
+        yarnMappings = "1.21.1+build.3",
+        fabricApiVersion = "0.116.7+1.21.1",
+        architecturyApiVersion = "13.0.6",
+        neoforgeVersion = "21.1.230"
+    ),
+    "1.21.2" to MinecraftVersionSpec(
+        yarnMappings = "1.21.2+build.1",
+        fabricApiVersion = "0.106.1+1.21.2",
+        architecturyApiVersion = "14.0.4",
+        neoforgeVersion = "21.2.1-beta"
+    ),
+    "1.21.3" to MinecraftVersionSpec(
+        yarnMappings = "1.21.3+build.2",
+        fabricApiVersion = "0.114.1+1.21.3",
+        architecturyApiVersion = "14.0.4",
+        neoforgeVersion = "21.3.96"
+    ),
+    "1.21.4" to MinecraftVersionSpec(
+        yarnMappings = "1.21.4+build.8",
+        fabricApiVersion = "0.119.4+1.21.4",
+        architecturyApiVersion = "15.0.3",
+        neoforgeVersion = "21.4.157"
+    ),
+    "1.21.5" to MinecraftVersionSpec(
+        yarnMappings = "1.21.5+build.1",
+        fabricApiVersion = "0.128.2+1.21.5",
+        architecturyApiVersion = "16.1.4",
+        neoforgeVersion = "21.5.97"
+    ),
+    "1.21.6" to MinecraftVersionSpec(
+        yarnMappings = "1.21.6+build.1",
+        fabricApiVersion = "0.128.2+1.21.6",
+        architecturyApiVersion = "17.0.6",
+        neoforgeVersion = "21.6.20-beta"
+    ),
+    "1.21.7" to MinecraftVersionSpec(
+        yarnMappings = "1.21.7+build.8",
+        fabricApiVersion = "0.129.0+1.21.7",
+        architecturyApiVersion = "17.0.8",
+        neoforgeVersion = "21.7.25-beta"
+    ),
+    "1.21.8" to MinecraftVersionSpec(
+        yarnMappings = "1.21.8+build.1",
+        fabricApiVersion = "0.133.4+1.21.8",
+        architecturyApiVersion = "17.0.8",
+        neoforgeVersion = "21.8.53"
+    ),
+    "1.21.9" to MinecraftVersionSpec(
+        yarnMappings = "1.21.9+build.1",
+        fabricApiVersion = "0.134.1+1.21.9",
+        architecturyApiVersion = "18.0.5",
+        neoforgeVersion = "21.9.16-beta"
+    ),
+    "1.21.10" to MinecraftVersionSpec(
+        yarnMappings = "1.21.10+build.3",
+        fabricApiVersion = "0.138.4+1.21.10",
+        architecturyApiVersion = "18.0.8",
+        neoforgeVersion = "21.10.64"
+    ),
+    "1.21.11" to MinecraftVersionSpec(
+        yarnMappings = "1.21.11+build.3",
+        fabricApiVersion = "0.140.2+1.21.11",
+        architecturyApiVersion = "19.0.1",
+        neoforgeVersion = "21.11.42"
+    )
 )
 
 fun String.toTaskSuffix(): String = replace(".", "_")
@@ -34,208 +102,146 @@ val requestedMinecraftVersion = providers.gradleProperty("mc_version")
     .get()
 
 val requestedSpec = supportedMinecraftVersions[requestedMinecraftVersion]
+    ?: throw GradleException(
+        "No version spec configured for Minecraft $requestedMinecraftVersion. " +
+            "Either add it to supportedMinecraftVersions or pass explicit properties."
+    )
 
-val yarnMappings = providers.gradleProperty("yarn_mappings").orElse(
-    requestedSpec?.let { provider { it.yarnMappings } }
-        ?: throw GradleException(
-            "No Yarn mappings configured for Minecraft $requestedMinecraftVersion. " +
-                "Either add it to supportedMinecraftVersions or pass -Pyarn_mappings=<mapping>"
-        )
-).get()
+extra["requestedMinecraftVersion"] = requestedMinecraftVersion
+extra["yarnMappings"] = requestedSpec.yarnMappings
+extra["fabricApiVersion"] = requestedSpec.fabricApiVersion
+extra["architecturyApiVersion"] = requestedSpec.architecturyApiVersion
+extra["neoforgeVersion"] = requestedSpec.neoforgeVersion
 
-val fabricApiVersion = providers.gradleProperty("fabric_api_version").orElse(
-    requestedSpec?.let { provider { it.fabricApiVersion } }
-        ?: throw GradleException(
-            "No Fabric API version configured for Minecraft $requestedMinecraftVersion. " +
-                "Either add it to supportedMinecraftVersions or pass -Pfabric_api_version=<version>"
-        )
-).get()
-
-version = "${project.property("mod_version") as String}+mc$requestedMinecraftVersion"
-group = project.property("maven_group") as String
-
-base {
-    archivesName.set(project.property("archives_base_name") as String)
-}
-
-val targetJavaVersion = 21
-val legacyInputVersions = setOf(
-    "1.21",
-    "1.21.1",
-    "1.21.2",
-    "1.21.3",
-    "1.21.4",
-    "1.21.5",
-    "1.21.6",
-    "1.21.7",
-    "1.21.8"
+val fabricDefaultRunTaskAliases = mapOf(
+    "runClient" to ":fabric:runClient",
+    "runServer" to ":fabric:runServer",
+    "runClientRenderDoc" to ":fabric:runClientRenderDoc"
 )
-val usesLegacyInputApis = requestedMinecraftVersion in legacyInputVersions
-val typedUseItemCallbackVersions = setOf("1.21", "1.21.1")
-val usesTypedUseItemCallback = requestedMinecraftVersion in typedUseItemCallbackVersions
-val oldLegacyRenderVersions = setOf(
-    "1.21",
-    "1.21.1",
-    "1.21.2",
-    "1.21.3",
-    "1.21.4"
-)
-val usesOldLegacyRenderApis = requestedMinecraftVersion in oldLegacyRenderVersions
-val preAllocatorLegacyRenderVersions = setOf("1.21", "1.21.1")
-val allocatorLightmapLegacyRenderVersions = setOf("1.21.2", "1.21.3")
-val allocatorNoLightmapLegacyRenderVersions = setOf("1.21.4")
-val transitionalLegacyRenderVersions = setOf("1.21.5")
-val usesTransitionalLegacyRenderApis = requestedMinecraftVersion in transitionalLegacyRenderVersions
-val midInputVersions = setOf("1.21.9", "1.21.10")
-val usesMidInputApis = requestedMinecraftVersion in midInputVersions
-loom {
-    accessWidenerPath = file("src/main/resources/pathmind.accesswidener")
+val requestedTaskNames = gradle.startParameter.taskNames
+val aliasedTaskNames = requestedTaskNames.map { requested ->
+    fabricDefaultRunTaskAliases[requested] ?: requested
+}
+if (aliasedTaskNames != requestedTaskNames) {
+    gradle.startParameter.setTaskNames(aliasedTaskNames)
 }
 
-repositories {
+architectury {
+    minecraft = requestedMinecraftVersion
 }
 
-val baritoneApiJar: File? by extra {
-    val candidates = listOfNotNull(
-        System.getenv("BARITONE_API_JAR"),
-        project.findProperty("baritoneApiPath") as? String,
-        "libs/baritone-api-fabric-1.15.0.jar",
-        "run/mods/baritone-api-fabric-1.15.0.jar"
-    ).map { file(it) }
+apply(plugin = "base")
 
-    candidates.firstOrNull { it.exists() }
-}
+subprojects {
+    apply(plugin = "java")
 
-val baritoneRuntimeTargets = setOf("1.21.6", "1.21.7", "1.21.8")
-val enableBaritoneRuntime = (project.findProperty("withBaritoneRuntime") as? String)
-    ?.toBooleanStrictOrNull() ?: false
+    version = "${rootProject.property("mod_version") as String}+mc$requestedMinecraftVersion"
+    group = rootProject.property("maven_group") as String
 
-dependencies {
-    // To change the versions see the gradle.properties file
-    minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
-    mappings("net.fabricmc:yarn:$yarnMappings:v2")
-    modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
+    repositories {
+        maven { url = uri("https://maven.architectury.dev/") }
+        maven { url = uri("https://maven.fabricmc.net/") }
+        maven { url = uri("https://maven.neoforged.net/releases/") }
+    }
 
-    // Fabric API. This is technically optional, but you probably want it anyway.
-    modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
+    val targetJavaVersion = 21
+    tasks.withType<JavaCompile>().configureEach {
+        options.encoding = "UTF-8"
+        options.release.set(targetJavaVersion)
+        options.compilerArgs.addAll(listOf("-Xlint:-deprecation", "-Xlint:-removal"))
+    }
 
-    // Optional Baritone API (compile-time only; users may provide the mod at runtime)
-    baritoneApiJar?.let { jar ->
-        val baritoneApi = files(jar)
-        modCompileOnly(baritoneApi)
-        if (enableBaritoneRuntime && requestedMinecraftVersion in baritoneRuntimeTargets) {
-            modLocalRuntime(baritoneApi)
+    configure<JavaPluginExtension> {
+        withSourcesJar()
+        if (JavaVersion.current() < JavaVersion.toVersion(targetJavaVersion)) {
+            toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
         }
     }
-
-    // Gson for JSON serialization
-    implementation("com.google.code.gson:gson:2.10.1")
-
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-tasks.processResources {
-    val properties = mapOf(
-        "version" to version,
-        "minecraft_version" to requestedMinecraftVersion,
-        "loader_version" to project.property("loader_version"),
-        "fabric_api_version" to fabricApiVersion
-    )
-    inputs.properties(properties)
-
-    filesMatching("fabric.mod.json") {
-        expand(properties)
-    }
-}
-
-val targetJavaVersionInt = JavaVersion.toVersion(targetJavaVersion)
-tasks.withType<JavaCompile>().configureEach {
-    options.encoding = "UTF-8"
-    if (targetJavaVersionInt >= JavaVersion.VERSION_1_9) {
-        options.release.set(targetJavaVersion)
-    }
-    options.compilerArgs.addAll(listOf("-Xlint:-deprecation", "-Xlint:-removal"))
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
-
-java {
-    withSourcesJar()
-
-    if (JavaVersion.current() < JavaVersion.toVersion(targetJavaVersion)) {
-        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
-    }
-}
-
-sourceSets {
-    main {
-        java {
-            setSrcDirs(listOf("src/main/java"))
-            if (usesLegacyInputApis) {
-                srcDir("src/compat/legacy/base/java")
-                if (usesTypedUseItemCallback) {
-                    srcDir("src/compat/legacy/useitem/typed/java")
+// ------------------------------------------------------------
+// Check latest Architectury API versions from Modrinth
+// Usage: ./gradlew checkArchitecturyVersions
+// ------------------------------------------------------------
+tasks.register("checkArchitecturyVersions") {
+    group = "help"
+    description = "Queries Modrinth for the latest Architectury API version for each configured MC version"
+    doLast {
+        println("\nArchitectury API version check (source: Modrinth)")
+        println("-".repeat(70))
+        supportedMinecraftVersions.forEach { (mcVersion, spec) ->
+            try {
+                val encoded = java.net.URLEncoder.encode("[\"$mcVersion\"]", "UTF-8")
+                val url = java.net.URI("https://api.modrinth.com/v2/project/lhGA9TYQ/version?game_versions=$encoded&featured=true").toURL()
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.setRequestProperty("User-Agent", "pathmind-buildscript/1.0")
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                connection.connect()
+                if (connection.responseCode == 200) {
+                    val json = connection.inputStream.bufferedReader().readText()
+                    val latest = Regex(""""version_number"\s*:\s*"([^+]+)""").find(json)
+                        ?.groupValues?.get(1) ?: "unknown"
+                    val current = spec.architecturyApiVersion
+                    val status = if (current == latest) "up to date" else "update to $latest"
+                    println("MC $mcVersion: $current  $status")
                 } else {
-                    srcDir("src/compat/legacy/useitem/action/java")
+                    println("MC $mcVersion: HTTP ${connection.responseCode}")
                 }
-                if (usesOldLegacyRenderApis) {
-                    if (requestedMinecraftVersion in preAllocatorLegacyRenderVersions) {
-                        srcDir("src/compat/legacy/render/old/java")
-                    } else if (requestedMinecraftVersion in allocatorLightmapLegacyRenderVersions) {
-                        srcDir("src/compat/legacy/render/old-allocator/java")
-                    } else if (requestedMinecraftVersion in allocatorNoLightmapLegacyRenderVersions) {
-                        srcDir("src/compat/legacy/render/old-allocator-nolightmap/java")
-                    } else {
-                        throw GradleException("No legacy old render source set configured for Minecraft $requestedMinecraftVersion")
-                    }
-                } else if (usesTransitionalLegacyRenderApis) {
-                    srcDir("src/compat/legacy/render/transitional/java")
-                } else {
-                    srcDir("src/compat/legacy/render/late/java")
-                }
-            } else if (usesMidInputApis) {
-                srcDir("src/compat/mid/java")
-            } else {
-                srcDir("src/compat/modern/java")
+                connection.disconnect()
+            } catch (e: Exception) {
+                println("MC $mcVersion: error - ${e.message}")
             }
         }
+        println("-".repeat(70))
+        println("Update architecturyApiVersion in the supportedMinecraftVersions map above.\n")
     }
 }
 
-tasks.jar {
-    from("LICENSE") {
-        rename { "${it}_${base.archivesName.get()}" }
-    }
-}
-
+// ------------------------------------------------------------
+// Multi-version build tasks
+// ------------------------------------------------------------
 val cleanTask = tasks.named("clean")
 val multiVersionBuildTasks = mutableListOf<TaskProvider<out Task>>()
 var previousMultiVersionBuildTask: TaskProvider<out Task>? = null
+
 supportedMinecraftVersions.keys.forEach { version ->
     val taskName = "buildMc${version.toTaskSuffix()}"
     val previousTask = previousMultiVersionBuildTask
     val provider = tasks.register<org.gradle.api.tasks.Exec>(taskName) {
         group = "build"
-        description = "Build Pathmind for Minecraft $version"
+        description = "Build Pathmind for Minecraft $version (fabric + neoforge)"
         val versionOutputDir = layout.buildDirectory.dir("multiVersion/$version")
         outputs.dir(versionOutputDir)
         workingDir = projectDir
-        if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
-            commandLine("cmd", "/c", "gradlew.bat", "assemble", "-Pmc_version=$version")
+
+        val neoforgeSupported = supportedMinecraftVersions[version]?.neoforgeVersion != null
+        val targets = if (neoforgeSupported) {
+            ":fabric:remapJar :neoforge:remapJar"
         } else {
-            commandLine("./gradlew", "assemble", "-Pmc_version=$version")
+            ":fabric:remapJar"
         }
+
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+            commandLine("cmd", "/c", "gradlew.bat", *targets.split(" ").toTypedArray(), "-Pmc_version=$version")
+        } else {
+            commandLine("./gradlew", *targets.split(" ").toTypedArray(), "-Pmc_version=$version")
+        }
+
         doFirst {
             project.delete(versionOutputDir)
         }
         doLast {
             project.copy {
-                from(layout.buildDirectory.dir("libs")) {
+                from(project(":fabric").layout.buildDirectory.dir("libs")) {
                     include("*mc$version.jar")
                     include("*mc$version-sources.jar")
+                }
+                if (neoforgeSupported) {
+                    from(project(":neoforge").layout.buildDirectory.dir("libs")) {
+                        include("*mc$version.jar")
+                        include("*mc$version-sources.jar")
+                    }
                 }
                 into(versionOutputDir)
             }
@@ -251,21 +257,7 @@ supportedMinecraftVersions.keys.forEach { version ->
 
 tasks.register("buildAllTargets") {
     group = "build"
-    description = "Build Pathmind for every configured Minecraft target"
-    val cleanTask = tasks.named("clean")
+    description = "Build Pathmind for every configured Minecraft target (fabric + neoforge)"
     dependsOn(cleanTask)
     multiVersionBuildTasks.forEach { dependsOn(it) }
-}
-
-// configure the maven publication
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-        }
-    }
-
-    repositories {
-        // Add repositories to publish to here.
-    }
 }

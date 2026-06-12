@@ -1,7 +1,6 @@
 package com.pathmind.ui.graph;
 
 import com.pathmind.nodes.Node;
-import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeType;
 import org.junit.jupiter.api.Test;
 
@@ -85,23 +84,5 @@ class NodeGraphTest {
         assertEquals(NodeType.PARAM_AMOUNT, pasted.getType());
         assertEquals(1, graph.getNodes().size());
         assertSame(pasted, graph.getSelectedNode());
-    }
-
-    @Test
-    void draggedPassIncludesConnectionsTouchingDraggedNodes() {
-        NodeGraph graph = new NodeGraph();
-        Node source = new Node(NodeType.START, 100, 100);
-        Node target = new Node(NodeType.MESSAGE, 240, 100);
-        Node unrelated = new Node(NodeType.MESSAGE, 380, 100);
-
-        NodeConnection activeConnection = new NodeConnection(source, target, 0, 0);
-        NodeConnection unrelatedConnection = new NodeConnection(source, unrelated, 0, 0);
-
-        assertFalse(graph.shouldRenderConnectionInDraggedPass(activeConnection));
-
-        target.setDragging(true);
-
-        assertTrue(graph.shouldRenderConnectionInDraggedPass(activeConnection));
-        assertFalse(graph.shouldRenderConnectionInDraggedPass(unrelatedConnection));
     }
 }

@@ -20,9 +20,6 @@ import java.util.List;
 public class ActiveNodeOverlay {
     private static final int OVERLAY_WIDTH = 150;
     private static final int OVERLAY_HEIGHT = 60;
-    private static final int COMPACT_MIN_WIDTH = 112;
-    private static final int COMPACT_MAX_WIDTH = 210;
-    private static final int COMPACT_HEIGHT = 18;
     private static final int MARGIN = 10;
     private static final int SLIDE_OFFSET = 14;
     private static final int OPEN_DURATION_MS = 180;
@@ -146,58 +143,6 @@ public class ActiveNodeOverlay {
             renderNavigatorCard(context, textRenderer, screenWidth, progress, cardCount, cardSpacing, navigatorSnapshot);
         }
     }
-
-    /**
-     * Render a one-line active-node indicator for menus and other non-world screens.
-     */
-    public void renderCompact(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
-        boolean isExecuting = executionManager.isExecuting();
-        boolean showingCompletion = executionManager.isDisplayingCompletion();
-        Node primaryNode = executionManager.getActiveNode();
-        List<Node> activeNodes = executionManager.getActiveNodeChainSnapshot();
-        boolean shouldShow = (isExecuting || showingCompletion) && (showingCompletion || !activeNodes.isEmpty());
-
-        visibility.animateTo(shouldShow ? 1f : 0f, shouldShow ? OPEN_DURATION_MS : CLOSE_DURATION_MS);
-        visibility.tick();
-
-        float progress = visibility.getValue();
-        if (progress <= 0.001f) {
-            return;
-        }
-
-        Node node = showingCompletion ? primaryNode : (!activeNodes.isEmpty() ? activeNodes.get(0) : primaryNode);
-        String nodeTypeName;
-        int nodeColor;
-        if (showingCompletion) {
-            nodeTypeName = node != null ? node.getType().getDisplayName() : "End";
-            nodeColor = node != null ? node.getType().getColor() : UITheme.STATE_ERROR;
-        } else {
-            nodeTypeName = node != null ? node.getType().getDisplayName() : "Running";
-            nodeColor = node != null ? node.getType().getColor() : UITheme.ACCENT_SKY;
-        }
-
-        String prefix = showingCompletion ? "Finished: " : "Running: ";
-        int availableTextWidth = COMPACT_MAX_WIDTH - 18;
-        String text = prefix + trimToWidth(textRenderer, nodeTypeName, availableTextWidth - textRenderer.getWidth(prefix));
-        int textWidth = textRenderer.getWidth(text);
-        int overlayWidth = Math.max(COMPACT_MIN_WIDTH, Math.min(COMPACT_MAX_WIDTH, textWidth + 18));
-        int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
-        int overlayX = screenWidth - overlayWidth - MARGIN + slideOffset;
-        int overlayY = MARGIN;
-
-        context.fill(overlayX, overlayY, overlayX + overlayWidth, overlayY + COMPACT_HEIGHT,
-            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
-        DrawContextBridge.drawBorder(context, overlayX, overlayY, overlayWidth, COMPACT_HEIGHT,
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
-        context.fill(overlayX + 5, overlayY + 5, overlayX + 10, overlayY + 10, applyAlpha(nodeColor, progress));
-        context.drawTextWithShadow(
-            textRenderer,
-            Text.literal(text),
-            overlayX + 14,
-            overlayY + 5,
-            applyAlpha(UITheme.TEXT_HEADER, progress)
-        );
-    }
     
     /**
      * Format duration in milliseconds to a readable format
@@ -291,24 +236,5 @@ public class ActiveNodeOverlay {
             return "Target --";
         }
         return "Target " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ();
-    }
-
-    private String trimToWidth(TextRenderer textRenderer, String value, int maxWidth) {
-        if (value == null || value.isEmpty() || textRenderer.getWidth(value) <= maxWidth) {
-            return value;
-        }
-
-        String ellipsis = "...";
-        int ellipsisWidth = textRenderer.getWidth(ellipsis);
-        int allowedWidth = Math.max(0, maxWidth - ellipsisWidth);
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char next = value.charAt(i);
-            if (textRenderer.getWidth(builder.toString() + next) > allowedWidth) {
-                break;
-            }
-            builder.append(next);
-        }
-        return builder + ellipsis;
     }
 }

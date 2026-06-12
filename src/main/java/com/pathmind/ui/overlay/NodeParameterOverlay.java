@@ -767,6 +767,8 @@ public class NodeParameterOverlay {
             }
             if ("Yaw".equalsIgnoreCase(name)
                 || "Pitch".equalsIgnoreCase(name)
+                || "YawOffset".equalsIgnoreCase(name)
+                || "PitchOffset".equalsIgnoreCase(name)
                 || "Distance".equalsIgnoreCase(name)) {
                 return exactMode;
             }

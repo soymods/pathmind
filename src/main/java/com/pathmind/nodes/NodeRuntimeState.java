@@ -14,23 +14,24 @@ final class NodeRuntimeState {
     boolean repeatActive;
     boolean repeatExecuteAttachedAction;
     boolean lastSensorResult;
-    boolean lastJoinedServerRawResult;
     RuntimeParameterData runtimeParameterData;
     Node owningStartNode;
     Node activeRepeatUntilGuard;
     int startNodeNumber;
-    StartLaunchMode startLaunchMode = StartLaunchMode.MANUAL;
-    StartScreenTarget startScreenTarget = StartScreenTarget.ANY;
-    String runtimeSourceNodeId;
     Random randomGenerator;
     String randomSeedCache;
+    double fallingPeakY = Double.NaN;
+    boolean fallingPeakInitialized;
+    long lastFallingDetectedAtMs = Long.MIN_VALUE;
 
     void resetControlState() {
         repeatRemainingIterations = 0;
         repeatActive = false;
         repeatExecuteAttachedAction = false;
         lastSensorResult = false;
-        lastJoinedServerRawResult = false;
         nextOutputSocket = 0;
+        fallingPeakY = Double.NaN;
+        fallingPeakInitialized = false;
+        lastFallingDetectedAtMs = Long.MIN_VALUE;
     }
 }

@@ -11,7 +11,6 @@
 A visual node editor for building Minecraft automation workflows.
 
 Created by `soymods`.
-Mackery helped too i guess.
 
 🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
 

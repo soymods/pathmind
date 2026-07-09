@@ -142,6 +142,23 @@ subprojects {
         maven { url = uri("https://maven.architectury.dev/") }
         maven { url = uri("https://maven.fabricmc.net/") }
         maven { url = uri("https://maven.neoforged.net/releases/") }
+        val mojang = maven {
+            name = "Mojang"
+            url = uri("https://libraries.minecraft.net/")
+            metadataSources {
+                mavenPom()
+                artifact()
+                ignoreGradleMetadataRedirection()
+            }
+            artifactUrls("https://repo.maven.apache.org/maven2/")
+        }
+        exclusiveContent {
+            forRepositories(mojang)
+            filter {
+                includeModule("org.lwjgl", "lwjgl-freetype")
+            }
+        }
+        mavenCentral()
     }
 
     val targetJavaVersion = 21

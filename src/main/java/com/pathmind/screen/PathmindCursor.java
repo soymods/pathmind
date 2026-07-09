@@ -1,6 +1,7 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindMod;
+import com.pathmind.data.SettingsManager;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.MatrixStackBridge;
 import net.minecraft.client.MinecraftClient;
@@ -32,6 +33,10 @@ final class PathmindCursor {
         if (client == null) {
             return;
         }
+        if (!SettingsManager.isCustomCursorEnabled()) {
+            showSystemCursor(client);
+            return;
+        }
         GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
     }
 
@@ -47,6 +52,11 @@ final class PathmindCursor {
     }
 
     static void render(DrawContext context, Identifier texture, int mouseX, int mouseY) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (!SettingsManager.isCustomCursorEnabled()) {
+            showSystemCursor(client);
+            return;
+        }
         DrawContextBridge.startNewRootLayer(context);
         Object matrices = context.getMatrices();
         MatrixStackBridge.push(matrices);

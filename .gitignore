@@ -21,6 +21,7 @@
 .idea/
 # .vscode/ Provides useful launch garbage
 out/
+*.class
 
 # Local dependencies downloaded during builds
 libs/

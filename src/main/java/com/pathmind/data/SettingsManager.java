@@ -37,6 +37,7 @@ public final class SettingsManager {
         public Boolean showGrid = true;
         public Boolean renderConnectionsOnTop = false;
         public Boolean showTooltips = true;
+        public Boolean customCursorEnabled = true;
         public Boolean showChatErrors = true;
         public Boolean showHudOverlays = true;
         public Boolean skipPresetDeleteConfirm = false;
@@ -153,6 +154,11 @@ public final class SettingsManager {
         return delay;
     }
 
+    public static boolean isCustomCursorEnabled() {
+        Settings settings = getCurrent();
+        return settings.customCursorEnabled == null || settings.customCursorEnabled;
+    }
+
     /**
      * Get the path to the settings file.
      */
@@ -208,6 +214,9 @@ public final class SettingsManager {
         }
         if (settings.showTooltips == null) {
             settings.showTooltips = true;
+        }
+        if (settings.customCursorEnabled == null) {
+            settings.customCursorEnabled = true;
         }
         if (settings.showChatErrors == null) {
             settings.showChatErrors = true;

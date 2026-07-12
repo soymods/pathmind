@@ -101,14 +101,27 @@ final class NodeEntityActionCommandExecutor {
         Node attachedParameter = preprocessParameter != null ? preprocessParameter : owner.getAttachedParameter(0);
         ActionResult result;
 
-        if (attachedParameter != null && attachedParameter.getType() == NodeType.PARAM_BLOCK) {
-            String blockSelectionRaw = owner.getBlockParameterValue(attachedParameter);
+        boolean hasAttachedBlockParameter = attachedParameter != null && attachedParameter.getType() == NodeType.PARAM_BLOCK;
+        String blockSelectionRaw = null;
+        if (hasAttachedBlockParameter) {
+            blockSelectionRaw = owner.getBlockParameterValue(attachedParameter);
             if (blockSelectionRaw == null || blockSelectionRaw.isBlank()) {
                 restoreSneakState.run();
                 owner.sendNodeErrorMessage(client, tr("pathmind.error.interactUnknownBlock", "block"));
                 future.complete(null);
                 return;
             }
+        } else {
+            // Inline "Block" parameter fallback — the same two-source pattern COLLECT and
+            // PLACE use: an attached parameter node wins, otherwise the node's own Block
+            // field selects the target. Blank keeps the entity/crosshair behavior.
+            String inlineBlockSelection = owner.getStringParameter("Block", null);
+            if (inlineBlockSelection != null && !inlineBlockSelection.isBlank()) {
+                blockSelectionRaw = inlineBlockSelection;
+            }
+        }
+
+        if (blockSelectionRaw != null) {
             Optional<BlockSelection> blockSelection = BlockSelection.parse(blockSelectionRaw);
             if (blockSelection.isEmpty()) {
                 restoreSneakState.run();

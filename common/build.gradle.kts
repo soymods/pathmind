@@ -48,6 +48,11 @@ tasks.test {
     useJUnitPlatform()
 }
 
+tasks.matching { it.name == "runClient" || it.name == "runServer" }.configureEach {
+    enabled = false
+    description = "Disabled for the common project; use :fabric:$name, :neoforge:$name, or the root runFabric*/runNeoForge* tasks."
+}
+
 sourceSets {
     main {
         java {

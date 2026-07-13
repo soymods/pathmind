@@ -1,6 +1,7 @@
 package com.pathmind.ui.menu;
 
 import com.pathmind.nodes.NodeCategory;
+import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.sidebar.Sidebar;
 import com.pathmind.ui.theme.UITheme;
@@ -151,7 +152,7 @@ public class ContextMenuSubmenu {
                 } else if (item.nodeType != null) {
                     // Render node item
                     boolean hovered = (item.nodeType == hoveredNode);
-                    int color = category != null ? category.getColor() : item.nodeType.getCategory().getColor();
+                    int color = category != null ? category.getColor() : NodeCatalog.category(item.nodeType).getColor();
                     ContextMenuRenderer.renderNodeItem(
                         context, textRenderer,
                         submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,

@@ -3,7 +3,7 @@ import org.gradle.api.GradleException
 plugins {
     id("architectury-plugin") version "3.4.161"
     id("dev.architectury.loom") version "1.14.473" apply false
-    id("com.gradleup.shadow") version "9.4.1" apply false
+    id("com.gradleup.shadow") version "9.5.1" apply false
 }
 
 // ------------------------------------------------------------
@@ -24,13 +24,13 @@ val supportedMinecraftVersions = linkedMapOf(
     "1.21" to MinecraftVersionSpec(
         yarnMappings = "1.21+build.9",
         fabricApiVersion = "0.102.0+1.21",
-        architecturyApiVersion = "13.0.2",
+        architecturyApiVersion = "13.0.8",
         neoforgeVersion = "21.0.166"
     ),
     "1.21.1" to MinecraftVersionSpec(
         yarnMappings = "1.21.1+build.3",
         fabricApiVersion = "0.116.7+1.21.1",
-        architecturyApiVersion = "13.0.6",
+        architecturyApiVersion = "13.0.8",
         neoforgeVersion = "21.1.230"
     ),
     "1.21.2" to MinecraftVersionSpec(
@@ -113,14 +113,14 @@ extra["fabricApiVersion"] = requestedSpec.fabricApiVersion
 extra["architecturyApiVersion"] = requestedSpec.architecturyApiVersion
 extra["neoforgeVersion"] = requestedSpec.neoforgeVersion
 
-val fabricDefaultRunTaskAliases = mapOf(
-    "runClient" to ":fabric:runClient",
-    "runServer" to ":fabric:runServer",
-    "runClientRenderDoc" to ":fabric:runClientRenderDoc"
+val defaultRunTaskAliases = mapOf(
+    "runclient" to ":fabric:runClient",
+    "runserver" to ":fabric:runServer",
+    "runclientrenderdoc" to ":fabric:runClientRenderDoc"
 )
 val requestedTaskNames = gradle.startParameter.taskNames
 val aliasedTaskNames = requestedTaskNames.map { requested ->
-    fabricDefaultRunTaskAliases[requested] ?: requested
+    defaultRunTaskAliases[requested.lowercase()] ?: requested
 }
 if (aliasedTaskNames != requestedTaskNames) {
     gradle.startParameter.setTaskNames(aliasedTaskNames)
@@ -131,6 +131,36 @@ architectury {
 }
 
 apply(plugin = "base")
+
+tasks.register("runFabricClient") {
+    group = "loom"
+    description = "Run the Fabric development client for Minecraft $requestedMinecraftVersion"
+    dependsOn(":fabric:runClient")
+}
+
+tasks.register("runNeoForgeClient") {
+    group = "loom"
+    description = "Run the NeoForge development client for Minecraft $requestedMinecraftVersion"
+    dependsOn(":neoforge:runClient")
+    onlyIf {
+        requestedSpec.neoforgeVersion != null
+    }
+}
+
+tasks.register("runFabricServer") {
+    group = "loom"
+    description = "Run the Fabric development server for Minecraft $requestedMinecraftVersion"
+    dependsOn(":fabric:runServer")
+}
+
+tasks.register("runNeoForgeServer") {
+    group = "loom"
+    description = "Run the NeoForge development server for Minecraft $requestedMinecraftVersion"
+    dependsOn(":neoforge:runServer")
+    onlyIf {
+        requestedSpec.neoforgeVersion != null
+    }
+}
 
 subprojects {
     apply(plugin = "java")

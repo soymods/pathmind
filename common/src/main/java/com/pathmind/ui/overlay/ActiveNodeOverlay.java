@@ -96,14 +96,14 @@ public class ActiveNodeOverlay {
             if (showingCompletion) {
                 if (node != null) {
                     nodeTypeName = node.getType().getDisplayName();
-                    nodeColor = node.getType().getColor();
+                    nodeColor = node.getColor();
                 } else {
                     nodeTypeName = tr("pathmind.overlay.end");
                     nodeColor = UITheme.STATE_ERROR;
                 }
             } else {
                 nodeTypeName = node != null ? node.getType().getDisplayName() : "";
-                nodeColor = node != null ? node.getType().getColor() : UITheme.ACCENT_SKY;
+                nodeColor = node != null ? node.getColor() : UITheme.ACCENT_SKY;
             }
 
             int nodeTypeWidth = textRenderer.getWidth(nodeTypeName);
@@ -171,10 +171,10 @@ public class ActiveNodeOverlay {
         int nodeColor;
         if (showingCompletion) {
             nodeTypeName = node != null ? node.getType().getDisplayName() : tr("pathmind.overlay.end");
-            nodeColor = node != null ? node.getType().getColor() : UITheme.STATE_ERROR;
+            nodeColor = node != null ? node.getColor() : UITheme.STATE_ERROR;
         } else {
             nodeTypeName = node != null ? node.getType().getDisplayName() : tr("pathmind.overlay.running");
-            nodeColor = node != null ? node.getType().getColor() : UITheme.ACCENT_SKY;
+            nodeColor = node != null ? node.getColor() : UITheme.ACCENT_SKY;
         }
 
         int availableTextWidth = COMPACT_MAX_WIDTH - 18;

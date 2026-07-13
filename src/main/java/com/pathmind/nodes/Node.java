@@ -41,6 +41,7 @@ import com.pathmind.util.InventorySlotModeHelper;
 import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.util.RecipeCompatibilityBridge;
+import com.pathmind.util.UiUtilsProxy;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.EntityPose;
@@ -489,7 +490,7 @@ public class Node {
             return;
         }
 
-        NodeErrorNotificationOverlay.getInstance().show(message, type != null ? type.getColor() : UITheme.STATE_ERROR);
+        NodeErrorNotificationOverlay.getInstance().show(message, type != null ? getColor() : UITheme.STATE_ERROR);
     }
 
     void sendNodeInfoMessage(net.minecraft.client.MinecraftClient client, String message) {
@@ -1038,7 +1039,17 @@ public class Node {
                 return 0xFFF44336; // Red for false branch
             }
         }
-        return getType().getColor();
+        return getColor();
+    }
+
+    public int getColor() {
+        if (type == null) {
+            return UITheme.BORDER_DEFAULT;
+        }
+        return NodeCatalog.graphColor(
+            type,
+            BaritoneDependencyChecker.isBaritoneApiPresent(),
+            UiUtilsProxy.isAvailable());
     }
 
     public int getSocketY(int socketIndex, boolean isInput) {

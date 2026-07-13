@@ -5,6 +5,7 @@ import com.pathmind.execution.ExecutionManager.RuntimeList;
 import com.pathmind.execution.ExecutionManager.RuntimeListEntry;
 import com.pathmind.execution.ExecutionManager.RuntimeVariable;
 import com.pathmind.execution.ExecutionManager.RuntimeVariableEntry;
+import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
@@ -16,6 +17,7 @@ import net.minecraft.text.Text;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import com.pathmind.util.DrawContextBridge;
 
@@ -183,7 +185,9 @@ public class VariablesOverlay {
         }
         List<String> entries = list.getEntries();
         int size = entries.size();
-        String type = list.getElementType() != null ? list.getElementType().name().replace("PARAM_", "").toLowerCase() : "unknown";
+        String type = list.getElementType() != null
+            ? NodeCatalog.displayName(list.getElementType()).toLowerCase(Locale.ROOT)
+            : "unknown";
         if (size <= 0) {
             return "list<" + type + "> [0]";
         }

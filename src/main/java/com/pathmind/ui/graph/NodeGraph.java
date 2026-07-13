@@ -7,6 +7,7 @@ import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.AttributeDetectionConfig;
 import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
@@ -19,11 +20,13 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.GuiSelectionMode;
 import com.pathmind.util.TextRenderUtil;
+import com.pathmind.util.UiUtilsProxy;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -3072,7 +3075,7 @@ public class NodeGraph {
             if (isStopControl) {
                 tabColor = isOverSidebar ? toGrayscale(UITheme.NODE_STOP_BG, 0.7f) : UITheme.NODE_STOP_BG;
             } else {
-                int baseColor = node.getType().getColor();
+                int baseColor = node.getColor();
                 tabColor = isOverSidebar ? toGrayscale(baseColor, 0.7f) : baseColor;
             }
             int tabRight = Math.min(x + MINIMAL_NODE_TAB_WIDTH, x + width - 1);
@@ -3098,10 +3101,10 @@ public class NodeGraph {
         } else if (isStopControl) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_STOP_BORDER, 0.75f) : UITheme.NODE_STOP_BORDER;
         } else if (simpleStyle) {
-            int baseColor = node.getType().getColor();
+            int baseColor = node.getColor();
             borderColor = isOverSidebar ? toGrayscale(baseColor, 0.6f) : adjustColorBrightness(baseColor, 1.1f);
         } else {
-            borderColor = node.getType().getColor(); // Regular node type color
+            borderColor = node.getColor();
         }
         if (isOverSidebar && node.getType() != NodeType.START && !node.isDragging()) {
             borderColor = UITheme.BORDER_SUBTLE; // Darker grey border when over sidebar (for regular nodes)
@@ -3151,7 +3154,7 @@ public class NodeGraph {
             && node.getType() != NodeType.OPERATOR_BOOLEAN_OR
             && node.getType() != NodeType.OPERATOR_BOOLEAN_AND
             && node.getType() != NodeType.OPERATOR_BOOLEAN_XOR) {
-            int headerColor = node.getType().getColor() & UITheme.NODE_HEADER_ALPHA_MASK;
+            int headerColor = node.getColor() & UITheme.NODE_HEADER_ALPHA_MASK;
             if (isOverSidebar) {
                 headerColor = UITheme.NODE_HEADER_DIMMED; // Grey header when over sidebar
             }
@@ -3174,7 +3177,7 @@ public class NodeGraph {
             for (int i = 0; i < node.getInputSocketCount(); i++) {
                 boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && hoveredSocketIsInput);
                 boolean isActive = isSocketActive(node, i, true);
-                int socketColor = isHovered ? getSelectedNodeAccentColor() : node.getType().getColor();
+                int socketColor = isHovered ? getSelectedNodeAccentColor() : node.getColor();
                 if (!isActive && !isHovered) {
                     socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
                 }
@@ -3421,7 +3424,7 @@ public class NodeGraph {
                 UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
             }
         } else if (!simpleStyle && isComparisonOperator(node)) {
-            int accentColor = node.getType().getColor();
+            int accentColor = node.getColor();
             int baseColor = isOverSidebar ? toGrayscale(accentColor, 0.7f) : adjustColorBrightness(accentColor, 0.55f);
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
@@ -3472,7 +3475,7 @@ public class NodeGraph {
                 operatorColor
             );
         } else if (node.getType() == NodeType.EVENT_CALL) {
-            int baseColor = isOverSidebar ? toGrayscale(node.getType().getColor(), 0.7f) : node.getType().getColor();
+            int baseColor = isOverSidebar ? toGrayscale(node.getColor(), 0.7f) : node.getColor();
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
             int titleColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_TITLE, 0.9f) : UITheme.NODE_EVENT_TITLE;
@@ -6482,7 +6485,7 @@ public class NodeGraph {
         int y = node.getY() - cameraY;
         int width = node.getWidth();
 
-        int headerColor = node.getType().getColor() & UITheme.NODE_HEADER_ALPHA_MASK;
+        int headerColor = node.getColor() & UITheme.NODE_HEADER_ALPHA_MASK;
         if (isOverSidebar) {
             headerColor = UITheme.NODE_HEADER_DIMMED;
         }
@@ -6503,8 +6506,8 @@ public class NodeGraph {
         int badgeWidth = textRenderer.getWidth(badge) + 8;
         int badgeLeft = x + width - badgeWidth - 6;
         int badgeTop = y + 2;
-        int badgeFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(node.getType().getColor(), 0.78f);
-        int badgeBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(node.getType().getColor(), 1.18f);
+        int badgeFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(node.getColor(), 0.78f);
+        int badgeBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(node.getColor(), 1.18f);
         context.fill(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + 11, badgeFill);
         DrawContextBridge.drawBorderInLayer(context, badgeLeft, badgeTop, badgeWidth, 11, badgeBorder);
         drawNodeText(context, textRenderer, badge, badgeLeft + 4, badgeTop + 2, isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
@@ -6538,7 +6541,7 @@ public class NodeGraph {
         int y = node.getY() - cameraY;
         int width = node.getWidth();
         int height = node.getHeight();
-        int accent = node.getType().getColor();
+        int accent = node.getColor();
 
         int headerColor = isOverSidebar ? UITheme.NODE_HEADER_DIMMED : (accent & UITheme.NODE_HEADER_ALPHA_MASK);
         int bodyColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(accent, 0.2f);
@@ -6600,8 +6603,8 @@ public class NodeGraph {
                 isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR);
         }
 
-        int fill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(node.getType().getColor(), 0.55f);
-        int border = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(node.getType().getColor(), 1.12f);
+        int fill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(node.getColor(), 0.55f);
+        int border = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(node.getColor(), 1.12f);
         context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, fill);
         DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, border);
 
@@ -6706,7 +6709,12 @@ public class NodeGraph {
             }
             int cx = Math.round(c[0]);
             int cy = Math.round(c[1]);
-            int color = nd.getType() == NodeType.START ? UITheme.NODE_START_BG : (nd.getType() != null ? nd.getType().getColor() : UITheme.TEXT_TERTIARY);
+            int color = nd.getType() == null
+                ? UITheme.TEXT_TERTIARY
+                : NodeCatalog.graphColor(
+                    nd.getType(),
+                    BaritoneDependencyChecker.isBaritoneApiPresent(),
+                    UiUtilsProxy.isAvailable());
             if (isOverSidebar) {
                 color = UITheme.BORDER_SUBTLE;
             }

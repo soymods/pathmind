@@ -4,7 +4,6 @@ import com.pathmind.ui.sidebar.Sidebar;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -61,13 +60,9 @@ class NodeTypeSearchLabelTest {
     }
 
     private static String getSearchLabel(NodeType nodeType, Map<String, String> translations) throws Exception {
-        if (nodeType == NodeType.DROP_SLOT) {
-            return requireTranslation(translations, "pathmind.node.type.dropItem");
-        }
-        Field translationKeyField = NodeType.class.getDeclaredField("translationKey");
-        translationKeyField.setAccessible(true);
-        String translationKey = (String) translationKeyField.get(nodeType);
-        return requireTranslation(translations, translationKey);
+        NodeCatalog.NodeDefinition definition = NodeCatalog.definition(nodeType);
+        assertNotNull(definition, () -> "Missing catalog definition for " + nodeType);
+        return requireTranslation(translations, definition.nameKey());
     }
 
     private static String requireTranslation(Map<String, String> translations, String key) {

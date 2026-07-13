@@ -9,11 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NodeTypeDefinitionTest {
 
     @Test
-    void everyNodeTypeHasAnExplicitCategory() {
+    void everyNodeTypeHasCatalogMetadata() {
         for (NodeType type : NodeType.values()) {
             assertTrue(
-                NodeTypeDefinition.hasExplicitCategory(type),
-                () -> "Missing explicit category metadata for " + type
+                NodeCatalog.hasDefinition(type),
+                () -> "Missing catalog metadata for " + type
             );
         }
     }

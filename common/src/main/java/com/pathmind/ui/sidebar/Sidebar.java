@@ -4,6 +4,7 @@ import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
@@ -95,7 +96,10 @@ public class Sidebar {
     
     private void initializeCategoryNodes() {
         for (NodeCategory category : NodeCategory.values()) {
-            List<NodeGroup> groups = createGroupsForCategory(category);
+            List<NodeGroup> groups = new ArrayList<>();
+            for (NodeCatalog.SidebarGroup group : NodeCatalog.sidebarGroups(category, baritoneAvailable, uiUtilsAvailable)) {
+                groups.add(new NodeGroup(group.displayCategory(), group.titleKey(), group.nodes()));
+            }
             List<NodeType> nodes = new ArrayList<>();
             for (NodeGroup group : groups) {
                 nodes.addAll(group.getNodes());
@@ -104,34 +108,6 @@ public class Sidebar {
             categoryNodes.put(category, nodes);
         }
         refreshCustomNodes();
-    }
-
-    private List<NodeGroup> createGroupsForCategory(NodeCategory category) {
-        if (category == null || category == NodeCategory.CUSTOM) {
-            return java.util.Collections.emptyList();
-        }
-        switch (category) {
-            case FLOW:
-                return createFlowGroups();
-            case CONTROL:
-                return createControlGroups();
-            case NAVIGATION:
-                return baritoneAvailable ? createNavigationGroups() : java.util.Collections.emptyList();
-            case WORLD:
-                return createWorldGroups();
-            case PLAYER:
-                return createPlayerGroups();
-            case INTERFACE:
-                return createInterfaceGroups();
-            case DATA:
-                return createDataGroups();
-            case SENSORS:
-                return createSensorGroups();
-            case PARAMETERS:
-                return createParameterGroups();
-            default:
-                return java.util.Collections.emptyList();
-        }
     }
 
     private void refreshCustomNodes() {
@@ -144,336 +120,8 @@ public class Sidebar {
         }
     }
 
-    private List<NodeGroup> createFlowGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.entryPoints",
-            NodeType.START,
-            NodeType.START_CHAIN,
-            NodeType.EVENT_FUNCTION,
-            NodeType.EVENT_CALL
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.timingStops",
-            NodeType.WAIT,
-            NodeType.STOP_CHAIN,
-            NodeType.STOP_ALL
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.presets",
-            NodeType.RUN_PRESET,
-            NodeType.TEMPLATE
-        ));
-        return groups;
-    }
-
-    private List<NodeGroup> createControlGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.branchingLoops",
-            NodeType.CONTROL_IF,
-            NodeType.CONTROL_IF_ELSE,
-            NodeType.CONTROL_REPEAT,
-            NodeType.CONTROL_REPEAT_UNTIL,
-            NodeType.CONTROL_FOREVER
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.parallel",
-            NodeType.CONTROL_FORK,
-            NodeType.CONTROL_JOIN_ANY,
-            NodeType.CONTROL_JOIN_ALL
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.conditionsWaiting",
-            NodeType.CONTROL_WAIT_UNTIL
-        ));
-        return groups;
-    }
-
-
-    private List<NodeGroup> createNavigationGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.navigation",
-            NodeType.GOTO,
-            NodeType.TRAVEL,
-            NodeType.GOAL,
-            NodeType.PATH,
-            NodeType.INVERT,
-            NodeType.COME,
-            NodeType.SURFACE,
-            NodeType.STOP
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.exploration",
-            NodeType.EXPLORE,
-            NodeType.FOLLOW
-        ));
-        return groups;
-    }
-
-    private List<NodeGroup> createWorldGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.gathering",
-            NodeType.COLLECT,
-            NodeType.FARM,
-            NodeType.TUNNEL
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.buildingCrafting",
-            NodeType.BUILD,
-            NodeType.PLACE,
-            NodeType.CRAFT
-        ));
-        return groups;
-    }
-
-    private List<NodeGroup> createPlayerGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        if (!baritoneAvailable) {
-            groups.add(createGroup(
-                "pathmind.sidebar.group.navigation",
-                NodeType.GOTO,
-                NodeType.TRAVEL,
-                NodeType.GOAL,
-                NodeType.PATH,
-                NodeType.INVERT,
-                NodeType.COME,
-                NodeType.SURFACE,
-                NodeType.STOP
-            ));
-            groups.add(createGroup(
-                "pathmind.sidebar.group.exploration",
-                NodeType.EXPLORE,
-                NodeType.FOLLOW
-            ));
-        }
-        groups.add(createGroup(
-            "pathmind.sidebar.group.movement",
-            NodeType.WALK,
-            NodeType.JUMP,
-            NodeType.CRAWL,
-            NodeType.CROUCH,
-            NodeType.SPRINT,
-            NodeType.FLY
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.viewInput",
-            NodeType.LOOK,
-            NodeType.PRESS_KEY
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.interaction",
-            NodeType.USE,
-            NodeType.INTERACT,
-            NodeType.BREAK,
-            NodeType.PLACE_HAND
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.combatTrading",
-            NodeType.SWING,
-            NodeType.TRADE
-        ));
-        return groups;
-    }
-
-    private List<NodeGroup> createInterfaceGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.inventory",
-            NodeType.HOTBAR,
-            NodeType.MOVE_ITEM,
-            NodeType.DROP_ITEM,
-            NodeType.CLICK_SLOT,
-            NodeType.OPEN_INVENTORY,
-            NodeType.EQUIP_HAND,
-            NodeType.EQUIP_ARMOR
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.screensUi",
-            NodeType.CLICK_SCREEN,
-            NodeType.CLOSE_GUI,
-            NodeType.UI_UTILS
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.writingOutput",
-            NodeType.MESSAGE,
-            NodeType.WRITE_BOOK,
-            NodeType.WRITE_SIGN
-        ));
-        return groups;
-    }
-
-    private List<NodeGroup> createDataGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.variables",
-            NodeType.VARIABLE,
-            NodeType.SET_VARIABLE,
-            NodeType.CHANGE_VARIABLE
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.lists",
-            NodeType.CREATE_LIST,
-            NodeType.ADD_TO_LIST,
-            NodeType.REMOVE_FIRST_FROM_LIST,
-            NodeType.REMOVE_LAST_FROM_LIST,
-            NodeType.REMOVE_LIST_ITEM,
-            NodeType.REMOVE_FROM_LIST,
-            NodeType.LIST_ITEM,
-            NodeType.LIST_LENGTH
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.comparisonBoolean",
-            NodeType.OPERATOR_EQUALS,
-            NodeType.OPERATOR_NOT,
-            NodeType.OPERATOR_BOOLEAN_NOT,
-            NodeType.OPERATOR_BOOLEAN_OR,
-            NodeType.OPERATOR_BOOLEAN_AND,
-            NodeType.OPERATOR_BOOLEAN_XOR,
-            NodeType.OPERATOR_GREATER,
-            NodeType.OPERATOR_LESS
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.mathRandom",
-            NodeType.OPERATOR_MOD,
-            NodeType.OPERATOR_RANDOM
-        ));
-        return groups;
-    }
-
-    private List<NodeGroup> createParameterGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.spatialData",
-            NodeType.PARAM_COORDINATE,
-            NodeType.PARAM_ROTATION,
-            NodeType.PARAM_DIRECTION,
-            NodeType.PARAM_BLOCK_FACE,
-            NodeType.PARAM_RANGE,
-            NodeType.PARAM_DISTANCE,
-            NodeType.PARAM_CLOSEST
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.targetsObjects",
-            NodeType.PARAM_BLOCK,
-            NodeType.PARAM_ITEM,
-            NodeType.PARAM_ENTITY,
-            NodeType.PARAM_PLAYER,
-            NodeType.PARAM_WAYPOINT,
-            NodeType.PARAM_SCHEMATIC
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.inventoryGui",
-            NodeType.PARAM_INVENTORY_SLOT,
-            NodeType.PARAM_HAND,
-            NodeType.PARAM_GUI
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.inputText",
-            NodeType.PARAM_KEY,
-            NodeType.PARAM_MOUSE_BUTTON,
-            NodeType.PARAM_MESSAGE
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.utilityValues",
-            NodeType.PARAM_DURATION,
-            NodeType.PARAM_AMOUNT,
-            NodeType.PARAM_BOOLEAN
-        ));
-        return groups;
-    }
-
-    private List<NodeGroup> createSensorGroups() {
-        List<NodeGroup> groups = new ArrayList<>();
-        groups.add(createGroup(
-            "pathmind.sidebar.group.playerState",
-            NodeType.SENSOR_IS_SWIMMING,
-            NodeType.SENSOR_IS_IN_LAVA,
-            NodeType.SENSOR_IS_UNDERWATER,
-            NodeType.SENSOR_IS_ON_GROUND,
-            NodeType.SENSOR_IS_FALLING,
-            NodeType.SENSOR_HEALTH_BELOW,
-            NodeType.SENSOR_HUNGER_BELOW,
-            NodeType.SENSOR_CURRENT_HAND
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.eventsInput",
-            NodeType.SENSOR_KEY_PRESSED,
-            NodeType.SENSOR_CHAT_MESSAGE,
-            NodeType.SENSOR_JOINED_SERVER,
-            NodeType.SENSOR_FABRIC_EVENT
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.spatialTargeting",
-            NodeType.SENSOR_POSITION_OF,
-            NodeType.SENSOR_DISTANCE_BETWEEN,
-            NodeType.SENSOR_LOOK_DIRECTION,
-            NodeType.SENSOR_TARGETED_BLOCK,
-            NodeType.SENSOR_TARGETED_ENTITY,
-            NodeType.SENSOR_TOUCHING_BLOCK
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.blocksFacesVisibility",
-            NodeType.SENSOR_AT_COORDINATES,
-            NodeType.SENSOR_TARGETED_BLOCK_FACE,
-            NodeType.SENSOR_TOUCHING_ENTITY,
-            NodeType.SENSOR_ATTRIBUTE_DETECTION,
-            NodeType.SENSOR_IS_RENDERED,
-            NodeType.SENSOR_IS_VISIBLE
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.inventoryItems",
-            NodeType.SENSOR_ITEM_IN_INVENTORY,
-            NodeType.SENSOR_ITEM_IN_SLOT,
-            NodeType.SENSOR_SLOT_ITEM_COUNT,
-            NodeType.SENSOR_GUI_FILLED
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.trading",
-            NodeType.SENSOR_FIND_TRADE,
-            NodeType.SENSOR_VILLAGER_TRADE,
-            NodeType.SENSOR_IN_STOCK
-        ));
-        groups.add(createGroup(
-            "pathmind.sidebar.group.worldWeather",
-            NodeType.SENSOR_IS_DAYTIME,
-            NodeType.SENSOR_IS_RAINING
-        ));
-        return groups;
-    }
-
-    private NodeGroup createGroup(String titleKey, NodeType... nodeTypes) {
-        List<NodeType> nodes = new ArrayList<>();
-        if (nodeTypes != null) {
-            for (NodeType type : nodeTypes) {
-                if (type == null || type == NodeType.PARAM_PLACE_TARGET) {
-                    continue;
-                }
-                if (shouldIncludeNode(type)) {
-                    nodes.add(type);
-                }
-            }
-        }
-        return new NodeGroup(titleKey, nodes);
-    }
-
-    private boolean shouldIncludeNode(NodeType nodeType) {
-        if (nodeType == null || !nodeType.isDraggableFromSidebar()) {
-            return false;
-        }
-        if (!uiUtilsAvailable && nodeType.requiresUiUtils()) {
-            return false;
-        }
-        if (baritoneAvailable) {
-            return true;
-        }
-        return !nodeType.requiresBaritone();
-    }
-
     public boolean isNodeAvailable(NodeType nodeType) {
-        return shouldIncludeNode(nodeType);
+        return NodeCatalog.shouldDisplayInSidebar(nodeType, baritoneAvailable, uiUtilsAvailable);
     }
 
     private boolean hasGroupedContent(NodeCategory category) {
@@ -775,7 +423,7 @@ public class Sidebar {
                                 Text.literal(line),
                                 contentTextX,
                                 groupTextY,
-                                getSidebarGroupHeaderColor(selectedCategory)
+                                getSidebarGroupHeaderColor(group.getDisplayCategory())
                             );
                             groupTextY += groupLineHeight;
                         }
@@ -808,7 +456,7 @@ public class Sidebar {
                                 indicatorY,
                                 indicatorSize,
                                 indicatorSize,
-                                getSidebarNodeIndicatorColor(selectedCategory, nodeType, nodeIndex),
+                                getSidebarNodeIndicatorColor(group.getDisplayCategory(), nodeType, nodeIndex),
                                 UITheme.BORDER_SUBTLE,
                                 UITheme.PANEL_INNER_BORDER
                             );
@@ -820,7 +468,7 @@ public class Sidebar {
                                     Text.literal(line),
                                     indicatorX + indicatorSize + 4,
                                     lineY,
-                                    getSidebarNodeTextColor(selectedCategory, nodeHovered)
+                                    getSidebarNodeTextColor(group.getDisplayCategory(), nodeHovered)
                                 );
                                 lineY += nodeLineHeight;
                             }
@@ -1117,7 +765,9 @@ public class Sidebar {
             return getSidebarCategoryAccent(category);
         }
         if (indexInGroup == 0) {
-            return nodeType.getCategory() == category ? nodeType.getColor() : getSidebarCategoryAccent(category);
+            return NodeCatalog.category(nodeType) == category
+                ? NodeCatalog.graphColor(nodeType, baritoneAvailable, uiUtilsAvailable)
+                : getSidebarCategoryAccent(category);
         }
         return getSidebarCategoryAccent(category);
     }
@@ -1295,15 +945,21 @@ public class Sidebar {
     private record NodeRowInfo(NodeType nodeType, CustomNodeEntry customNode, List<String> lines, int height) {}
 
     public static class NodeGroup {
+        private final NodeCategory displayCategory;
         private final String titleKey;
         private final List<NodeType> nodes;
 
-        NodeGroup(String titleKey, List<NodeType> nodeTypes) {
+        NodeGroup(NodeCategory displayCategory, String titleKey, List<NodeType> nodeTypes) {
+            this.displayCategory = displayCategory;
             this.titleKey = titleKey;
             this.nodes = new ArrayList<>();
             if (nodeTypes != null) {
                 this.nodes.addAll(nodeTypes);
             }
+        }
+
+        public NodeCategory getDisplayCategory() {
+            return displayCategory;
         }
 
         public String getTitle() {

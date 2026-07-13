@@ -19,7 +19,7 @@ side = "CLIENT"
 [[dependencies.pathmind]]
 modId = "minecraft"
 type = "required"
-versionRange = "[${minecraft_version},)"
+versionRange = "[${minecraft_version}]"
 ordering = "NONE"
 side = "CLIENT"
 

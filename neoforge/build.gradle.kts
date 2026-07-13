@@ -34,12 +34,13 @@ loom {
 }
 
 val common: Configuration by configurations.creating
+val runtimeCommon: Configuration by configurations.creating
 val shadowCommon: Configuration by configurations.creating
 
 configurations {
     compileClasspath.get().extendsFrom(common)
-    runtimeClasspath.get().extendsFrom(common)
-    named("developmentNeoForge").get().extendsFrom(common)
+    runtimeClasspath.get().extendsFrom(runtimeCommon)
+    named("developmentNeoForge").get().extendsFrom(runtimeCommon)
 }
 
 dependencies {
@@ -51,6 +52,7 @@ dependencies {
     modApi("dev.architectury:architectury-neoforge:$architecturyApiVersion")
 
     common(project(":common", "namedElements")) { isTransitive = false }
+    runtimeCommon(project(":common", "transformProductionNeoForgeMojangElements")) { isTransitive = false }
     shadowCommon(project(":common", "transformProductionNeoForgeMojangElements")) { isTransitive = false }
 }
 

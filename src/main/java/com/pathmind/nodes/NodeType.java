@@ -1,219 +1,192 @@
 package com.pathmind.nodes;
 
-import net.minecraft.text.Text;
-
 /**
  * Enum representing different types of nodes in the Pathmind visual editor.
  * Similar to Blender's shader nodes, each type has specific properties and behaviors.
  */
 public enum NodeType {
     // Event nodes
-    START("pathmind.node.type.start", 0xFF4CAF50, "pathmind.node.type.start.desc"),
-    START_CHAIN("pathmind.node.type.startChain", 0xFF4CAF50, "pathmind.node.type.startChain.desc"),
-    EVENT_FUNCTION("pathmind.node.type.eventFunction", 0xFFE91E63, "pathmind.node.type.eventFunction.desc"),
-    EVENT_CALL("pathmind.node.type.eventCall", 0xFFE91E63, "pathmind.node.type.eventCall.desc"),
+    START,
+    START_CHAIN,
+    EVENT_FUNCTION,
+    EVENT_CALL,
 
     // Variable nodes
-    VARIABLE("pathmind.node.type.variable", 0xFFFF9800, "pathmind.node.type.variable.desc"),
-    SET_VARIABLE("pathmind.node.type.setVariable", 0xFFFF9800, "pathmind.node.type.setVariable.desc"),
-    CHANGE_VARIABLE("pathmind.node.type.changeVariable", 0xFFFF9800, "pathmind.node.type.changeVariable.desc"),
-    CREATE_LIST("pathmind.node.type.createList", 0xFFFF9800, "pathmind.node.type.createList.desc"),
-    ADD_TO_LIST("pathmind.node.type.addToList", 0xFFFF9800, "pathmind.node.type.addToList.desc"),
-    REMOVE_FIRST_FROM_LIST("pathmind.node.type.removeFirstFromList", 0xFFFF9800, "pathmind.node.type.removeFirstFromList.desc"),
-    REMOVE_LAST_FROM_LIST("pathmind.node.type.removeLastFromList", 0xFFFF9800, "pathmind.node.type.removeLastFromList.desc"),
-    REMOVE_LIST_ITEM("pathmind.node.type.removeListItem", 0xFFFF9800, "pathmind.node.type.removeListItem.desc"),
-    REMOVE_FROM_LIST("pathmind.node.type.removeFromList", 0xFFFF9800, "pathmind.node.type.removeFromList.desc"),
-    LIST_ITEM("pathmind.node.type.listItem", 0xFFFF9800, "pathmind.node.type.listItem.desc"),
-    LIST_LENGTH("pathmind.node.type.listLength", 0xFFFF9800, "pathmind.node.type.listLength.desc"),
+    VARIABLE,
+    SET_VARIABLE,
+    CHANGE_VARIABLE,
+    CREATE_LIST,
+    ADD_TO_LIST,
+    REMOVE_FIRST_FROM_LIST,
+    REMOVE_LAST_FROM_LIST,
+    REMOVE_LIST_ITEM,
+    REMOVE_FROM_LIST,
+    LIST_ITEM,
+    LIST_LENGTH,
 
     // Operator nodes
-    OPERATOR_EQUALS("pathmind.node.type.operatorEquals", 0xFF00C853, "pathmind.node.type.operatorEquals.desc"),
-    OPERATOR_NOT("pathmind.node.type.operatorNot", 0xFF00C853, "pathmind.node.type.operatorNot.desc"),
-    OPERATOR_BOOLEAN_NOT("pathmind.node.type.operatorBooleanNot", 0xFF00C853, "pathmind.node.type.operatorBooleanNot.desc"),
-    OPERATOR_BOOLEAN_OR("pathmind.node.type.operatorBooleanOr", 0xFF00C853, "pathmind.node.type.operatorBooleanOr.desc"),
-    OPERATOR_BOOLEAN_AND("pathmind.node.type.operatorBooleanAnd", 0xFF00C853, "pathmind.node.type.operatorBooleanAnd.desc"),
-    OPERATOR_BOOLEAN_XOR("pathmind.node.type.operatorBooleanXor", 0xFF00C853, "pathmind.node.type.operatorBooleanXor.desc"),
-    OPERATOR_GREATER("pathmind.node.type.operatorGreater", 0xFF00C853, "pathmind.node.type.operatorGreater.desc"),
-    OPERATOR_LESS("pathmind.node.type.operatorLess", 0xFF00C853, "pathmind.node.type.operatorLess.desc"),
-    OPERATOR_MOD("pathmind.node.type.operatorMod", 0xFF00C853, "pathmind.node.type.operatorMod.desc"),
-    OPERATOR_RANDOM("pathmind.node.type.operatorRandom", 0xFF00C853, "pathmind.node.type.operatorRandom.desc"),
+    OPERATOR_EQUALS,
+    OPERATOR_NOT,
+    OPERATOR_BOOLEAN_NOT,
+    OPERATOR_BOOLEAN_OR,
+    OPERATOR_BOOLEAN_AND,
+    OPERATOR_BOOLEAN_XOR,
+    OPERATOR_GREATER,
+    OPERATOR_LESS,
+    OPERATOR_MOD,
+    OPERATOR_RANDOM,
 
     // Navigation Commands
-    GOTO("pathmind.node.type.goto", 0xFF00BCD4, "pathmind.node.type.goto.desc"),
-    TRAVEL("pathmind.node.type.travel", 0xFF26C6DA, "pathmind.node.type.travel.desc"),
-    GOAL("pathmind.node.type.goal", 0xFF2196F3, "pathmind.node.type.goal.desc"),
-    PATH("pathmind.node.type.path", 0xFF03DAC6, "pathmind.node.type.path.desc"),
-    INVERT("pathmind.node.type.invert", 0xFFFF5722, "pathmind.node.type.invert.desc"),
-    COME("pathmind.node.type.come", 0xFF9C27B0, "pathmind.node.type.come.desc"),
-    SURFACE("pathmind.node.type.surface", 0xFF4CAF50, "pathmind.node.type.surface.desc"),
+    GOTO,
+    TRAVEL,
+    GOAL,
+    PATH,
+    INVERT,
+    COME,
+    SURFACE,
 
     // Resource collection and Building Commands
-    COLLECT("pathmind.node.type.collect", 0xFF2196F3, "pathmind.node.type.collect.desc"),
-    BUILD("pathmind.node.type.build", 0xFFFF9800, "pathmind.node.type.build.desc"),
-    TUNNEL("pathmind.node.type.tunnel", 0xFF795548, "pathmind.node.type.tunnel.desc"),
-    FARM("pathmind.node.type.farm", 0xFF4CAF50, "pathmind.node.type.farm.desc"),
-    PLACE("pathmind.node.type.place", 0xFF9C27B0, "pathmind.node.type.place.desc"),
-    CRAFT("pathmind.node.type.craft", 0xFFFF9800, "pathmind.node.type.craft.desc"),
+    COLLECT,
+    BUILD,
+    TUNNEL,
+    FARM,
+    PLACE,
+    CRAFT,
 
     // Exploration Commands
-    EXPLORE("pathmind.node.type.explore", 0xFF673AB7, "pathmind.node.type.explore.desc"),
-    FOLLOW("pathmind.node.type.follow", 0xFF3F51B5, "pathmind.node.type.follow.desc"),
+    EXPLORE,
+    FOLLOW,
 
     // Control flow Commands
-    CONTROL_REPEAT("pathmind.node.type.controlRepeat", 0xFFFFC107, "pathmind.node.type.controlRepeat.desc"),
-    CONTROL_REPEAT_UNTIL("pathmind.node.type.controlRepeatUntil", 0xFFFFC107, "pathmind.node.type.controlRepeatUntil.desc"),
-    CONTROL_WAIT_UNTIL("pathmind.node.type.controlWaitUntil", 0xFFFFC107, "pathmind.node.type.controlWaitUntil.desc"),
-    CONTROL_FOREVER("pathmind.node.type.controlForever", 0xFFFFC107, "pathmind.node.type.controlForever.desc"),
-    CONTROL_IF("pathmind.node.type.controlIf", 0xFFFFC107, "pathmind.node.type.controlIf.desc"),
-    CONTROL_IF_ELSE("pathmind.node.type.controlIfElse", 0xFFFFC107, "pathmind.node.type.controlIfElse.desc"),
-    CONTROL_FORK("pathmind.node.type.controlFork", 0xFFFFC107, "pathmind.node.type.controlFork.desc"),
-    CONTROL_JOIN_ANY("pathmind.node.type.controlJoinAny", 0xFFFFC107, "pathmind.node.type.controlJoinAny.desc"),
-    CONTROL_JOIN_ALL("pathmind.node.type.controlJoinAll", 0xFFFFC107, "pathmind.node.type.controlJoinAll.desc"),
+    CONTROL_REPEAT,
+    CONTROL_REPEAT_UNTIL,
+    CONTROL_WAIT_UNTIL,
+    CONTROL_FOREVER,
+    CONTROL_IF,
+    CONTROL_IF_ELSE,
+    CONTROL_FORK,
+    CONTROL_JOIN_ANY,
+    CONTROL_JOIN_ALL,
 
     // Player movement commands
-    LOOK("pathmind.node.type.look", 0xFF03A9F4, "pathmind.node.type.look.desc"),
-    WALK("pathmind.node.type.walk", 0xFF26C6DA, "pathmind.node.type.walk.desc"),
-    JUMP("pathmind.node.type.jump", 0xFF009688, "pathmind.node.type.jump.desc"),
-    PRESS_KEY("pathmind.node.type.pressKey", 0xFF26A69A, "pathmind.node.type.pressKey.desc"),
-    CRAWL("pathmind.node.type.crawl", 0xFF455A64, "pathmind.node.type.crawl.desc"),
-    CROUCH("pathmind.node.type.crouch", 0xFF607D8B, "pathmind.node.type.crouch.desc"),
-    SPRINT("pathmind.node.type.sprint", 0xFFFFEB3B, "pathmind.node.type.sprint.desc"),
-    FLY("pathmind.node.type.fly", 0xFF29B6F6, "pathmind.node.type.fly.desc"),
-    STOP("pathmind.node.type.stop", 0xFFF44336, "pathmind.node.type.stop.desc"),
+    LOOK,
+    WALK,
+    JUMP,
+    PRESS_KEY,
+    CRAWL,
+    CROUCH,
+    SPRINT,
+    FLY,
+    STOP,
 
     // Player combat commands
-    SWING("pathmind.node.type.swing", 0xFFFF7043, "pathmind.node.type.swing.desc"),
+    SWING,
 
     // Player interaction commands
-    USE("pathmind.node.type.use", 0xFF8BC34A, "pathmind.node.type.use.desc"),
-    INTERACT("pathmind.node.type.interact", 0xFF4DB6AC, "pathmind.node.type.interact.desc"),
-    BREAK("pathmind.node.type.break", 0xFF4DB6AC, "pathmind.node.type.break.desc"),
-    PLACE_HAND("pathmind.node.type.placeHand", 0xFFBA68C8, "pathmind.node.type.placeHand.desc"),
-    TRADE("pathmind.node.type.trade", 0xFF7E57C2, "pathmind.node.type.trade.desc"),
+    USE,
+    INTERACT,
+    BREAK,
+    PLACE_HAND,
+    TRADE,
 
     // GUI Commands
-    HOTBAR("pathmind.node.type.hotbar", 0xFFCDDC39, "pathmind.node.type.hotbar.desc"),
-    DROP_ITEM("pathmind.node.type.dropItem", 0xFFFFAB91, "pathmind.node.type.dropItem.desc"),
-    DROP_SLOT("pathmind.node.type.dropSlot", 0xFFFF7043, "pathmind.node.type.dropSlot.desc"),
-    CLICK_SLOT("pathmind.node.type.clickSlot", 0xFFFF7043, "pathmind.node.type.clickSlot.desc"),
-    CLICK_SCREEN("pathmind.node.type.clickScreen", 0xFFFF7043, "pathmind.node.type.clickScreen.desc"),
-    MOVE_ITEM("pathmind.node.type.moveItem", 0xFFFFB74D, "pathmind.node.type.moveItem.desc"),
-    OPEN_INVENTORY("pathmind.node.type.openInventory", 0xFFB0BEC5, "pathmind.node.type.openInventory.desc"),
-    CLOSE_GUI("pathmind.node.type.closeGui", 0xFFB0BEC5, "pathmind.node.type.closeGui.desc"),
-    WRITE_BOOK("pathmind.node.type.writeBook", 0xFFB0BEC5, "pathmind.node.type.writeBook.desc"),
-    WRITE_SIGN("pathmind.node.type.writeSign", 0xFFB0BEC5, "pathmind.node.type.writeSign.desc"),
-    UI_UTILS("pathmind.node.type.uiUtils", 0xFFB0BEC5, "pathmind.node.type.uiUtils.desc"),
+    HOTBAR,
+    DROP_ITEM,
+    DROP_SLOT,
+    CLICK_SLOT,
+    CLICK_SCREEN,
+    MOVE_ITEM,
+    OPEN_INVENTORY,
+    CLOSE_GUI,
+    WRITE_BOOK,
+    WRITE_SIGN,
+    UI_UTILS,
 
     // Equipment Commands
-    EQUIP_ARMOR("pathmind.node.type.equipArmor", 0xFF7E57C2, "pathmind.node.type.equipArmor.desc"),
-    EQUIP_HAND("pathmind.node.type.equipHand", 0xFF5C6BC0, "pathmind.node.type.equipHand.desc"),
+    EQUIP_ARMOR,
+    EQUIP_HAND,
 
     // Sensor commands
-    SENSOR_TOUCHING_BLOCK("pathmind.node.type.sensorTouchingBlock", 0xFF64B5F6, "pathmind.node.type.sensorTouchingBlock.desc"),
-    SENSOR_TOUCHING_ENTITY("pathmind.node.type.sensorTouchingEntity", 0xFF64B5F6, "pathmind.node.type.sensorTouchingEntity.desc"),
-    SENSOR_AT_COORDINATES("pathmind.node.type.sensorAtCoordinates", 0xFF64B5F6, "pathmind.node.type.sensorAtCoordinates.desc"),
-    SENSOR_POSITION_OF("pathmind.node.type.sensorPositionOf", 0xFF64B5F6, "pathmind.node.type.sensorPositionOf.desc"),
-    SENSOR_DISTANCE_BETWEEN("pathmind.node.type.sensorDistanceBetween", 0xFF64B5F6, "pathmind.node.type.sensorDistanceBetween.desc"),
-    SENSOR_TARGETED_BLOCK("pathmind.node.type.sensorTargetedBlock", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlock.desc"),
-    SENSOR_TARGETED_ENTITY("pathmind.node.type.sensorTargetedEntity", 0xFF64B5F6, "pathmind.node.type.sensorTargetedEntity.desc"),
-    SENSOR_LOOK_DIRECTION("pathmind.node.type.sensorLookDirection", 0xFF64B5F6, "pathmind.node.type.sensorLookDirection.desc"),
-    SENSOR_CURRENT_HAND("pathmind.node.type.sensorCurrentHand", 0xFF64B5F6, "pathmind.node.type.sensorCurrentHand.desc"),
-    SENSOR_TARGETED_BLOCK_FACE("pathmind.node.type.sensorTargetedBlockFace", 0xFF64B5F6, "pathmind.node.type.sensorTargetedBlockFace.desc"),
-    SENSOR_GUI_FILLED("pathmind.node.type.sensorGuiFilled", 0xFF64B5F6, "pathmind.node.type.sensorGuiFilled.desc"),
-    SENSOR_IS_DAYTIME("pathmind.node.type.sensorIsDaytime", 0xFF64B5F6, "pathmind.node.type.sensorIsDaytime.desc"),
-    SENSOR_IS_RAINING("pathmind.node.type.sensorIsRaining", 0xFF64B5F6, "pathmind.node.type.sensorIsRaining.desc"),
-    SENSOR_HEALTH_BELOW("pathmind.node.type.sensorHealthBelow", 0xFF64B5F6, "pathmind.node.type.sensorHealthBelow.desc"),
-    SENSOR_HUNGER_BELOW("pathmind.node.type.sensorHungerBelow", 0xFF64B5F6, "pathmind.node.type.sensorHungerBelow.desc"),
-    SENSOR_ITEM_IN_INVENTORY("pathmind.node.type.sensorItemInInventory", 0xFF64B5F6, "pathmind.node.type.sensorItemInInventory.desc"),
-    SENSOR_ITEM_IN_SLOT("pathmind.node.type.sensorItemInSlot", 0xFF64B5F6, "pathmind.node.type.sensorItemInSlot.desc"),
-    SENSOR_SLOT_ITEM_COUNT("pathmind.node.type.sensorSlotItemCount", 0xFF64B5F6, "pathmind.node.type.sensorSlotItemCount.desc"),
-    SENSOR_VILLAGER_TRADE("pathmind.node.type.sensorVillagerTrade", 0xFF64B5F6, "pathmind.node.type.sensorVillagerTrade.desc"),
-    SENSOR_IN_STOCK("pathmind.node.type.sensorInStock", 0xFF64B5F6, "pathmind.node.type.sensorInStock.desc"),
-    SENSOR_IS_SWIMMING("pathmind.node.type.sensorIsSwimming", 0xFF64B5F6, "pathmind.node.type.sensorIsSwimming.desc"),
-    SENSOR_IS_IN_LAVA("pathmind.node.type.sensorIsInLava", 0xFF64B5F6, "pathmind.node.type.sensorIsInLava.desc"),
-    SENSOR_IS_UNDERWATER("pathmind.node.type.sensorIsUnderwater", 0xFF64B5F6, "pathmind.node.type.sensorIsUnderwater.desc"),
-    SENSOR_IS_ON_GROUND("pathmind.node.type.sensorIsOnGround", 0xFF64B5F6, "pathmind.node.type.sensorIsOnGround.desc"),
-    SENSOR_IS_FALLING("pathmind.node.type.sensorIsFalling", 0xFF64B5F6, "pathmind.node.type.sensorIsFalling.desc"),
-    SENSOR_IS_RENDERED("pathmind.node.type.sensorIsRendered", 0xFF64B5F6, "pathmind.node.type.sensorIsRendered.desc"),
-    SENSOR_IS_VISIBLE("pathmind.node.type.sensorIsVisible", 0xFF64B5F6, "pathmind.node.type.sensorIsVisible.desc"),
-    SENSOR_KEY_PRESSED("pathmind.node.type.sensorKeyPressed", 0xFF64B5F6, "pathmind.node.type.sensorKeyPressed.desc"),
-    SENSOR_CHAT_MESSAGE("pathmind.node.type.sensorChatMessage", 0xFF64B5F6, "pathmind.node.type.sensorChatMessage.desc"),
-    SENSOR_JOINED_SERVER("pathmind.node.type.sensorJoinedServer", 0xFF64B5F6, "pathmind.node.type.sensorJoinedServer.desc"),
-    SENSOR_FABRIC_EVENT("pathmind.node.type.sensorFabricEvent", 0xFF64B5F6, "pathmind.node.type.sensorFabricEvent.desc"),
-    SENSOR_ATTRIBUTE_DETECTION("pathmind.node.type.sensorAttributeDetection", 0xFF64B5F6, "pathmind.node.type.sensorAttributeDetection.desc"),
+    SENSOR_TOUCHING_BLOCK,
+    SENSOR_TOUCHING_ENTITY,
+    SENSOR_AT_COORDINATES,
+    SENSOR_POSITION_OF,
+    SENSOR_DISTANCE_BETWEEN,
+    SENSOR_TARGETED_BLOCK,
+    SENSOR_TARGETED_ENTITY,
+    SENSOR_LOOK_DIRECTION,
+    SENSOR_CURRENT_HAND,
+    SENSOR_TARGETED_BLOCK_FACE,
+    SENSOR_GUI_FILLED,
+    SENSOR_IS_DAYTIME,
+    SENSOR_IS_RAINING,
+    SENSOR_HEALTH_BELOW,
+    SENSOR_HUNGER_BELOW,
+    SENSOR_ITEM_IN_INVENTORY,
+    SENSOR_ITEM_IN_SLOT,
+    SENSOR_SLOT_ITEM_COUNT,
+    SENSOR_VILLAGER_TRADE,
+    SENSOR_IN_STOCK,
+    SENSOR_IS_SWIMMING,
+    SENSOR_IS_IN_LAVA,
+    SENSOR_IS_UNDERWATER,
+    SENSOR_IS_ON_GROUND,
+    SENSOR_IS_FALLING,
+    SENSOR_IS_RENDERED,
+    SENSOR_IS_VISIBLE,
+    SENSOR_KEY_PRESSED,
+    SENSOR_CHAT_MESSAGE,
+    SENSOR_JOINED_SERVER,
+    SENSOR_FABRIC_EVENT,
+    SENSOR_ATTRIBUTE_DETECTION,
 
     // Utility Commands
-    RUN_PRESET("pathmind.node.type.runPreset", 0xFF607D8B, "pathmind.node.type.runPreset.desc"),
-    CUSTOM_NODE("pathmind.node.type.customNode", 0xFF26A69A, "pathmind.node.type.customNode.desc"),
-    WAIT("pathmind.node.type.wait", 0xFF607D8B, "pathmind.node.type.wait.desc"),
-    STICKY_NOTE("pathmind.node.type.stickyNote", 0xFFEBCB5B, "pathmind.node.type.stickyNote.desc"),
-    MESSAGE("pathmind.node.type.message", 0xFF9E9E9E, "pathmind.node.type.message.desc"),
-    TEMPLATE("pathmind.node.type.template", 0xFF26A69A, "pathmind.node.type.template.desc"),
-    STOP_CHAIN("pathmind.node.type.stopChain", 0xFFE53935, "pathmind.node.type.stopChain.desc"),
-    STOP_ALL("pathmind.node.type.stopAll", 0xFFE53935, "pathmind.node.type.stopAll.desc"),
+    RUN_PRESET,
+    CUSTOM_NODE,
+    WAIT,
+    STICKY_NOTE,
+    MESSAGE,
+    TEMPLATE,
+    STOP_CHAIN,
+    STOP_ALL,
 
     // Parameter nodes
-    PARAM_COORDINATE("pathmind.node.type.paramCoordinate", 0xFF8BC34A, "pathmind.node.type.paramCoordinate.desc"),
-    PARAM_BLOCK("pathmind.node.type.paramBlock", 0xFF8BC34A, "pathmind.node.type.paramBlock.desc"),
-    PARAM_ITEM("pathmind.node.type.paramItem", 0xFF8BC34A, "pathmind.node.type.paramItem.desc"),
-    PARAM_VILLAGER_TRADE("pathmind.node.type.paramVillagerTrade", 0xFF8BC34A, "pathmind.node.type.paramVillagerTrade.desc"),
-    PARAM_ENTITY("pathmind.node.type.paramEntity", 0xFF8BC34A, "pathmind.node.type.paramEntity.desc"),
-    PARAM_PLAYER("pathmind.node.type.paramPlayer", 0xFF8BC34A, "pathmind.node.type.paramPlayer.desc"),
-    PARAM_WAYPOINT("pathmind.node.type.paramWaypoint", 0xFF8BC34A, "pathmind.node.type.paramWaypoint.desc"),
-    PARAM_SCHEMATIC("pathmind.node.type.paramSchematic", 0xFF8BC34A, "pathmind.node.type.paramSchematic.desc"),
-    PARAM_INVENTORY_SLOT("pathmind.node.type.paramInventorySlot", 0xFF8BC34A, "pathmind.node.type.paramInventorySlot.desc"),
-    PARAM_MESSAGE("pathmind.node.type.paramMessage", 0xFF8BC34A, "pathmind.node.type.paramMessage.desc"),
-    PARAM_DURATION("pathmind.node.type.paramDuration", 0xFF8BC34A, "pathmind.node.type.paramDuration.desc"),
-    PARAM_AMOUNT("pathmind.node.type.paramAmount", 0xFF8BC34A, "pathmind.node.type.paramAmount.desc"),
-    PARAM_BOOLEAN("pathmind.node.type.paramBoolean", 0xFF8BC34A, "pathmind.node.type.paramBoolean.desc"),
-    PARAM_HAND("pathmind.node.type.paramHand", 0xFF8BC34A, "pathmind.node.type.paramHand.desc"),
-    PARAM_GUI("pathmind.node.type.paramGui", 0xFF8BC34A, "pathmind.node.type.paramGui.desc"),
-    PARAM_KEY("pathmind.node.type.paramKey", 0xFF8BC34A, "pathmind.node.type.paramKey.desc"),
-    PARAM_MOUSE_BUTTON("pathmind.node.type.paramMouseButton", 0xFF8BC34A, "pathmind.node.type.paramMouseButton.desc"),
-    PARAM_RANGE("pathmind.node.type.paramRange", 0xFF8BC34A, "pathmind.node.type.paramRange.desc"),
-    PARAM_DISTANCE("pathmind.node.type.paramDistance", 0xFF8BC34A, "pathmind.node.type.paramDistance.desc"),
-    PARAM_DIRECTION("pathmind.node.type.paramDirection", 0xFF8BC34A, "pathmind.node.type.paramDirection.desc"),
-    PARAM_BLOCK_FACE("pathmind.node.type.paramBlockFace", 0xFF8BC34A, "pathmind.node.type.paramBlockFace.desc"),
-    PARAM_ROTATION("pathmind.node.type.paramRotation", 0xFF8BC34A, "pathmind.node.type.paramRotation.desc"),
-    PARAM_PLACE_TARGET("pathmind.node.type.paramPlaceTarget", 0xFF8BC34A, "pathmind.node.type.paramPlaceTarget.desc"),
-    PARAM_CLOSEST("pathmind.node.type.paramClosest", 0xFF8BC34A, "pathmind.node.type.paramClosest.desc");
+    PARAM_COORDINATE,
+    PARAM_BLOCK,
+    PARAM_ITEM,
+    PARAM_VILLAGER_TRADE,
+    PARAM_ENTITY,
+    PARAM_PLAYER,
+    PARAM_WAYPOINT,
+    PARAM_SCHEMATIC,
+    PARAM_INVENTORY_SLOT,
+    PARAM_MESSAGE,
+    PARAM_DURATION,
+    PARAM_AMOUNT,
+    PARAM_BOOLEAN,
+    PARAM_HAND,
+    PARAM_GUI,
+    PARAM_KEY,
+    PARAM_MOUSE_BUTTON,
+    PARAM_RANGE,
+    PARAM_DISTANCE,
+    PARAM_DIRECTION,
+    PARAM_BLOCK_FACE,
+    PARAM_ROTATION,
+    PARAM_PLACE_TARGET,
+    PARAM_CLOSEST;
 
-    private final String translationKey;
-    private final int baseColor;
-    private final String descriptionKey;
-
-    NodeType(String translationKey, int color, String descriptionKey) {
-        this.translationKey = translationKey;
-        this.baseColor = color;
-        this.descriptionKey = descriptionKey;
-    }
 
     public String getDisplayName() {
-        if (this == DROP_SLOT) {
-            return Text.translatable("pathmind.node.type.dropItem").getString();
-        }
-        return Text.translatable(translationKey).getString();
+        return NodeCatalog.displayName(this);
     }
 
     public int getColor() {
-        // Special nodes keep their original colors
-        if (this == START || this == START_CHAIN) {
-            return baseColor; // Green
-        }
-        if (this == TEMPLATE || this == CUSTOM_NODE) {
-            return baseColor; // Custom nodes keep the teal template color
-        }
-        if (this == STOP_CHAIN || this == STOP_ALL) {
-            return baseColor; // Bright red for stop controls
-        }
-        return getCategory().getColor();
+        return NodeCatalog.graphColor(this);
     }
 
     public String getDescription() {
-        if (this == DROP_SLOT) {
-            return Text.translatable("pathmind.node.type.dropItem.desc").getString();
-        }
-        return Text.translatable(descriptionKey).getString();
+        return NodeCatalog.description(this);
     }
 
     public boolean isInputNode() {

@@ -11,6 +11,8 @@ import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeCatalog;
+import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.ui.animation.AnimatedValue;
@@ -1076,7 +1078,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Render the node with a slight transparency
         int alpha = 0x80;
         NodeType renderType = tempNode.getType();
-        int nodeColor = (renderType.getColor() & 0x00FFFFFF) | alpha;
+        int nodeColor = (tempNode.getColor() & 0x00FFFFFF) | alpha;
 
         // Node background with transparency
         context.fill(x, y, x + width, y + height, UITheme.DRAG_PREVIEW_BG);
@@ -4820,7 +4822,7 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeSearchResults.add(new NodeSearchResult(
                 nodeType,
                 nodeType.getDisplayName(),
-                nodeType.getCategory().name().replace('_', ' '),
+                getNodeSearchCategoryLabel(nodeType),
                 score
             ));
         }
@@ -4840,11 +4842,17 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private String getNodeSearchCategoryLabel(NodeType nodeType) {
+        NodeCatalog.NodePlacement placement = NodeCatalog.sidebarPlacement(nodeType, baritoneAvailable, uiUtilsAvailable);
+        NodeCategory category = placement != null ? placement.displayCategory() : NodeCatalog.category(nodeType);
+        return category.getDisplayName();
+    }
+
     private int scoreNodeSearchCandidate(NodeType nodeType, String query) {
         int bestScore = 0;
         bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getDisplayName(), query));
         bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getDescription(), query) - 40);
-        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getCategory().name().replace('_', ' '), query) - 80);
+        bestScore = Math.max(bestScore, scoreSearchCandidate(getNodeSearchCategoryLabel(nodeType), query) - 80);
         bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.name(), query) - 100);
         return bestScore;
     }

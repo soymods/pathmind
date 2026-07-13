@@ -901,7 +901,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int nodeY = Math.round(offsetY + node.getY() * scale);
         int nodeWidth = Math.max(18, Math.round(node.getWidth() * scale));
         int nodeHeight = Math.max(14, Math.round(node.getHeight() * scale));
-        int color = node.getType() != null ? node.getType().getColor() : UITheme.BORDER_DEFAULT;
+        int color = node.getColor();
         int borderColor = node.isStopControlNode() ? UITheme.MARKETPLACE_STOP_NODE_BORDER : color;
         int backgroundColor = interactive ? UITheme.BACKGROUND_SECONDARY : AnimationHelper.darken(UITheme.BACKGROUND_SECONDARY, 0.94f);
         int resolvedBackground = popup ? presetPopupAnimation.getAnimatedPopupColor(backgroundColor) : backgroundColor;

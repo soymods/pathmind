@@ -50,10 +50,10 @@ class NodeDefinitionCompletenessTest {
     );
 
     @Test
-    void everyNodeTypeHasDeclarativeCategoryMetadata() {
+    void everyNodeTypeHasCatalogMetadata() {
         for (NodeType type : NodeType.values()) {
-            assertTrue(NodeTypeDefinition.hasExplicitCategory(type),
-                () -> "Missing category metadata for " + type);
+            assertTrue(NodeCatalog.hasDefinition(type),
+                () -> "Missing catalog metadata for " + type);
         }
     }
 

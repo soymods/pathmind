@@ -19,6 +19,10 @@ val neoforgeVersion = rootProject.extra["neoforgeVersion"] as? String
             "Check https://maven.neoforged.net/releases/net/neoforged/neoforge/ and " +
             "update neoforgeVersion in the root build.gradle.kts supportedMinecraftVersions map."
     )
+val renderWidgetButtonVersions = setOf(
+    "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10"
+)
+val usesRenderWidgetButton = requestedMinecraftVersion in renderWidgetButtonVersions
 
 base {
     archivesName.set("${rootProject.property("archives_base_name") as String}-neoforge")
@@ -54,6 +58,18 @@ dependencies {
     common(project(":common", "namedElements")) { isTransitive = false }
     runtimeCommon(project(":common", "transformProductionNeoForgeMojangElements")) { isTransitive = false }
     shadowCommon(project(":common", "transformProductionNeoForgeMojangElements")) { isTransitive = false }
+}
+
+sourceSets {
+    main {
+        java {
+            if (usesRenderWidgetButton) {
+                srcDir("src/compat/legacy/base/java")
+            } else {
+                srcDir("src/compat/modern/java")
+            }
+        }
+    }
 }
 
 tasks.processResources {

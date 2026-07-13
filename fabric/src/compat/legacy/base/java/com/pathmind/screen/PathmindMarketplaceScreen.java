@@ -1,6 +1,6 @@
 package com.pathmind.screen;
 
-import com.pathmind.PathmindMod;
+import com.pathmind.PathmindCommon;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
@@ -25,7 +25,7 @@ import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
-import net.fabricmc.loader.api.FabricLoader;
+import com.pathmind.util.LoaderMetadata;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -4973,10 +4973,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private String getInstalledPathmindVersion() {
-        Optional<String> version = FabricLoader.getInstance()
-            .getModContainer(PathmindMod.MOD_ID)
-            .map(container -> container.getMetadata().getVersion().getFriendlyString());
-        return version.orElse("Unknown");
+        return LoaderMetadata.getModVersion(PathmindCommon.MOD_ID);
     }
 
     private static boolean isPointInRect(int x, int y, int rectX, int rectY, int width, int height) {

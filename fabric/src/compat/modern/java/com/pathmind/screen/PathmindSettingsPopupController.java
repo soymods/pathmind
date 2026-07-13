@@ -898,7 +898,7 @@ final class PathmindSettingsPopupController {
             );
         }
         if (filteredTypes.isEmpty()) {
-            context.drawTextWithShadow(screen.textRenderer(), Text.literal(Text.translatable("pathmind.settings.nodeSettings.noMatches").getString()),
+            context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.settings.nodeSettings.noMatches"),
                 contentX + 8, listTop + 8, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY));
         }
         context.disableScissor();

@@ -92,8 +92,6 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private static final int TITLE_BAR_HEIGHT = 20;
-    private static final int TAB_BAR_LEFT_PADDING = 188;
-    private static final int TAB_BAR_RIGHT_PADDING = 230;
     private static final int TAB_BAR_TOP = 4;
     private static final int TAB_HEIGHT = 16;
     private static final int TAB_GAP = 4;
@@ -125,7 +123,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int BOTTOM_BUTTON_SPACING = 6;
     private static final int MARKETPLACE_BUTTON_WIDTH = BOTTOM_BUTTON_SIZE * 3 + BOTTOM_BUTTON_SPACING * 2;
     private static final int PRESET_DROPDOWN_WIDTH = 220;
-    private static final int PRESET_DROPDOWN_HEIGHT = 18;
     private static final int PRESET_DROPDOWN_MARGIN = 6;
     private static final int PRESET_OPTION_HEIGHT = 18;
     private static final int PRESET_TEXT_LEFT_PADDING = 6;
@@ -142,13 +139,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int STOP_BUTTON_SIZE = 18;
     private static final int CONTROL_BUTTON_GAP = 6;
     private static final int VALIDATION_BUTTON_SIZE = 18;
-    private static final int VALIDATION_BUTTON_WIDE_WIDTH = STOP_BUTTON_SIZE + CONTROL_BUTTON_GAP + PLAY_BUTTON_SIZE;
-    private static final int VALIDATION_BUTTON_WIDE_HEIGHT = 16;
     private static final int VALIDATION_PANEL_WIDTH = 292;
     private static final int VALIDATION_PANEL_MAX_VISIBLE_ROWS = 8;
     private static final int VALIDATION_PANEL_ROW_HEIGHT = 22;
     private static final int VALIDATION_PANEL_PADDING = 8;
-    private static final int VALIDATION_PANEL_TOP_GAP = 6;
     private static final int VALIDATION_PANEL_SECTION_GAP = 4;
     private static final int VALIDATION_PANEL_BOTTOM_PADDING = 2;
     private static final int VALIDATION_PANEL_HEADER_HEIGHT = 34;
@@ -203,7 +197,6 @@ public class PathmindVisualEditorScreen extends Screen {
     };
     static final int NODE_DELAY_MIN_MS = 1;
     static final int NODE_DELAY_MAX_MS = 500;
-    private static final int TITLE_INTERACTION_PADDING = 4;
     static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final int NODE_SEARCH_FIELD_WIDTH = 180;
     private static final int NODE_SEARCH_FIELD_HEIGHT = 22;
@@ -505,7 +498,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(nodeDelayField);
         }
         if (createListRadiusField == null) {
-            createListRadiusField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.literal(Text.translatable("pathmind.field.radius").getString()));
+            createListRadiusField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.radius"));
             createListRadiusField.setMaxLength(6);
             createListRadiusField.setDrawsBackground(false);
             createListRadiusField.setVisible(false);
@@ -1122,7 +1115,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private void drawZoomButton(DrawContext context, int x, int y, int mouseX, int mouseY, boolean disabled, boolean isMinus, boolean active) {
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE);
         String hoverKey = isMinus ? "zoom-minus-button" : "zoom-plus-button";
-        drawToolbarButtonFrame(context, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE, hovered, active, disabled, hoverKey);
+        float hoverProgress = getHoverProgress(hoverKey, hovered || active);
+        PathmindWorkspaceChrome.drawToolbarButtonFrame(context, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE, hovered, active, disabled, hoverProgress, getAccentColor());
 
         int iconColor = UITheme.TEXT_PRIMARY;
         if (disabled) {
@@ -3594,11 +3588,6 @@ public class PathmindVisualEditorScreen extends Screen {
         return new int[]{textX, textY - 1, Math.min(textWidth, textMaxWidth), this.textRenderer.fontHeight + 2};
     }
 
-    private boolean isPointInPresetTabTitle(int mouseX, int mouseY, String label, int x, int y, int tabWidth) {
-        int[] bounds = getPresetTabTitleBounds(label, x, y, tabWidth);
-        return isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
-    }
-
     private void startInlinePresetRename(String presetName) {
         if (!canStartInlinePresetRename(presetName)) {
             return;
@@ -4545,23 +4534,8 @@ public class PathmindVisualEditorScreen extends Screen {
         PathmindPopupRenderer.drawContainer(context, x, y, width, height, animation);
     }
 
-    private void drawPopupInputFrame(DrawContext context, int x, int y, int width, int height, int borderColor, PopupAnimationHandler animation) {
-        PathmindPopupRenderer.drawInputFrame(context, x, y, width, height, borderColor, animation);
-    }
-
     int getPopupAnimatedColor(PopupAnimationHandler animation, int baseColor) {
         return PathmindPopupRenderer.animatedColor(animation, baseColor);
-    }
-
-    private void openInfoPopup() {
-        dismissParameterOverlay();
-        clearPopupAnimation.hide();
-        importExportPopupAnimation.hide();
-        if (createPresetPopupAnimation.isVisible()) {
-            closeCreatePresetPopup();
-        }
-        presetDropdownOpen = false;
-        infoPopupAnimation.show();
     }
 
     private void closeInfoPopup() {
@@ -5156,11 +5130,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int optionCount = availablePresets.size() + 1;
         int visibleCount = Math.min(optionCount, 10);
         return DropdownLayoutHelper.calculate(optionCount, PRESET_OPTION_HEIGHT, visibleCount, optionStartY, this.height);
-    }
-
-    private int getPresetDropdownOptionsHeight() {
-        int optionStartY = getPresetDropdownY();
-        return getPresetDropdownLayout(optionStartY).height;
     }
 
     private int getPresetDeleteIconLeft(int dropdownX) {
@@ -6142,10 +6111,6 @@ public class PathmindVisualEditorScreen extends Screen {
         return true;
     }
 
-    private List<GraphValidationIssue> getVisibleValidationIssues(GraphValidationResult validationResult) {
-        return PathmindValidationPanelRenderer.visibleIssues(validationResult, VALIDATION_PANEL_MAX_VISIBLE_ROWS);
-    }
-
     private int[] getValidationPanelBounds(GraphValidationResult validationResult, float progress) {
         return PathmindValidationPanelRenderer.getPanelBounds(
             validationResult,
@@ -6172,7 +6137,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int sectionTop = topY + VALIDATION_PANEL_SECTION_GAP;
         context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, sectionTop, UITheme.BORDER_SUBTLE);
         int labelY = sectionTop + 5;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.validation.presetInputs").getString()), panelX + VALIDATION_PANEL_PADDING, labelY, UITheme.TEXT_SECONDARY);
+        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.validation.presetInputs"), panelX + VALIDATION_PANEL_PADDING, labelY, UITheme.TEXT_SECONDARY);
         int currentTop = sectionTop + 18;
         for (NodeGraphData.CustomNodePort port : ports) {
             int rowY = currentTop;
@@ -6664,33 +6629,6 @@ public class PathmindVisualEditorScreen extends Screen {
         );
     }
 
-    private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY,
-                                           boolean active, boolean disabled, Object hoverKey) {
-        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
-        float hoverProgress = getHoverProgress(hoverKey, hovered || active);
-        PathmindWorkspaceChrome.drawToolbarButtonFrame(
-            context,
-            buttonX,
-            buttonY,
-            BOTTOM_BUTTON_SIZE,
-            BOTTOM_BUTTON_SIZE,
-            hovered,
-            active,
-            disabled,
-            hoverProgress,
-            getAccentColor()
-        );
-        return hovered;
-    }
-
-
-    private void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
-                                        boolean hovered, boolean active, boolean disabled, Object hoverKey) {
-        float hoverProgress = getHoverProgress(hoverKey, hovered || active);
-        PathmindWorkspaceChrome.drawToolbarButtonFrame(context, x, y, width, height, hovered, active, disabled, hoverProgress, getAccentColor());
-    }
-
-
     private int getWorkspaceButtonY() {
         return PathmindWorkspaceChrome.topButtonY(TITLE_BAR_HEIGHT, BOTTOM_BUTTON_MARGIN);
     }
@@ -6937,14 +6875,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
     int getAccentColor() {
         return accentOption != null ? accentOption.color : UITheme.ACCENT_DEFAULT;
-    }
-
-    private int mixColor(int color, int target, float ratio) {
-        int a = (int) (((color >>> 24) & 0xFF) * (1.0f - ratio) + ((target >>> 24) & 0xFF) * ratio);
-        int r = (int) (((color >>> 16) & 0xFF) * (1.0f - ratio) + ((target >>> 16) & 0xFF) * ratio);
-        int g = (int) (((color >>> 8) & 0xFF) * (1.0f - ratio) + ((target >>> 8) & 0xFF) * ratio);
-        int b = (int) ((color & 0xFF) * (1.0f - ratio) + (target & 0xFF) * ratio);
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private void openSettingsPopup() {

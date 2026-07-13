@@ -2274,10 +2274,6 @@ public class PathmindMarketplaceScreen extends Screen {
         }
     }
 
-    private void openEditMetadataPopup(MarketplacePreset preset) {
-        beginPopupMetadataEdit(preset);
-    }
-
     private void beginPopupMetadataEdit(MarketplacePreset preset) {
         if (preset == null) {
             return;

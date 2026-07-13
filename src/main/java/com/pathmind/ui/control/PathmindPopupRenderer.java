@@ -5,6 +5,7 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -74,6 +75,29 @@ public final class PathmindPopupRenderer {
         );
     }
 
+    public static boolean drawButton(DrawContext context, TextRenderer textRenderer,
+                                     PathmindPopupLayout.Rect bounds, int mouseX, int mouseY,
+                                     Text label, ButtonStyle style, int accentColor,
+                                     PopupAnimationHandler animation) {
+        boolean hovered = bounds != null && bounds.contains(mouseX, mouseY);
+        if (bounds != null) {
+            drawButton(
+                context,
+                textRenderer,
+                bounds.x(),
+                bounds.y(),
+                bounds.width(),
+                bounds.height(),
+                label,
+                style,
+                hovered ? 1f : 0f,
+                accentColor,
+                animation
+            );
+        }
+        return hovered;
+    }
+
     public static void drawAnimatedActionButton(DrawContext context, TextRenderer textRenderer,
                                                 int x, int y, int width, int height,
                                                 String label, boolean disabled, float hoverProgress,
@@ -125,6 +149,42 @@ public final class PathmindPopupRenderer {
             animatedColor(animation, UITheme.BACKGROUND_SECONDARY),
             animatedColor(animation, UITheme.BORDER_DEFAULT),
             animatedColor(animation, UITheme.PANEL_INNER_BORDER)
+        );
+    }
+
+    public static boolean beginPopup(DrawContext context, int x, int y, int width, int height,
+                                     PopupAnimationHandler animation) {
+        drawContainer(context, x, y, width, height, animation);
+        return enableScissor(context, x, y, width, height);
+    }
+
+    public static void drawTitle(DrawContext context, TextRenderer textRenderer,
+                                 Text title, int popupX, int popupY, int popupWidth,
+                                 PopupAnimationHandler animation) {
+        context.drawCenteredTextWithShadow(
+            textRenderer,
+            title,
+            popupX + popupWidth / 2,
+            popupY + 14,
+            animatedColor(animation, UITheme.TEXT_PRIMARY)
+        );
+    }
+
+    public static void drawHeaderBar(DrawContext context, TextRenderer textRenderer,
+                                     Text title, int popupX, int popupY, int popupWidth,
+                                     PopupAnimationHandler animation) {
+        context.drawTextWithShadow(
+            textRenderer,
+            title,
+            popupX + 12,
+            popupY + 10,
+            animatedColor(animation, UITheme.TEXT_HEADER)
+        );
+        context.drawHorizontalLine(
+            popupX,
+            popupX + popupWidth - 1,
+            popupY + 28,
+            animatedColor(animation, UITheme.BORDER_SUBTLE)
         );
     }
 
@@ -278,6 +338,24 @@ public final class PathmindPopupRenderer {
         int height = Math.max(1, scaledHeight);
         context.enableScissor(popupX, popupY, popupX + width, popupY + height);
         return true;
+    }
+
+    public static void enableBodyScissor(DrawContext context, PathmindPopupLayout.Rect bounds) {
+        context.enableScissor(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height());
+    }
+
+    public static void drawScrollableBodyChrome(DrawContext context, PathmindPopupLayout.Rect bodyBounds,
+                                                int scrollOffset, int maxScroll, int dividerColor) {
+        ScrollbarHelper.renderCutoffDividers(
+            context,
+            bodyBounds.x(),
+            bodyBounds.x() + bodyBounds.width() - 1,
+            bodyBounds.y(),
+            bodyBounds.y() + bodyBounds.height(),
+            scrollOffset,
+            maxScroll,
+            dividerColor
+        );
     }
 
     public static void disableScissor(DrawContext context, boolean enabled) {

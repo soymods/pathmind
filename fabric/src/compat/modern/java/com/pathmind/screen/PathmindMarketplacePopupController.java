@@ -307,23 +307,16 @@ final class PathmindMarketplacePopupController {
         if (popupWidth <= 0 || popupHeight <= 0 || screen.authSession == null) {
             return;
         }
-        context.enableScissor(popupX, popupY, popupX + popupWidth, popupY + popupHeight);
-
-        UIStyleHelper.drawBeveledPanel(
+        PathmindPopupRenderer.beginPopup(context, popupX, popupY, popupWidth, popupHeight, screen.accountPopupAnimation);
+        PathmindPopupRenderer.drawHeaderBar(
             context,
+            screen.textRenderer(),
+            Text.translatable("pathmind.marketplace.account"),
             popupX,
             popupY,
             popupWidth,
-            popupHeight,
-            screen.accountPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY),
-            screen.accountPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
-            screen.accountPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+            screen.accountPopupAnimation
         );
-
-        context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.marketplace.account"), popupX + 12, popupY + 10,
-            screen.accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
-        context.drawHorizontalLine(popupX, popupX + popupWidth - 1, popupY + 28,
-            screen.accountPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
 
         int avatarSize = 52;
         int contentX = popupX + 12;
@@ -365,23 +358,18 @@ final class PathmindMarketplacePopupController {
         if (popupWidth <= 0 || popupHeight <= 0) {
             return;
         }
-        context.enableScissor(popupX, popupY, popupX + popupWidth, popupY + popupHeight);
-        UIStyleHelper.drawBeveledPanel(
+        PathmindPopupRenderer.beginPopup(context, popupX, popupY, popupWidth, popupHeight, screen.publishPopupAnimation);
+
+        Text title = screen.editingPreset == null ? Text.translatable("pathmind.marketplace.publishPreset") : Text.translatable("pathmind.marketplace.editMetadata");
+        PathmindPopupRenderer.drawHeaderBar(
             context,
+            screen.textRenderer(),
+            title,
             popupX,
             popupY,
             popupWidth,
-            popupHeight,
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECONDARY),
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
+            screen.publishPopupAnimation
         );
-
-        String title = screen.editingPreset == null ? Text.translatable("pathmind.marketplace.publishPreset").getString() : Text.translatable("pathmind.marketplace.editMetadata").getString();
-        context.drawTextWithShadow(screen.textRenderer(), Text.literal(title), popupX + 12, popupY + 10,
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
-        context.drawHorizontalLine(popupX, popupX + popupWidth - 1, popupY + 28,
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
 
         int contentX = popupX + 12;
         int contentWidth = popupWidth - 24;

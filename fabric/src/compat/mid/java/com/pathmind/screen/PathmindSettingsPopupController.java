@@ -42,22 +42,23 @@ final class PathmindSettingsPopupController {
         int scaledHeight = bounds[3];
 
         screen.setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
-        screen.drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, screen.settingsPopupAnimation);
-        boolean popupScissor = screen.enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
+        boolean popupScissor = PathmindPopupRenderer.beginPopup(context, popupX, popupY, scaledWidth, scaledHeight, screen.settingsPopupAnimation);
 
-        context.drawCenteredTextWithShadow(
+        PathmindPopupRenderer.drawTitle(
+            context,
             screen.textRenderer(),
             Text.translatable("pathmind.settings.title"),
-            popupX + scaledWidth / 2,
-            popupY + 14,
-            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY)
+            popupX,
+            popupY,
+            scaledWidth,
+            screen.settingsPopupAnimation
         );
 
-        int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, scaledWidth, scaledHeight);
+        PathmindPopupLayout.Rect bodyBounds = getSettingsPopupBodyRect(popupX, popupY, scaledWidth, scaledHeight);
         int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, scaledWidth, scaledHeight);
         screen.settingsPopupScrollOffset = MathHelper.clamp(screen.settingsPopupScrollOffset, 0, maxScroll);
         int contentPopupY = popupY - screen.settingsPopupScrollOffset;
-        context.enableScissor(bodyBounds[0], bodyBounds[1], bodyBounds[0] + bodyBounds[2], bodyBounds[1] + bodyBounds[3]);
+        PathmindPopupRenderer.enableBodyScissor(context, bodyBounds);
         int contentX = popupX + 20;
 
         // Language section
@@ -73,10 +74,10 @@ final class PathmindSettingsPopupController {
         screen.languageDropdownX = contentX;
         screen.languageDropdownY = languageButtonY;
         screen.languageDropdownWidth = languageButtonWidth;
-        screen.languageDropdownClipX = bodyBounds[0];
-        screen.languageDropdownClipY = bodyBounds[1];
-        screen.languageDropdownClipWidth = bodyBounds[2];
-        screen.languageDropdownClipHeight = bodyBounds[3];
+        screen.languageDropdownClipX = bodyBounds.x();
+        screen.languageDropdownClipY = bodyBounds.y();
+        screen.languageDropdownClipWidth = bodyBounds.width();
+        screen.languageDropdownClipHeight = bodyBounds.height();
 
         String currentLang = screen.client().getLanguageManager().getLanguage();
         String langDisplayName = screen.getLanguageDisplayName(currentLang);
@@ -219,33 +220,42 @@ final class PathmindSettingsPopupController {
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16,
             getSettingsClearCacheDividerY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY),
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
-        boolean clearCacheHovered = screen.isPointInRect(mouseX, mouseY, clearCacheButtonBounds[0], clearCacheButtonBounds[1],
-            clearCacheButtonBounds[2], clearCacheButtonBounds[3]);
         screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.clearCache").getString(), contentX, clearCacheRowCenterY - screen.textRenderer().fontHeight / 2,
             scaledWidth - 40 - clearCacheButtonBounds[2] - 12, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
-        screen.drawPopupButton(context, clearCacheButtonBounds[0], clearCacheButtonBounds[1], clearCacheButtonBounds[2], clearCacheButtonBounds[3],
-            clearCacheHovered, Text.literal(Text.translatable("pathmind.button.clear").getString()), PathmindPopupRenderer.ButtonStyle.DEFAULT, screen.settingsPopupAnimation);
-
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonX = popupX + scaledWidth - buttonWidth - 20;
-        int buttonY = popupY + scaledHeight - buttonHeight - 16;
-        context.disableScissor();
-        ScrollbarHelper.renderCutoffDividers(
+        PathmindPopupRenderer.drawButton(
             context,
-            bodyBounds[0],
-            bodyBounds[0] + bodyBounds[2] - 1,
-            bodyBounds[1],
-            bodyBounds[1] + bodyBounds[3],
+            screen.textRenderer(),
+            PathmindPopupLayout.rect(clearCacheButtonBounds[0], clearCacheButtonBounds[1], clearCacheButtonBounds[2], clearCacheButtonBounds[3]),
+            mouseX,
+            mouseY,
+            Text.translatable("pathmind.button.clear"),
+            PathmindPopupRenderer.ButtonStyle.DEFAULT,
+            screen.getAccentColor(),
+            screen.settingsPopupAnimation
+        );
+
+        PathmindPopupLayout.Rect closeButton = PathmindPopupLayout.settingsCloseButton(popupX, popupY, scaledWidth, scaledHeight, 90, 20);
+        context.disableScissor();
+        PathmindPopupRenderer.drawScrollableBodyChrome(
+            context,
+            bodyBounds,
             screen.settingsPopupScrollOffset,
             maxScroll,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE)
         );
         renderSettingsPopupScrollbar(context, popupX, popupY, scaledWidth, scaledHeight, maxScroll);
-        boolean closeHovered = screen.isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
-        screen.drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered,
-            Text.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.ACCENT, screen.settingsPopupAnimation);
-        screen.disablePopupScissor(context, popupScissor);
+        PathmindPopupRenderer.drawButton(
+            context,
+            screen.textRenderer(),
+            closeButton,
+            mouseX,
+            mouseY,
+            Text.translatable("pathmind.button.close"),
+            PathmindPopupRenderer.ButtonStyle.ACCENT,
+            screen.getAccentColor(),
+            screen.settingsPopupAnimation
+        );
+        PathmindPopupRenderer.disableScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -984,14 +994,18 @@ final class PathmindSettingsPopupController {
         context.disableScissor();
     }
 
+    PathmindPopupLayout.Rect getSettingsPopupBodyRect(int popupX, int popupY, int popupWidth, int popupHeight) {
+        return PathmindPopupLayout.settingsBody(popupX, popupY, popupWidth, popupHeight);
+    }
+
     int[] getSettingsPopupBodyBounds(int popupX, int popupY, int popupWidth, int popupHeight) {
-        PathmindPopupLayout.Rect body = PathmindPopupLayout.settingsBody(popupX, popupY, popupWidth, popupHeight);
+        PathmindPopupLayout.Rect body = getSettingsPopupBodyRect(popupX, popupY, popupWidth, popupHeight);
         return new int[]{body.x(), body.y(), body.width(), body.height()};
     }
 
     int getSettingsPopupMaxScroll(int popupX, int popupY, int popupWidth, int popupHeight) {
-        int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
-        int bodyBottom = bodyBounds[1] + bodyBounds[3];
+        PathmindPopupLayout.Rect bodyBounds = getSettingsPopupBodyRect(popupX, popupY, popupWidth, popupHeight);
+        int bodyBottom = bodyBounds.y() + bodyBounds.height();
         int contentX = popupX + 20;
         int nodeSettingsBodyY = getSettingsNodeSectionBodyY(popupY);
         int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY, popupWidth - 40);
@@ -1014,7 +1028,7 @@ final class PathmindSettingsPopupController {
     }
 
     ScrollbarHelper.Metrics getSettingsPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight, int maxScroll) {
-        int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
-        return ScrollbarHelper.metrics(popupX + popupWidth - 12, bodyBounds[1], 4, Math.max(1, bodyBounds[3]), maxScroll, screen.settingsPopupScrollOffset, 20);
+        PathmindPopupLayout.Rect bodyBounds = getSettingsPopupBodyRect(popupX, popupY, popupWidth, popupHeight);
+        return ScrollbarHelper.metrics(popupX + popupWidth - 12, bodyBounds.y(), 4, Math.max(1, bodyBounds.height()), maxScroll, screen.settingsPopupScrollOffset, 20);
     }
 }

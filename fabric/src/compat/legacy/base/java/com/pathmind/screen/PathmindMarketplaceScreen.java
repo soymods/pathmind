@@ -2621,24 +2621,36 @@ public class PathmindMarketplaceScreen extends Screen {
         popupStatusColor = UITheme.TEXT_SECONDARY;
         MarketplaceService.PublishRequest request = PathmindMarketplaceActions.updateFromLocalRequest(localPresetPath, popupPreset);
 
-        withFreshAuthSession(session -> PathmindMarketplaceAsyncController.updatePresetMetadata(this.client, session.getAccessToken(), popupPreset, request, (updatedPreset, throwable) -> {
-                    publishBusy = false;
-                    authBusy = false;
-                    if (throwable != null || updatedPreset == null) {
-                        popupStatusMessage = PathmindMarketplaceActions.extractThrowableMessage(throwable, Text.translatable("pathmind.status.presetUpdateFailed").getString());
-                        popupStatusColor = UITheme.STATE_ERROR;
-                        return;
-                    }
-                    PresetManager.setMarketplaceLinkedPreset(updateSourcePresetName, updatedPreset.getId());
-                    invalidatePreviewGraph(updatedPreset);
-                    upsertPreset(updatedPreset);
-                    popupPreset = updatedPreset;
-                    requestPreviewGraph(updatedPreset);
-                    popupStatusMessage = Text.translatable("pathmind.status.presetUpdatedFromLocalChanges").getString();
-                    popupStatusColor = getAccentColor();
-                    applyFilters();
-                }),
-            Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString());
+        PathmindMarketplaceFlowController.submitPresetUpdate(this.client, popupPreset, request, result -> {
+            if (result.status() == PathmindMarketplaceFlowController.PublishStatus.SESSION_EXPIRED) {
+                publishBusy = false;
+                authBusy = false;
+                authSession = null;
+                isMarketplaceModerator = false;
+                likedPresetIds.clear();
+                popupStatusMessage = Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString();
+                popupStatusColor = UITheme.STATE_ERROR;
+                return;
+            }
+            authSession = result.session();
+            publishBusy = false;
+            authBusy = false;
+            MarketplacePreset updatedPreset = result.preset();
+            Throwable throwable = result.throwable();
+            if (throwable != null || updatedPreset == null) {
+                popupStatusMessage = PathmindMarketplaceActions.extractThrowableMessage(throwable, Text.translatable("pathmind.status.presetUpdateFailed").getString());
+                popupStatusColor = UITheme.STATE_ERROR;
+                return;
+            }
+            PresetManager.setMarketplaceLinkedPreset(updateSourcePresetName, updatedPreset.getId());
+            invalidatePreviewGraph(updatedPreset);
+            upsertPreset(updatedPreset);
+            popupPreset = updatedPreset;
+            requestPreviewGraph(updatedPreset);
+            popupStatusMessage = Text.translatable("pathmind.status.presetUpdatedFromLocalChanges").getString();
+            popupStatusColor = getAccentColor();
+            applyFilters();
+        });
     }
 
     private boolean isOwnPreset(MarketplacePreset preset) {

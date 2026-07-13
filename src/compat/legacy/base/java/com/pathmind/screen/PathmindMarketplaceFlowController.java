@@ -71,6 +71,13 @@ final class PathmindMarketplaceFlowController {
         });
     }
 
+    static void submitPresetUpdate(MinecraftClient client,
+                                   MarketplacePreset preset,
+                                   MarketplaceService.PublishRequest request,
+                                   Consumer<PublishResult> callback) {
+        submitPublish(client, preset, request, callback);
+    }
+
     enum LinkedPresetStatus {
         MISSING_LOCAL_LINK,
         SESSION_EXPIRED,

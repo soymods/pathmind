@@ -723,7 +723,7 @@ final class NodeTextIoCommandExecutor {
         boolean containsStructuredReplacement = false;
         while (index < raw.length()) {
             char current = raw.charAt(index);
-            if (current == '~') {
+            if (current == '$') {
                 RuntimeVariableInlineMatch match = findInlineRuntimeVariableReference(raw, index, manager, startNode);
                 if (match != null) {
                     String replacement = formatRuntimeVariableValue(match.variable);
@@ -761,12 +761,12 @@ final class NodeTextIoCommandExecutor {
         return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
     }
 
-    private RuntimeVariableInlineMatch findInlineRuntimeVariableReference(String raw, int tildeIndex,
+    private RuntimeVariableInlineMatch findInlineRuntimeVariableReference(String raw, int variableIndex,
                                                                           ExecutionManager manager, Node startNode) {
-        if (raw == null || manager == null || tildeIndex < 0 || tildeIndex >= raw.length() || raw.charAt(tildeIndex) != '~') {
+        if (raw == null || manager == null || variableIndex < 0 || variableIndex >= raw.length() || raw.charAt(variableIndex) != '$') {
             return null;
         }
-        int nameStart = tildeIndex + 1;
+        int nameStart = variableIndex + 1;
         if (nameStart >= raw.length()) {
             return null;
         }

@@ -9,7 +9,6 @@ import com.pathmind.nodes.NodeTraitRegistry;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.NodeValueTrait;
 import com.pathmind.nodes.ParameterType;
-import com.pathmind.util.LegacyVariableSyntaxCompat;
 
 import java.io.Reader;
 import java.io.Writer;
@@ -200,7 +199,7 @@ public class NodeGraphPersistence {
                 continue;
             }
             if (saved.getValue() != null) {
-                param.setStringValue(LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(saved.getValue()));
+                param.setStringValue(saved.getValue());
             }
             if (saved.getUserEdited() != null) {
                 param.setUserEdited(saved.getUserEdited());
@@ -226,12 +225,7 @@ public class NodeGraphPersistence {
             if (paramType == null) {
                 continue;
             }
-            NodeParameter param = new NodeParameter(
-                serializedId,
-                saved.getName(),
-                paramType,
-                LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(saved.getValue())
-            );
+            NodeParameter param = new NodeParameter(serializedId, saved.getName(), paramType, saved.getValue());
             if (saved.getUserEdited() != null) {
                 param.setUserEdited(saved.getUserEdited());
             }
@@ -283,13 +277,13 @@ public class NodeGraphPersistence {
                 }
             }
             if (node.hasMessageInputFields() && nodeData.getMessageLines() != null) {
-                node.setMessageLines(LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(nodeData.getMessageLines()));
+                node.setMessageLines(nodeData.getMessageLines());
                 if (node.hasMessageScopeToggle()) {
                     node.setMessageClientSide(Boolean.TRUE.equals(nodeData.getMessageClientSide()));
                 }
             }
             if (node.hasBookTextInput() && nodeData.getBookText() != null) {
-                node.setBookText(LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(nodeData.getBookText()));
+                node.setBookText(nodeData.getBookText());
             }
             if (node.isStickyNote()) {
                 node.setStickyNoteText(nodeData.getStickyNoteText());

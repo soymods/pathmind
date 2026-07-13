@@ -33,6 +33,7 @@ import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.util.PathmindI18n;
 import com.pathmind.validation.GraphValidationIssue;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.validation.GraphValidationSeverity;
@@ -87,6 +88,10 @@ import java.util.concurrent.CompletableFuture;
  * This screen provides the interface for creating and editing node-based workflows.
  */
 public class PathmindVisualEditorScreen extends Screen {
+    private static String tr(String key, Object... args) {
+        return PathmindI18n.tr(key, args);
+    }
+
     private static final int TITLE_BAR_HEIGHT = 20;
     private static final int TAB_BAR_LEFT_PADDING = 188;
     private static final int TAB_BAR_RIGHT_PADDING = 230;
@@ -469,7 +474,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(createPresetField);
         }
         if (publishPresetNameField == null) {
-            publishPresetNameField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.literal("Preset name"));
+            publishPresetNameField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.presetName"));
             publishPresetNameField.setMaxLength(64);
             publishPresetNameField.setDrawsBackground(false);
             publishPresetNameField.setVisible(false);
@@ -480,7 +485,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(publishPresetNameField);
         }
         if (publishPresetDescriptionField == null) {
-            publishPresetDescriptionField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.literal("Description"));
+            publishPresetDescriptionField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.description"));
             publishPresetDescriptionField.setMaxLength(180);
             publishPresetDescriptionField.setDrawsBackground(false);
             publishPresetDescriptionField.setVisible(false);
@@ -491,7 +496,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(publishPresetDescriptionField);
         }
         if (publishPresetTagsField == null) {
-            publishPresetTagsField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.literal("Tags"));
+            publishPresetTagsField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.tags"));
             publishPresetTagsField.setMaxLength(96);
             publishPresetTagsField.setDrawsBackground(false);
             publishPresetTagsField.setVisible(false);
@@ -534,7 +539,7 @@ public class PathmindVisualEditorScreen extends Screen {
             });
         }
         if (nodeDelayField == null) {
-            nodeDelayField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.literal("Delay"));
+            nodeDelayField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.delay"));
             nodeDelayField.setMaxLength(6);
             nodeDelayField.setDrawsBackground(false);
             nodeDelayField.setVisible(false);
@@ -553,7 +558,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(nodeDelayField);
         }
         if (createListRadiusField == null) {
-            createListRadiusField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.literal("Radius"));
+            createListRadiusField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.literal(Text.translatable("pathmind.field.radius").getString()));
             createListRadiusField.setMaxLength(6);
             createListRadiusField.setDrawsBackground(false);
             createListRadiusField.setVisible(false);
@@ -572,7 +577,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(createListRadiusField);
         }
         if (nodeSearchField == null) {
-            nodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.literal("Search nodes"));
+            nodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.translatable("pathmind.search.nodes"));
             nodeSearchField.setMaxLength(64);
             nodeSearchField.setDrawsBackground(false);
             nodeSearchField.setVisible(false);
@@ -584,14 +589,14 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(nodeSearchField);
         }
         if (settingsNodeSearchField == null) {
-            settingsNodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Text.literal("Search node settings"));
+            settingsNodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Text.translatable("pathmind.search.nodeSettings"));
             settingsNodeSearchField.setMaxLength(64);
             settingsNodeSearchField.setDrawsBackground(false);
             settingsNodeSearchField.setVisible(false);
             settingsNodeSearchField.setEditable(false);
             settingsNodeSearchField.setEditableColor(UITheme.TEXT_PRIMARY);
             settingsNodeSearchField.setUneditableColor(UITheme.TEXT_TERTIARY);
-            settingsNodeSearchField.setSuggestion("Search node settings");
+            settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
             settingsNodeSearchField.setHeight(Math.max(10, SETTINGS_NODE_TYPE_SEARCH_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
             settingsNodeSearchField.setChangedListener(value -> settingsNodeSelectorScrollOffset = 0);
             this.addSelectableChild(settingsNodeSearchField);
@@ -721,7 +726,7 @@ public class PathmindVisualEditorScreen extends Screen {
             renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
             if (showWorkspaceTooltips && !isPopupObscuringWorkspace() && !validationPanelOpen) {
                 if (validationButtonHovered) {
-                    drawWorkspaceTooltip(context, "Checks", chromeMouseX, chromeMouseY);
+                    drawWorkspaceTooltip(context, Text.translatable("pathmind.validation.checks").getString(), chromeMouseX, chromeMouseY);
                 } else if (rawJsonButtonHovered) {
                     drawWorkspaceTooltip(context, "Raw JSON", chromeMouseX, chromeMouseY);
                 }
@@ -4396,17 +4401,17 @@ public class PathmindVisualEditorScreen extends Screen {
                     .map(Path::toString)
                     .orElse("");
         importExportBusy = true;
-        setImportExportStatus("Waiting for import file...", UITheme.TEXT_SECONDARY);
+        setImportExportStatus(Text.translatable("pathmind.status.waitingForImportFile").getString(), UITheme.TEXT_SECONDARY);
         WorkspaceFileAccess.supplyAsync(() -> openWorkspaceImportDialog(defaultPath))
             .whenComplete((selection, throwable) -> runOnClientThread(() -> {
                 if (throwable != null) {
                     importExportBusy = false;
-                    setImportExportStatus("Failed to open import dialog.", UITheme.STATE_ERROR);
+                    setImportExportStatus(Text.translatable("pathmind.status.failedOpenImportDialog").getString(), UITheme.STATE_ERROR);
                     return;
                 }
                 if (selection == null) {
                     importExportBusy = false;
-                    setImportExportStatus("Import cancelled.", UITheme.TEXT_SECONDARY);
+                    setImportExportStatus(Text.translatable("pathmind.status.importCancelled").getString(), UITheme.TEXT_SECONDARY);
                     return;
                 }
                 try {
@@ -4414,7 +4419,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     beginImportFromPath(path);
                 } catch (InvalidPathException ex) {
                     importExportBusy = false;
-                    setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
+                    setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
                 }
             }));
     }
@@ -4426,7 +4431,7 @@ public class PathmindVisualEditorScreen extends Screen {
             String fileLabel = fileName != null ? fileName.toString() : path.toString();
             String currentPresetName = activePresetName;
             NodeGraphData currentPresetSnapshot = nodeGraph.exportGraphDataSnapshot();
-            setImportExportStatus("Importing workspace...", UITheme.TEXT_SECONDARY);
+            setImportExportStatus(Text.translatable("pathmind.status.importingWorkspace").getString(), UITheme.TEXT_SECONDARY);
             WorkspaceFileAccess.supplyAsync(() -> {
                 if (currentPresetSnapshot != null && currentPresetName != null && !currentPresetName.isBlank()) {
                     NodeGraphPersistence.saveNodeGraphDataForPreset(currentPresetName, currentPresetSnapshot);
@@ -4450,7 +4455,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 );
             }));
         } catch (InvalidPathException ex) {
-            setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
+            setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
         }
     }
 
@@ -4459,17 +4464,17 @@ public class PathmindVisualEditorScreen extends Screen {
                 .orElseGet(NodeGraphPersistence::getDefaultSavePath);
         String defaultPathString = defaultSavePath != null ? defaultSavePath.toString() : "workspace.json";
         importExportBusy = true;
-        setImportExportStatus("Waiting for export path...", UITheme.TEXT_SECONDARY);
+        setImportExportStatus(Text.translatable("pathmind.status.waitingForExportPath").getString(), UITheme.TEXT_SECONDARY);
         WorkspaceFileAccess.supplyAsync(() -> openWorkspaceExportDialog(defaultPathString))
             .whenComplete((selection, throwable) -> runOnClientThread(() -> {
                 if (throwable != null) {
                     importExportBusy = false;
-                    setImportExportStatus("Failed to open export dialog.", UITheme.STATE_ERROR);
+                    setImportExportStatus(Text.translatable("pathmind.status.failedOpenExportDialog").getString(), UITheme.STATE_ERROR);
                     return;
                 }
                 if (selection == null) {
                     importExportBusy = false;
-                    setImportExportStatus("Export cancelled.", UITheme.TEXT_SECONDARY);
+                    setImportExportStatus(Text.translatable("pathmind.status.exportCancelled").getString(), UITheme.TEXT_SECONDARY);
                     return;
                 }
                 try {
@@ -4477,7 +4482,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     beginExportToPath(path);
                 } catch (InvalidPathException ex) {
                     importExportBusy = false;
-                    setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
+                    setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
                 }
             }));
     }
@@ -4485,12 +4490,12 @@ public class PathmindVisualEditorScreen extends Screen {
     private void beginExportToPath(Path path) {
         try {
             NodeGraphData snapshot = nodeGraph.exportGraphDataSnapshot();
-            setImportExportStatus("Exporting workspace...", UITheme.TEXT_SECONDARY);
+            setImportExportStatus(Text.translatable("pathmind.status.exportingWorkspace").getString(), UITheme.TEXT_SECONDARY);
             WorkspaceFileAccess.supplyExportAsync(() -> NodeGraphPersistence.saveNodeGraphDataToPath(snapshot, path))
                 .whenComplete((success, throwable) -> runOnClientThread(() -> {
                     importExportBusy = false;
                     if (throwable != null || !Boolean.TRUE.equals(success)) {
-                        setImportExportStatus("Failed to export workspace.", UITheme.STATE_ERROR);
+                        setImportExportStatus(Text.translatable("pathmind.status.failedExportWorkspace").getString(), UITheme.STATE_ERROR);
                         return;
                     }
                     lastImportExportPath = path;
@@ -4498,7 +4503,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     setImportExportStatus("Exported workspace to " + (fileName != null ? fileName.toString() : path.toString()), UITheme.STATE_SUCCESS);
                 }));
         } catch (InvalidPathException ex) {
-            setImportExportStatus("Invalid file path.", UITheme.STATE_ERROR);
+            setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
         }
     }
 
@@ -5127,7 +5132,7 @@ public class PathmindVisualEditorScreen extends Screen {
                         if (sessionThrowable != null || session == null) {
                             publishPresetBusy = false;
                             publishPresetSession = null;
-                            setPublishPresetStatus("Session expired. Sign in again.", UITheme.STATE_WARNING);
+                            setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
                             openRawPublishPresetPopup();
                             return;
                         }
@@ -5146,7 +5151,7 @@ public class PathmindVisualEditorScreen extends Screen {
                                         }
                                         return;
                                     }
-                                    setPublishPresetStatus("Linked preset not found. Opening publish form.", UITheme.STATE_WARNING);
+                                    setPublishPresetStatus(Text.translatable("pathmind.marketplace.linkedPresetNotFound").getString(), UITheme.STATE_WARNING);
                                     openRawPublishPresetPopup();
                                 });
                             });
@@ -5875,7 +5880,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         context.drawCenteredTextWithShadow(
             this.textRenderer,
-            Text.literal(publishPresetEditingPreset == null ? "Publish Preset" : "Update Uploaded Preset"),
+            Text.literal(publishPresetEditingPreset == null ? Text.translatable("pathmind.marketplace.publishPreset").getString() : Text.translatable("pathmind.marketplace.updateUploadedPreset").getString()),
             popupX + scaledWidth / 2,
             contentY + 11,
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_HEADER)
@@ -5890,11 +5895,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawMarketplacePublishSection(context, fieldX - 8, nameY - 20, fieldWidth + 16, 168, publishPresetPopupAnimation);
 
-        drawPopupTextWithEllipsis(context, "Name", fieldX, nameY - 10, fieldWidth,
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.name").getString(), fieldX, nameY - 10, fieldWidth,
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
-        drawPopupTextWithEllipsis(context, "Description", fieldX, descriptionY - 10, fieldWidth,
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.description").getString(), fieldX, descriptionY - 10, fieldWidth,
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
-        drawPopupTextWithEllipsis(context, "Tags", fieldX, tagsY - 10, fieldWidth,
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.tags").getString(), fieldX, tagsY - 10, fieldWidth,
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
 
         renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetNameField, fieldX, nameY, fieldWidth, fieldHeight);
@@ -5906,13 +5911,13 @@ public class PathmindVisualEditorScreen extends Screen {
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
         renderPublishVisibilityToggle(context, mouseX, mouseY, fieldX, visibilityY, fieldWidth);
 
-        String accountLabel = publishPresetBusy ? "Working..." : publishPresetSession == null
-            ? "Sign In"
+        String accountLabel = publishPresetBusy ? Text.translatable("pathmind.status.working").getString() : publishPresetSession == null
+            ? Text.translatable("pathmind.marketplace.signIn").getString()
             : TextRenderUtil.trimWithEllipsis(this.textRenderer,
-                fallback(publishPresetSession.getDisplayName(), fallback(publishPresetSession.getEmail(), "Signed In")), 110);
+                fallback(publishPresetSession.getDisplayName(), fallback(publishPresetSession.getEmail(), Text.translatable("pathmind.marketplace.signedIn").getString())), 110);
         drawPopupTextWithEllipsis(context, publishPresetPublic
-                ? "Visible in the public marketplace."
-                : "Private cloud preset. Only visible in My Presets.",
+                ? Text.translatable("pathmind.marketplace.visiblePublic").getString()
+                : Text.translatable("pathmind.marketplace.visiblePrivate").getString(),
             fieldX, visibilityY + fieldHeight + 8, fieldWidth, getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_TERTIARY));
 
         if (!publishPresetStatus.isEmpty()) {
@@ -5944,7 +5949,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
         }
         drawMarketplacePublishButton(context, publishX, buttonY, buttonWidth, buttonHeight, publishHovered,
-            Text.literal(publishPresetBusy ? "Working..." : (publishPresetEditingPreset == null ? "Publish" : "Update")), true, publishPresetPopupAnimation);
+            Text.literal(publishPresetBusy ? Text.translatable("pathmind.status.working").getString() : (publishPresetEditingPreset == null ? Text.translatable("pathmind.marketplace.publish").getString() : Text.translatable("pathmind.button.update").getString())), true, publishPresetPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
@@ -5972,7 +5977,7 @@ public class PathmindVisualEditorScreen extends Screen {
         publishPresetVisibilityToggle.setValue(publishPresetPublic);
         publishPresetVisibilityToggle.setPosition(toggleX, fieldY);
         publishPresetVisibilityToggle.render(context, mouseX, mouseY, publishPresetPopupAnimation.getPopupAlpha());
-        String label = publishPresetPublic ? "Public" : "Private";
+        String label = publishPresetPublic ? Text.translatable("pathmind.option.public").getString() : Text.translatable("pathmind.option.private").getString();
         int labelColor = publishPresetPublic ? MARKETPLACE_POPUP_ACCENT_BLUE : MARKETPLACE_POPUP_ACCENT;
         drawPopupTextWithEllipsis(context, label, fieldX, fieldY + 4, fieldWidth - publishPresetVisibilityToggle.getWidth() - 8,
             getPopupAnimatedColor(publishPresetPopupAnimation, labelColor));
@@ -6152,13 +6157,13 @@ public class PathmindVisualEditorScreen extends Screen {
 
         String desiredName = createPresetField.getText();
         if (desiredName == null || desiredName.trim().isEmpty()) {
-            setCreatePresetStatus("Enter a preset name.", UITheme.STATE_ERROR);
+            setCreatePresetStatus(Text.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
             return;
         }
 
         Optional<String> createdPreset = PresetManager.createPreset(desiredName);
         if (createdPreset.isEmpty()) {
-            setCreatePresetStatus("Preset name already exists or is invalid.", UITheme.STATE_ERROR);
+            setCreatePresetStatus(Text.translatable("pathmind.status.presetNameExistsOrInvalid").getString(), UITheme.STATE_ERROR);
             return;
         }
 
@@ -6176,12 +6181,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         String desiredName = publishPresetNameField.getText();
         if (desiredName == null || desiredName.trim().isEmpty()) {
-            setPublishPresetStatus("Enter a preset name.", UITheme.STATE_ERROR);
+            setPublishPresetStatus(Text.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
             return;
         }
 
         if (publishPresetSession == null) {
-            setPublishPresetStatus("Sign in before publishing.", UITheme.STATE_WARNING);
+            setPublishPresetStatus(Text.translatable("pathmind.status.signInBeforePublishing").getString(), UITheme.STATE_WARNING);
             return;
         }
 
@@ -6203,7 +6208,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (sessionThrowable != null || session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
                     publishPresetBusy = false;
                     publishPresetSession = null;
-                    setPublishPresetStatus("Session expired. Sign in again.", UITheme.STATE_WARNING);
+                    setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
                     return;
                 }
                 publishPresetSession = session;
@@ -6304,18 +6309,18 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (pendingPresetRenameName == null || pendingPresetRenameName.trim().isEmpty()) {
-            setRenamePresetStatus("Select a preset to rename.", UITheme.STATE_ERROR);
+            setRenamePresetStatus(Text.translatable("pathmind.status.selectPresetToRename").getString(), UITheme.STATE_ERROR);
             return;
         }
 
         String desiredName = renamePresetField.getText();
         if (desiredName == null || desiredName.trim().isEmpty()) {
-            setRenamePresetStatus("Enter a preset name.", UITheme.STATE_ERROR);
+            setRenamePresetStatus(Text.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
             return;
         }
 
         if (!renamePresetInternal(pendingPresetRenameName, desiredName)) {
-            setRenamePresetStatus("Preset name already exists or is invalid.", UITheme.STATE_ERROR);
+            setRenamePresetStatus(Text.translatable("pathmind.status.presetNameExistsOrInvalid").getString(), UITheme.STATE_ERROR);
             return;
         }
 
@@ -6585,9 +6590,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
             if (publishHovered) {
-                drawWorkspaceTooltip(context, "Publish preset", mouseX, mouseY);
+                drawWorkspaceTooltip(context, Text.translatable("pathmind.marketplace.publishPreset").getString(), mouseX, mouseY);
             } else if (marketplaceHovered) {
-                drawWorkspaceTooltip(context, "Marketplace", mouseX, mouseY);
+                drawWorkspaceTooltip(context, Text.translatable("pathmind.marketplace.title").getString(), mouseX, mouseY);
             }
         }
     }
@@ -6604,11 +6609,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
             if (homeHovered) {
-                drawWorkspaceTooltip(context, "Reset view", mouseX, mouseY);
+                drawWorkspaceTooltip(context, Text.translatable("pathmind.tooltip.resetView").getString(), mouseX, mouseY);
             } else if (clearHovered) {
-                drawWorkspaceTooltip(context, "Clear workspace", mouseX, mouseY);
+                drawWorkspaceTooltip(context, Text.translatable("pathmind.tooltip.clearWorkspace").getString(), mouseX, mouseY);
             } else if (importHovered) {
-                drawWorkspaceTooltip(context, "Import / Export", mouseX, mouseY);
+                drawWorkspaceTooltip(context, Text.translatable("pathmind.popup.importExport.title").getString(), mouseX, mouseY);
             }
         }
     }
@@ -6619,7 +6624,7 @@ public class PathmindVisualEditorScreen extends Screen {
         drawToolbarButtonFrame(context, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE,
             hovered, false, false, "workspace-marketplace");
         int textColor = hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        String label = "Marketplace";
+        String label = Text.translatable("pathmind.marketplace.title").getString();
         int textX = buttonX + (MARKETPLACE_BUTTON_WIDTH - this.textRenderer.getWidth(label)) / 2;
         int textY = buttonY + (BOTTOM_BUTTON_SIZE - this.textRenderer.fontHeight) / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
@@ -6836,7 +6841,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
             : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
             : UITheme.TEXT_PRIMARY;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("Checks"), panelX + VALIDATION_PANEL_PADDING,
+        context.drawTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.validation.checks").getString()), panelX + VALIDATION_PANEL_PADDING,
             panelY + 8, textColor);
 
         String summary = validationResult.getErrorCount() + " error" + (validationResult.getErrorCount() == 1 ? "" : "s")
@@ -6955,7 +6960,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int sectionTop = topY + VALIDATION_PANEL_SECTION_GAP;
         context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, sectionTop, UITheme.BORDER_SUBTLE);
         int labelY = sectionTop + 5;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("Preset Inputs"), panelX + VALIDATION_PANEL_PADDING, labelY, UITheme.TEXT_SECONDARY);
+        context.drawTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.validation.presetInputs").getString()), panelX + VALIDATION_PANEL_PADDING, labelY, UITheme.TEXT_SECONDARY);
         int currentTop = sectionTop + 18;
         for (NodeGraphData.CustomNodePort port : ports) {
             int rowY = currentTop;
@@ -7518,7 +7523,7 @@ public class PathmindVisualEditorScreen extends Screen {
         drawSettingsIcon(context, buttonX, buttonY, iconColor);
 
         if (hovered && showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
-            drawWorkspaceTooltip(context, "Settings", mouseX, mouseY);
+            drawWorkspaceTooltip(context, Text.translatable("pathmind.settings.title").getString(), mouseX, mouseY);
         }
     }
 
@@ -7642,14 +7647,14 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int profilerDividerY = hudDividerY + 22;
         int profilerRowCenterY = (hudDividerY + profilerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, profilerRowCenterY, "Show profiler overlay",
+        renderToggleRow(context, mouseX, mouseY, contentX, profilerRowCenterY, Text.translatable("pathmind.settings.showProfilerOverlay").getString(),
             currentSettings != null && Boolean.TRUE.equals(currentSettings.showProfilerOverlay), popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, profilerDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int cursorDividerY = profilerDividerY + 22;
         int cursorRowCenterY = (profilerDividerY + cursorDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, cursorRowCenterY, "Custom cursor",
+        renderToggleRow(context, mouseX, mouseY, contentX, cursorRowCenterY, Text.translatable("pathmind.settings.customCursor").getString(),
             SettingsManager.isCustomCursorEnabled(), popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, cursorDividerY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
@@ -7665,7 +7670,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (createListRadiusField != null) {
             createListRadiusField.setVisible(false);
         }
-        drawPopupTextWithEllipsis(context, "Node Settings", contentX, nodeSettingsLabelY, scaledWidth - 40,
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings").getString(), contentX, nodeSettingsLabelY, scaledWidth - 40,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
         int selectorWidth = scaledWidth - 40;
         renderSettingsNodeTypeSelector(context, mouseX, mouseY, contentX, nodeSettingsBodyY, selectorWidth);
@@ -7673,27 +7678,27 @@ public class PathmindVisualEditorScreen extends Screen {
 
         NodeType targetType = getEffectiveSettingsTargetType();
         if (targetType == null) {
-            drawPopupTextWithEllipsis(context, "No adjustable node settings are available in this workspace yet.", contentX, nodeSettingsContentY,
+            drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.none").getString(), contentX, nodeSettingsContentY,
                 scaledWidth - 40, getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
         } else if (targetType == NodeType.GOTO) {
-            drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsContentY, scaledWidth - 40,
+            drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
             int gotoBreakDividerY = nodeSettingsContentY + 28;
             int gotoBreakRowCenterY = (nodeSettingsContentY + 10 + gotoBreakDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, gotoBreakRowCenterY,
-                "Allow Baritone to break blocks while executing", currentSettings.gotoAllowBreakWhileExecuting != null && currentSettings.gotoAllowBreakWhileExecuting, popupX, scaledWidth);
+                Text.translatable("pathmind.settings.gotoAllowBreak").getString(), currentSettings.gotoAllowBreakWhileExecuting != null && currentSettings.gotoAllowBreakWhileExecuting, popupX, scaledWidth);
             context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoBreakDividerY,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
             int gotoPlaceDividerY = gotoBreakDividerY + 22;
             int gotoPlaceRowCenterY = (gotoBreakDividerY + gotoPlaceDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, gotoPlaceRowCenterY,
-                "Allow Baritone to place blocks while executing", currentSettings.gotoAllowPlaceWhileExecuting != null && currentSettings.gotoAllowPlaceWhileExecuting, popupX, scaledWidth);
+                Text.translatable("pathmind.settings.gotoAllowPlace").getString(), currentSettings.gotoAllowPlaceWhileExecuting != null && currentSettings.gotoAllowPlaceWhileExecuting, popupX, scaledWidth);
             context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoPlaceDividerY,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
         } else if (targetType == NodeType.SENSOR_KEY_PRESSED) {
-            drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsContentY, scaledWidth - 40,
+            drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
             int keyPressedDividerY = nodeSettingsContentY + 28;
@@ -7706,13 +7711,13 @@ public class PathmindVisualEditorScreen extends Screen {
             Node targetNode = getEffectiveSettingsTargetNode();
             boolean useRadius = isCreateListCustomRadiusEnabled(targetNode);
             int radius = getCreateListSettingsRadius(targetNode);
-            drawPopupTextWithEllipsis(context, "Editing: " + targetType.getDisplayName(), contentX, nodeSettingsContentY, scaledWidth - 40,
+            drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
             int createListToggleDividerY = nodeSettingsContentY + 28;
             int createListToggleRowCenterY = (nodeSettingsContentY + 10 + createListToggleDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, createListToggleRowCenterY,
-                "Use custom radius instead of render distance", useRadius, popupX, scaledWidth);
+                Text.translatable("pathmind.settings.createListUseCustomRadius").getString(), useRadius, popupX, scaledWidth);
             context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, createListToggleDividerY,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
@@ -7733,10 +7738,10 @@ public class PathmindVisualEditorScreen extends Screen {
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.BORDER_SUBTLE));
         boolean clearCacheHovered = isPointInRect(mouseX, mouseY, clearCacheButtonBounds[0], clearCacheButtonBounds[1],
             clearCacheButtonBounds[2], clearCacheButtonBounds[3]);
-        drawPopupTextWithEllipsis(context, "Clear cache", contentX, clearCacheRowCenterY - this.textRenderer.fontHeight / 2,
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.clearCache").getString(), contentX, clearCacheRowCenterY - this.textRenderer.fontHeight / 2,
             scaledWidth - 40 - clearCacheButtonBounds[2] - 12, getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_PRIMARY));
         drawPopupButton(context, clearCacheButtonBounds[0], clearCacheButtonBounds[1], clearCacheButtonBounds[2], clearCacheButtonBounds[3],
-            clearCacheHovered, Text.literal("Clear"), PopupButtonStyle.DEFAULT, settingsPopupAnimation);
+            clearCacheHovered, Text.literal(Text.translatable("pathmind.button.clear").getString()), PopupButtonStyle.DEFAULT, settingsPopupAnimation);
 
         int buttonWidth = 90;
         int buttonHeight = 20;
@@ -7812,7 +7817,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int labelY = centerY - this.textRenderer.fontHeight / 2;
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
-        String valueText = value + "ms";
+        String valueText = value + tr("pathmind.unit.millisecondsShort");
         int valueTextWidth = this.textRenderer.getWidth(valueText);
         int valueBoxWidth = Math.max(36, valueTextWidth + 10);
         int valueBoxX = sliderX - valueBoxWidth - 8;
@@ -7904,7 +7909,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int unitX = valueBoxX + valueBoxWidth + 6;
         int unitY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("ms"), unitX, unitY,
+        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.unit.millisecondsShort"), unitX, unitY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
         int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
@@ -7942,7 +7947,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int valueBoxWidth = valueBox[2];
         int valueBoxHeight = valueBox[3];
         int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
-        drawPopupTextWithEllipsis(context, "Radius", labelX, labelY, maxLabelWidth,
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.radius").getString(), labelX, labelY, maxLabelWidth,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
         boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight);
@@ -7972,7 +7977,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         int unitX = valueBoxX + valueBoxWidth + 6;
         int unitY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(this.textRenderer, Text.literal("blocks"), unitX, unitY,
+        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.unit.blocks"), unitX, unitY,
             getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
         int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
@@ -8004,7 +8009,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int boxWidth = Math.max(32, textWidth + 8);
         int boxHeight = 16;
         int unitGap = 6;
-        int unitWidth = this.textRenderer.getWidth("ms");
+        int unitWidth = this.textRenderer.getWidth(tr("pathmind.unit.millisecondsShort"));
         int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
         int boxY = centerY - boxHeight / 2;
         return new int[]{boxX, boxY, boxWidth, boxHeight};
@@ -8017,7 +8022,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int boxWidth = Math.max(32, textWidth + 8);
         int boxHeight = 16;
         int unitGap = 6;
-        int unitWidth = this.textRenderer.getWidth("blocks");
+        int unitWidth = this.textRenderer.getWidth(tr("pathmind.unit.blocks"));
         int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
         int boxY = centerY - boxHeight / 2;
         return new int[]{boxX, boxY, boxWidth, boxHeight};
@@ -8414,7 +8419,7 @@ public class PathmindVisualEditorScreen extends Screen {
             int textFieldHeight = Math.max(10, SETTINGS_NODE_TYPE_SEARCH_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
             settingsNodeSearchField.setVisible(true);
             settingsNodeSearchField.setEditable(true);
-            settingsNodeSearchField.setSuggestion(!searchFocused && settingsNodeSearchField.getText().isEmpty() ? "Search node settings" : null);
+            settingsNodeSearchField.setSuggestion(!searchFocused && settingsNodeSearchField.getText().isEmpty() ? tr("pathmind.search.nodeSettings") : null);
             settingsNodeSearchField.setPosition(searchBounds[0] + 8, searchBounds[1] + TEXT_FIELD_VERTICAL_PADDING);
             settingsNodeSearchField.setWidth(Math.max(0, searchBounds[2] - 16));
             settingsNodeSearchField.setHeight(textFieldHeight);
@@ -8472,7 +8477,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 bounds[0] + 8, bounds[1] + 16, metaColor);
         }
         if (filteredTypes.isEmpty()) {
-            context.drawTextWithShadow(this.textRenderer, Text.literal("No matching node settings"),
+            context.drawTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.settings.nodeSettings.noMatches").getString()),
                 contentX + 8, listTop + 8, getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
         }
         context.disableScissor();
@@ -8527,7 +8532,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int listWidth = listBounds[2];
         int listHeight = listBounds[3];
         if (settingsNodes.isEmpty()) {
-            drawPopupTextWithEllipsis(context, "No adjustable node settings are available in this workspace yet.", contentX, bodyY, scaledWidth - 40,
+            drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.none").getString(), contentX, bodyY, scaledWidth - 40,
                 getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_TERTIARY));
             return;
         }
@@ -8795,7 +8800,7 @@ public class PathmindVisualEditorScreen extends Screen {
             settingsNodeSearchField.setFocused(false);
             settingsNodeSearchField.setVisible(true);
             settingsNodeSearchField.setEditable(true);
-            settingsNodeSearchField.setSuggestion("Search node settings");
+            settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
         }
         settingsPopupAnimation.show();
     }
@@ -8825,7 +8830,7 @@ public class PathmindVisualEditorScreen extends Screen {
             settingsNodeSearchField.setFocused(false);
             settingsNodeSearchField.setVisible(false);
             settingsNodeSearchField.setEditable(false);
-            settingsNodeSearchField.setSuggestion("Search node settings");
+            settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
         }
         settingsPopupAnimation.hide();
     }

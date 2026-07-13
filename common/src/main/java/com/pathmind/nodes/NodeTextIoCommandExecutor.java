@@ -3,7 +3,6 @@ package com.pathmind.nodes;
 import static com.pathmind.util.PathmindI18n.tr;
 
 import com.pathmind.util.PlayerInventoryBridge;
-import com.pathmind.util.LegacyVariableSyntaxCompat;
 import com.pathmind.execution.ExecutionManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
@@ -714,7 +713,6 @@ final class NodeTextIoCommandExecutor {
         if (raw == null || raw.isEmpty()) {
             return raw;
         }
-        raw = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(raw);
         Node startNode = owner.getOwningStartNode();
         if (startNode == null && owner.getParentControl() != null) {
             startNode = owner.getParentControl().getOwningStartNode();

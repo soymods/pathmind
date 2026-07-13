@@ -5731,25 +5731,25 @@ public class NodeGraph {
         int operatorColor = UITheme.DROP_ACCENT_GREEN;
         int cursor = 0;
         while (cursor < rawText.length()) {
-            int tildeIndex = rawText.indexOf('~', cursor);
-            if (tildeIndex < 0) {
+            int variableIndex = rawText.indexOf('$', cursor);
+            if (variableIndex < 0) {
                 appendStyledPlainSegments(rawText.substring(cursor), baseColor, operatorColor, segments, displayBuilder);
                 break;
             }
-            if (tildeIndex > cursor) {
-                appendStyledPlainSegments(rawText.substring(cursor, tildeIndex), baseColor, operatorColor, segments, displayBuilder);
+            if (variableIndex > cursor) {
+                appendStyledPlainSegments(rawText.substring(cursor, variableIndex), baseColor, operatorColor, segments, displayBuilder);
             }
-            VariableReferenceMatch match = findInlineVariableReference(rawText, tildeIndex, variableNames);
+            VariableReferenceMatch match = findInlineVariableReference(rawText, variableIndex, variableNames);
             if (match != null) {
-                removedPositions.add(tildeIndex);
+                removedPositions.add(variableIndex);
                 segments.add(new InlineTextSegment(match.name, highlightColor));
                 displayBuilder.append(match.name);
                 cursor = match.endIndex;
                 continue;
             }
-            segments.add(new InlineTextSegment("~", baseColor));
-            displayBuilder.append("~");
-            cursor = tildeIndex + 1;
+            segments.add(new InlineTextSegment("$", baseColor));
+            displayBuilder.append("$");
+            cursor = variableIndex + 1;
         }
         int[] removed = new int[removedPositions.size()];
         for (int i = 0; i < removedPositions.size(); i++) {
@@ -5765,7 +5765,7 @@ public class NodeGraph {
         if (containsInlineArithmeticOperator(rawText)) {
             return true;
         }
-        return variableNames != null && !variableNames.isEmpty() && rawText.indexOf('~') >= 0;
+        return variableNames != null && !variableNames.isEmpty() && rawText.indexOf('$') >= 0;
     }
 
     private boolean isInlineVariableChar(char character) {
@@ -5816,12 +5816,12 @@ public class NodeGraph {
         }
     }
 
-    private VariableReferenceMatch findInlineVariableReference(String rawText, int tildeIndex, Set<String> variableNames) {
-        if (rawText == null || tildeIndex < 0 || tildeIndex >= rawText.length() || rawText.charAt(tildeIndex) != '~'
+    private VariableReferenceMatch findInlineVariableReference(String rawText, int variableIndex, Set<String> variableNames) {
+        if (rawText == null || variableIndex < 0 || variableIndex >= rawText.length() || rawText.charAt(variableIndex) != '$'
             || variableNames == null || variableNames.isEmpty()) {
             return null;
         }
-        int nameStart = tildeIndex + 1;
+        int nameStart = variableIndex + 1;
         if (nameStart >= rawText.length()) {
             return null;
         }
@@ -5852,14 +5852,14 @@ public class NodeGraph {
             return false;
         }
         String trimmed = rawText.trim();
-        if (!trimmed.equals(rawText) || !trimmed.startsWith("~")) {
+        if (!trimmed.equals(rawText) || !trimmed.startsWith("$")) {
             return false;
         }
         VariableReferenceMatch match = findInlineVariableReference(trimmed, 0, variableNames);
         return match != null && match.endIndex == trimmed.length();
     }
 
-    /** Returns true if value is empty or a valid arithmetic expression using numbers and/or known ~variable references. */
+    /** Returns true if value is empty or a valid arithmetic expression using numbers and/or known $variable references. */
     private boolean isNumericOrVariableReference(String value, Node node, boolean allowDecimal, boolean requireCoordinateValid) {
         if (value == null) {
             value = "";
@@ -6070,7 +6070,7 @@ public class NodeGraph {
                 skipWhitespace();
                 return parseNumber(true);
             }
-            if (peek() == '~') {
+            if (peek() == '$') {
                 VariableReferenceMatch match = matchVariableAt(index);
                 if (match == null) {
                     return false;
@@ -6113,11 +6113,11 @@ public class NodeGraph {
             return true;
         }
 
-        private VariableReferenceMatch matchVariableAt(int tildeIndex) {
-            if (tildeIndex < 0 || tildeIndex >= input.length() || input.charAt(tildeIndex) != '~') {
+        private VariableReferenceMatch matchVariableAt(int variableIndex) {
+            if (variableIndex < 0 || variableIndex >= input.length() || input.charAt(variableIndex) != '$') {
                 return null;
             }
-            int nameStart = tildeIndex + 1;
+            int nameStart = variableIndex + 1;
             VariableReferenceMatch bestMatch = null;
             for (String variableName : variableNames) {
                 if (variableName == null || variableName.isEmpty()) {
@@ -6470,7 +6470,7 @@ public class NodeGraph {
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
         DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
 
-        String buttonLabel = "Edit";
+        String buttonLabel = Text.translatable("pathmind.button.edit").getString();
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int textX = buttonLeft + (buttonWidth - textRenderer.getWidth(buttonLabel)) / 2;
         int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2;
@@ -6572,7 +6572,7 @@ public class NodeGraph {
         int bindingWidth = width - 12;
         context.fill(bindingLeft, bindingTop, bindingLeft + bindingWidth, bindingTop + 18, bodyColor);
         DrawContextBridge.drawBorderInLayer(context, bindingLeft, bindingTop, bindingWidth, 18, chipBorder);
-        drawNodeText(context, textRenderer, "Preset", bindingLeft + 4, bindingTop + 5, secondaryText);
+        drawNodeText(context, textRenderer, Text.translatable("pathmind.field.preset").getString(), bindingLeft + 4, bindingTop + 5, secondaryText);
         String presetName = trimTextToWidth(getSelectedPresetName(node), textRenderer, Math.max(24, bindingWidth - 48));
         drawNodeText(context, textRenderer, presetName, bindingLeft + 42, bindingTop + 5, primaryText);
 
@@ -6739,11 +6739,11 @@ public class NodeGraph {
         }
         lineY += lineStep;
 
-        drawNodeText(context, textRenderer, "Inputs", textX, lineY, mutedColor);
+        drawNodeText(context, textRenderer, Text.translatable("pathmind.field.inputs").getString(), textX, lineY, mutedColor);
         lineY += lineStep;
         lineY = renderPortList(context, textRenderer, definition.getInputs(), textX, lineY, previewWidth, previewTop + previewHeight, textColor, mutedColor);
         if (lineY + lineStep < previewTop + previewHeight - 2) {
-            drawNodeText(context, textRenderer, "Outputs", textX, lineY, mutedColor);
+            drawNodeText(context, textRenderer, Text.translatable("pathmind.field.outputs").getString(), textX, lineY, mutedColor);
             lineY += lineStep;
             renderPortList(context, textRenderer, definition.getOutputs(), textX, lineY, previewWidth, previewTop + previewHeight, textColor, mutedColor);
         }
@@ -6752,7 +6752,7 @@ public class NodeGraph {
     private int renderPortList(DrawContext context, TextRenderer textRenderer, List<NodeGraphData.CustomNodePort> ports,
                                int textX, int lineY, int previewWidth, int previewBottom, int textColor, int mutedColor) {
         if (ports == null || ports.isEmpty()) {
-            drawNodeText(context, textRenderer, "none", textX, lineY, mutedColor);
+            drawNodeText(context, textRenderer, Text.translatable("pathmind.option.none").getString(), textX, lineY, mutedColor);
             return lineY + textRenderer.fontHeight + 2;
         }
         for (NodeGraphData.CustomNodePort port : ports) {
@@ -8032,7 +8032,7 @@ public class NodeGraph {
         String value = amountEditBuffer == null ? "" : amountEditBuffer.trim();
         if ((amountEditingNode.getType() == NodeType.PARAM_DURATION
             || amountEditingNode.getType() == NodeType.USE
-            || amountEditingNode.getType() == NodeType.SWING) && !value.startsWith("~")) {
+            || amountEditingNode.getType() == NodeType.SWING) && !value.startsWith("$")) {
             // Accept locale decimal input like "1,5" for duration-style fields.
             value = value.replace(',', '.');
         }

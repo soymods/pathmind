@@ -71,10 +71,8 @@ final class PathmindCursor {
         }
         long window = client.getWindow().getHandle();
         if (customCursorRendered) {
-            if (fallbackSystemCursorVisible) {
-                GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
-                fallbackSystemCursorVisible = false;
-            }
+            GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
+            fallbackSystemCursorVisible = false;
             return;
         }
         if (!fallbackSystemCursorVisible) {

@@ -38,7 +38,6 @@ import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.InventorySlotModeHelper;
-import com.pathmind.util.LegacyVariableSyntaxCompat;
 import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.util.RecipeCompatibilityBridge;
@@ -3760,7 +3759,7 @@ public class Node {
             return true;
         }
         NodeCategory category = type.getCategory();
-        if (category == NodeCategory.WORLD || category == NodeCategory.PLAYER) {
+        if (category == NodeCategory.NAVIGATION || category == NodeCategory.WORLD || category == NodeCategory.PLAYER) {
             return true;
         }
         if (category == NodeCategory.SENSORS) {
@@ -6276,7 +6275,7 @@ public class Node {
         if (rawValue == null) {
             return Optional.empty();
         }
-        String trimmedRaw = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawValue.trim());
+        String trimmedRaw = rawValue.trim();
         if (trimmedRaw.isEmpty()) {
             return Optional.empty();
         }

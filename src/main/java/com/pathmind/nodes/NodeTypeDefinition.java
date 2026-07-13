@@ -75,7 +75,7 @@ final class NodeTypeDefinition {
             NodeType.SENSOR_FABRIC_EVENT,
             NodeType.SENSOR_ATTRIBUTE_DETECTION);
 
-        register(NodeCategory.WORLD,
+        register(NodeCategory.NAVIGATION,
             NodeType.GOTO,
             NodeType.TRAVEL,
             NodeType.GOAL,
@@ -85,13 +85,15 @@ final class NodeTypeDefinition {
             NodeType.SURFACE,
             NodeType.EXPLORE,
             NodeType.FOLLOW,
+            NodeType.STOP);
+
+        register(NodeCategory.WORLD,
             NodeType.COLLECT,
             NodeType.BUILD,
             NodeType.TUNNEL,
             NodeType.FARM,
             NodeType.PLACE,
-            NodeType.CRAFT,
-            NodeType.STOP);
+            NodeType.CRAFT);
 
         register(NodeCategory.PLAYER,
             NodeType.LOOK,

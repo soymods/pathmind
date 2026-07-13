@@ -23,7 +23,7 @@ class NodeTypeDefinitionTest {
         assertEquals(NodeCategory.FLOW, NodeType.START.getCategory());
         assertEquals(NodeCategory.CONTROL, NodeType.CONTROL_IF.getCategory());
         assertEquals(NodeCategory.SENSORS, NodeType.SENSOR_TOUCHING_BLOCK.getCategory());
-        assertEquals(NodeCategory.WORLD, NodeType.GOTO.getCategory());
+        assertEquals(NodeCategory.NAVIGATION, NodeType.GOTO.getCategory());
         assertEquals(NodeCategory.PLAYER, NodeType.LOOK.getCategory());
         assertEquals(NodeCategory.INTERFACE, NodeType.CLICK_SLOT.getCategory());
         assertEquals(NodeCategory.DATA, NodeType.OPERATOR_EQUALS.getCategory());

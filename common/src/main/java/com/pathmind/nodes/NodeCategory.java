@@ -8,7 +8,8 @@ import net.minecraft.text.Text;
 public enum NodeCategory {
     FLOW("pathmind.node.category.flow", 0xFFE91E63, "pathmind.node.category.flow.desc", "★"),
     CONTROL("pathmind.node.category.control", 0xFFFFC107, "pathmind.node.category.control.desc", "🧠"),
-    WORLD("pathmind.node.category.world", 0xFF00BCD4, "pathmind.node.category.world.desc", "⇄"),
+    NAVIGATION("pathmind.node.category.navigation", 0xFF00BCD4, "pathmind.node.category.navigation.desc", "⇄"),
+    WORLD("pathmind.node.category.world", 0xFF4CAF50, "pathmind.node.category.world.desc", "▦"),
     PLAYER("pathmind.node.category.player", 0xFF7E57C2, "pathmind.node.category.player.desc", "✋"),
     INTERFACE("pathmind.node.category.interface", 0xFF607D8B, "pathmind.node.category.interface.desc", "🖥"),
     DATA("pathmind.node.category.data", 0xFFFF9800, "pathmind.node.category.data.desc", "Σ"),

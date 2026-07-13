@@ -5808,7 +5808,7 @@ public class Node {
         return node.resolveRuntimeVariablesInText(value);
     }
 
-    /** Returns the raw parameter value without resolving ~variable references (for error messages). */
+    /** Returns the raw parameter value without resolving $variable references (for error messages). */
     private static String getParameterStringRaw(Node node, String name) {
         if (node == null || name == null) {
             return null;
@@ -5938,7 +5938,7 @@ public class Node {
             return Optional.empty();
         }
 
-        String variableName = trimmedRaw.startsWith("~") ? trimmedRaw.substring(1).trim() : trimmedRaw;
+        String variableName = trimmedRaw.startsWith("$") ? trimmedRaw.substring(1).trim() : trimmedRaw;
         if (variableName.isEmpty()) {
             return Optional.empty();
         }

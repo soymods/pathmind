@@ -25,6 +25,7 @@ final class PathmindCursor {
     static final int HOTSPOT_X = Math.round(3f * SIZE / SOURCE_SIZE);
     static final int HOTSPOT_Y = Math.round(1f * SIZE / SOURCE_SIZE);
     private static final int CURSOR_TINT = 0xFFFFFFFF;
+    private static boolean fallbackSystemCursorVisible = false;
 
     private PathmindCursor() {
     }
@@ -38,6 +39,7 @@ final class PathmindCursor {
             return;
         }
         GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
+        fallbackSystemCursorVisible = false;
     }
 
     static void showSystemCursor(MinecraftClient client) {
@@ -45,6 +47,7 @@ final class PathmindCursor {
             return;
         }
         GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        fallbackSystemCursorVisible = false;
     }
 
     static void renderDefault(DrawContext context, int mouseX, int mouseY) {
@@ -59,13 +62,31 @@ final class PathmindCursor {
         }
         DrawContextBridge.startNewRootLayer(context);
         Object matrices = context.getMatrices();
+        boolean rendered = false;
         MatrixStackBridge.push(matrices);
         try {
             MatrixStackBridge.translateZ(matrices, 1000.0f);
-            GuiTextureRenderer.drawIcon(context, texture, mouseX - HOTSPOT_X, mouseY - HOTSPOT_Y, SIZE, CURSOR_TINT);
+            rendered = GuiTextureRenderer.tryDrawIcon(context, texture, mouseX - HOTSPOT_X, mouseY - HOTSPOT_Y, SIZE, CURSOR_TINT);
             DrawContextBridge.flush(context);
         } finally {
             MatrixStackBridge.pop(matrices);
+        }
+        syncSystemCursorFallback(client, rendered);
+    }
+
+    private static void syncSystemCursorFallback(MinecraftClient client, boolean customCursorRendered) {
+        if (client == null) {
+            return;
+        }
+        long window = client.getWindow().getHandle();
+        if (customCursorRendered) {
+            GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
+            fallbackSystemCursorVisible = false;
+            return;
+        }
+        if (!fallbackSystemCursorVisible) {
+            GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+            fallbackSystemCursorVisible = true;
         }
     }
 }

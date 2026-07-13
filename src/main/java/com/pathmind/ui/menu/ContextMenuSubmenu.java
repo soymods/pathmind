@@ -151,7 +151,7 @@ public class ContextMenuSubmenu {
                 } else if (item.nodeType != null) {
                     // Render node item
                     boolean hovered = (item.nodeType == hoveredNode);
-                    int color = item.nodeType.getCategory().getColor();
+                    int color = category != null ? category.getColor() : item.nodeType.getCategory().getColor();
                     ContextMenuRenderer.renderNodeItem(
                         context, textRenderer,
                         submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,

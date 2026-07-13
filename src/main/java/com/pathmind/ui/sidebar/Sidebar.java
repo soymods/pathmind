@@ -115,6 +115,8 @@ public class Sidebar {
                 return createFlowGroups();
             case CONTROL:
                 return createControlGroups();
+            case NAVIGATION:
+                return baritoneAvailable ? createNavigationGroups() : java.util.Collections.emptyList();
             case WORLD:
                 return createWorldGroups();
             case PLAYER:
@@ -188,7 +190,8 @@ public class Sidebar {
         return groups;
     }
 
-    private List<NodeGroup> createWorldGroups() {
+
+    private List<NodeGroup> createNavigationGroups() {
         List<NodeGroup> groups = new ArrayList<>();
         groups.add(createGroup(
             "pathmind.sidebar.group.navigation",
@@ -206,6 +209,11 @@ public class Sidebar {
             NodeType.EXPLORE,
             NodeType.FOLLOW
         ));
+        return groups;
+    }
+
+    private List<NodeGroup> createWorldGroups() {
+        List<NodeGroup> groups = new ArrayList<>();
         groups.add(createGroup(
             "pathmind.sidebar.group.gathering",
             NodeType.COLLECT,
@@ -223,6 +231,24 @@ public class Sidebar {
 
     private List<NodeGroup> createPlayerGroups() {
         List<NodeGroup> groups = new ArrayList<>();
+        if (!baritoneAvailable) {
+            groups.add(createGroup(
+                "pathmind.sidebar.group.navigation",
+                NodeType.GOTO,
+                NodeType.TRAVEL,
+                NodeType.GOAL,
+                NodeType.PATH,
+                NodeType.INVERT,
+                NodeType.COME,
+                NodeType.SURFACE,
+                NodeType.STOP
+            ));
+            groups.add(createGroup(
+                "pathmind.sidebar.group.exploration",
+                NodeType.EXPLORE,
+                NodeType.FOLLOW
+            ));
+        }
         groups.add(createGroup(
             "pathmind.sidebar.group.movement",
             NodeType.WALK,
@@ -1086,7 +1112,7 @@ public class Sidebar {
             return getSidebarCategoryAccent(category);
         }
         if (indexInGroup == 0) {
-            return nodeType.getColor();
+            return nodeType.getCategory() == category ? nodeType.getColor() : getSidebarCategoryAccent(category);
         }
         return getSidebarCategoryAccent(category);
     }

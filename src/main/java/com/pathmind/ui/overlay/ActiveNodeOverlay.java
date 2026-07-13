@@ -10,6 +10,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.PathmindI18n;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -77,7 +78,7 @@ public class ActiveNodeOverlay {
 
             int textRightX = overlayX + OVERLAY_WIDTH - 8;
 
-            String titleText = i == 0 ? "Active Node" : "Active Node " + (i + 1);
+            String titleText = i == 0 ? tr("pathmind.overlay.activeNode") : tr("pathmind.overlay.activeNode.numbered", i + 1);
             int titleWidth = textRenderer.getWidth(titleText);
             context.drawTextWithShadow(
                 textRenderer,
@@ -94,7 +95,7 @@ public class ActiveNodeOverlay {
                     nodeTypeName = node.getType().getDisplayName();
                     nodeColor = node.getType().getColor();
                 } else {
-                    nodeTypeName = "End";
+                    nodeTypeName = tr("pathmind.overlay.end");
                     nodeColor = UITheme.STATE_ERROR;
                 }
             } else {
@@ -112,8 +113,8 @@ public class ActiveNodeOverlay {
             );
 
             String timeText = i == 0
-                ? "Node Time: " + formatDuration(executionManager.getActiveNodeDuration())
-                : "Node Time: --";
+                ? tr("pathmind.overlay.nodeTime", formatDuration(executionManager.getActiveNodeDuration()))
+                : tr("pathmind.overlay.nodeTimeUnknown");
             int timeWidth = textRenderer.getWidth(timeText);
             context.drawTextWithShadow(
                 textRenderer,
@@ -123,7 +124,7 @@ public class ActiveNodeOverlay {
                 applyAlpha(UITheme.TEXT_HEADER, progress)
             );
 
-            String statusText = showingCompletion ? "Finished" : "Executing...";
+            String statusText = showingCompletion ? tr("pathmind.overlay.finished") : tr("pathmind.overlay.executing");
             int statusWidth = textRenderer.getWidth(statusText);
             context.drawTextWithShadow(
                 textRenderer,
@@ -177,7 +178,7 @@ public class ActiveNodeOverlay {
             applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
 
         int textRightX = overlayX + OVERLAY_WIDTH - 8;
-        String titleText = "Pathmind Nav";
+        String titleText = tr("pathmind.navigator.title");
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(titleText),
@@ -196,8 +197,8 @@ public class ActiveNodeOverlay {
         );
 
         String distanceText = snapshot.distance() >= 0.0D
-            ? String.format("Dist %.1f", snapshot.distance())
-            : "Dist --";
+            ? tr("pathmind.navigator.distance", snapshot.distance())
+            : tr("pathmind.navigator.distanceUnknown");
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(distanceText),
@@ -207,12 +208,12 @@ public class ActiveNodeOverlay {
         );
 
         String statusText = switch (snapshot.state()) {
-            case PREVIEW -> "Preview";
-            case PATHING -> "Moving";
-            case ARRIVED -> "Arrived";
-            case STOPPED -> "Stopped";
-            case FAILED -> "Failed";
-            case IDLE -> "Idle";
+            case PREVIEW -> tr("pathmind.navigator.status.preview");
+            case PATHING -> tr("pathmind.navigator.status.moving");
+            case ARRIVED -> tr("pathmind.navigator.status.arrived");
+            case STOPPED -> tr("pathmind.navigator.status.stopped");
+            case FAILED -> tr("pathmind.navigator.status.failed");
+            case IDLE -> tr("pathmind.navigator.status.idle");
         };
         int statusColor = snapshot.state() == PathmindNavigator.State.FAILED
             ? UITheme.STATE_ERROR
@@ -233,8 +234,12 @@ public class ActiveNodeOverlay {
 
     private String formatTarget(net.minecraft.util.math.BlockPos targetPos) {
         if (targetPos == null) {
-            return "Target --";
+            return tr("pathmind.navigator.targetUnknown");
         }
-        return "Target " + targetPos.getX() + " " + targetPos.getY() + " " + targetPos.getZ();
+        return tr("pathmind.navigator.target", targetPos.getX(), targetPos.getY(), targetPos.getZ());
+    }
+
+    private static String tr(String key, Object... args) {
+        return PathmindI18n.tr(key, args);
     }
 }

@@ -26,7 +26,6 @@ import com.pathmind.util.BlockSelection;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.GuiSelectionMode;
-import com.pathmind.util.LegacyVariableSyntaxCompat;
 import com.pathmind.util.TextRenderUtil;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.MinecraftClient;
@@ -6420,7 +6419,6 @@ public class NodeGraph {
 
     private InlineVariableRender buildInlineVariableRender(String rawText, Set<String> variableNames, int baseColor, int highlightColor,
                                                            boolean allowRelativeMarker) {
-        rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (rawText == null || rawText.isEmpty()) {
             return new InlineVariableRender(rawText == null ? "" : rawText, Collections.emptyList(), new int[0]);
         }
@@ -6488,7 +6486,6 @@ public class NodeGraph {
     }
 
     private boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames, boolean allowRelativeMarker) {
-        rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (compactViewportMode) {
             return false;
         }
@@ -6564,7 +6561,6 @@ public class NodeGraph {
     }
 
     private boolean isSingleKnownInlineVariableReference(String rawText, Set<String> variableNames) {
-        rawText = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(rawText);
         if (rawText == null || variableNames == null || variableNames.isEmpty()) {
             return false;
         }
@@ -6601,7 +6597,6 @@ public class NodeGraph {
     }
 
     private boolean isValidNumericExpression(String value, Set<String> variableNames, boolean allowDecimal, boolean requireCoordinateValid) {
-        value = LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(value);
         if (value == null) {
             return false;
         }
@@ -7257,7 +7252,7 @@ public class NodeGraph {
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
         DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
 
-        String buttonLabel = "Edit";
+        String buttonLabel = Text.translatable("pathmind.button.edit").getString();
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int textX = buttonLeft + (buttonWidth - textRenderer.getWidth(buttonLabel)) / 2;
         int textY = buttonTop + (buttonHeight - textRenderer.fontHeight) / 2;
@@ -7359,7 +7354,7 @@ public class NodeGraph {
         int bindingWidth = width - 12;
         context.fill(bindingLeft, bindingTop, bindingLeft + bindingWidth, bindingTop + 18, bodyColor);
         DrawContextBridge.drawBorderInLayer(context, bindingLeft, bindingTop, bindingWidth, 18, chipBorder);
-        drawNodeText(context, textRenderer, "Preset", bindingLeft + 4, bindingTop + 5, secondaryText);
+        drawNodeText(context, textRenderer, Text.translatable("pathmind.field.preset").getString(), bindingLeft + 4, bindingTop + 5, secondaryText);
         String presetName = trimTextToWidth(getSelectedPresetName(node), textRenderer, Math.max(24, bindingWidth - 48));
         drawNodeText(context, textRenderer, presetName, bindingLeft + 42, bindingTop + 5, primaryText);
 
@@ -7526,11 +7521,11 @@ public class NodeGraph {
         }
         lineY += lineStep;
 
-        drawNodeText(context, textRenderer, "Inputs", textX, lineY, mutedColor);
+        drawNodeText(context, textRenderer, Text.translatable("pathmind.field.inputs").getString(), textX, lineY, mutedColor);
         lineY += lineStep;
         lineY = renderPortList(context, textRenderer, definition.getInputs(), textX, lineY, previewWidth, previewTop + previewHeight, textColor, mutedColor);
         if (lineY + lineStep < previewTop + previewHeight - 2) {
-            drawNodeText(context, textRenderer, "Outputs", textX, lineY, mutedColor);
+            drawNodeText(context, textRenderer, Text.translatable("pathmind.field.outputs").getString(), textX, lineY, mutedColor);
             lineY += lineStep;
             renderPortList(context, textRenderer, definition.getOutputs(), textX, lineY, previewWidth, previewTop + previewHeight, textColor, mutedColor);
         }
@@ -7539,7 +7534,7 @@ public class NodeGraph {
     private int renderPortList(DrawContext context, TextRenderer textRenderer, List<NodeGraphData.CustomNodePort> ports,
                                int textX, int lineY, int previewWidth, int previewBottom, int textColor, int mutedColor) {
         if (ports == null || ports.isEmpty()) {
-            drawNodeText(context, textRenderer, "none", textX, lineY, mutedColor);
+            drawNodeText(context, textRenderer, Text.translatable("pathmind.option.none").getString(), textX, lineY, mutedColor);
             return lineY + textRenderer.fontHeight + 2;
         }
         for (NodeGraphData.CustomNodePort port : ports) {
@@ -8820,7 +8815,7 @@ public class NodeGraph {
         if ((amountEditingNode.getType() == NodeType.PARAM_DURATION
             || amountEditingNode.getType() == NodeType.USE
             || amountEditingNode.getType() == NodeType.SWING)
-            && !LegacyVariableSyntaxCompat.normalizeLegacyVariableSyntax(value).startsWith("$")) {
+            && !value.startsWith("$")) {
             // Accept locale decimal input like "1,5" for duration-style fields.
             value = value.replace(',', '.');
         }

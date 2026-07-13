@@ -5793,7 +5793,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.setSelectionDeletionPreviewActive(preview);
     }
 
-    private void refreshAvailablePresets() {
+    void refreshAvailablePresets() {
         stopInlinePresetRename(false);
         availablePresets = new ArrayList<>(PresetManager.getAvailablePresets());
         activePresetName = PresetManager.getActivePreset();
@@ -6870,6 +6870,14 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsPopupController.clearSettingsCache();
     }
 
+    int[] getSettingsRestoreExamplesButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        return settingsPopupController.getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+    }
+
+    void restoreExamplePresets() {
+        settingsPopupController.restoreExamplePresets();
+    }
+
     int getAccentColor() {
         return accentOption != null ? accentOption.color : UITheme.ACCENT_DEFAULT;
     }
@@ -7149,6 +7157,13 @@ public class PathmindVisualEditorScreen extends Screen {
         if (isPointInRect(mouseXi, mouseYi, clearCacheButtonBounds[0], clearCacheButtonBounds[1],
             clearCacheButtonBounds[2], clearCacheButtonBounds[3])) {
             clearSettingsCache();
+            return true;
+        }
+        int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(
+            popupX, popupY, SETTINGS_POPUP_WIDTH, popupHeight, contentX, nodeSettingsContentY);
+        if (isPointInRect(mouseXi, mouseYi, restoreExamplesButtonBounds[0], restoreExamplesButtonBounds[1],
+            restoreExamplesButtonBounds[2], restoreExamplesButtonBounds[3])) {
+            restoreExamplePresets();
             return true;
         }
 

@@ -1008,7 +1008,7 @@ public class NodeGraphPersistence {
         String resolvedPresetName = (presetName == null || presetName.isBlank())
             ? (existingData != null && existingData.getCustomNodeDefinition() != null
                 ? existingData.getCustomNodeDefinition().getPresetName()
-                : PresetManager.getActivePreset())
+                : "Workspace")
             : presetName.trim();
         definition.setPresetName(resolvedPresetName);
         definition.setName(resolveCustomNodeName(resolvedPresetName, existingData));

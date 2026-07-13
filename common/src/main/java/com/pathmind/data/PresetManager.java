@@ -44,6 +44,7 @@ public final class PresetManager {
             ensureDirectoryExists(getBaseDirectory());
             ensureDirectoryExists(getPresetsDirectory());
             ensureActivePresetFile();
+            OnboardingPresetManager.ensureExamplePresetsInstalled();
         } catch (IOException e) {
             System.err.println("Failed to initialize preset directories: " + e.getMessage());
         }

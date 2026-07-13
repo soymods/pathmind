@@ -2,6 +2,7 @@ package com.pathmind.screen;
 
 import static com.pathmind.screen.PathmindVisualEditorScreen.*;
 
+import com.pathmind.data.OnboardingPresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.nodes.Node;
@@ -229,6 +230,26 @@ final class PathmindSettingsPopupController {
             mouseX,
             mouseY,
             Text.translatable("pathmind.button.clear"),
+            PathmindPopupRenderer.ButtonStyle.DEFAULT,
+            screen.getAccentColor(),
+            screen.settingsPopupAnimation
+        );
+
+        int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
+        int restoreExamplesRowCenterY = getSettingsRestoreExamplesRowCenterY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16,
+            getSettingsRestoreExamplesDividerY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY),
+            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.examplePresets").getString(), contentX,
+            restoreExamplesRowCenterY - screen.textRenderer().fontHeight / 2,
+            scaledWidth - 40 - restoreExamplesButtonBounds[2] - 12, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
+        PathmindPopupRenderer.drawButton(
+            context,
+            screen.textRenderer(),
+            PathmindPopupLayout.rect(restoreExamplesButtonBounds[0], restoreExamplesButtonBounds[1], restoreExamplesButtonBounds[2], restoreExamplesButtonBounds[3]),
+            mouseX,
+            mouseY,
+            Text.translatable("pathmind.button.restore"),
             PathmindPopupRenderer.ButtonStyle.DEFAULT,
             screen.getAccentColor(),
             screen.settingsPopupAnimation
@@ -700,7 +721,7 @@ final class PathmindSettingsPopupController {
     }
 
     int getSettingsClearCacheSectionHeight() {
-        return 38;
+        return 76;
     }
 
     int getSettingsNodeSectionContentY(int bodyY, int contentWidth) {
@@ -714,6 +735,34 @@ final class PathmindSettingsPopupController {
             overlay.show(Text.translatable("pathmind.settings.cacheCleared").getString(), UITheme.STATE_SUCCESS);
         } else {
             overlay.show(Text.translatable("pathmind.settings.cacheNotFound").getString(), UITheme.STATE_ERROR);
+        }
+    }
+
+    int[] getSettingsRestoreExamplesButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        int dividerY = getSettingsRestoreExamplesDividerY(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int buttonY = dividerY + 8;
+        int buttonX = popupX + popupWidth - SETTINGS_SECTION_BUTTON_WIDTH - 20;
+        return new int[]{buttonX, buttonY, SETTINGS_SECTION_BUTTON_WIDTH, SETTINGS_SECTION_BUTTON_HEIGHT};
+    }
+
+    int getSettingsRestoreExamplesRowCenterY(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        return getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY)[1]
+            + SETTINGS_SECTION_BUTTON_HEIGHT / 2;
+    }
+
+    int getSettingsRestoreExamplesDividerY(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        return clearCacheButtonBounds[1] + clearCacheButtonBounds[3] + 10;
+    }
+
+    void restoreExamplePresets() {
+        OnboardingPresetManager.RestoreResult result = OnboardingPresetManager.restoreExamplePresets();
+        NodeErrorNotificationOverlay overlay = NodeErrorNotificationOverlay.getInstance();
+        if (result.success()) {
+            screen.refreshAvailablePresets();
+            overlay.show(Text.translatable("pathmind.settings.examplePresetsRestored").getString(), UITheme.STATE_SUCCESS);
+        } else {
+            overlay.show(Text.translatable("pathmind.settings.examplePresetsRestoreFailed").getString(), UITheme.STATE_ERROR);
         }
     }
 
@@ -1009,8 +1058,8 @@ final class PathmindSettingsPopupController {
         int contentX = popupX + 20;
         int nodeSettingsBodyY = getSettingsNodeSectionBodyY(popupY);
         int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY, popupWidth - 40);
-        int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-        int contentBottom = clearCacheButtonBounds[1] + clearCacheButtonBounds[3];
+        int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int contentBottom = restoreExamplesButtonBounds[1] + restoreExamplesButtonBounds[3];
         return Math.max(0, contentBottom - bodyBottom + 24);
     }
 

@@ -1,5 +1,7 @@
 package com.pathmind.nodes;
 
+import static com.pathmind.util.PathmindI18n.tr;
+
 import com.pathmind.util.EntityStateOptions;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.component.DataComponentTypes;
@@ -34,7 +36,7 @@ final class NodeAttributeDetectionEvaluator {
         MinecraftClient client = MinecraftClient.getInstance();
         if (parameterNode == null) {
             if (client != null) {
-                owner.sendNodeErrorMessage(client, owner.getType().getDisplayName() + " requires a target parameter.");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresTargetParameter", owner.getType().getDisplayName()));
             }
             return false;
         }

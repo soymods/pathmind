@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.text.Text;
 
 public final class AttributeDetectionConfig {
     public enum TargetKind {
@@ -66,7 +67,11 @@ public final class AttributeDetectionConfig {
         }
 
         public String label() {
-            return label;
+            return Text.translatable(labelKey()).getString();
+        }
+
+        public String labelKey() {
+            return "pathmind.attribute." + id;
         }
 
         public ValueType valueType() {

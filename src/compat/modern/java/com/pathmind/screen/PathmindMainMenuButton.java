@@ -23,7 +23,6 @@ public class PathmindMainMenuButton extends ButtonWidget {
     private static final int BORDER_HOVER_LIGHT = 0xFFFFFFFF;
     private static final int SHADOW_COLOR = 0x66000000;
     private static final String OPEN_EDITOR_KEY = "gui.pathmind.open_editor";
-    private static final String OPEN_EDITOR_FALLBACK = "Open Pathmind";
 
     public PathmindMainMenuButton(int x, int y, int size, PressAction pressAction) {
         super(x, y, size, size, TextCompatibilityBridge.empty(), pressAction, DEFAULT_NARRATION_SUPPLIER);
@@ -91,9 +90,6 @@ public class PathmindMainMenuButton extends ButtonWidget {
 
     private static MutableText resolveOpenEditorText() {
         MutableText text = TextCompatibilityBridge.translatable(OPEN_EDITOR_KEY);
-        if (OPEN_EDITOR_KEY.equals(text.getString())) {
-            return TextCompatibilityBridge.literal(OPEN_EDITOR_FALLBACK);
-        }
         return text;
     }
 }

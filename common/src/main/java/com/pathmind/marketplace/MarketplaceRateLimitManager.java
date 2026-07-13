@@ -1,5 +1,7 @@
 package com.pathmind.marketplace;
 
+import static com.pathmind.util.PathmindI18n.tr;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.pathmind.data.PresetManager;
@@ -54,13 +56,13 @@ public final class MarketplaceRateLimitManager {
                 long lastPublish = Collections.max(publishTimes);
                 if (now - lastPublish < MIN_PUBLISH_GAP_MS) {
                     long retryAfterMs = Math.max(1000L, MIN_PUBLISH_GAP_MS - (now - lastPublish));
-                    return LimitCheck.deny("Wait " + formatDuration(retryAfterMs) + " before publishing again (10 seconds between publishes).");
+                    return LimitCheck.deny(tr("pathmind.rateLimit.publishCooldown", formatDuration(retryAfterMs)));
                 }
             }
             if (publishTimes.size() >= MAX_PUBLISHES_PER_WINDOW) {
                 long oldest = Collections.min(publishTimes);
                 long retryAfterMs = Math.max(1000L, PUBLISH_WINDOW_MS - (now - oldest));
-                return LimitCheck.deny("Publish limit reached. At most 6 per minute — try again in " + formatDuration(retryAfterMs) + ".");
+                return LimitCheck.deny(tr("pathmind.rateLimit.publishLimit", formatDuration(retryAfterMs)));
             }
             return LimitCheck.permit();
         }
@@ -89,7 +91,7 @@ public final class MarketplaceRateLimitManager {
             String key = buildScopedKey(userId, presetId, "like");
             Long lastActionAt = state.lastLikeAtByUserPreset.get(key);
             if (lastActionAt != null && now - lastActionAt < LIKE_COOLDOWN_MS) {
-                return LimitCheck.deny("Please wait " + formatDuration(LIKE_COOLDOWN_MS - (now - lastActionAt)) + " before toggling this like again.");
+                return LimitCheck.deny(tr("pathmind.rateLimit.likeCooldown", formatDuration(LIKE_COOLDOWN_MS - (now - lastActionAt))));
             }
             state.lastLikeAtByUserPreset.put(key, now);
             saveState(state);
@@ -104,7 +106,7 @@ public final class MarketplaceRateLimitManager {
             String key = buildScopedKey(userId, presetId, "download");
             Long lastCountAt = state.lastDownloadCountAtByUserPreset.get(key);
             if (lastCountAt != null && now - lastCountAt < DOWNLOAD_COUNT_COOLDOWN_MS) {
-                return LimitCheck.deny("Download already counted recently.");
+                return LimitCheck.deny(tr("pathmind.rateLimit.downloadAlreadyCounted"));
             }
             state.lastDownloadCountAtByUserPreset.put(key, now);
             saveState(state);

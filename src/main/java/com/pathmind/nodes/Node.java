@@ -6712,7 +6712,7 @@ public class Node {
         }
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         if (client != null) {
-            sendNodeErrorMessage(client, type.getDisplayName() + " requires a parameter node.");
+            sendNodeErrorMessage(client, tr("pathmind.error.requiresParameterNode", type.getDisplayName()));
         }
         return false;
     }

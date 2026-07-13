@@ -440,7 +440,7 @@ final class NodeVariableListCommandExecutor {
                 List<String> entityIds = owner.resolveEntityIdsFromParameter(parameterNode);
                 if (entityIds.isEmpty()) {
                     NodeExecutionCompletion.fail(owner, client, future,
-                        "No entity selected for " + owner.getType().getDisplayName() + ".");
+                        tr("pathmind.error.noEntitySelectedForNode", owner.getType().getDisplayName()));
                     return;
                 }
 
@@ -481,11 +481,11 @@ final class NodeVariableListCommandExecutor {
             if (matches.isEmpty()) {
                 String message;
                 if (Node.isAnyPlayerValue(playerName)) {
-                    message = "No players nearby for " + owner.getType().getDisplayName() + ".";
+                    message = tr("pathmind.error.noPlayersNearby", owner.getType().getDisplayName());
                 } else if (Node.isSelfPlayerValue(playerName)) {
-                    message = "Local player unavailable for " + owner.getType().getDisplayName() + ".";
+                    message = tr("pathmind.error.localPlayerUnavailable", owner.getType().getDisplayName());
                 } else {
-                    message = "Player \"" + playerName + "\" is not nearby for " + owner.getType().getDisplayName() + ".";
+                    message = tr("pathmind.error.playerNotNearby", playerName, owner.getType().getDisplayName());
                 }
                 NodeExecutionCompletion.fail(owner, client, future, message);
                 return;
@@ -494,7 +494,7 @@ final class NodeVariableListCommandExecutor {
             List<String> itemIds = owner.resolveItemIdsFromParameter(parameterNode);
             if (itemIds.isEmpty()) {
                 NodeExecutionCompletion.fail(owner, client, future,
-                    "No item selected for " + owner.getType().getDisplayName() + ".");
+                    tr("pathmind.error.noItemSelectedForNode", owner.getType().getDisplayName()));
                 return;
             }
 

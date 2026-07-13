@@ -206,7 +206,7 @@ final class NodeEntityActionCommandExecutor {
                 String name = targetBlock != null ? targetBlock.getName().getString()
                     : (requestedBlockLabel != null && !requestedBlockLabel.isEmpty() ? requestedBlockLabel : "block");
                 restoreSneakState.run();
-                owner.sendNodeErrorMessage(client, name + " is not nearby for " + owner.getType().getDisplayName() + ".");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.blockNotNearbyForNode", name, owner.getType().getDisplayName()));
                 future.complete(null);
                 return;
             }
@@ -216,7 +216,7 @@ final class NodeEntityActionCommandExecutor {
                 String name = targetBlock != null ? targetBlock.getName().getString()
                     : (requestedBlockLabel != null && !requestedBlockLabel.isEmpty() ? requestedBlockLabel : "block");
                 restoreSneakState.run();
-                owner.sendNodeErrorMessage(client, name + " is missing for " + owner.getType().getDisplayName() + ".");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.blockMissingForNode", name, owner.getType().getDisplayName()));
                 future.complete(null);
                 return;
             }
@@ -232,7 +232,7 @@ final class NodeEntityActionCommandExecutor {
             if (targetBlock != null && !state.isOf(targetBlock)) {
                 String name = targetBlock.getName().getString();
                 restoreSneakState.run();
-                owner.sendNodeErrorMessage(client, name + " is not nearby for " + owner.getType().getDisplayName() + ".");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.blockNotNearbyForNode", name, owner.getType().getDisplayName()));
                 future.complete(null);
                 return;
             }
@@ -243,7 +243,7 @@ final class NodeEntityActionCommandExecutor {
             Vec3d hitVec = Vec3d.ofCenter(targetPos);
             if (eyePos.squaredDistanceTo(hitVec) > Node.DEFAULT_REACH_DISTANCE_SQUARED) {
                 restoreSneakState.run();
-                owner.sendNodeErrorMessage(client, blockDisplayName + " is too far away to interact with.");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.blockTooFarToInteract", blockDisplayName));
                 future.complete(null);
                 return;
             }
@@ -457,18 +457,18 @@ final class NodeEntityActionCommandExecutor {
         int tradeIndex = selectedTradeNumber - 1;
         if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
             NodeExecutionCompletion.fail(owner, client, future,
-                "Trade #" + selectedTradeNumber + " is not available.");
+                tr("pathmind.error.tradeUnavailable", selectedTradeNumber));
             return;
         }
         net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
         if (selectedOffer.isDisabled()) {
             NodeExecutionCompletion.fail(owner, client, future,
-                "Trade #" + selectedTradeNumber + " is out of stock.");
+                tr("pathmind.error.tradeOutOfStock", selectedTradeNumber));
             return;
         }
         if (!canAffordTrade(client.player, screenHandler, selectedOffer)) {
             NodeExecutionCompletion.fail(owner, client, future,
-                "Not enough items for trade #" + selectedTradeNumber + ".");
+                tr("pathmind.error.tradeNotEnoughItems", selectedTradeNumber));
             return;
         }
         List<Integer> preferredTradeIndexes = Collections.singletonList(tradeIndex);

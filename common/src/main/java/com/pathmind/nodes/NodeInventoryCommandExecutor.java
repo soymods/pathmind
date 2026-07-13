@@ -1307,7 +1307,7 @@ final class NodeInventoryCommandExecutor {
                 applyUseSelectionResult(orResult);
                 return true;
             }
-            sendParameterSearchFailure("None of the OR options are available in inventory for " + type.getDisplayName() + ".", future);
+            sendParameterSearchFailure(tr("pathmind.error.noOrOptionsInInventory", type.getDisplayName()), future);
             return false;
         }
 

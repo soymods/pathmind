@@ -120,7 +120,7 @@ final class NodeEntityActionCommandExecutor {
             Optional<BlockPos> targetPos = findNearestReachableBlock(client, List.of(blockSelection.get()));
             if (targetPos.isEmpty()) {
                 restoreSneakState.run();
-                owner.sendNodeErrorMessage(client, blockSelectionRaw + " is too far away to interact with.");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.blockTooFarToInteract", blockSelectionRaw));
                 future.complete(null);
                 return;
             }
@@ -128,7 +128,7 @@ final class NodeEntityActionCommandExecutor {
             List<BlockHitResult> hitCandidates = buildInteractionHitCandidates(client, targetPos.get());
             if (hitCandidates.isEmpty()) {
                 restoreSneakState.run();
-                owner.sendNodeErrorMessage(client, blockSelectionRaw + " is too far away to interact with.");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.blockTooFarToInteract", blockSelectionRaw));
                 future.complete(null);
                 return;
             }
@@ -154,7 +154,7 @@ final class NodeEntityActionCommandExecutor {
                 Entity entity = entityHit.getEntity();
                 if (entity == null || entity.squaredDistanceTo(client.player.getEyePos()) > Node.getEntityInteractionReachSquared(client)) {
                     restoreSneakState.run();
-                    owner.sendNodeErrorMessage(client, "Target is too far away to interact with.");
+                    owner.sendNodeErrorMessage(client, tr("pathmind.error.targetTooFarToInteract"));
                     future.complete(null);
                     return;
                 }
@@ -163,7 +163,7 @@ final class NodeEntityActionCommandExecutor {
             } else if (client.crosshairTarget instanceof BlockHitResult blockHit) {
                 if (!isHitWithinReach(client, blockHit.getPos())) {
                     restoreSneakState.run();
-                    owner.sendNodeErrorMessage(client, "Target is too far away to interact with.");
+                    owner.sendNodeErrorMessage(client, tr("pathmind.error.targetTooFarToInteract"));
                     future.complete(null);
                     return;
                 }
@@ -171,7 +171,7 @@ final class NodeEntityActionCommandExecutor {
                 result = client.interactionManager.interactBlock(client.player, hand, blockHit);
             } else {
                 restoreSneakState.run();
-                owner.sendNodeErrorMessage(client, "No target in range for " + owner.getType().getDisplayName() + ".");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.noTargetInRangeForNode", owner.getType().getDisplayName()));
                 future.complete(null);
                 return;
             }
@@ -775,18 +775,18 @@ final class NodeEntityActionCommandExecutor {
         int tradeIndex = selectedTradeNumber - 1;
         if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
             NodeExecutionCompletion.fail(owner, client, future,
-                "Trade #" + selectedTradeNumber + " is not available.");
+                tr("pathmind.error.tradeUnavailable", selectedTradeNumber));
             return;
         }
         net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
         if (selectedOffer.isDisabled()) {
             NodeExecutionCompletion.fail(owner, client, future,
-                "Trade #" + selectedTradeNumber + " is out of stock.");
+                tr("pathmind.error.tradeOutOfStock", selectedTradeNumber));
             return;
         }
         if (!canAffordTrade(client.player, screenHandler, selectedOffer)) {
             NodeExecutionCompletion.fail(owner, client, future,
-                "Not enough items for trade #" + selectedTradeNumber + ".");
+                tr("pathmind.error.tradeNotEnoughItems", selectedTradeNumber));
             return;
         }
         List<Integer> preferredTradeIndexes = Collections.singletonList(tradeIndex);

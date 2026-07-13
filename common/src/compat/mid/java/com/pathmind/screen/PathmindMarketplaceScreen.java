@@ -1576,7 +1576,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentWidth = popupWidth - 24;
         int sourceY = popupY + 40;
         String sourceLine = editingPreset == null
-            ? Text.translatable("pathmind.marketplace.sourcePreset", fallback(publishSourcePresetName, Text.translatable("pathmind.marketplace.unknown").getString())).getString()
+            ? Text.translatable("pathmind.marketplace.sourcePresetValue", fallback(publishSourcePresetName, Text.translatable("pathmind.marketplace.unknown").getString())).getString()
             : Text.translatable("pathmind.marketplace.editingListingBy", fallback(editingPreset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString())).getString();
         drawWrappedValue(context, contentX, sourceY, contentWidth,
             sourceLine,
@@ -1625,7 +1625,7 @@ public class PathmindMarketplaceScreen extends Screen {
         boolean authHovered = isPointInRect(mouseX, mouseY, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         boolean submitHovered = isPointInRect(mouseX, mouseY, submitButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         drawAnimatedActionButton(context, cancelButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            "Cancel", cancelHovered, false, publishPopupAnimation);
+            Text.translatable("pathmind.button.cancel").getString(), cancelHovered, false, publishPopupAnimation);
         drawAnimatedActionButton(context, authButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             getPublishAuthButtonLabel(), authHovered, publishBusy || authSession != null, publishPopupAnimation);
         drawAnimatedActionButton(context, submitButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
@@ -1702,7 +1702,7 @@ public class PathmindMarketplaceScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         boolean confirmHovered = isPointInRect(mouseX, mouseY, confirmButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         drawAnimatedActionButton(context, cancelButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            "Cancel", cancelHovered, false, confirmPopupAnimation);
+            Text.translatable("pathmind.button.cancel").getString(), cancelHovered, false, confirmPopupAnimation);
         drawAnimatedActionButton(context, confirmButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
             confirmAction == ConfirmAction.DELETE ? Text.translatable("pathmind.button.delete").getString() : Text.translatable("pathmind.button.update").getString(),
             confirmHovered, false, confirmPopupAnimation);
@@ -3878,7 +3878,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (authSession == null) {
             return Text.translatable("pathmind.marketplace.signIn").getString();
         }
-        return isPresetLiked(popupPreset) ? "Unlike" : "Like";
+        return isPresetLiked(popupPreset) ? Text.translatable("pathmind.button.unlike").getString() : Text.translatable("pathmind.button.like").getString();
     }
 
     private String getPublishAuthButtonLabel() {
@@ -5027,17 +5027,17 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private enum SortMode {
-        TRENDING("Trending", Comparator
+        TRENDING(Text.translatable("pathmind.marketplace.sort.trending").getString(), Comparator
             .comparingInt(MarketplacePreset::getDownloadsCount).reversed()
             .thenComparing(Comparator.comparingInt(MarketplacePreset::getLikesCount).reversed())
             .thenComparing(Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed())),
         SAVED(Text.translatable("pathmind.marketplace.saved").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getName(), "").toLowerCase(Locale.ROOT))),
-        NEWEST("Newest", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getCreatedAt(), "")).reversed()),
-        UPDATED("Updated", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed()),
+        NEWEST(Text.translatable("pathmind.marketplace.sort.newest").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getCreatedAt(), "")).reversed()),
+        UPDATED(Text.translatable("pathmind.marketplace.sort.updated").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed()),
         DOWNLOADS(Text.translatable("pathmind.marketplace.downloads").getString(), Comparator.comparingInt(MarketplacePreset::getDownloadsCount).reversed()),
         LIKES(Text.translatable("pathmind.marketplace.likes").getString(), Comparator.comparingInt(MarketplacePreset::getLikesCount).reversed()),
-        NAME("Name", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getName(), "").toLowerCase(Locale.ROOT))),
-        AUTHOR("Author", Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getAuthorName(), "").toLowerCase(Locale.ROOT)));
+        NAME(Text.translatable("pathmind.marketplace.sort.name").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getName(), "").toLowerCase(Locale.ROOT))),
+        AUTHOR(Text.translatable("pathmind.marketplace.sort.author").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getAuthorName(), "").toLowerCase(Locale.ROOT)));
 
         private final String label;
         private final Comparator<MarketplacePreset> comparator;

@@ -1,5 +1,7 @@
 package com.pathmind.nodes;
 
+import static com.pathmind.util.PathmindI18n.tr;
+
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.GameProfileCompatibilityBridge;
@@ -19,7 +21,7 @@ final class NodeEventSensorEvaluator {
         Node messageNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(1), 1);
         if (playerNode == null || messageNode == null) {
             if (client != null) {
-                owner.sendNodeErrorMessage(client, owner.getType().getDisplayName() + " requires a user and message parameter.");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresUserAndMessageParameter", owner.getType().getDisplayName()));
             }
             return false;
         }
@@ -53,7 +55,7 @@ final class NodeEventSensorEvaluator {
         Node playerNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
         if (playerNode == null) {
             if (client != null) {
-                owner.sendNodeErrorMessage(client, owner.getType().getDisplayName() + " requires a user parameter.");
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresUserParameter", owner.getType().getDisplayName()));
             }
             return false;
         }

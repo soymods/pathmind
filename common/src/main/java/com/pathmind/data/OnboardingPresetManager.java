@@ -1,14 +1,12 @@
 package com.pathmind.data;
 
-import com.pathmind.nodes.Node;
-import com.pathmind.nodes.NodeConnection;
-
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -46,46 +44,79 @@ public final class OnboardingPresetManager {
 
     static RestoreResult restoreExamplePresets(Path baseDirectory, boolean overwriteExisting) {
         if (baseDirectory == null) {
-            return new RestoreResult(false, 0, List.of());
+            return RestoreResult.failed(List.of());
         }
         Path presetsDirectory = baseDirectory.resolve(PRESETS_DIRECTORY_NAME);
         try {
             Files.createDirectories(presetsDirectory);
         } catch (IOException e) {
             System.err.println("Failed to create example preset directory: " + e.getMessage());
-            return new RestoreResult(false, 0, List.of());
+            return RestoreResult.failed(List.of());
         }
 
         int restoredCount = 0;
+        int skippedCount = 0;
         List<String> restoredNames = new ArrayList<>();
+        List<String> failedNames = new ArrayList<>();
         for (ExamplePreset preset : createExamplePresets()) {
             Path presetPath = presetsDirectory.resolve(preset.name() + ".json");
             if (!overwriteExisting && Files.exists(presetPath)) {
+                skippedCount++;
                 continue;
             }
-            if (NodeGraphPersistence.saveNodeGraphToPath(preset.nodes(), preset.connections(), presetPath)) {
+            if (installExamplePreset(preset, presetsDirectory, presetPath)) {
                 restoredCount++;
                 restoredNames.add(preset.name());
+            } else {
+                failedNames.add(preset.name());
             }
         }
-        return new RestoreResult(true, restoredCount, restoredNames);
+        return new RestoreResult(failedNames.isEmpty(), restoredCount, restoredNames, skippedCount, failedNames);
     }
 
     static List<ExamplePreset> createExamplePresets() {
         return List.of(
-            emptyPreset("example 1"),
-            emptyPreset("example 2"),
-            emptyPreset("example 3")
+            resourcePreset("example 1", "example_1.json"),
+            resourcePreset("example 2", "example_2.json"),
+            resourcePreset("example 3", "example_3.json")
         );
     }
 
-    private static ExamplePreset emptyPreset(String name) {
-        return new ExamplePreset(name, Collections.emptyList(), Collections.emptyList());
+    private static ExamplePreset resourcePreset(String name, String fileName) {
+        return new ExamplePreset(name, "assets/pathmind/onboarding_presets/" + fileName);
     }
 
-    public record RestoreResult(boolean success, int restoredCount, List<String> restoredNames) {
+    private static boolean installExamplePreset(ExamplePreset preset, Path presetsDirectory, Path targetPath) {
+        Path tempPath = null;
+        try (InputStream input = OnboardingPresetManager.class.getClassLoader().getResourceAsStream(preset.resourcePath())) {
+            if (input == null) {
+                System.err.println("Missing bundled example preset resource: " + preset.resourcePath());
+                return false;
+            }
+            tempPath = Files.createTempFile(presetsDirectory, ".pathmind-onboarding-", ".json");
+            Files.copy(input, tempPath, StandardCopyOption.REPLACE_EXISTING);
+            return NodeGraphPersistence.normalizeNodeGraphToPath(tempPath, targetPath);
+        } catch (IOException e) {
+            System.err.println("Failed to install example preset '" + preset.name() + "': " + e.getMessage());
+            return false;
+        } finally {
+            if (tempPath != null) {
+                try {
+                    Files.deleteIfExists(tempPath);
+                } catch (IOException e) {
+                    System.err.println("Failed to clean up temporary example preset: " + e.getMessage());
+                }
+            }
+        }
     }
 
-    record ExamplePreset(String name, List<Node> nodes, List<NodeConnection> connections) {
+    public record RestoreResult(boolean success, int restoredCount, List<String> restoredNames,
+                                int skippedCount, List<String> failedNames) {
+        private static RestoreResult failed(List<String> failedNames) {
+            return new RestoreResult(false, 0, List.of(), 0, failedNames);
+        }
+    }
+
+    record ExamplePreset(String name, String resourcePath) {
     }
 }

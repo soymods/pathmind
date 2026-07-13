@@ -82,4 +82,29 @@ class OnboardingPresetManagerTest {
         assertEquals(3, restored.restoredCount());
         assertTrue(Files.readString(existingPreset, StandardCharsets.UTF_8).contains("\"nodes\""));
     }
+
+    @Test
+    void autoInstallOnlyRunsForFirstRunWorkspace() throws Exception {
+        Path baseDirectory = tempDir.resolve("existing-pathmind");
+        Path presetsDirectory = baseDirectory.resolve("presets");
+        Files.createDirectories(presetsDirectory);
+
+        OnboardingPresetManager.ensureExamplePresetsInstalled(baseDirectory, false);
+        assertEquals(0, countJsonFiles(presetsDirectory));
+
+        OnboardingPresetManager.ensureExamplePresetsInstalled(baseDirectory, true);
+        assertEquals(3, countJsonFiles(presetsDirectory));
+
+        Files.delete(presetsDirectory.resolve("Example 1 - Basics.json"));
+        OnboardingPresetManager.ensureExamplePresetsInstalled(baseDirectory, true);
+        assertEquals(2, countJsonFiles(presetsDirectory));
+    }
+
+    private static long countJsonFiles(Path directory) throws Exception {
+        try (java.util.stream.Stream<Path> paths = Files.list(directory)) {
+            return paths
+                .filter(path -> path.getFileName().toString().endsWith(".json"))
+                .count();
+        }
+    }
 }

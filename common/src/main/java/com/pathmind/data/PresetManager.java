@@ -41,10 +41,12 @@ public final class PresetManager {
      */
     public static void initialize() {
         try {
-            ensureDirectoryExists(getBaseDirectory());
+            Path baseDirectory = getBaseDirectory();
+            boolean firstRunWorkspace = !Files.exists(baseDirectory);
+            ensureDirectoryExists(baseDirectory);
             ensureDirectoryExists(getPresetsDirectory());
             ensureActivePresetFile();
-            OnboardingPresetManager.ensureExamplePresetsInstalled();
+            OnboardingPresetManager.ensureExamplePresetsInstalled(baseDirectory, firstRunWorkspace);
         } catch (IOException e) {
             System.err.println("Failed to initialize preset directories: " + e.getMessage());
         }

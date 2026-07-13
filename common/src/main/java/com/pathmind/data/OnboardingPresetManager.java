@@ -22,8 +22,10 @@ public final class OnboardingPresetManager {
     private OnboardingPresetManager() {
     }
 
-    public static void ensureExamplePresetsInstalled() {
-        Path baseDirectory = PresetManager.getBaseDirectory();
+    static void ensureExamplePresetsInstalled(Path baseDirectory, boolean firstRunWorkspace) {
+        if (!firstRunWorkspace || baseDirectory == null) {
+            return;
+        }
         Path markerPath = baseDirectory.resolve(INSTALL_MARKER_FILE_NAME);
         if (Files.exists(markerPath)) {
             return;

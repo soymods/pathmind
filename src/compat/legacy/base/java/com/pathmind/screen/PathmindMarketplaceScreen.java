@@ -1367,7 +1367,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     textX,
                     cursorY,
                     textWidth,
-                    "Tags: " + tagsLine,
+                    Text.translatable("pathmind.marketplace.tagsValue", tagsLine).getString(),
                     presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY),
                     2
                 );
@@ -1375,7 +1375,11 @@ public class PathmindMarketplaceScreen extends Screen {
         }
 
         int visibilityY = cursorY + 10;
-        String visibilityLabel = popupMetadataEditing ? "Visibility" : "Visibility: " + (popupPreset.isPublished() ? Text.translatable("pathmind.option.public").getString() : Text.translatable("pathmind.option.private").getString());
+        String visibilityLabel = popupMetadataEditing
+            ? Text.translatable("pathmind.field.visibility").getString()
+            : Text.translatable("pathmind.marketplace.visibilityValue", popupPreset.isPublished()
+                ? Text.translatable("pathmind.option.public").getString()
+                : Text.translatable("pathmind.option.private").getString()).getString();
         int visibilityColor = popupMetadataEditing
             ? UITheme.TEXT_LABEL
             : (popupPreset.isPublished() ? getAccentColor() : UITheme.STATE_WARNING);
@@ -2723,7 +2727,7 @@ public class PathmindMarketplaceScreen extends Screen {
         } else {
             String tagsLine = formatTags(popupPreset.getTags());
             if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
-                height += measureWrappedValueHeight(textWidth, "Tags: " + tagsLine, 2);
+                height += measureWrappedValueHeight(textWidth, Text.translatable("pathmind.marketplace.tagsValue", tagsLine).getString(), 2);
             }
         }
         height += 30 + 18;

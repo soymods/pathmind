@@ -23,6 +23,11 @@ import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.control.RawJsonEditor;
 import com.pathmind.ui.control.PathmindTextField;
+import com.pathmind.ui.control.PathmindPopupRenderer;
+import com.pathmind.ui.control.PathmindPopupLayout;
+import com.pathmind.ui.control.PathmindSettingsRowRenderer;
+import com.pathmind.ui.control.PathmindValidationPanelRenderer;
+import com.pathmind.ui.control.PathmindIconRenderer;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
@@ -38,7 +43,6 @@ import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.validation.GraphValidationIssue;
 import com.pathmind.validation.GraphValidationResult;
-import com.pathmind.validation.GraphValidationSeverity;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
@@ -59,7 +63,6 @@ import net.minecraft.client.input.KeyInput;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.OverlayProtection;
 import com.pathmind.util.UiUtilsProxy;
-import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.minecraft.util.Identifier;
@@ -4310,11 +4313,14 @@ public class PathmindVisualEditorScreen extends Screen {
             getPopupAnimatedColor(clearPopupAnimation, UITheme.TEXT_SECONDARY)
         );
 
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + 150 - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int confirmX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, 150, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect confirmButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int confirmX = confirmButton.x();
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean confirmHovered = isPointInRect(mouseX, mouseY, confirmX, buttonY, buttonWidth, buttonHeight);
@@ -4371,12 +4377,16 @@ public class PathmindVisualEditorScreen extends Screen {
                 getPopupAnimatedColor(importExportPopupAnimation, importExportStatusColor));
         }
 
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonY = contentY + 210 - buttonHeight - 16;
-        int importX = popupX + 20;
-        int exportX = importX + buttonWidth + 8;
-        int cancelX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.leftPairRightButtonRow(popupX, scaledWidth, contentY, 210, 100, 20, 8, 16);
+        PathmindPopupLayout.Rect importButton = buttonRow.first();
+        PathmindPopupLayout.Rect exportButton = buttonRow.second();
+        PathmindPopupLayout.Rect cancelButton = buttonRow.third();
+        int buttonWidth = importButton.width();
+        int buttonHeight = importButton.height();
+        int buttonY = importButton.y();
+        int importX = importButton.x();
+        int exportX = exportButton.x();
+        int cancelX = cancelButton.x();
 
         boolean importHovered = !importExportBusy && isPointInRect(mouseX, mouseY, importX, buttonY, buttonWidth, buttonHeight);
         boolean exportHovered = !importExportBusy && isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
@@ -4431,10 +4441,11 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupCenteredTextWithEllipsis(context, buildLine, centerX, textStartY + lineSpacing * 3, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
         drawPopupCenteredTextWithEllipsis(context, loaderLine, centerX, textStartY + lineSpacing * 4, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
 
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonX = popupX + (scaledWidth - buttonWidth) / 2;
-        int buttonY = contentY + INFO_POPUP_HEIGHT - buttonHeight - 16;
+        PathmindPopupLayout.Rect closeButton = PathmindPopupLayout.centeredButton(popupX, scaledWidth, contentY, INFO_POPUP_HEIGHT, 100, 20, 16);
+        int buttonWidth = closeButton.width();
+        int buttonHeight = closeButton.height();
+        int buttonX = closeButton.x();
+        int buttonY = closeButton.y();
         boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
 
         drawPopupButton(
@@ -4473,15 +4484,16 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
         drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.LINK_COLOR));
 
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonGap = 8;
-        int buttonY = contentY + MISSING_BARITONE_POPUP_HEIGHT - buttonHeight - 10;
-        int totalButtonsWidth = buttonWidth * 3 + buttonGap * 2;
-        int buttonsStartX = popupX + (scaledWidth - totalButtonsWidth) / 2;
-        int openX = buttonsStartX;
-        int copyX = openX + buttonWidth + buttonGap;
-        int closeX = copyX + buttonWidth + buttonGap;
+        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, scaledWidth, contentY, MISSING_BARITONE_POPUP_HEIGHT, 100, 20, 8, 10);
+        PathmindPopupLayout.Rect openButton = buttonRow.first();
+        PathmindPopupLayout.Rect copyButton = buttonRow.second();
+        PathmindPopupLayout.Rect closeButton = buttonRow.third();
+        int buttonWidth = openButton.width();
+        int buttonHeight = openButton.height();
+        int buttonY = openButton.y();
+        int openX = openButton.x();
+        int copyX = copyButton.x();
+        int closeX = closeButton.x();
 
         boolean openHovered = isPointInRect(mouseX, mouseY, openX, buttonY, buttonWidth, buttonHeight);
         boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
@@ -4515,15 +4527,16 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
         drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.LINK_COLOR));
 
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonGap = 8;
-        int buttonY = contentY + MISSING_UI_UTILS_POPUP_HEIGHT - buttonHeight - 10;
-        int totalButtonsWidth = buttonWidth * 3 + buttonGap * 2;
-        int buttonsStartX = popupX + (scaledWidth - totalButtonsWidth) / 2;
-        int openX = buttonsStartX;
-        int copyX = openX + buttonWidth + buttonGap;
-        int closeX = copyX + buttonWidth + buttonGap;
+        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, scaledWidth, contentY, MISSING_UI_UTILS_POPUP_HEIGHT, 100, 20, 8, 10);
+        PathmindPopupLayout.Rect openButton = buttonRow.first();
+        PathmindPopupLayout.Rect copyButton = buttonRow.second();
+        PathmindPopupLayout.Rect closeButton = buttonRow.third();
+        int buttonWidth = openButton.width();
+        int buttonHeight = openButton.height();
+        int buttonY = openButton.y();
+        int openX = openButton.x();
+        int copyX = copyButton.x();
+        int closeX = closeButton.x();
 
         boolean openHovered = isPointInRect(mouseX, mouseY, openX, buttonY, buttonWidth, buttonHeight);
         boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
@@ -4556,13 +4569,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPopupTextWithEllipsis(DrawContext context, String text, int x, int y, int maxWidth, int color) {
-        String display = trimWithEllipsis(this.textRenderer, text, maxWidth);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(display), x, y, color);
+        PathmindPopupRenderer.drawTextWithEllipsis(context, this.textRenderer, text, x, y, maxWidth, color);
     }
 
     private void drawPopupCenteredTextWithEllipsis(DrawContext context, String text, int centerX, int y, int maxWidth, int color) {
-        String display = trimWithEllipsis(this.textRenderer, text, maxWidth);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(display), centerX, y, color);
+        PathmindPopupRenderer.drawCenteredTextWithEllipsis(context, this.textRenderer, text, centerX, y, maxWidth, color);
     }
 
     private String trimWithEllipsis(TextRenderer renderer, String text, int availableWidth) {
@@ -4657,11 +4668,14 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, clearPopupAnimation, 150);
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + 150 - buttonHeight - 10;
-        int cancelX = popupX + 20;
-        int confirmX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, 150, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect confirmButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int confirmX = confirmButton.x();
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
@@ -4695,12 +4709,16 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, importExportPopupAnimation, 210);
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonY = contentY + 210 - buttonHeight - 16;
-        int importX = popupX + 20;
-        int exportX = importX + buttonWidth + 8;
-        int cancelX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.leftPairRightButtonRow(popupX, scaledWidth, contentY, 210, 100, 20, 8, 16);
+        PathmindPopupLayout.Rect importButton = buttonRow.first();
+        PathmindPopupLayout.Rect exportButton = buttonRow.second();
+        PathmindPopupLayout.Rect cancelButton = buttonRow.third();
+        int buttonWidth = importButton.width();
+        int buttonHeight = importButton.height();
+        int buttonY = importButton.y();
+        int importX = importButton.x();
+        int exportX = exportButton.x();
+        int cancelX = cancelButton.x();
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
@@ -4739,15 +4757,16 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupWidth = bounds[2];
         int popupHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, missingBaritonePopupAnimation, MISSING_BARITONE_POPUP_HEIGHT);
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonGap = 8;
-        int buttonY = contentY + MISSING_BARITONE_POPUP_HEIGHT - buttonHeight - 10;
-        int totalButtonsWidth = buttonWidth * 3 + buttonGap * 2;
-        int buttonsStartX = popupX + (popupWidth - totalButtonsWidth) / 2;
-        int openX = buttonsStartX;
-        int copyX = openX + buttonWidth + buttonGap;
-        int closeX = copyX + buttonWidth + buttonGap;
+        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, popupWidth, contentY, MISSING_BARITONE_POPUP_HEIGHT, 100, 20, 8, 10);
+        PathmindPopupLayout.Rect openButton = buttonRow.first();
+        PathmindPopupLayout.Rect copyButton = buttonRow.second();
+        PathmindPopupLayout.Rect closeButton = buttonRow.third();
+        int buttonWidth = openButton.width();
+        int buttonHeight = openButton.height();
+        int buttonY = openButton.y();
+        int openX = openButton.x();
+        int copyX = copyButton.x();
+        int closeX = closeButton.x();
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
@@ -4781,15 +4800,16 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupWidth = bounds[2];
         int popupHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, missingUiUtilsPopupAnimation, MISSING_UI_UTILS_POPUP_HEIGHT);
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonGap = 8;
-        int buttonY = contentY + MISSING_UI_UTILS_POPUP_HEIGHT - buttonHeight - 10;
-        int totalButtonsWidth = buttonWidth * 3 + buttonGap * 2;
-        int buttonsStartX = popupX + (popupWidth - totalButtonsWidth) / 2;
-        int openX = buttonsStartX;
-        int copyX = openX + buttonWidth + buttonGap;
-        int closeX = copyX + buttonWidth + buttonGap;
+        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, popupWidth, contentY, MISSING_UI_UTILS_POPUP_HEIGHT, 100, 20, 8, 10);
+        PathmindPopupLayout.Rect openButton = buttonRow.first();
+        PathmindPopupLayout.Rect copyButton = buttonRow.second();
+        PathmindPopupLayout.Rect closeButton = buttonRow.third();
+        int buttonWidth = openButton.width();
+        int buttonHeight = openButton.height();
+        int buttonY = openButton.y();
+        int openX = openButton.x();
+        int copyX = copyButton.x();
+        int closeX = closeButton.x();
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
@@ -4843,10 +4863,11 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupWidth = bounds[2];
         int popupHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, infoPopupAnimation, INFO_POPUP_HEIGHT);
-        int buttonWidth = 100;
-        int buttonHeight = 20;
-        int buttonX = popupX + (popupWidth - buttonWidth) / 2;
-        int buttonY = contentY + INFO_POPUP_HEIGHT - buttonHeight - 16;
+        PathmindPopupLayout.Rect closeButton = PathmindPopupLayout.centeredButton(popupX, popupWidth, contentY, INFO_POPUP_HEIGHT, 100, 20, 16);
+        int buttonWidth = closeButton.width();
+        int buttonHeight = closeButton.height();
+        int buttonX = closeButton.x();
+        int buttonY = closeButton.y();
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
@@ -4876,54 +4897,31 @@ public class PathmindVisualEditorScreen extends Screen {
     private void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered,
                                  Text label, PopupButtonStyle style, PopupAnimationHandler animation) {
         float hoverProgress = getHoverProgress("popup-button:" + style + ":" + label.getString() + ":" + x + ":" + y + ":" + width + ":" + height, hovered);
-        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapPopupButtonStyle(style), getAccentColor(), hoverProgress, false);
-        int adjustedBg = getPopupAnimatedColor(animation, palette.backgroundColor());
-        int adjustedBorder = getPopupAnimatedColor(animation, palette.borderColor());
-        int adjustedInnerBorder = getPopupAnimatedColor(animation, palette.innerBorderColor());
-        int adjustedText = getPopupAnimatedColor(animation, palette.textColor());
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, adjustedBg, adjustedBorder, adjustedInnerBorder);
-        context.drawCenteredTextWithShadow(
-            this.textRenderer,
-            label,
-            x + width / 2,
-            y + (height - this.textRenderer.fontHeight) / 2 + 1,
-            adjustedText
-        );
-    }
-
-    private UIStyleHelper.TextButtonStyle mapPopupButtonStyle(PopupButtonStyle style) {
-        return switch (style) {
-            case PRIMARY -> UIStyleHelper.TextButtonStyle.PRIMARY;
-            case ACCENT -> UIStyleHelper.TextButtonStyle.ACCENT;
-            case DEFAULT -> UIStyleHelper.TextButtonStyle.DEFAULT;
-        };
-    }
-
-    private void drawPopupContainer(DrawContext context, int x, int y, int width, int height, PopupAnimationHandler animation) {
-        UIStyleHelper.drawBeveledPanel(
+        PathmindPopupRenderer.drawButton(
             context,
+            this.textRenderer,
             x,
             y,
             width,
             height,
-            getPopupAnimatedColor(animation, UITheme.BACKGROUND_SECONDARY),
-            getPopupAnimatedColor(animation, UITheme.BORDER_DEFAULT),
-            getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER)
+            label,
+            PathmindPopupRenderer.ButtonStyle.valueOf(style.name()),
+            hoverProgress,
+            getAccentColor(),
+            animation
         );
     }
 
+    private void drawPopupContainer(DrawContext context, int x, int y, int width, int height, PopupAnimationHandler animation) {
+        PathmindPopupRenderer.drawContainer(context, x, y, width, height, animation);
+    }
+
     private void drawPopupInputFrame(DrawContext context, int x, int y, int width, int height, int borderColor, PopupAnimationHandler animation) {
-        UIStyleHelper.drawFieldFrame(context, x, y, width, height, new UIStyleHelper.FieldPalette(
-            getPopupAnimatedColor(animation, UITheme.RENAME_INPUT_BG),
-            getPopupAnimatedColor(animation, borderColor),
-            getPopupAnimatedColor(animation, UITheme.PANEL_INNER_BORDER),
-            getPopupAnimatedColor(animation, UITheme.TEXT_PRIMARY),
-            getPopupAnimatedColor(animation, UITheme.TEXT_TERTIARY)
-        ));
+        PathmindPopupRenderer.drawInputFrame(context, x, y, width, height, borderColor, animation);
     }
 
     private int getPopupAnimatedColor(PopupAnimationHandler animation, int baseColor) {
-        return animation == null ? baseColor : animation.getAnimatedPopupColor(baseColor);
+        return PathmindPopupRenderer.animatedColor(animation, baseColor);
     }
 
     private enum PopupButtonStyle {
@@ -5331,18 +5329,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPlayIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int triangleSize = Math.max(5, Math.min(PLAY_BUTTON_SIZE - 12, 7));
-        int startX = buttonX + (PLAY_BUTTON_SIZE - triangleSize) / 2;
-        int startY = buttonY + (PLAY_BUTTON_SIZE - triangleSize) / 2;
-
-        for (int row = 0; row < triangleSize; row++) {
-            int lineY = startY + row;
-            int lineStartX = Math.max(startX + row / 2, buttonX + 2);
-            int lineEndX = Math.min(startX + triangleSize - 1, buttonX + PLAY_BUTTON_SIZE - 3);
-            if (lineStartX <= lineEndX && lineY >= buttonY + 2 && lineY <= buttonY + PLAY_BUTTON_SIZE - 3) {
-                context.drawHorizontalLine(lineStartX, lineEndX, lineY, color);
-            }
-        }
+        PathmindIconRenderer.drawPlay(context, buttonX, buttonY, PLAY_BUTTON_SIZE, color);
     }
 
     private void renderStopButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
@@ -5376,10 +5363,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawStopIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int squareSize = Math.max(6, STOP_BUTTON_SIZE - 10);
-        int left = buttonX + (STOP_BUTTON_SIZE - squareSize) / 2;
-        int top = buttonY + (STOP_BUTTON_SIZE - squareSize) / 2;
-        context.fill(left, top, left + squareSize, top + squareSize, color);
+        PathmindIconRenderer.drawStop(context, buttonX, buttonY, STOP_BUTTON_SIZE, color);
     }
 
     private void renderPresetDropdown(DrawContext context, int mouseX, int mouseY, boolean disabled) {
@@ -6181,14 +6165,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawNodeSearchIcon(DrawContext context, int x, int y, int color) {
-        context.drawHorizontalLine(x + 1, x + 3, y, color);
-        context.drawHorizontalLine(x, x + 4, y + 1, color);
-        context.drawVerticalLine(x, y + 2, y + 4, color);
-        context.drawVerticalLine(x + 4, y + 2, y + 4, color);
-        context.drawHorizontalLine(x + 1, x + 3, y + 5, color);
-        context.drawHorizontalLine(x + 5, x + 6, y + 5, color);
-        context.drawHorizontalLine(x + 6, x + 7, y + 6, color);
-        context.drawHorizontalLine(x + 7, x + 8, y + 7, color);
+        PathmindIconRenderer.drawSearch(context, x, y, color);
     }
 
     private boolean handleCreatePresetPopupClick(double mouseX, double mouseY, int button) {
@@ -6202,11 +6179,14 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupWidth = bounds[2];
         int popupHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, createPresetPopupAnimation, CREATE_PRESET_POPUP_HEIGHT);
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + CREATE_PRESET_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int createX = popupX + popupWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, popupWidth, contentY, CREATE_PRESET_POPUP_HEIGHT, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect createButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int createX = createButton.x();
 
         if (isPointInRect((int) mouseX, (int) mouseY, cancelX, buttonY, buttonWidth, buttonHeight)) {
             closeCreatePresetPopup();
@@ -6232,14 +6212,22 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupWidth = bounds[2];
         int popupHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, publishPresetPopupAnimation, PUBLISH_PRESET_POPUP_HEIGHT);
-        int buttonWidth = 96;
-        int buttonHeight = 20;
-        int buttonY = contentY + PUBLISH_PRESET_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int publishX = popupX + popupWidth - buttonWidth - 20;
-        int fieldX = popupX + 20;
-        int fieldWidth = popupWidth - 40;
-        int fieldHeight = 16;
+        PathmindPopupLayout.PublishPresetLayout layout = PathmindPopupLayout.publishPreset(
+            popupX,
+            popupY,
+            popupWidth,
+            popupHeight,
+            contentY,
+            PUBLISH_PRESET_POPUP_HEIGHT,
+            96,
+            20,
+            publishPresetVisibilityToggle.getWidth(),
+            publishPresetVisibilityToggle.getHeight()
+        );
+        int buttonWidth = layout.cancelButton().width();
+        int buttonHeight = layout.cancelButton().height();
+        int buttonY = layout.cancelButton().y();
+        int cancelX = layout.cancelButton().x();
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
@@ -6252,29 +6240,27 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (publishPresetSession == null
-            && isPointInRect(mouseXi, mouseYi, popupX + (popupWidth - buttonWidth) / 2, buttonY, buttonWidth, buttonHeight)) {
+            && layout.signInButton().contains(mouseXi, mouseYi)) {
             startPublishPresetSignIn();
             return true;
         }
-        if (isPointInRect(mouseXi, mouseYi, publishX, buttonY, buttonWidth, buttonHeight)) {
+        if (layout.publishButton().contains(mouseXi, mouseYi)) {
             attemptPublishPreset();
             return true;
         }
-        if (isPointInRect(mouseXi, mouseYi, fieldX, getPublishPresetFieldY(contentY, 0), fieldWidth, fieldHeight)) {
+        if (layout.nameField().contains(mouseXi, mouseYi)) {
             focusPublishPresetField(publishPresetNameField);
             return true;
         }
-        if (isPointInRect(mouseXi, mouseYi, fieldX, getPublishPresetFieldY(contentY, 1), fieldWidth, fieldHeight)) {
+        if (layout.descriptionField().contains(mouseXi, mouseYi)) {
             focusPublishPresetField(publishPresetDescriptionField);
             return true;
         }
-        if (isPointInRect(mouseXi, mouseYi, fieldX, getPublishPresetFieldY(contentY, 2), fieldWidth, fieldHeight)) {
+        if (layout.tagsField().contains(mouseXi, mouseYi)) {
             focusPublishPresetField(publishPresetTagsField);
             return true;
         }
-        if (isPointInRect(mouseXi, mouseYi,
-            fieldX + fieldWidth - publishPresetVisibilityToggle.getWidth(), contentY + 158,
-            publishPresetVisibilityToggle.getWidth(), publishPresetVisibilityToggle.getHeight())) {
+        if (layout.visibilityToggle().contains(mouseXi, mouseYi)) {
             publishPresetVisibilityToggle.mouseClicked(mouseXi, mouseYi);
             publishPresetPublic = publishPresetVisibilityToggle.getValue();
             return true;
@@ -6294,11 +6280,14 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupWidth = bounds[2];
         int popupHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, renamePresetPopupAnimation, CREATE_PRESET_POPUP_HEIGHT);
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + CREATE_PRESET_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int renameX = popupX + popupWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, popupWidth, contentY, CREATE_PRESET_POPUP_HEIGHT, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect renameButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int renameX = renameButton.x();
 
         if (isPointInRect((int) mouseX, (int) mouseY, cancelX, buttonY, buttonWidth, buttonHeight)) {
             closeRenamePresetPopup();
@@ -6324,11 +6313,14 @@ public class PathmindVisualEditorScreen extends Screen {
         int popupWidth = bounds[2];
         int popupHeight = bounds[3];
         int contentY = getBoundedPopupContentY(popupY, presetDeletePopupAnimation, PRESET_DELETE_POPUP_HEIGHT);
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + PRESET_DELETE_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int deleteX = popupX + popupWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, popupWidth, contentY, PRESET_DELETE_POPUP_HEIGHT, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect deleteButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int deleteX = deleteButton.x();
 
         int mouseXi = (int) mouseX;
         int mouseYi = (int) mouseY;
@@ -6400,29 +6392,22 @@ public class PathmindVisualEditorScreen extends Screen {
         } else {
             borderColor = UITheme.RENAME_INPUT_BORDER;
         }
-        drawPopupInputFrame(
+        PathmindPopupRenderer.drawPopupTextField(
             context,
+            createPresetField,
+            mouseX,
+            mouseY,
+            delta,
             fieldX,
             fieldY,
             fieldWidth,
             fieldHeight,
             borderColor,
-            createPresetPopupAnimation
+            createPresetPopupAnimation,
+            UITheme.TEXT_PRIMARY,
+            UITheme.TEXT_TERTIARY,
+            TEXT_FIELD_VERTICAL_PADDING
         );
-
-        if (createPresetField != null) {
-            createPresetField.setVisible(true);
-            createPresetField.setEditable(true);
-            int textColor = getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_PRIMARY);
-            int textDisabledColor = getPopupAnimatedColor(createPresetPopupAnimation, UITheme.TEXT_TERTIARY);
-            createPresetField.setEditableColor(textColor);
-            createPresetField.setUneditableColor(textDisabledColor);
-            int textFieldHeight = Math.max(10, fieldHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
-            createPresetField.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
-            createPresetField.setWidth(fieldWidth - 8);
-            createPresetField.setHeight(textFieldHeight);
-            createPresetField.render(context, mouseX, mouseY, delta);
-        }
 
         if (!createPresetStatus.isEmpty()) {
             drawPopupTextWithEllipsis(
@@ -6435,11 +6420,14 @@ public class PathmindVisualEditorScreen extends Screen {
             );
         }
 
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + CREATE_PRESET_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int createX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, CREATE_PRESET_POPUP_HEIGHT, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect createButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int createX = createButton.x();
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean createHovered = isPointInRect(mouseX, mouseY, createX, buttonY, buttonWidth, buttonHeight);
@@ -6493,12 +6481,24 @@ public class PathmindVisualEditorScreen extends Screen {
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_PRIMARY)
         );
 
-        int fieldX = popupX + 20;
-        int fieldWidth = scaledWidth - 40;
-        int fieldHeight = 16;
-        int nameY = contentY + 44;
-        int descriptionY = contentY + 82;
-        int tagsY = contentY + 120;
+        PathmindPopupLayout.PublishPresetLayout layout = PathmindPopupLayout.publishPreset(
+            popupX,
+            popupY,
+            scaledWidth,
+            scaledHeight,
+            contentY,
+            PUBLISH_PRESET_POPUP_HEIGHT,
+            96,
+            20,
+            publishPresetVisibilityToggle.getWidth(),
+            publishPresetVisibilityToggle.getHeight()
+        );
+        int fieldX = layout.fieldX();
+        int fieldWidth = layout.fieldWidth();
+        int fieldHeight = layout.nameField().height();
+        int nameY = layout.nameField().y();
+        int descriptionY = layout.descriptionField().y();
+        int tagsY = layout.tagsField().y();
 
         drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.name").getString(), fieldX, nameY - 10, fieldWidth,
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
@@ -6511,10 +6511,10 @@ public class PathmindVisualEditorScreen extends Screen {
         renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetDescriptionField, fieldX, descriptionY, fieldWidth, fieldHeight);
         renderPublishPresetField(context, mouseX, mouseY, delta, publishPresetTagsField, fieldX, tagsY, fieldWidth, fieldHeight);
 
-        int visibilityY = contentY + 158;
-        drawPopupTextWithEllipsis(context, "Visibility", fieldX, visibilityY - 10, fieldWidth,
+        int visibilityY = layout.visibilityRow().y();
+        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.visibility").getString(), fieldX, visibilityY - 10, fieldWidth,
             getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
-        renderPublishVisibilityToggle(context, mouseX, mouseY, fieldX, visibilityY, fieldWidth);
+        renderPublishVisibilityToggle(context, mouseX, mouseY, layout.visibilityRow(), layout.visibilityToggle());
 
         String accountLabel = publishPresetBusy ? Text.translatable("pathmind.status.working").getString() : publishPresetSession == null
             ? Text.translatable("pathmind.marketplace.signIn").getString()
@@ -6530,30 +6530,32 @@ public class PathmindVisualEditorScreen extends Screen {
                 getPopupAnimatedColor(publishPresetPopupAnimation, publishPresetStatusColor));
         }
 
-        int buttonWidth = 96;
-        int buttonHeight = 20;
-        int buttonY = contentY + PUBLISH_PRESET_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int publishX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.Rect cancelButton = layout.cancelButton();
+        PathmindPopupLayout.Rect publishButton = layout.publishButton();
+        PathmindPopupLayout.Rect signInButton = layout.signInButton();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int publishX = publishButton.x();
+        int signInX = signInButton.x();
         int accountTextX = popupX + scaledWidth / 2 - this.textRenderer.getWidth(accountLabel) / 2;
-        int accountTextY = buttonY + (buttonHeight - this.textRenderer.fontHeight) / 2 + 1;
+        int accountTextY = cancelButton.y() + (cancelButton.height() - this.textRenderer.fontHeight) / 2 + 1;
 
-        boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
-        boolean publishHovered = isPointInRect(mouseX, mouseY, publishX, buttonY, buttonWidth, buttonHeight);
-        boolean signInHovered = publishPresetSession == null
-            && isPointInRect(mouseX, mouseY, popupX + (scaledWidth - buttonWidth) / 2, buttonY, buttonWidth, buttonHeight);
+        boolean cancelHovered = cancelButton.contains(mouseX, mouseY);
+        boolean publishHovered = publishButton.contains(mouseX, mouseY);
+        boolean signInHovered = publishPresetSession == null && signInButton.contains(mouseX, mouseY);
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
             Text.translatable("pathmind.button.cancel"), PopupButtonStyle.DEFAULT, publishPresetPopupAnimation);
         if (publishPresetSession == null) {
-            int signInX = popupX + (scaledWidth - buttonWidth) / 2;
-            drawPopupButton(context, signInX, buttonY, buttonWidth, buttonHeight, signInHovered,
+            drawPopupButton(context, signInButton.x(), signInButton.y(), signInButton.width(), signInButton.height(), signInHovered,
                 Text.literal(accountLabel), PopupButtonStyle.DEFAULT, publishPresetPopupAnimation);
         } else {
             context.drawTextWithShadow(this.textRenderer, Text.literal(accountLabel), accountTextX, accountTextY,
                 getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
         }
-        drawPopupButton(context, publishX, buttonY, buttonWidth, buttonHeight, publishHovered,
+        drawPopupButton(context, publishButton.x(), publishButton.y(), publishButton.width(), publishButton.height(), publishHovered,
             Text.literal(publishPresetBusy ? Text.translatable("pathmind.status.working").getString() : (publishPresetEditingPreset == null ? Text.translatable("pathmind.marketplace.publish").getString() : Text.translatable("pathmind.button.update").getString())), PopupButtonStyle.PRIMARY, publishPresetPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
@@ -6564,42 +6566,37 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean fieldHovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
         boolean focused = field != null && field.isFocused();
         int borderColor = focused ? getAccentColor() : fieldHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.RENAME_INPUT_BORDER;
-        drawPopupInputFrame(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor, publishPresetPopupAnimation);
-        if (field != null) {
-            field.setVisible(true);
-            field.setEditable(true);
-            field.setEditableColor(getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_PRIMARY));
-            field.setUneditableColor(getPopupAnimatedColor(publishPresetPopupAnimation, UITheme.TEXT_TERTIARY));
-            int textFieldHeight = Math.max(10, fieldHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
-            field.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
-            field.setWidth(fieldWidth - 8);
-            field.setHeight(textFieldHeight);
-            field.render(context, mouseX, mouseY, delta);
-        }
+        PathmindPopupRenderer.drawPopupTextField(
+            context,
+            field,
+            mouseX,
+            mouseY,
+            delta,
+            fieldX,
+            fieldY,
+            fieldWidth,
+            fieldHeight,
+            borderColor,
+            publishPresetPopupAnimation,
+            UITheme.TEXT_PRIMARY,
+            UITheme.TEXT_TERTIARY,
+            TEXT_FIELD_VERTICAL_PADDING
+        );
     }
 
-    private void renderPublishVisibilityToggle(DrawContext context, int mouseX, int mouseY, int fieldX, int fieldY, int fieldWidth) {
-        int toggleX = fieldX + fieldWidth - publishPresetVisibilityToggle.getWidth();
+    private void renderPublishVisibilityToggle(DrawContext context, int mouseX, int mouseY,
+                                               PathmindPopupLayout.Rect row, PathmindPopupLayout.Rect toggle) {
         publishPresetVisibilityToggle.setValue(publishPresetPublic);
-        publishPresetVisibilityToggle.setPosition(toggleX, fieldY);
+        publishPresetVisibilityToggle.setPosition(toggle.x(), toggle.y());
         publishPresetVisibilityToggle.render(context, mouseX, mouseY, publishPresetPopupAnimation.getPopupAlpha());
         String label = publishPresetPublic ? Text.translatable("pathmind.option.public").getString() : Text.translatable("pathmind.option.private").getString();
         int labelColor = publishPresetPublic ? getAccentColor() : UITheme.STATE_WARNING;
-        drawPopupTextWithEllipsis(context, label, fieldX, fieldY + 4, fieldWidth - publishPresetVisibilityToggle.getWidth() - 8,
+        drawPopupTextWithEllipsis(context, label, row.x(), row.y() + 4, row.width() - toggle.width() - 8,
             getPopupAnimatedColor(publishPresetPopupAnimation, labelColor));
     }
 
     private void syncPublishPresetVisibilityToggleColors() {
         publishPresetVisibilityToggle.setIndicatorColors(UITheme.MARKETPLACE_PRIVATE_VISIBILITY, getAccentColor());
-    }
-
-    private int getPublishPresetFieldY(int popupY, int fieldIndex) {
-        return switch (fieldIndex) {
-            case 0 -> popupY + 44;
-            case 1 -> popupY + 82;
-            case 2 -> popupY + 120;
-            default -> popupY + 44;
-        };
     }
 
     private void focusPublishPresetField(TextFieldWidget target) {
@@ -6657,27 +6654,35 @@ public class PathmindVisualEditorScreen extends Screen {
         } else {
             borderColor = UITheme.RENAME_INPUT_BORDER;
         }
-        drawPopupInputFrame(context, fieldX, fieldY, fieldWidth, fieldHeight, borderColor, renamePresetPopupAnimation);
-
-        if (renamePresetField != null) {
-            renamePresetField.setVisible(true);
-            renamePresetField.setEditable(true);
-            int textFieldHeight = Math.max(10, fieldHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
-            renamePresetField.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
-            renamePresetField.setWidth(fieldWidth - 8);
-            renamePresetField.setHeight(textFieldHeight);
-            renamePresetField.render(context, mouseX, mouseY, delta);
-        }
+        PathmindPopupRenderer.drawPopupTextField(
+            context,
+            renamePresetField,
+            mouseX,
+            mouseY,
+            delta,
+            fieldX,
+            fieldY,
+            fieldWidth,
+            fieldHeight,
+            borderColor,
+            renamePresetPopupAnimation,
+            UITheme.TEXT_PRIMARY,
+            UITheme.TEXT_TERTIARY,
+            TEXT_FIELD_VERTICAL_PADDING
+        );
 
         if (!renamePresetStatus.isEmpty()) {
             drawPopupTextWithEllipsis(context, renamePresetStatus, fieldX, fieldY + fieldHeight + 8, fieldWidth, renamePresetStatusColor);
         }
 
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + CREATE_PRESET_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int renameX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, CREATE_PRESET_POPUP_HEIGHT, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect renameButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int renameX = renameButton.x();
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean renameHovered = isPointInRect(mouseX, mouseY, renameX, buttonY, buttonWidth, buttonHeight);
@@ -6739,11 +6744,14 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupTextWithEllipsis(context, "Don't show again", checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE + 8, checkboxY + 1, scaledWidth - 68,
             getPopupAnimatedColor(presetDeletePopupAnimation, UITheme.TEXT_SECONDARY));
 
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonY = contentY + PRESET_DELETE_POPUP_HEIGHT - buttonHeight - 16;
-        int cancelX = popupX + 20;
-        int deleteX = popupX + scaledWidth - buttonWidth - 20;
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, PRESET_DELETE_POPUP_HEIGHT, 90, 20, 16);
+        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
+        PathmindPopupLayout.Rect deleteButton = buttonRow.right();
+        int buttonWidth = cancelButton.width();
+        int buttonHeight = cancelButton.height();
+        int buttonY = cancelButton.y();
+        int cancelX = cancelButton.x();
+        int deleteX = deleteButton.x();
 
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
         boolean deleteHovered = isPointInRect(mouseX, mouseY, deleteX, buttonY, buttonWidth, buttonHeight);
@@ -7280,13 +7288,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPublishArrowIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
-        int top = buttonY + 4;
-        int bottom = buttonY + BOTTOM_BUTTON_SIZE - 4;
-        context.drawVerticalLine(centerX, top + 2, bottom, color);
-        context.drawHorizontalLine(centerX - 3, centerX + 3, top + 2, color);
-        context.drawHorizontalLine(centerX - 2, centerX + 2, top + 1, color);
-        context.drawHorizontalLine(centerX - 1, centerX + 1, top, color);
+        PathmindIconRenderer.drawPublishArrow(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, color);
     }
 
     private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
@@ -7433,74 +7435,36 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
 
-        int outlineColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
-            : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
-            : UITheme.BORDER_DEFAULT;
-        UIStyleHelper.drawBeveledPanel(
+        context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
+        int issueTop = PathmindValidationPanelRenderer.renderPanelAndIssues(
             context,
+            this.textRenderer,
+            mouseX,
+            mouseY,
+            validationResult,
             panelX,
             panelY,
             panelWidth,
             panelHeight,
-            UITheme.BACKGROUND_SECTION,
-            outlineColor,
-            UITheme.PANEL_INNER_BORDER
+            VALIDATION_PANEL_PADDING,
+            VALIDATION_PANEL_HEADER_HEIGHT,
+            VALIDATION_PANEL_MAX_VISIBLE_ROWS,
+            VALIDATION_PANEL_ROW_HEIGHT,
+            this::getValidationIssueHoverProgress
         );
-        context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
-
-        int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
-            : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
-            : UITheme.TEXT_PRIMARY;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(Text.translatable("pathmind.validation.checks").getString()), panelX + VALIDATION_PANEL_PADDING,
-            panelY + 8, textColor);
-
-        String summary = validationResult.getErrorCount() + " error" + (validationResult.getErrorCount() == 1 ? "" : "s")
-            + "  " + validationResult.getWarningCount() + " warning" + (validationResult.getWarningCount() == 1 ? "" : "s");
-        context.drawTextWithShadow(this.textRenderer, Text.literal(summary), panelX + VALIDATION_PANEL_PADDING,
-            panelY + 19, UITheme.TEXT_SECONDARY);
-
-        List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
-        int contentTop = panelY + VALIDATION_PANEL_HEADER_HEIGHT;
-        int issueTop = contentTop;
-        for (int index = 0; index < visibleIssues.size(); index++) {
-            GraphValidationIssue issue = visibleIssues.get(index);
-            List<OrderedText> wrappedLines = getValidationIssueLines(issue, panelWidth);
-            int rowHeight = getValidationIssueRowHeight(wrappedLines);
-            int rowY = issueTop;
-            boolean clickable = issue != null && issue.hasNodeTarget();
-            boolean hovered = clickable && isPointInRect(mouseX, mouseY, panelX + 1, rowY, panelWidth - 2, rowHeight);
-            float hoverProgress = getValidationIssueHoverProgress(issue, index, hovered);
-            int rowBg = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, UITheme.TOOLBAR_BG_HOVER, hoverProgress);
-            context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + rowHeight, rowBg);
-            context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
-
-            int severityColor = issue.getSeverity() == GraphValidationSeverity.ERROR ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
-            int dotTop = rowY + Math.max(7, (rowHeight - 4) / 2);
-            context.fill(panelX + 8, dotTop, panelX + 12, dotTop + 4, severityColor);
-
-            int rowTextColor = AnimationHelper.lerpColor(UITheme.TEXT_HEADER, UITheme.TEXT_PRIMARY, hoverProgress);
-            int textY = rowY + Math.max(6, (rowHeight - getValidationIssueTextHeight(wrappedLines)) / 2);
-            for (OrderedText line : wrappedLines) {
-                context.drawTextWithShadow(this.textRenderer, line, panelX + 18, textY, rowTextColor);
-                textY += this.textRenderer.fontHeight + 2;
-            }
-            issueTop += rowHeight;
-        }
-
-        int presetInputsTop = issueTop;
-        presetInputsTop = renderValidationPresetInputs(context, mouseX, mouseY, panelX, panelWidth, presetInputsTop);
-
-        int hiddenCount = validationResult.getIssues().size() - visibleIssues.size();
-        if (hiddenCount > 0) {
-            int footerY = panelY + panelHeight - VALIDATION_PANEL_FOOTER_HEIGHT;
-            context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, footerY, UITheme.BORDER_SUBTLE);
-            context.drawTextWithShadow(this.textRenderer,
-                Text.literal(hiddenCount + " more issue" + (hiddenCount == 1 ? "" : "s")),
-                panelX + VALIDATION_PANEL_PADDING,
-                footerY + 5,
-                UITheme.TEXT_SECONDARY
-            );
-        }
+        renderValidationPresetInputs(context, mouseX, mouseY, panelX, panelWidth, issueTop);
+        PathmindValidationPanelRenderer.renderFooter(
+            context,
+            this.textRenderer,
+            validationResult,
+            panelX,
+            panelY,
+            panelWidth,
+            panelHeight,
+            VALIDATION_PANEL_PADDING,
+            VALIDATION_PANEL_FOOTER_HEIGHT,
+            VALIDATION_PANEL_MAX_VISIBLE_ROWS
+        );
         context.disableScissor();
     }
 
@@ -7519,84 +7483,50 @@ public class PathmindVisualEditorScreen extends Screen {
             return false;
         }
 
-        List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
-        int contentTop = bounds[1] + VALIDATION_PANEL_HEADER_HEIGHT;
-        int issueTop = contentTop;
-        for (int index = 0; index < visibleIssues.size(); index++) {
-            GraphValidationIssue issue = visibleIssues.get(index);
-            int rowHeight = getValidationIssueRowHeight(issue, bounds[2]);
-            int rowY = issueTop;
-            if (!isPointInRect(mouseX, mouseY, bounds[0] + 1, rowY, bounds[2] - 2, rowHeight)) {
-                issueTop += rowHeight;
-                continue;
-            }
+        PathmindValidationPanelRenderer.ClickedIssue clickedIssue = PathmindValidationPanelRenderer.findClickedIssue(
+            validationResult,
+            this.textRenderer,
+            mouseX,
+            mouseY,
+            bounds[0],
+            bounds[1],
+            bounds[2],
+            VALIDATION_PANEL_HEADER_HEIGHT,
+            VALIDATION_PANEL_MAX_VISIBLE_ROWS,
+            VALIDATION_PANEL_ROW_HEIGHT
+        );
+        if (clickedIssue.clicked()) {
+            GraphValidationIssue issue = clickedIssue.issue();
             if (issue != null && issue.hasNodeTarget()) {
                 nodeGraph.focusNodeById(issue.getNodeId(), this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
             }
             return true;
         }
-        if (handleValidationPresetInputClick(mouseX, mouseY, bounds[0], bounds[2], issueTop)) {
+        if (handleValidationPresetInputClick(mouseX, mouseY, bounds[0], bounds[2], clickedIssue.nextTop())) {
             return true;
         }
         return true;
     }
 
     private List<GraphValidationIssue> getVisibleValidationIssues(GraphValidationResult validationResult) {
-        if (validationResult == null || !validationResult.hasIssues()) {
-            return List.of();
-        }
-        int limit = Math.min(VALIDATION_PANEL_MAX_VISIBLE_ROWS, validationResult.getIssues().size());
-        return validationResult.getIssues().subList(0, limit);
+        return PathmindValidationPanelRenderer.visibleIssues(validationResult, VALIDATION_PANEL_MAX_VISIBLE_ROWS);
     }
 
     private int[] getValidationPanelBounds(GraphValidationResult validationResult, float progress) {
-        List<GraphValidationIssue> visibleIssues = getVisibleValidationIssues(validationResult);
-        int issuesHeight = getValidationIssuesHeight(visibleIssues, VALIDATION_PANEL_WIDTH);
-        int presetInputHeight = getValidationPresetInputSectionHeight();
-        int footerHeight = validationResult != null && validationResult.getIssues().size() > visibleIssues.size()
-            ? VALIDATION_PANEL_FOOTER_HEIGHT : 0;
-        int fullWidth = VALIDATION_PANEL_WIDTH;
-        int fullHeight = VALIDATION_PANEL_HEADER_HEIGHT
-            + issuesHeight
-            + presetInputHeight
-            + footerHeight
-            + VALIDATION_PANEL_BOTTOM_PADDING;
-        int width = Math.max(1, Math.round(fullWidth * progress));
-        int height = Math.max(1, Math.round(fullHeight * progress));
-        int x = getValidationButtonX() + VALIDATION_BUTTON_SIZE - width;
-        int y = getValidationButtonY();
-        return new int[]{x, y, width, height};
-    }
-
-    private List<OrderedText> getValidationIssueLines(GraphValidationIssue issue, int panelWidth) {
-        if (issue == null) {
-            return List.of(Text.literal("").asOrderedText());
-        }
-        String prefix = issue.getSeverity() == GraphValidationSeverity.ERROR ? "Error" : "Warning";
-        String fullMessage = prefix + ": " + issue.getMessage();
-        int textWidth = Math.max(40, panelWidth - 34);
-        List<OrderedText> wrappedLines = this.textRenderer.wrapLines(Text.literal(fullMessage), textWidth);
-        return wrappedLines.isEmpty() ? List.of(Text.literal(fullMessage).asOrderedText()) : wrappedLines;
-    }
-
-    private int getValidationIssueRowHeight(GraphValidationIssue issue, int panelWidth) {
-        return getValidationIssueRowHeight(getValidationIssueLines(issue, panelWidth));
-    }
-
-    private int getValidationIssueRowHeight(List<OrderedText> wrappedLines) {
-        return Math.max(VALIDATION_PANEL_ROW_HEIGHT, getValidationIssueTextHeight(wrappedLines) + 12);
-    }
-
-    private int getValidationIssueTextHeight(List<OrderedText> wrappedLines) {
-        return wrappedLines.size() * this.textRenderer.fontHeight + Math.max(0, wrappedLines.size() - 1) * 2;
-    }
-
-    private int getValidationIssuesHeight(List<GraphValidationIssue> visibleIssues, int panelWidth) {
-        int totalHeight = 0;
-        for (GraphValidationIssue issue : visibleIssues) {
-            totalHeight += getValidationIssueRowHeight(issue, panelWidth);
-        }
-        return totalHeight;
+        return PathmindValidationPanelRenderer.getPanelBounds(
+            validationResult,
+            this.textRenderer,
+            getValidationButtonX() + VALIDATION_BUTTON_SIZE,
+            getValidationButtonY(),
+            progress,
+            VALIDATION_PANEL_WIDTH,
+            VALIDATION_PANEL_MAX_VISIBLE_ROWS,
+            VALIDATION_PANEL_HEADER_HEIGHT,
+            getValidationPresetInputSectionHeight(),
+            VALIDATION_PANEL_FOOTER_HEIGHT,
+            VALIDATION_PANEL_BOTTOM_PADDING,
+            VALIDATION_PANEL_ROW_HEIGHT
+        );
     }
 
     private int renderValidationPresetInputs(DrawContext context, int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
@@ -7629,12 +7559,19 @@ public class PathmindVisualEditorScreen extends Screen {
                 context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), labelX, rowY + 7, labelColor);
             }
             if (isPresetBooleanPort(port)) {
-                int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
-                int toggleY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - SETTINGS_TOGGLE_HEIGHT) / 2;
-                boolean hovered = isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT);
+                PathmindPopupLayout.Rect toggleBounds = PathmindPopupLayout.validationToggle(
+                    panelX,
+                    panelWidth,
+                    rowY,
+                    VALIDATION_PANEL_PADDING,
+                    VALIDATION_PANEL_ROW_HEIGHT,
+                    SETTINGS_TOGGLE_WIDTH,
+                    SETTINGS_TOGGLE_HEIGHT
+                );
+                boolean hovered = toggleBounds.contains(mouseX, mouseY);
                 PopupButtonStyle style = getPresetBooleanValue(port) ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
                 String toggleLabel = getPresetBooleanValue(port) ? Text.translatable("pathmind.settings.on").getString() : Text.translatable("pathmind.settings.off").getString();
-                drawPopupButton(context, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT, hovered,
+                drawPopupButton(context, toggleBounds.x(), toggleBounds.y(), toggleBounds.width(), toggleBounds.height(), hovered,
                     Text.literal(toggleLabel), style, settingsPopupAnimation);
             } else {
                 renderValidationPresetInputField(context, mouseX, mouseY, panelX, panelWidth, rowY, port);
@@ -7646,27 +7583,41 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void renderValidationPresetInputField(DrawContext context, int mouseX, int mouseY, int panelX, int panelWidth,
                                                   int rowY, NodeGraphData.CustomNodePort port) {
-        int fieldX = panelX + panelWidth - VALIDATION_INPUT_FIELD_WIDTH - VALIDATION_PANEL_PADDING;
-        int fieldY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - VALIDATION_INPUT_FIELD_HEIGHT) / 2;
+        PathmindPopupLayout.Rect fieldBounds = PathmindPopupLayout.validationInput(
+            panelX,
+            panelWidth,
+            rowY,
+            VALIDATION_PANEL_PADDING,
+            VALIDATION_PANEL_ROW_HEIGHT,
+            VALIDATION_INPUT_FIELD_WIDTH,
+            VALIDATION_INPUT_FIELD_HEIGHT
+        );
+        int fieldX = fieldBounds.x();
+        int fieldY = fieldBounds.y();
         TextFieldWidget field = getOrCreatePresetInputField(port);
         String valueText = getPresetInputValue(port);
-        boolean hovered = isPointInRect(mouseX, mouseY, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT);
+        boolean hovered = fieldBounds.contains(mouseX, mouseY);
         boolean focused = field.isFocused();
         float hoverProgress = getValidationInputFieldHoverProgress(port, hovered);
         UIStyleHelper.FieldPalette palette = UIStyleHelper.getSearchFieldPalette(getAccentColor(), hoverProgress, focused, false);
-        UIStyleHelper.drawFieldFrame(context, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT, palette);
         if (!focused && !valueText.equals(field.getText())) {
             field.setText(valueText);
         }
-        field.setVisible(true);
-        field.setEditable(true);
-        field.setEditableColor(UITheme.TEXT_HEADER);
-        field.setUneditableColor(UITheme.TEXT_HEADER);
-        int textFieldHeight = Math.max(10, VALIDATION_INPUT_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
-        field.setPosition(fieldX + 4, fieldY + TEXT_FIELD_VERTICAL_PADDING);
-        field.setWidth(VALIDATION_INPUT_FIELD_WIDTH - 8);
-        field.setHeight(textFieldHeight);
-        field.render(context, mouseX, mouseY, 0f);
+        PathmindPopupRenderer.drawPaletteTextField(
+            context,
+            field,
+            mouseX,
+            mouseY,
+            0f,
+            fieldX,
+            fieldY,
+            VALIDATION_INPUT_FIELD_WIDTH,
+            VALIDATION_INPUT_FIELD_HEIGHT,
+            palette,
+            UITheme.TEXT_HEADER,
+            UITheme.TEXT_HEADER,
+            TEXT_FIELD_VERTICAL_PADDING
+        );
     }
 
     private boolean handleValidationPresetInputClick(int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
@@ -7685,18 +7636,32 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
             if (isPresetBooleanPort(port)) {
-                int toggleX = panelX + panelWidth - SETTINGS_TOGGLE_WIDTH - VALIDATION_PANEL_PADDING;
-                int toggleY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - SETTINGS_TOGGLE_HEIGHT) / 2;
-                if (isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+                PathmindPopupLayout.Rect toggleBounds = PathmindPopupLayout.validationToggle(
+                    panelX,
+                    panelWidth,
+                    rowY,
+                    VALIDATION_PANEL_PADDING,
+                    VALIDATION_PANEL_ROW_HEIGHT,
+                    SETTINGS_TOGGLE_WIDTH,
+                    SETTINGS_TOGGLE_HEIGHT
+                );
+                if (toggleBounds.contains(mouseX, mouseY)) {
                     clearPresetInputFieldFocus();
                     setPresetInputValue(port, Boolean.toString(!getPresetBooleanValue(port)));
                     return true;
                 }
             } else {
-                int fieldX = panelX + panelWidth - VALIDATION_INPUT_FIELD_WIDTH - VALIDATION_PANEL_PADDING;
-                int fieldY = rowY + (VALIDATION_PANEL_ROW_HEIGHT - VALIDATION_INPUT_FIELD_HEIGHT) / 2;
+                PathmindPopupLayout.Rect fieldBounds = PathmindPopupLayout.validationInput(
+                    panelX,
+                    panelWidth,
+                    rowY,
+                    VALIDATION_PANEL_PADDING,
+                    VALIDATION_PANEL_ROW_HEIGHT,
+                    VALIDATION_INPUT_FIELD_WIDTH,
+                    VALIDATION_INPUT_FIELD_HEIGHT
+                );
                 TextFieldWidget field = getOrCreatePresetInputField(port);
-                if (isPointInRect(mouseX, mouseY, fieldX, fieldY, VALIDATION_INPUT_FIELD_WIDTH, VALIDATION_INPUT_FIELD_HEIGHT)) {
+                if (fieldBounds.contains(mouseX, mouseY)) {
                     focusPresetInputField(field);
                     return true;
                 }
@@ -8176,17 +8141,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawSettingsIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int centerX = buttonX + BOTTOM_BUTTON_SIZE / 2;
-        int centerY = buttonY + BOTTOM_BUTTON_SIZE / 2;
-        int tooth = 2;
-        context.fill(centerX - 1, centerY - 6, centerX + 1, centerY - 4, color);
-        context.fill(centerX - 1, centerY + 4, centerX + 1, centerY + 6, color);
-        context.fill(centerX - 6, centerY - 1, centerX - 4, centerY + 1, color);
-        context.fill(centerX + 4, centerY - 1, centerX + 6, centerY + 1, color);
-
-        context.fill(centerX - 4, centerY - 4, centerX + 4, centerY + 4, color);
-        context.fill(centerX - 3, centerY - 3, centerX + 3, centerY + 3, UITheme.GRID_ORIGIN);
-        context.fill(centerX - 1, centerY - 1, centerX + 1, centerY + 1, color);
+        PathmindIconRenderer.drawSettings(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, color, UITheme.GRID_ORIGIN);
     }
 
     private void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
@@ -8446,208 +8401,154 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int popupX, int scaledWidth) {
-        int labelY = centerY - this.textRenderer.fontHeight / 2;
-        int toggleX = popupX + scaledWidth - SETTINGS_TOGGLE_WIDTH - 20;
-        int toggleY = centerY - SETTINGS_TOGGLE_HEIGHT / 2;
-        int maxLabelWidth = Math.max(0, toggleX - labelX - 8);
-        drawPopupTextWithEllipsis(context, label, labelX, labelY, maxLabelWidth,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        boolean hovered = isPointInRect(mouseX, mouseY, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT);
-        PopupButtonStyle style = active ? PopupButtonStyle.PRIMARY : PopupButtonStyle.DEFAULT;
-        String toggleLabel = active ? Text.translatable("pathmind.settings.on").getString() : Text.translatable("pathmind.settings.off").getString();
-        drawPopupButton(context, toggleX, toggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT, hovered,
-            Text.literal(toggleLabel), style, settingsPopupAnimation);
+        PathmindSettingsRowRenderer.renderToggleRow(
+            context,
+            this.textRenderer,
+            mouseX,
+            mouseY,
+            labelX,
+            centerY,
+            label,
+            active,
+            popupX,
+            scaledWidth,
+            SETTINGS_TOGGLE_WIDTH,
+            SETTINGS_TOGGLE_HEIGHT,
+            getAccentColor(),
+            settingsPopupAnimation,
+            Text.translatable("pathmind.settings.on").getString(),
+            Text.translatable("pathmind.settings.off").getString()
+        );
     }
 
     private void renderSliderRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label,
                                  int value, int min, int max, int popupX, int scaledWidth) {
-        int labelY = centerY - this.textRenderer.fontHeight / 2;
-        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
-        int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
-        String valueText = value + tr("pathmind.unit.millisecondsShort");
-        int valueTextWidth = this.textRenderer.getWidth(valueText);
-        int valueBoxWidth = Math.max(36, valueTextWidth + 10);
-        int valueBoxX = sliderX - valueBoxWidth - 8;
-        int valueBoxY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
-        int valueBoxHeight = SETTINGS_SLIDER_HEIGHT;
-        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
-        drawPopupTextWithEllipsis(context, label, labelX, labelY, maxLabelWidth,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        UIStyleHelper.drawFieldFrame(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, new UIStyleHelper.FieldPalette(
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.DROPDOWN_OPTION_BG),
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER),
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER),
-            settingsPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY)
-        ));
-        int valueTextX = valueBoxX + Math.max(4, (valueBoxWidth - valueTextWidth) / 2);
-        int valueTextY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(valueText), valueTextX, valueTextY,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
-
-        int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
-        boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
-        UIStyleHelper.SliderPalette sliderPalette = UIStyleHelper.getSliderPalette(getAccentColor(), hovered ? 1f : 0f, false, false);
-        sliderPalette = new UIStyleHelper.SliderPalette(
-            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.trackColor()),
-            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.trackBorderColor()),
-            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.handleColor()),
-            settingsPopupAnimation.getAnimatedPopupColor(sliderPalette.handleBorderColor())
+        PathmindSettingsRowRenderer.renderSliderRow(
+            context,
+            this.textRenderer,
+            mouseX,
+            mouseY,
+            labelX,
+            centerY,
+            label,
+            value,
+            min,
+            max,
+            popupX,
+            scaledWidth,
+            SETTINGS_SLIDER_WIDTH,
+            SETTINGS_SLIDER_HEIGHT,
+            SETTINGS_SLIDER_HANDLE_WIDTH,
+            SETTINGS_SLIDER_HANDLE_HEIGHT,
+            getAccentColor(),
+            settingsPopupAnimation,
+            tr("pathmind.unit.millisecondsShort"),
+            nodeDelayDragging
         );
-        UIStyleHelper.drawSliderTrack(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, sliderPalette);
-
-        int clamped = MathHelper.clamp(value, min, max);
-        float t = max == min ? 0f : (clamped - min) / (float) (max - min);
-        int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
-        int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
-        UIStyleHelper.SliderPalette handlePalette = UIStyleHelper.getSliderPalette(getAccentColor(), hovered ? 1f : 0f, nodeDelayDragging, false);
-        handlePalette = new UIStyleHelper.SliderPalette(
-            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.trackColor()),
-            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.trackBorderColor()),
-            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.handleColor()),
-            settingsPopupAnimation.getAnimatedPopupColor(handlePalette.handleBorderColor())
-        );
-        UIStyleHelper.drawSliderHandle(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT, handlePalette);
     }
 
     private void renderNodeDelayRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
                                     int value, int min, int max, int popupX, int scaledWidth) {
-        int labelY = centerY - this.textRenderer.fontHeight / 2;
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
 
         String valueText = Integer.toString(value);
         int[] valueBox = getNodeDelayFieldBounds(popupX, scaledWidth, centerY, valueText);
-        int valueBoxX = valueBox[0];
-        int valueBoxY = valueBox[1];
-        int valueBoxWidth = valueBox[2];
-        int valueBoxHeight = valueBox[3];
-        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
-        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeDelay").getString(), labelX, labelY, maxLabelWidth,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight);
+        boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBox[0], valueBox[1], valueBox[2], valueBox[3]);
         boolean focused = nodeDelayField != null && nodeDelayField.isFocused();
         float fieldHoverProgress = focused ? 1f : getHoverProgress("settings-node-delay-field", fieldHovered);
-        int valueBoxBg = AnimationHelper.lerpColor(UITheme.DROPDOWN_OPTION_BG, focused ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION, fieldHoverProgress);
-        int valueBoxBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), fieldHoverProgress);
-        valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBg);
-        valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBorder);
-        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
-        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+        PathmindSettingsRowRenderer.renderNumericField(
+            context,
+            this.textRenderer,
+            nodeDelayField,
+            mouseX,
+            mouseY,
+            labelX,
+            centerY,
+            Text.translatable("pathmind.settings.nodeDelay").getString(),
+            valueBox[0],
+            valueBox[1],
+            valueBox[2],
+            valueBox[3],
+            valueText,
+            Text.translatable("pathmind.unit.millisecondsShort"),
+            getAccentColor(),
+            settingsPopupAnimation,
+            fieldHoverProgress,
+            focused,
+            TEXT_FIELD_VERTICAL_PADDING
+        );
 
-        if (nodeDelayField != null) {
-            if (!focused) {
-                if (!valueText.equals(nodeDelayField.getText())) {
-                    nodeDelayField.setText(valueText);
-                }
-            }
-            nodeDelayField.setVisible(true);
-            nodeDelayField.setEditable(true);
-            nodeDelayField.setEditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
-            nodeDelayField.setUneditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
-            int textFieldHeight = Math.max(10, valueBoxHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
-            nodeDelayField.setPosition(valueBoxX + 4, valueBoxY + TEXT_FIELD_VERTICAL_PADDING);
-            nodeDelayField.setWidth(valueBoxWidth - 8);
-            nodeDelayField.setHeight(textFieldHeight);
-            nodeDelayField.render(context, mouseX, mouseY, 0f);
-        }
-
-        int unitX = valueBoxX + valueBoxWidth + 6;
-        int unitY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.unit.millisecondsShort"), unitX, unitY,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
         boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
         float sliderHoverProgress = nodeDelayDragging ? 1f : getHoverProgress("settings-node-delay-slider", hovered);
-        int trackColor = AnimationHelper.lerpColor(UITheme.DROPDOWN_OPTION_BG, UITheme.DROPDOWN_OPTION_HOVER, sliderHoverProgress);
-        int trackBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), sliderHoverProgress * 0.45f);
-        trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
-        trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
-        context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
-        DrawContextBridge.drawBorder(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, trackBorder);
-
-        int clamped = MathHelper.clamp(value, min, max);
-        float t = max == min ? 0f : (clamped - min) / (float) (max - min);
-        int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
-        int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
-        int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
-        int handleBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), sliderHoverProgress);
-        handleBorder = getPopupAnimatedColor(settingsPopupAnimation, handleBorder);
-        context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
-        DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
-            handleBorder);
+        PathmindSettingsRowRenderer.renderNumericSlider(
+            context,
+            centerY,
+            sliderX,
+            sliderY,
+            SETTINGS_SLIDER_WIDTH,
+            SETTINGS_SLIDER_HEIGHT,
+            SETTINGS_SLIDER_HANDLE_WIDTH,
+            SETTINGS_SLIDER_HANDLE_HEIGHT,
+            value,
+            min,
+            max,
+            getAccentColor(),
+            settingsPopupAnimation,
+            sliderHoverProgress
+        );
     }
 
     private void renderCreateListRadiusRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
                                            int value, int min, int max, int popupX, int scaledWidth) {
-        int labelY = centerY - this.textRenderer.fontHeight / 2;
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
 
         String valueText = Integer.toString(value);
         int[] valueBox = getCreateListRadiusFieldBounds(popupX, scaledWidth, centerY, valueText);
-        int valueBoxX = valueBox[0];
-        int valueBoxY = valueBox[1];
-        int valueBoxWidth = valueBox[2];
-        int valueBoxHeight = valueBox[3];
-        int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
-        drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.radius").getString(), labelX, labelY, maxLabelWidth,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight);
+        boolean fieldHovered = isPointInRect(mouseX, mouseY, valueBox[0], valueBox[1], valueBox[2], valueBox[3]);
         boolean focused = createListRadiusField != null && createListRadiusField.isFocused();
         float fieldHoverProgress = focused ? 1f : getHoverProgress("settings-create-list-radius-field", fieldHovered);
-        int valueBoxBg = AnimationHelper.lerpColor(UITheme.DROPDOWN_OPTION_BG, focused ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION, fieldHoverProgress);
-        int valueBoxBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), fieldHoverProgress);
-        valueBoxBg = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBg);
-        valueBoxBorder = settingsPopupAnimation.getAnimatedPopupColor(valueBoxBorder);
-        context.fill(valueBoxX, valueBoxY, valueBoxX + valueBoxWidth, valueBoxY + valueBoxHeight, valueBoxBg);
-        DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
+        PathmindSettingsRowRenderer.renderNumericField(
+            context,
+            this.textRenderer,
+            createListRadiusField,
+            mouseX,
+            mouseY,
+            labelX,
+            centerY,
+            Text.translatable("pathmind.field.radius").getString(),
+            valueBox[0],
+            valueBox[1],
+            valueBox[2],
+            valueBox[3],
+            valueText,
+            Text.translatable("pathmind.unit.blocks"),
+            getAccentColor(),
+            settingsPopupAnimation,
+            fieldHoverProgress,
+            focused,
+            TEXT_FIELD_VERTICAL_PADDING
+        );
 
-        if (createListRadiusField != null) {
-            if (!focused && !valueText.equals(createListRadiusField.getText())) {
-                createListRadiusField.setText(valueText);
-            }
-            createListRadiusField.setVisible(true);
-            createListRadiusField.setEditable(true);
-            createListRadiusField.setEditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
-            createListRadiusField.setUneditableColor(getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_HEADER));
-            int textFieldHeight = Math.max(10, valueBoxHeight - TEXT_FIELD_VERTICAL_PADDING * 2);
-            createListRadiusField.setPosition(valueBoxX + 4, valueBoxY + TEXT_FIELD_VERTICAL_PADDING);
-            createListRadiusField.setWidth(valueBoxWidth - 8);
-            createListRadiusField.setHeight(textFieldHeight);
-            createListRadiusField.render(context, mouseX, mouseY, 0f);
-        }
-
-        int unitX = valueBoxX + valueBoxWidth + 6;
-        int unitY = valueBoxY + (valueBoxHeight - this.textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.unit.blocks"), unitX, unitY,
-            getPopupAnimatedColor(settingsPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        int sliderRight = sliderX + SETTINGS_SLIDER_WIDTH;
         boolean hovered = isPointInRect(mouseX, mouseY, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
         float sliderHoverProgress = createListRadiusDragging ? 1f : getHoverProgress("settings-create-list-radius-slider", hovered);
-        int trackColor = AnimationHelper.lerpColor(UITheme.DROPDOWN_OPTION_BG, UITheme.DROPDOWN_OPTION_HOVER, sliderHoverProgress);
-        int trackBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), sliderHoverProgress * 0.45f);
-        trackColor = settingsPopupAnimation.getAnimatedPopupColor(trackColor);
-        trackBorder = settingsPopupAnimation.getAnimatedPopupColor(trackBorder);
-        context.fill(sliderX, sliderY, sliderRight, sliderY + SETTINGS_SLIDER_HEIGHT, trackColor);
-        DrawContextBridge.drawBorder(context, sliderX, sliderY, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, trackBorder);
-
-        int clamped = MathHelper.clamp(value, min, max);
-        float t = max == min ? 0f : (clamped - min) / (float) (max - min);
-        int handleX = sliderX + Math.round(t * (SETTINGS_SLIDER_WIDTH - SETTINGS_SLIDER_HANDLE_WIDTH));
-        int handleY = centerY - SETTINGS_SLIDER_HANDLE_HEIGHT / 2;
-        int handleColor = settingsPopupAnimation.getAnimatedPopupColor(getAccentColor());
-        int handleBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), sliderHoverProgress);
-        handleBorder = getPopupAnimatedColor(settingsPopupAnimation, handleBorder);
-        context.fill(handleX, handleY, handleX + SETTINGS_SLIDER_HANDLE_WIDTH, handleY + SETTINGS_SLIDER_HANDLE_HEIGHT, handleColor);
-        DrawContextBridge.drawBorder(context, handleX, handleY, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
-            handleBorder);
+        PathmindSettingsRowRenderer.renderNumericSlider(
+            context,
+            centerY,
+            sliderX,
+            sliderY,
+            SETTINGS_SLIDER_WIDTH,
+            SETTINGS_SLIDER_HEIGHT,
+            SETTINGS_SLIDER_HANDLE_WIDTH,
+            SETTINGS_SLIDER_HANDLE_HEIGHT,
+            value,
+            min,
+            max,
+            getAccentColor(),
+            settingsPopupAnimation,
+            sliderHoverProgress
+        );
     }
 
     private int[] getNodeDelayFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
@@ -9946,39 +9847,15 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void drawPencilIcon(DrawContext context, int x, int y, int color) {
-        int size = PRESET_RENAME_ICON_SIZE;
-        for (int offset = 0; offset < size - 2; offset++) {
-            int startX = x + offset;
-            int startY = y + size - 3 - offset;
-            context.fill(startX, startY, startX + 1, startY + 2, color);
-        }
-
-        int tipColor = (color & 0x00FFFFFF) | 0x66000000;
-        context.fill(x + size - 3, y, x + size - 1, y + 2, tipColor);
-
-        int eraserColor = (color & 0x00FFFFFF) | 0x88000000;
-        context.fill(x, y + size - 1, x + 2, y + size, eraserColor);
+        PathmindIconRenderer.drawPencil(context, x, y, PRESET_RENAME_ICON_SIZE, color);
     }
 
     private void drawTrashIcon(DrawContext context, int x, int y, int color) {
-        int handleWidth = Math.max(2, PRESET_DELETE_ICON_SIZE / 2);
-        int handleLeft = x + (PRESET_DELETE_ICON_SIZE - handleWidth) / 2;
-        context.fill(handleLeft, y, handleLeft + handleWidth, y + 1, color);
-
-        context.fill(x, y + 1, x + PRESET_DELETE_ICON_SIZE, y + 3, color);
-        context.fill(x + 1, y + 3, x + PRESET_DELETE_ICON_SIZE - 1, y + PRESET_DELETE_ICON_SIZE, color);
-
-        int slatColor = (color & 0x00FFFFFF) | 0x66000000;
-        context.fill(x + 2, y + 4, x + 3, y + PRESET_DELETE_ICON_SIZE - 1, slatColor);
-        context.fill(x + PRESET_DELETE_ICON_SIZE - 3, y + 4, x + PRESET_DELETE_ICON_SIZE - 2, y + PRESET_DELETE_ICON_SIZE - 1, slatColor);
+        PathmindIconRenderer.drawTrash(context, x, y, PRESET_DELETE_ICON_SIZE, color);
     }
 
     private void drawCloseXIcon(DrawContext context, int x, int y, int size, int color) {
-        int span = Math.max(4, size);
-        for (int i = 0; i < span; i++) {
-            context.fill(x + i, y + i, x + i + 1, y + i + 1, color);
-            context.fill(x + (span - 1 - i), y + i, x + (span - i), y + i + 1, color);
-        }
+        PathmindIconRenderer.drawCloseX(context, x, y, size, color);
     }
 
     private boolean isTitleClicked(int mouseX, int mouseY) {

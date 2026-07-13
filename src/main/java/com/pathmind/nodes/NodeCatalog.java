@@ -19,6 +19,8 @@ import java.util.Set;
  */
 public final class NodeCatalog {
     private static final Map<NodeType, NodeDefinition> DEFINITIONS = new EnumMap<>(NodeType.class);
+    private static final Map<NodeType, EnumSet<NodeValueTrait>> PROVIDED_TRAITS = new EnumMap<>(NodeType.class);
+    private static final Map<NodeType, ParameterSchema> PARAMETER_SCHEMAS = new EnumMap<>(NodeType.class);
     private static final List<SidebarGroupDefinition> SIDEBAR_GROUPS = new ArrayList<>();
 
     static {
@@ -634,6 +636,208 @@ public final class NodeCatalog {
         sidebar(NodeCategory.SENSORS, "pathmind.sidebar.group.worldWeather",
             NodeType.SENSOR_IS_DAYTIME,
             NodeType.SENSOR_IS_RAINING);
+
+        provided(NodeType.PARAM_COORDINATE, NodeValueTrait.COORDINATE);
+        provided(NodeType.PARAM_ROTATION, NodeValueTrait.ROTATION);
+        provided(NodeType.PARAM_DIRECTION, NodeValueTrait.DIRECTION, NodeValueTrait.ROTATION);
+        provided(NodeType.PARAM_BLOCK_FACE, NodeValueTrait.DIRECTION);
+        provided(NodeType.PARAM_RANGE, NodeValueTrait.RANGE);
+        provided(NodeType.PARAM_DISTANCE, NodeValueTrait.DISTANCE);
+        provided(NodeType.PARAM_DURATION, NodeValueTrait.DURATION);
+        provided(NodeType.PARAM_AMOUNT, NodeValueTrait.NUMBER);
+        provided(NodeType.PARAM_BOOLEAN, NodeValueTrait.BOOLEAN);
+        provided(NodeType.PARAM_HAND, NodeValueTrait.HAND);
+        provided(NodeType.PARAM_GUI, NodeValueTrait.GUI);
+        provided(NodeType.PARAM_KEY, NodeValueTrait.KEY);
+        provided(NodeType.PARAM_MOUSE_BUTTON, NodeValueTrait.MOUSE_BUTTON);
+        provided(NodeType.PARAM_MESSAGE, NodeValueTrait.MESSAGE);
+        provided(NodeType.PARAM_BLOCK, NodeValueTrait.BLOCK);
+        provided(NodeType.PARAM_ITEM, NodeValueTrait.ITEM);
+        provided(NodeType.PARAM_ENTITY, NodeValueTrait.ENTITY);
+        provided(NodeType.PARAM_PLAYER, NodeValueTrait.PLAYER);
+        provided(NodeType.PARAM_INVENTORY_SLOT, NodeValueTrait.INVENTORY_SLOT);
+        provided(NodeType.PARAM_VILLAGER_TRADE, NodeValueTrait.VILLAGER_TRADE);
+        provided(NodeType.PARAM_WAYPOINT, NodeValueTrait.WAYPOINT, NodeValueTrait.COORDINATE);
+        provided(NodeType.PARAM_SCHEMATIC, NodeValueTrait.SCHEMATIC, NodeValueTrait.COORDINATE);
+        provided(NodeType.PARAM_PLACE_TARGET, NodeValueTrait.BLOCK, NodeValueTrait.COORDINATE);
+        provided(NodeType.PARAM_CLOSEST, NodeValueTrait.RANGE, NodeValueTrait.COORDINATE);
+        provided(NodeType.SENSOR_POSITION_OF, NodeValueTrait.COORDINATE);
+        provided(NodeType.SENSOR_DISTANCE_BETWEEN, NodeValueTrait.DISTANCE);
+        provided(NodeType.SENSOR_TARGETED_BLOCK, NodeValueTrait.BLOCK);
+        provided(NodeType.SENSOR_TARGETED_ENTITY, NodeValueTrait.ENTITY);
+        provided(NodeType.SENSOR_TARGETED_BLOCK_FACE, NodeValueTrait.DIRECTION);
+        provided(NodeType.SENSOR_LOOK_DIRECTION, NodeValueTrait.ROTATION);
+        provided(NodeType.SENSOR_CURRENT_HAND, NodeValueTrait.INVENTORY_SLOT);
+        provided(NodeType.SENSOR_IS_ON_GROUND, NodeValueTrait.DISTANCE);
+        provided(NodeType.OPERATOR_RANDOM, NodeValueTrait.NUMBER);
+        provided(NodeType.OPERATOR_MOD, NodeValueTrait.NUMBER);
+        provided(NodeType.CHANGE_VARIABLE, NodeValueTrait.NUMBER);
+        provided(NodeType.OPERATOR_BOOLEAN_OR, NodeValueTrait.BOOLEAN);
+        provided(NodeType.OPERATOR_BOOLEAN_AND, NodeValueTrait.BOOLEAN);
+        provided(NodeType.OPERATOR_BOOLEAN_XOR, NodeValueTrait.BOOLEAN);
+        provided(NodeType.SENSOR_SLOT_ITEM_COUNT, NodeValueTrait.NUMBER);
+        provided(NodeType.SENSOR_FIND_TRADE, NodeValueTrait.NUMBER);
+        provided(NodeType.LIST_ITEM,
+            NodeValueTrait.LIST_ITEM,
+            NodeValueTrait.ANY,
+            NodeValueTrait.BOOLEAN,
+            NodeValueTrait.NUMBER,
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.COORDINATE,
+            NodeValueTrait.ROTATION,
+            NodeValueTrait.DIRECTION,
+            NodeValueTrait.DURATION,
+            NodeValueTrait.RANGE,
+            NodeValueTrait.DISTANCE,
+            NodeValueTrait.INVENTORY_SLOT,
+            NodeValueTrait.MESSAGE,
+            NodeValueTrait.GUI,
+            NodeValueTrait.KEY,
+            NodeValueTrait.MOUSE_BUTTON,
+            NodeValueTrait.HAND,
+            NodeValueTrait.VILLAGER_TRADE,
+            NodeValueTrait.WAYPOINT,
+            NodeValueTrait.SCHEMATIC);
+        provided(NodeType.LIST_LENGTH, NodeValueTrait.NUMBER);
+        provided(NodeType.VARIABLE, NodeValueTrait.VARIABLE, NodeValueTrait.ANY);
+
+        parameterHost(NodeType.WALK,
+            slot("Direction", true,
+                NodeValueTrait.DIRECTION,
+                NodeValueTrait.ROTATION,
+                NodeValueTrait.COORDINATE,
+                NodeValueTrait.BLOCK,
+                NodeValueTrait.ITEM,
+                NodeValueTrait.ENTITY,
+                NodeValueTrait.PLAYER,
+                NodeValueTrait.LIST_ITEM),
+            slot("Duration/Distance", true, NodeValueTrait.DURATION, NodeValueTrait.DISTANCE));
+        parameterHost(NodeType.LOOK,
+            NodeValueTrait.ROTATION,
+            NodeValueTrait.DIRECTION,
+            NodeValueTrait.NUMBER,
+            NodeValueTrait.COORDINATE,
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.LIST_ITEM);
+        parameterHost(NodeType.BREAK, "Target", NodeValueTrait.BLOCK, NodeValueTrait.COORDINATE);
+        parameterHost(NodeType.OPERATOR_EQUALS, slot("Left", true, NodeValueTrait.ANY), slot("Right", true, NodeValueTrait.ANY));
+        parameterHost(NodeType.OPERATOR_NOT, slot("Left", true, NodeValueTrait.ANY), slot("Right", true, NodeValueTrait.ANY));
+        parameterHost(NodeType.OPERATOR_MOD, slot("Value", true, NodeValueTrait.NUMBER), slot("Modulo", true, NodeValueTrait.NUMBER));
+        parameterHost(NodeType.OPERATOR_GREATER, slot("Left", true, NodeValueTrait.NUMBER), slot("Right", true, NodeValueTrait.NUMBER));
+        parameterHost(NodeType.OPERATOR_LESS, slot("Left", true, NodeValueTrait.NUMBER), slot("Right", true, NodeValueTrait.NUMBER));
+        parameterHost(NodeType.OPERATOR_BOOLEAN_NOT, "Value", NodeValueTrait.BOOLEAN);
+        parameterHost(NodeType.OPERATOR_BOOLEAN_OR, slot("Left", true, NodeValueTrait.ANY), slot("Right", true, NodeValueTrait.ANY));
+        parameterHost(NodeType.OPERATOR_BOOLEAN_AND, slot("Left", true, NodeValueTrait.ANY), slot("Right", true, NodeValueTrait.ANY));
+        parameterHost(NodeType.OPERATOR_BOOLEAN_XOR, slot("Left", true, NodeValueTrait.BOOLEAN), slot("Right", true, NodeValueTrait.BOOLEAN));
+        parameterHost(NodeType.SENSOR_POSITION_OF, "Target",
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER);
+        parameterHost(NodeType.SENSOR_DISTANCE_BETWEEN,
+            slot("Target A", true,
+                NodeValueTrait.COORDINATE,
+                NodeValueTrait.BLOCK,
+                NodeValueTrait.ITEM,
+                NodeValueTrait.ENTITY,
+                NodeValueTrait.PLAYER),
+            slot("Target B", true,
+                NodeValueTrait.COORDINATE,
+                NodeValueTrait.BLOCK,
+                NodeValueTrait.ITEM,
+                NodeValueTrait.ENTITY,
+                NodeValueTrait.PLAYER));
+        parameterHost(NodeType.SENSOR_TOUCHING_BLOCK, NodeValueTrait.BLOCK);
+        parameterHost(NodeType.SENSOR_TOUCHING_ENTITY, NodeValueTrait.ENTITY);
+        parameterHost(NodeType.SENSOR_AT_COORDINATES, NodeValueTrait.COORDINATE);
+        parameterHost(NodeType.SENSOR_ITEM_IN_INVENTORY, NodeValueTrait.ITEM, NodeValueTrait.NUMBER);
+        parameterHost(NodeType.SENSOR_ITEM_IN_SLOT, slot("Item", true, NodeValueTrait.ITEM), slot("Selection", true, NodeValueTrait.INVENTORY_SLOT));
+        parameterHost(NodeType.SENSOR_SLOT_ITEM_COUNT, "Slot", NodeValueTrait.INVENTORY_SLOT);
+        parameterHost(NodeType.SENSOR_FIND_TRADE, "Item", NodeValueTrait.ITEM);
+        parameterHost(NodeType.SENSOR_ATTRIBUTE_DETECTION, "Target", NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.ITEM);
+        parameterHost(NodeType.SENSOR_VILLAGER_TRADE, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
+        parameterHost(NodeType.SENSOR_IN_STOCK, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
+        parameterHost(NodeType.SENSOR_CHAT_MESSAGE, slot("User", true, NodeValueTrait.PLAYER), slot("Message", true, NodeValueTrait.MESSAGE));
+        parameterHost(NodeType.SENSOR_JOINED_SERVER, "User", NodeValueTrait.PLAYER);
+        parameterHost(NodeType.SENSOR_GUI_FILLED, "GUI", NodeValueTrait.GUI);
+        parameterHost(NodeType.SENSOR_KEY_PRESSED, NodeValueTrait.KEY);
+        parameterHost(NodeType.SENSOR_IS_RENDERED, NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER);
+        parameterHost(NodeType.SENSOR_IS_VISIBLE, NodeValueTrait.BLOCK, NodeValueTrait.ITEM, NodeValueTrait.ENTITY, NodeValueTrait.PLAYER);
+        parameterHost(NodeType.USE, NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.BLOCK);
+        parameterHost(NodeType.INTERACT,
+            NodeValueTrait.HAND,
+            NodeValueTrait.COORDINATE,
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.ROTATION,
+            NodeValueTrait.DIRECTION,
+            NodeValueTrait.LIST_ITEM);
+        parameterHost(NodeType.MOVE_ITEM,
+            slot("Source", true, NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT),
+            slot("Destination", true, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.GUI));
+        parameterHost(NodeType.PLACE,
+            slot("Source", false, NodeValueTrait.BLOCK, NodeValueTrait.INVENTORY_SLOT),
+            slot("Position", true,
+                NodeValueTrait.COORDINATE,
+                NodeValueTrait.ROTATION,
+                NodeValueTrait.DIRECTION,
+                NodeValueTrait.BLOCK,
+                NodeValueTrait.ITEM,
+                NodeValueTrait.ENTITY,
+                NodeValueTrait.PLAYER,
+                NodeValueTrait.LIST_ITEM));
+        parameterHost(NodeType.PLACE_HAND,
+            slot("Source", true, NodeValueTrait.BLOCK, NodeValueTrait.INVENTORY_SLOT),
+            slot("Position", true,
+                NodeValueTrait.COORDINATE,
+                NodeValueTrait.ROTATION,
+                NodeValueTrait.DIRECTION,
+                NodeValueTrait.BLOCK,
+                NodeValueTrait.ITEM,
+                NodeValueTrait.ENTITY,
+                NodeValueTrait.PLAYER,
+                NodeValueTrait.LIST_ITEM));
+        parameterHost(NodeType.PRESS_KEY, "Button", NodeValueTrait.KEY, NodeValueTrait.MOUSE_BUTTON);
+        parameterHost(NodeType.GOTO, movementTargetTraits());
+        parameterHost(NodeType.TRAVEL, movementTargetTraits());
+        parameterHost(NodeType.GOAL, movementTargetTraits());
+        parameterHost(NodeType.PATH, movementTargetTraits());
+        parameterHost(NodeType.EXPLORE, movementTargetTraits());
+        parameterHost(NodeType.FOLLOW, movementTargetTraits());
+        parameterHost(NodeType.COLLECT, NodeValueTrait.BLOCK, NodeValueTrait.NUMBER);
+        parameterHost(NodeType.CRAFT, NodeValueTrait.ITEM, NodeValueTrait.NUMBER);
+        parameterHost(NodeType.BUILD, "Position",
+            NodeValueTrait.COORDINATE,
+            NodeValueTrait.SCHEMATIC,
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.ROTATION,
+            NodeValueTrait.DIRECTION,
+            NodeValueTrait.LIST_ITEM);
+        parameterHost(NodeType.FARM, NodeValueTrait.WAYPOINT, NodeValueTrait.RANGE);
+        parameterHost(NodeType.HOTBAR, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.ITEM);
+        parameterHost(NodeType.DROP_ITEM, "Target", NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.NUMBER);
+        parameterHost(NodeType.DROP_SLOT, "Target", NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.NUMBER);
+        parameterHost(NodeType.CLICK_SLOT, "Selection", NodeValueTrait.INVENTORY_SLOT);
+        parameterHost(NodeType.EQUIP_ARMOR, NodeValueTrait.INVENTORY_SLOT);
+        parameterHost(NodeType.EQUIP_HAND, NodeValueTrait.INVENTORY_SLOT);
+        parameterHost(NodeType.SET_VARIABLE, slot("Variable", true, NodeValueTrait.VARIABLE), slot("Value", true, NodeValueTrait.ANY));
+        parameterHost(NodeType.CHANGE_VARIABLE, "Variable", NodeValueTrait.VARIABLE);
+        parameterHost(NodeType.ADD_TO_LIST, "Target", NodeValueTrait.ANY);
+        parameterHost(NodeType.REMOVE_FROM_LIST, "Target", NodeValueTrait.ANY);
+        parameterHost(NodeType.CREATE_LIST, "Target", NodeValueTrait.ANY);
+        parameterHost(NodeType.TRADE, "Villager Trade", NodeValueTrait.NUMBER);
+        parameterHost(NodeType.PARAM_BLOCK_FACE, "Target", NodeValueTrait.COORDINATE, NodeValueTrait.BLOCK);
     }
 
     private NodeCatalog() {
@@ -742,6 +946,39 @@ public final class NodeCatalog {
 
     public static boolean hasPopupEditButton(NodeType type) {
         return isParameterNode(type) && hasFlag(type, NodeFlag.POPUP_EDIT_BUTTON);
+    }
+
+    public static EnumSet<NodeValueTrait> providedTraits(NodeType type) {
+        EnumSet<NodeValueTrait> traits = type == null ? null : PROVIDED_TRAITS.get(type);
+        return traits == null ? EnumSet.noneOf(NodeValueTrait.class) : EnumSet.copyOf(traits);
+    }
+
+    public static Map<NodeType, EnumSet<NodeValueTrait>> providedTraitsSnapshot() {
+        return Collections.unmodifiableMap(PROVIDED_TRAITS);
+    }
+
+    public static boolean canHostParameter(NodeType type) {
+        return type != null && PARAMETER_SCHEMAS.containsKey(type);
+    }
+
+    public static int parameterSlotCount(NodeType hostType) {
+        ParameterSchema schema = parameterSchema(hostType);
+        return schema == null ? 0 : schema.slots().size();
+    }
+
+    public static String parameterSlotLabel(NodeType hostType, int slotIndex) {
+        ParameterSlot slot = parameterSlot(hostType, slotIndex);
+        return slot == null ? "Parameter" : slot.label();
+    }
+
+    public static EnumSet<NodeValueTrait> acceptedTraits(NodeType hostType, int slotIndex) {
+        ParameterSlot slot = parameterSlot(hostType, slotIndex);
+        return slot == null ? EnumSet.noneOf(NodeValueTrait.class) : EnumSet.copyOf(slot.acceptedTraits());
+    }
+
+    public static boolean isParameterSlotAlwaysRequired(NodeType hostType, int slotIndex) {
+        ParameterSlot slot = parameterSlot(hostType, slotIndex);
+        return slot != null && slot.required();
     }
 
     public static boolean shouldDisplayInSidebar(NodeType type, boolean baritoneAvailable, boolean uiUtilsAvailable) {
@@ -1270,6 +1507,55 @@ public final class NodeCatalog {
         SIDEBAR_GROUPS.add(new SidebarGroupDefinition(displayCategory, hiddenWhenCategoryVisible, titleKey, false, types));
     }
 
+    private static void provided(NodeType type, NodeValueTrait firstTrait, NodeValueTrait... additionalTraits) {
+        PROVIDED_TRAITS.put(type, EnumSet.of(firstTrait, additionalTraits));
+    }
+
+    private static void parameterHost(NodeType type, NodeValueTrait... acceptedTraits) {
+        parameterHost(type, "Parameter", acceptedTraits);
+    }
+
+    private static void parameterHost(NodeType type, String label, NodeValueTrait... acceptedTraits) {
+        parameterHost(type, slot(label, true, acceptedTraits));
+    }
+
+    private static void parameterHost(NodeType type, ParameterSlot... slots) {
+        PARAMETER_SCHEMAS.put(type, new ParameterSchema(List.of(slots)));
+    }
+
+    private static ParameterSlot slot(String label, boolean required, NodeValueTrait... acceptedTraits) {
+        String slotLabel = label == null || label.isBlank() ? "Parameter" : label;
+        EnumSet<NodeValueTrait> traits = acceptedTraits.length == 0
+            ? EnumSet.noneOf(NodeValueTrait.class)
+            : EnumSet.copyOf(List.of(acceptedTraits));
+        return new ParameterSlot(slotLabel, required, traits);
+    }
+
+    private static NodeValueTrait[] movementTargetTraits() {
+        return new NodeValueTrait[] {
+            NodeValueTrait.COORDINATE,
+            NodeValueTrait.BLOCK,
+            NodeValueTrait.ITEM,
+            NodeValueTrait.ENTITY,
+            NodeValueTrait.PLAYER,
+            NodeValueTrait.ROTATION,
+            NodeValueTrait.DIRECTION,
+            NodeValueTrait.LIST_ITEM
+        };
+    }
+
+    private static ParameterSchema parameterSchema(NodeType type) {
+        return type == null ? null : PARAMETER_SCHEMAS.get(type);
+    }
+
+    private static ParameterSlot parameterSlot(NodeType type, int slotIndex) {
+        ParameterSchema schema = parameterSchema(type);
+        if (schema == null || slotIndex < 0 || slotIndex >= schema.slots().size()) {
+            return null;
+        }
+        return schema.slots().get(slotIndex);
+    }
+
     private static boolean usesExplicitGraphColor(NodeType type) {
         return type == NodeType.START || type == NodeType.START_CHAIN
             || type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE
@@ -1285,6 +1571,21 @@ public final class NodeCatalog {
     }
 
     public record NodePlacement(NodeType type, NodeCategory displayCategory, String titleKey) {}
+
+    public record ParameterSchema(List<ParameterSlot> slots) {
+        public ParameterSchema {
+            slots = List.copyOf(slots);
+        }
+    }
+
+    public record ParameterSlot(String label, boolean required, EnumSet<NodeValueTrait> acceptedTraits) {
+        public ParameterSlot {
+            label = label == null || label.isBlank() ? "Parameter" : label;
+            acceptedTraits = acceptedTraits == null || acceptedTraits.isEmpty()
+                ? EnumSet.noneOf(NodeValueTrait.class)
+                : EnumSet.copyOf(acceptedTraits);
+        }
+    }
 
     private record SidebarGroupDefinition(
         NodeCategory displayCategory,

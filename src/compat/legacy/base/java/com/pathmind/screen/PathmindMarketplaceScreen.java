@@ -1,6 +1,6 @@
 package com.pathmind.screen;
 
-import com.pathmind.PathmindMod;
+import com.pathmind.PathmindCommon;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
@@ -21,12 +21,12 @@ import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
-import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
-import net.fabricmc.loader.api.FabricLoader;
+import com.pathmind.util.LoaderMetadata;
+import com.pathmind.util.MatrixStackBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -72,14 +72,14 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int OUTER_PADDING = 12;
     private static final int TOP_BAR_HEIGHT = 30;
     private static final int SECTION_TOP_GAP = 4;
-    private static final int SECTION_HEADER_HEIGHT = 40;
+    private static final int SECTION_HEADER_HEIGHT = 54;
     private static final int SECTION_BODY_PADDING = 12;
     private static final int FOOTER_HEIGHT = 14;
     private static final int CARD_GAP = 8;
     private static final int PRESET_GRID_COLUMNS = 4;
     private static final int PRESET_GRID_ROWS = 8;
-    private static final int CARD_MAX_WIDTH = 146;
-    private static final int CARD_SIZE = 134;
+    private static final int CARD_MAX_WIDTH = 140;
+    private static final int CARD_SIZE = 128;
     private static final int BACK_BUTTON_SIZE = 18;
     private static final int REFRESH_BUTTON_SIZE = 18;
     private static final int PAGE_CONTROL_GAP = 18;
@@ -98,16 +98,6 @@ public class PathmindMarketplaceScreen extends Screen {
     private static final int AUTHOR_ROW_GAP = 8;
     private static final int ACCOUNT_BUTTON_MIN_WIDTH = SORT_BUTTON_HEIGHT;
     private static final int MAX_CONCURRENT_PREVIEW_GRAPH_REQUESTS = 3;
-    private static final int MARKET_BG = 0xFF0E1114;
-    private static final int MARKET_PANEL = 0xFF171B20;
-    private static final int MARKET_PANEL_DARK = 0xFF101316;
-    private static final int MARKET_CARD = 0xFF1E2429;
-    private static final int MARKET_CARD_HOVER = 0xFF2A3138;
-    private static final int MARKET_PREVIEW = 0xFF090B0E;
-    private static final int MARKET_FOOTER = 0xFF151A1F;
-    private static final int MARKET_ACCENT = 0xFFE1B54A;
-    private static final int MARKET_ACCENT_BLUE = 0xFF5D8EAA;
-    private static final int MARKET_MUTED_BORDER = 0xFF303840;
     private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
 
     private final Screen parent;
@@ -315,7 +305,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (editorPopupMode && parent != null) {
             parent.render(context, mouseX, mouseY, delta);
         } else {
-            context.fill(0, 0, this.width, this.height, MARKET_BG);
+            context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
         }
         syncVisibilityToggleColors();
         presetPopupAnimation.tick();
@@ -333,8 +323,8 @@ public class PathmindMarketplaceScreen extends Screen {
 
         Layout layout = getLayout();
         if (!editorPopupMode) {
-            renderGallerySection(context, mouseX, mouseY, layout);
             renderTopBar(context, mouseX, mouseY, layout);
+            renderGallerySection(context, mouseX, mouseY, layout);
             renderSortDropdown(context, mouseX, mouseY, layout);
         }
         if (popupPreset != null || presetPopupAnimation.isVisible()
@@ -394,8 +384,6 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderTopBar(DrawContext context, int mouseX, int mouseY, Layout layout) {
-        context.fill(layout.sectionX, layout.topBarY, layout.sectionX + layout.sectionWidth, layout.sectionY - 2, MARKET_PANEL_DARK);
-        context.drawHorizontalLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, layout.sectionY - 3, MARKET_MUTED_BORDER);
         boolean backHovered = isPointInRect(mouseX, mouseY, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE);
         drawIconButton(context, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE, backHovered, false);
         drawBackArrow(context, layout.backButtonX, layout.backButtonY, backHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY);
@@ -412,7 +400,7 @@ public class PathmindMarketplaceScreen extends Screen {
             Math.max(80, this.width - 140)
         );
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(subtitle), this.width / 2, layout.topBarY + 14, UITheme.TEXT_SECONDARY);
-        context.drawHorizontalLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, layout.sectionY - 1, MARKET_MUTED_BORDER);
+        context.drawHorizontalLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, layout.sectionY - 1, UITheme.BORDER_SUBTLE);
 
         renderFilterControls(context, mouseX, mouseY, layout);
     }
@@ -499,9 +487,6 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void renderFilterControls(DrawContext context, int mouseX, int mouseY, Layout layout) {
-        int shelfBottom = layout.sectionY + getSectionHeaderHeight() - 8;
-        context.fill(layout.bodyX - 4, layout.searchFieldY - 4, layout.bodyX + layout.bodyWidth + 4, shelfBottom, 0xAA171B20);
-        context.drawHorizontalLine(layout.bodyX - 2, layout.bodyX + layout.bodyWidth + 1, shelfBottom - 1, 0x66303840);
         if (isViewingAuthorProfile()) {
             Rect exitProfileRect = getExitProfileRect(layout);
             boolean exitProfileHovered = isPointInRect(mouseX, mouseY, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height);
@@ -531,9 +516,9 @@ public class PathmindMarketplaceScreen extends Screen {
             searchY,
             SEARCH_FIELD_WIDTH,
             SEARCH_FIELD_HEIGHT,
-            MARKET_PANEL_DARK,
-            searchHovered || (searchField != null && searchField.isFocused()) ? MARKET_ACCENT : MARKET_MUTED_BORDER,
-            UITheme.BORDER_SUBTLE
+            UITheme.BACKGROUND_SECTION,
+            searchHovered || (searchField != null && searchField.isFocused()) ? getAccentColor() : UITheme.BORDER_SUBTLE,
+            UITheme.PANEL_INNER_BORDER
         );
         drawSearchIcon(context, searchX + 6, searchY + 3, UITheme.TEXT_SECONDARY);
         if (searchField != null) {
@@ -574,9 +559,14 @@ public class PathmindMarketplaceScreen extends Screen {
             : isAuthorDirectoryMode()
                 ? Text.translatable("pathmind.marketplace.authorCount", resultCount, resultCount == 1 ? "" : "s").getString()
                 : Text.translatable("pathmind.marketplace.resultCount", resultCount, resultCount == 1 ? "" : "s").getString();
-        int resultWidth = this.textRenderer.getWidth(resultLabel);
-        int resultX = Math.max(layout.sortButtonX + SORT_BUTTON_WIDTH + 8, layout.refreshButtonX - resultWidth - 6);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
+        int resultMinX = layout.sortButtonX + SORT_BUTTON_WIDTH + 8;
+        int resultMaxX = layout.refreshButtonX - 6;
+        int maxResultWidth = resultMaxX - resultMinX;
+        if (maxResultWidth > this.textRenderer.getWidth("...")) {
+            String displayResultLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, resultLabel, maxResultWidth);
+            int resultX = resultMaxX - this.textRenderer.getWidth(displayResultLabel);
+            context.drawTextWithShadow(this.textRenderer, Text.literal(displayResultLabel), resultX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
+        }
 
         boolean refreshHovered = isPointInRect(mouseX, mouseY, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE);
         drawIconButton(context, layout.refreshButtonX, layout.refreshButtonY, REFRESH_BUTTON_SIZE, REFRESH_BUTTON_SIZE, refreshHovered, loading);
@@ -585,12 +575,12 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void renderPresetCard(DrawContext context, int mouseX, int mouseY, Rect rect, MarketplacePreset preset, boolean selected) {
         boolean hovered = isPointInRect(mouseX, mouseY, rect.x, rect.y, rect.width, rect.height);
-        float hoverProgress = hovered ? 1f : 0f;
+        float hoverProgress = hovered ? 1f : selected ? 0.55f : 0f;
         int bgColor = hoverProgress > 0.001f
-            ? AnimationHelper.lerpColor(MARKET_CARD, MARKET_CARD_HOVER, hoverProgress)
-            : MARKET_CARD;
-        int borderColor = AnimationHelper.lerpColor(MARKET_MUTED_BORDER, MARKET_ACCENT_BLUE, hoverProgress * 0.75f);
-        UIStyleHelper.drawBeveledPanel(context, rect.x, rect.y, rect.width, rect.height, bgColor, borderColor, MARKET_PANEL_DARK);
+            ? AnimationHelper.lerpColor(UITheme.BACKGROUND_TERTIARY, UITheme.TOOLBAR_BG_HOVER, hoverProgress * 0.45f)
+            : UITheme.BACKGROUND_TERTIARY;
+        int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, getAccentColor(), hoverProgress);
+        UIStyleHelper.drawBeveledPanel(context, rect.x, rect.y, rect.width, rect.height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
 
         int previewX = rect.x + 8;
         int previewY = rect.y + 8;
@@ -602,9 +592,9 @@ public class PathmindMarketplaceScreen extends Screen {
             previewY,
             previewWidth,
             previewHeight,
-            MARKET_PREVIEW,
-            0xFF242B31,
-            UITheme.BORDER_SUBTLE
+            UITheme.BACKGROUND_PRIMARY,
+            UITheme.BORDER_SUBTLE,
+            UITheme.PANEL_INNER_BORDER
         );
         graphPreviewRenderer.renderSurface(context, previewX, previewY, previewWidth, previewHeight, preset, false, false, 0f, 0f);
 
@@ -627,12 +617,12 @@ public class PathmindMarketplaceScreen extends Screen {
         if (!preset.isPublished()) {
             drawPrivateEyeIcon(context, previewX + 6, previewY + 6, UITheme.STATE_WARNING);
         }
-        int footerY = previewY + previewHeight + 5;
-        context.fill(rect.x + 5, footerY - 1, rect.x + rect.width - 5, rect.y + rect.height - 5, MARKET_FOOTER);
         int textX = rect.x + 8;
         String downloadsLine = Text.translatable("pathmind.marketplace.downloadsShort", preset.getDownloadsCount()).getString();
         String likesLine = Text.translatable("pathmind.marketplace.likesShort", preset.getLikesCount()).getString();
         int statsRight = rect.x + rect.width - 8;
+        int downloadsColor = UITheme.STATE_SUCCESS;
+        int likesColor = UITheme.MARKETPLACE_LIKE;
         int footerTop = previewY + previewHeight + 8;
         int statsLineY = footerTop + 3;
         int statsSecondLineY = footerTop + 14;
@@ -646,14 +636,12 @@ public class PathmindMarketplaceScreen extends Screen {
         boolean authorHovered = isPointInRect(mouseX, mouseY, authorRect.x, authorRect.y, authorRect.width, authorRect.height);
         renderAuthorLink(context, "marketplace-author-card:" + preset.getId(), authorLabel, textX, footerTop + 10, authorHovered,
             UITheme.TEXT_SECONDARY, UITheme.TEXT_PRIMARY);
-        int statWidth = Math.max(28, statsBlockWidth + 8);
-        drawCardStatPill(context, statsRight - statWidth, statsLineY - 2, statWidth, downloadsLine, UITheme.STATE_SUCCESS);
-        drawCardStatPill(context, statsRight - statWidth, statsSecondLineY - 2, statWidth, likesLine, UITheme.MARKETPLACE_LIKE);
-    }
-
-    private void drawCardStatPill(DrawContext context, int x, int y, int width, String label, int color) {
-        context.fill(x, y, x + width, y + 11, 0x660C1014);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), x + width - this.textRenderer.getWidth(label) - 3, y + 2, color);
+        context.drawTextWithShadow(this.textRenderer,
+            Text.literal(downloadsLine),
+            statsRight - this.textRenderer.getWidth(downloadsLine), statsLineY, downloadsColor);
+        context.drawTextWithShadow(this.textRenderer,
+            Text.literal(likesLine),
+            statsRight - this.textRenderer.getWidth(likesLine), statsSecondLineY, likesColor);
     }
 
     private void renderAuthorDirectory(DrawContext context, int mouseX, int mouseY, Layout layout) {
@@ -785,18 +773,16 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void drawGalleryBackdrop(DrawContext context, int x, int y, int width, int height) {
-        context.fill(x - 6, y - 2, x + width + 6, y + height + 2, MARKET_PANEL_DARK);
-        DrawContextBridge.drawBorder(context, x - 6, y - 2, width + 12, height + 4, 0x882A3138);
-        int dotColor = 0x143B4650;
-        int lineColor = 0x0D37444D;
-        for (int lineX = x + 18; lineX < x + width; lineX += 46) {
+        int dotColor = UITheme.MARKETPLACE_PREVIEW_DOT;
+        int lineColor = UITheme.MARKETPLACE_PREVIEW_LINE;
+        for (int lineX = x + 16; lineX < x + width; lineX += 40) {
             context.drawVerticalLine(lineX, y + 4, y + height - 5, lineColor);
         }
-        for (int lineY = y + 18; lineY < y + height; lineY += 42) {
+        for (int lineY = y + 12; lineY < y + height; lineY += 40) {
             context.drawHorizontalLine(x + 4, x + width - 5, lineY, lineColor);
         }
-        for (int dotX = x + 18; dotX < x + width - 4; dotX += 23) {
-            for (int dotY = y + 18; dotY < y + height - 4; dotY += 21) {
+        for (int dotX = x + 16; dotX < x + width - 4; dotX += 20) {
+            for (int dotY = y + 12; dotY < y + height - 4; dotY += 20) {
                 context.fill(dotX, dotY, dotX + 1, dotY + 1, dotColor);
             }
         }
@@ -804,8 +790,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void renderFooter(DrawContext context, int mouseX, int mouseY, Layout layout) {
         int footerY = layout.sectionY + layout.sectionHeight - FOOTER_HEIGHT;
-        context.fill(layout.sectionX, footerY, layout.sectionX + layout.sectionWidth, this.height - OUTER_PADDING, MARKET_PANEL_DARK);
-        context.drawHorizontalLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, footerY, MARKET_MUTED_BORDER);
+        context.drawHorizontalLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, footerY, UITheme.BORDER_SUBTLE);
 
         int footerBottom = this.height - OUTER_PADDING;
         int centerY = footerY + Math.max(6, (footerBottom - footerY - this.textRenderer.fontHeight) / 2 + 8);
@@ -1608,33 +1593,9 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void drawIconButton(DrawContext context, int x, int y, int width, int height, boolean hovered, boolean disabled) {
-        int bgColor = disabled ? UITheme.TOOLBAR_BG_DISABLED : hovered ? MARKET_CARD_HOVER : MARKET_PANEL;
-        int borderColor = disabled ? UITheme.BORDER_SUBTLE : hovered ? MARKET_ACCENT : MARKET_MUTED_BORDER;
-        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, bgColor, borderColor, MARKET_PANEL_DARK);
-    }
-
-    private void drawMarketplacePopupFrame(DrawContext context, int x, int y, int width, int height,
-                                           PopupAnimationHandler animation, String title, boolean centeredTitle) {
-        UIStyleHelper.drawBeveledPanel(
-            context,
-            x,
-            y,
-            width,
-            height,
-            animation.getAnimatedPopupColor(MARKET_PANEL_DARK),
-            animation.getAnimatedPopupColor(MARKET_MUTED_BORDER),
-            animation.getAnimatedPopupColor(MARKET_PANEL)
-        );
-        context.fill(x + 2, y + 2, x + width - 2, y + 30, animation.getAnimatedPopupColor(0xCC171B20));
-        context.drawHorizontalLine(x + 3, x + width - 4, y + 2, animation.getAnimatedPopupColor(MARKET_ACCENT_BLUE));
-        context.drawHorizontalLine(x + 2, x + width - 3, y + 30, animation.getAnimatedPopupColor(MARKET_MUTED_BORDER));
-        if (centeredTitle) {
-            context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(title), x + width / 2, y + 11,
-                animation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
-        } else {
-            context.drawTextWithShadow(this.textRenderer, Text.literal(title), x + 12, y + 10,
-                animation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
-        }
+        int bgColor = disabled ? UITheme.TOOLBAR_BG_DISABLED : hovered ? UITheme.TOOLBAR_BG_HOVER : UITheme.BACKGROUND_SECTION;
+        int borderColor = disabled ? UITheme.BORDER_SUBTLE : hovered ? getAccentColor() : UITheme.BORDER_SUBTLE;
+        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, bgColor, borderColor, UITheme.PANEL_INNER_BORDER);
     }
 
     private void drawActionButton(DrawContext context, int x, int y, int width, int height, String label, boolean hovered, boolean disabled) {
@@ -1643,13 +1604,14 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void drawActionButton(DrawContext context, int x, int y, int width, int height, String label,
                                   boolean hovered, boolean disabled, boolean active) {
-        int bgColor = disabled ? UITheme.TOOLBAR_BG_DISABLED : active
-            ? AnimationHelper.lerpColor(MARKET_PANEL, MARKET_ACCENT, 0.28f)
-            : hovered ? MARKET_CARD_HOVER : MARKET_PANEL;
-        int borderColor = disabled ? UITheme.BORDER_SUBTLE : active ? MARKET_ACCENT : hovered ? MARKET_ACCENT_BLUE : MARKET_MUTED_BORDER;
-        int innerColor = active ? AnimationHelper.lerpColor(MARKET_PANEL_DARK, MARKET_ACCENT, 0.18f) : MARKET_PANEL_DARK;
-        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, bgColor, borderColor, innerColor);
-        int textColor = disabled ? UITheme.TEXT_TERTIARY : active ? UITheme.TEXT_HEADER : hovered ? MARKET_ACCENT : UITheme.TEXT_PRIMARY;
+        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(
+            active ? UIStyleHelper.TextButtonStyle.PRIMARY : UIStyleHelper.TextButtonStyle.DEFAULT,
+            getAccentColor(),
+            hovered || active,
+            disabled
+        );
+        UIStyleHelper.drawTextButtonFrame(context, x, y, width, height, palette);
+        int textColor = palette.textColor();
         int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
         int textY = y + (height - this.textRenderer.fontHeight) / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY, textColor);
@@ -1662,29 +1624,8 @@ public class PathmindMarketplaceScreen extends Screen {
 
     void drawAnimatedActionButton(DrawContext context, int x, int y, int width, int height, String label,
                                           boolean hovered, boolean disabled, PopupAnimationHandler animation, float hoverProgress) {
-        float easedHover = AnimationHelper.easeOutQuad(Math.max(0f, Math.min(1f, hoverProgress)));
-        if (!disabled && easedHover > 0.001f) {
-            int glowColor = animation.getAnimatedPopupColor(AnimationHelper.lerpColor(MARKET_ACCENT_BLUE, MARKET_ACCENT, 0.25f));
-            int alpha = Math.min(54, Math.round(48f * easedHover * animation.getPopupAlpha()));
-            context.fill(x - 1, y - 1, x + width + 1, y + height + 1, (alpha << 24) | (glowColor & 0x00FFFFFF));
-        }
-        int background = disabled ? UITheme.TOOLBAR_BG_DISABLED : AnimationHelper.lerpColor(MARKET_PANEL, MARKET_CARD_HOVER, easedHover);
-        int border = disabled ? UITheme.BORDER_SUBTLE : AnimationHelper.lerpColor(MARKET_MUTED_BORDER, MARKET_ACCENT_BLUE, easedHover);
-        int textColor = disabled ? UITheme.TEXT_TERTIARY : AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, MARKET_ACCENT, easedHover);
-        UIStyleHelper.drawToolbarButtonFrame(
-            context,
-            x,
-            y,
-            width,
-            height,
-            animation.getAnimatedPopupColor(background),
-            animation.getAnimatedPopupColor(border),
-            animation.getAnimatedPopupColor(MARKET_PANEL_DARK)
-        );
-        int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
-        int textY = y + (height - this.textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY,
-            animation.getAnimatedPopupColor(textColor));
+        PathmindPopupRenderer.drawAnimatedActionButton(context, this.textRenderer, x, y, width, height,
+            label, disabled, hoverProgress, getAccentColor(), animation);
     }
 
     private void drawAnimatedActionButton(DrawContext context, int x, int y, int width, int height, String label,
@@ -1826,7 +1767,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int headerHeight = getSectionHeaderHeight();
         int bodyY = layout.sectionY + headerHeight;
         int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
-        int columns = getGridColumns(layout);
+        int columns = getGridColumns();
         int totalRows = (int) Math.ceil((double) presets.size() / Math.max(1, columns));
         int totalContentHeight = totalRows * (CARD_SIZE + CARD_GAP);
         int maxScroll = Math.max(0, totalContentHeight - bodyHeight);
@@ -3491,14 +3432,13 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Rect getCardRect(Layout layout, int absoluteIndex, int scrollOffset) {
-        int columns = getGridColumns(layout);
+        int columns = getGridColumns();
         int bodyY = layout.sectionY + getSectionHeaderHeight() + 2;
-        int availableWidth = getCardGridWidth(layout);
+        int availableWidth = layout.bodyWidth;
         int cardWidth = Math.min(CARD_MAX_WIDTH, (availableWidth - (columns - 1) * CARD_GAP) / columns);
-        int gridWidth = columns * cardWidth + (columns - 1) * CARD_GAP;
         int column = absoluteIndex % columns;
         int row = absoluteIndex / columns;
-        int startX = layout.bodyX + Math.max(0, (availableWidth - gridWidth) / 2);
+        int startX = layout.bodyX;
         return new Rect(
             startX + column * (cardWidth + CARD_GAP),
             bodyY + row * (CARD_SIZE + CARD_GAP) - scrollOffset,
@@ -3507,25 +3447,19 @@ public class PathmindMarketplaceScreen extends Screen {
         );
     }
 
-    private int getGridColumns(Layout layout) {
-        int preferredCardWidth = 126;
-        int responsiveColumns = Math.max(3, Math.min(5, (getCardGridWidth(layout) + CARD_GAP) / (preferredCardWidth + CARD_GAP)));
-        return Math.max(1, Math.max(PRESET_GRID_COLUMNS, responsiveColumns));
-    }
-
-    private int getCardGridWidth(Layout layout) {
-        return Math.max(1, layout.bodyWidth - 14);
+    private int getGridColumns() {
+        return PRESET_GRID_COLUMNS;
     }
 
     private int getCardsPerPage(Layout layout) {
-        return getGridColumns(layout) * PRESET_GRID_ROWS;
+        return PRESET_GRID_COLUMNS * PRESET_GRID_ROWS;
     }
 
     private int getFirstVisibleCardIndex(Layout layout, int scrollOffset) {
         if (presets.isEmpty()) {
             return 0;
         }
-        int columns = Math.max(1, getGridColumns(layout));
+        int columns = Math.max(1, getGridColumns());
         int firstRow = Math.max(0, (scrollOffset - CARD_SIZE) / (CARD_SIZE + CARD_GAP));
         int firstIndex = firstRow * columns;
         return Math.max(0, Math.min(firstIndex, presets.size() - 1));
@@ -3535,7 +3469,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (presets.isEmpty()) {
             return -1;
         }
-        int columns = Math.max(1, getGridColumns(layout));
+        int columns = Math.max(1, getGridColumns());
         int headerHeight = getSectionHeaderHeight();
         int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
         int lastRow = Math.max(0, (scrollOffset + bodyHeight + CARD_SIZE) / (CARD_SIZE + CARD_GAP));
@@ -3940,23 +3874,8 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     int drawStatusBadge(DrawContext context, int x, int y, String label, int accentColor, boolean popup) {
-        String text = fallback(label, "");
-        int width = Math.max(26, this.textRenderer.getWidth(text) + 10);
-        int height = 12;
-        int background = popup
-            ? presetPopupAnimation.getAnimatedPopupColor(MARKET_PANEL)
-            : MARKET_PANEL;
-        int border = popup
-            ? presetPopupAnimation.getAnimatedPopupColor(accentColor)
-            : accentColor;
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, background, border, popup
-            ? presetPopupAnimation.getAnimatedPopupColor(MARKET_PANEL_DARK)
-            : MARKET_PANEL_DARK);
-        int textColor = popup
-            ? presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY)
-            : UITheme.TEXT_PRIMARY;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(text), x + 5, y + 2, textColor);
-        return width;
+        return PathmindPopupRenderer.drawStatusBadge(context, this.textRenderer, x, y, fallback(label, ""), accentColor,
+            popup ? presetPopupAnimation : null);
     }
 
     private boolean isAnyVersion(String value) {
@@ -3981,10 +3900,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private String getInstalledPathmindVersion() {
-        Optional<String> version = FabricLoader.getInstance()
-            .getModContainer(PathmindMod.MOD_ID)
-            .map(container -> container.getMetadata().getVersion().getFriendlyString());
-        return version.orElse(Text.translatable("pathmind.marketplace.unknown").getString());
+        return LoaderMetadata.getModVersion(PathmindCommon.MOD_ID);
     }
 
 
@@ -4006,7 +3922,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private int getSectionHeaderHeight() {
         if (isViewingAuthorProfile()) {
-            return SECTION_HEADER_HEIGHT + 12;
+            return SECTION_HEADER_HEIGHT;
         }
         return myPresetsOnly ? SECTION_HEADER_HEIGHT + MY_PRESET_FILTER_BUTTON_HEIGHT + 8 : SECTION_HEADER_HEIGHT;
     }

@@ -260,14 +260,12 @@ public class PathmindMarketplaceScreen extends Screen {
     private void refreshListings() {
         loading = true;
         statusMessage = myPresetsOnly ? Text.translatable("pathmind.marketplace.loadingYourPresets").getString() : Text.translatable("pathmind.marketplace.loadingPublishedPresets").getString();
-        CompletableFuture<List<MarketplacePreset>> request = myPresetsOnly && authSession != null
-            ? MarketplaceService.fetchManageablePresets(authSession.getAccessToken())
-            : MarketplaceService.fetchPublishedPresets(sortMode.toListingMode());
-        request.whenComplete((results, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> {
+        PathmindMarketplaceAsyncController.fetchListings(
+            this.client,
+            myPresetsOnly && authSession != null,
+            authSession == null ? null : authSession.getAccessToken(),
+            sortMode.toListingMode(),
+            (results, throwable) -> {
                 loading = false;
                 if (throwable != null) {
                     allPresets = List.of();
@@ -282,7 +280,6 @@ public class PathmindMarketplaceScreen extends Screen {
                 allPresets = PathmindMarketplaceActions.dedupePresetsById(results);
                 applyFilters();
             });
-        });
     }
 
     @Override
@@ -1754,12 +1751,12 @@ public class PathmindMarketplaceScreen extends Screen {
         popupStatusMessage = Text.translatable("pathmind.status.downloadingPreset").getString();
         popupStatusColor = UITheme.TEXT_SECONDARY;
 
-        MarketplaceService.downloadPresetToTempFile(popupPreset, authSession == null ? null : authSession.getAccessToken()).whenComplete((path, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> finishPresetImport(path, throwable));
-        });
+        PathmindMarketplaceAsyncController.downloadPresetToTempFile(
+            this.client,
+            popupPreset,
+            authSession == null ? null : authSession.getAccessToken(),
+            this::finishPresetImport
+        );
     }
 
     private void finishPresetImport(Path path, Throwable throwable) {
@@ -1803,12 +1800,11 @@ public class PathmindMarketplaceScreen extends Screen {
                     if (!limitCheck.permitted()) {
                         return;
                     }
-                    MarketplaceService.incrementDownload(session.getAccessToken(), importedMarketplacePreset.getId())
-                        .whenComplete((unused, incrementThrowable) -> {
-                            if (incrementThrowable == null && this.client != null) {
-                                this.client.execute(() -> applyPresetCountUpdate(importedMarketplacePreset.getId(), 0, 1));
-                            }
-                        });
+                    PathmindMarketplaceAsyncController.incrementDownload(this.client, session.getAccessToken(), importedMarketplacePreset.getId(), (unused, incrementThrowable) -> {
+                        if (incrementThrowable == null) {
+                            applyPresetCountUpdate(importedMarketplacePreset.getId(), 0, 1);
+                        }
+                    });
                 }, null);
             }
             cleanupTempFile(path);
@@ -1881,12 +1877,12 @@ public class PathmindMarketplaceScreen extends Screen {
             popupStatusMessage = isPresetSavedLocally(preset) ? Text.translatable("pathmind.status.alreadySavedLocally").getString() : Text.translatable("pathmind.status.savingPresetLocally").getString();
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
-        MarketplaceService.downloadPresetToTempFile(preset, authSession == null ? null : authSession.getAccessToken()).whenComplete((path, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> finishSavePresetLocally(preset, path, throwable, activateAfterImport));
-        });
+        PathmindMarketplaceAsyncController.downloadPresetToTempFile(
+            this.client,
+            preset,
+            authSession == null ? null : authSession.getAccessToken(),
+            (path, throwable) -> finishSavePresetLocally(preset, path, throwable, activateAfterImport)
+        );
     }
 
     private void finishSavePresetLocally(MarketplacePreset preset, Path path, Throwable throwable, boolean activateAfterImport) {
@@ -1940,11 +1936,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void refreshAuthState(boolean silent) {
         authBusy = true;
-        MarketplaceAuthManager.ensureValidSession().whenComplete((session, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> {
+        PathmindMarketplaceAsyncController.ensureValidSession(this.client, (session, throwable) -> {
                 authBusy = false;
                 if (throwable != null || session == null) {
                     authSession = null;
@@ -1969,7 +1961,6 @@ public class PathmindMarketplaceScreen extends Screen {
                     applyFilters();
                 }
                 refreshLikedPresetIds(silent);
-            });
         });
     }
 
@@ -1979,12 +1970,7 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         authBusy = true;
-        MarketplaceService.fetchLikedPresetIds(authSession.getAccessToken(), authSession.getUserId())
-            .whenComplete((likedPresetIds, throwable) -> {
-                if (this.client == null) {
-                    return;
-                }
-                this.client.execute(() -> {
+        PathmindMarketplaceAsyncController.fetchLikedPresetIds(this.client, authSession.getAccessToken(), authSession.getUserId(), (likedPresetIds, throwable) -> {
                     authBusy = false;
                     if (throwable != null || likedPresetIds == null) {
                         if (!silent && popupPreset != null) {
@@ -2000,7 +1986,6 @@ public class PathmindMarketplaceScreen extends Screen {
                         popupStatusColor = getAccentColor();
                     }
                 });
-            });
     }
 
     private void handleAuthButton() {
@@ -2013,11 +1998,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 popupStatusMessage = Text.translatable("pathmind.status.openingDiscordSignIn").getString();
                 popupStatusColor = UITheme.TEXT_SECONDARY;
             }
-            MarketplaceAuthManager.startDiscordSignIn().whenComplete((session, throwable) -> {
-                if (this.client == null) {
-                    return;
-                }
-                this.client.execute(() -> {
+            PathmindMarketplaceAsyncController.startDiscordSignIn(this.client, (session, throwable) -> {
                     authBusy = false;
                     if (throwable != null || session == null) {
                         if (popupPreset != null) {
@@ -2033,7 +2014,6 @@ public class PathmindMarketplaceScreen extends Screen {
                         applyFilters();
                     }
                     refreshLikedPresetIds(false);
-                });
             });
             return;
         }
@@ -2044,11 +2024,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void startSignOut() {
         authBusy = true;
-        MarketplaceAuthManager.signOut().whenComplete((unused, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> {
+        PathmindMarketplaceAsyncController.signOut(this.client, (unused, throwable) -> {
                 authBusy = false;
                 authSession = null;
                 isMarketplaceModerator = false;
@@ -2063,7 +2039,6 @@ public class PathmindMarketplaceScreen extends Screen {
                     popupStatusMessage = throwable == null ? Text.translatable("pathmind.status.signedOut").getString() : Text.translatable("pathmind.status.failedSignOutCleanly").getString();
                     popupStatusColor = throwable == null ? UITheme.TEXT_SECONDARY : UITheme.STATE_ERROR;
                 }
-            });
         });
     }
 
@@ -2082,12 +2057,7 @@ public class PathmindMarketplaceScreen extends Screen {
             applyFilters();
             return;
         }
-        MarketplaceService.fetchMarketplaceModeratorStatus(authSession.getAccessToken(), authSession.getUserId())
-            .whenComplete((moderator, throwable) -> {
-                if (this.client == null) {
-                    return;
-                }
-                this.client.execute(() -> {
+        PathmindMarketplaceAsyncController.fetchModeratorStatus(this.client, authSession.getAccessToken(), authSession.getUserId(), (moderator, throwable) -> {
                     if (throwable != null || moderator == null) {
                         if (!silent) {
                             applyFilters();
@@ -2097,7 +2067,6 @@ public class PathmindMarketplaceScreen extends Screen {
                     isMarketplaceModerator = moderator;
                     applyFilters();
                 });
-            });
     }
 
     private void openPublishPopup(String presetName) {
@@ -2338,11 +2307,7 @@ public class PathmindMarketplaceScreen extends Screen {
             publishVisibilityPublic
         );
 
-        MarketplaceAuthManager.ensureValidSession().whenComplete((session, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> {
+        PathmindMarketplaceAsyncController.ensureValidSession(this.client, (session, throwable) -> {
                 if (throwable != null || session == null) {
                     publishBusy = false;
                     authBusy = false;
@@ -2360,16 +2325,11 @@ public class PathmindMarketplaceScreen extends Screen {
                         return;
                     }
                 }
-                CompletableFuture<MarketplacePreset> submitFuture = editingPreset == null
-                    ? MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
-                    : MarketplaceService.updatePresetMetadata(session.getAccessToken(), editingPreset, request);
-                submitFuture.whenComplete((preset, submitThrowable) -> {
-                    if (this.client == null) {
-                        return;
-                    }
-                    this.client.execute(() -> finishPublishSubmission(preset, submitThrowable));
-                });
-            });
+                if (editingPreset == null) {
+                    PathmindMarketplaceAsyncController.publishPreset(this.client, session.getAccessToken(), session.getUserId(), request, this::finishPublishSubmission);
+                } else {
+                    PathmindMarketplaceAsyncController.updatePresetMetadata(this.client, session.getAccessToken(), editingPreset, request, this::finishPublishSubmission);
+                }
         });
     }
 
@@ -2433,12 +2393,7 @@ public class PathmindMarketplaceScreen extends Screen {
             popupStatusMessage = isPresetLiked(target) ? Text.translatable("pathmind.status.removingLike").getString() : Text.translatable("pathmind.status.savingLike").getString();
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
-        withFreshAuthSession(session -> MarketplaceService.toggleLike(session.getAccessToken(), target.getId(), session.getUserId())
-            .whenComplete((liked, throwable) -> {
-                if (this.client == null) {
-                    return;
-                }
-                this.client.execute(() -> {
+        withFreshAuthSession(session -> PathmindMarketplaceAsyncController.toggleLike(this.client, session.getAccessToken(), target.getId(), session.getUserId(), (liked, throwable) -> {
                     authBusy = false;
                     pendingLikePresetId = null;
                     if (throwable != null || liked == null) {
@@ -2455,17 +2410,12 @@ public class PathmindMarketplaceScreen extends Screen {
                         popupStatusMessage = liked ? Text.translatable("pathmind.status.presetLiked").getString() : Text.translatable("pathmind.status.likeRemoved").getString();
                         popupStatusColor = getAccentColor();
                     }
-                });
-            }),
+                }),
             updatePopupStatus ? Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString() : null);
     }
 
     private void withFreshAuthSession(Consumer<MarketplaceAuthManager.AuthSession> action, String failureMessage) {
-        MarketplaceAuthManager.ensureValidSession().whenComplete((session, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> {
+        PathmindMarketplaceAsyncController.ensureValidSession(this.client, (session, throwable) -> {
                 if (throwable != null || session == null) {
                     authBusy = false;
                     pendingLikePresetId = null;
@@ -2482,7 +2432,6 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 authSession = session;
                 action.accept(session);
-            });
         });
     }
 
@@ -2507,13 +2456,7 @@ public class PathmindMarketplaceScreen extends Screen {
             popupStatusMessage = Text.translatable("pathmind.status.deletingPreset").getString();
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
-        withFreshAuthSession(session -> MarketplaceService.deletePreset(session.getAccessToken(), preset.getId(), preset.getStorageBucket(), preset.getFilePath())
-            .whenComplete((unused, throwable) -> {
-                if (this.client == null) {
-                    return;
-                }
-                this.client.execute(() -> finishDeletePreset(preset, throwable, fromPopup));
-            }),
+        withFreshAuthSession(session -> PathmindMarketplaceAsyncController.deletePreset(this.client, session.getAccessToken(), preset, (unused, throwable) -> finishDeletePreset(preset, throwable, fromPopup)),
             fromPopup ? Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString() : null);
     }
 
@@ -2626,12 +2569,7 @@ public class PathmindMarketplaceScreen extends Screen {
         popupStatusColor = UITheme.TEXT_SECONDARY;
         MarketplaceService.PublishRequest request = PathmindMarketplaceActions.updateFromLocalRequest(localPresetPath, popupPreset);
 
-        withFreshAuthSession(session -> MarketplaceService.updatePresetMetadata(session.getAccessToken(), popupPreset, request)
-            .whenComplete((updatedPreset, throwable) -> {
-                if (this.client == null) {
-                    return;
-                }
-                this.client.execute(() -> {
+        withFreshAuthSession(session -> PathmindMarketplaceAsyncController.updatePresetMetadata(this.client, session.getAccessToken(), popupPreset, request, (updatedPreset, throwable) -> {
                     publishBusy = false;
                     authBusy = false;
                     if (throwable != null || updatedPreset == null) {
@@ -2647,8 +2585,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     popupStatusMessage = Text.translatable("pathmind.status.presetUpdatedFromLocalChanges").getString();
                     popupStatusColor = getAccentColor();
                     applyFilters();
-                });
-            }),
+                }),
             Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString());
     }
 

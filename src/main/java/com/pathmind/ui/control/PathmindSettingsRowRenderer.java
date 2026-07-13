@@ -5,6 +5,7 @@ import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.TextFieldWidget;
@@ -197,6 +198,46 @@ public final class PathmindSettingsRowRenderer {
             animation
         );
         UIStyleHelper.drawSliderHandle(context, handleX, handleY, sliderHandleWidth, sliderHandleHeight, handlePalette);
+    }
+
+    public static void renderStatusListRow(DrawContext context, TextRenderer textRenderer,
+                                           int x, int y, int width, int height,
+                                           String label, String status,
+                                           boolean hovered, boolean selected,
+                                           int accentColor, PopupAnimationHandler animation) {
+        int rowBg = selected ? UITheme.DROPDOWN_OPTION_HOVER : hovered ? UITheme.BORDER_SECTION : UITheme.DROPDOWN_OPTION_BG;
+        int rowBorder = selected ? accentColor : UITheme.BORDER_SUBTLE;
+        context.fill(
+            x + 1,
+            y + 1,
+            x + width - 1,
+            y + height - 1,
+            PathmindPopupRenderer.animatedColor(animation, rowBg)
+        );
+        DrawContextBridge.drawBorder(context, x, y, width, height, PathmindPopupRenderer.animatedColor(animation, rowBorder));
+
+        String safeStatus = status == null ? "" : status;
+        int statusWidth = safeStatus.isEmpty() ? 0 : textRenderer.getWidth(safeStatus);
+        int maxLabelWidth = Math.max(0, width - 12 - statusWidth - (safeStatus.isEmpty() ? 0 : 8));
+        String rowText = TextRenderUtil.trimWithEllipsis(textRenderer, label == null ? "" : label, maxLabelWidth);
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(rowText),
+            x + 6,
+            y + (height - textRenderer.fontHeight) / 2 + 1,
+            PathmindPopupRenderer.animatedColor(animation, UITheme.TEXT_PRIMARY)
+        );
+
+        if (!safeStatus.isEmpty()) {
+            int statusColor = selected ? accentColor : PathmindPopupRenderer.animatedColor(animation, UITheme.TEXT_TERTIARY);
+            context.drawTextWithShadow(
+                textRenderer,
+                Text.literal(safeStatus),
+                x + width - statusWidth - 6,
+                y + (height - textRenderer.fontHeight) / 2 + 1,
+                statusColor
+            );
+        }
     }
 
     private static UIStyleHelper.SliderPalette animatedSliderPalette(UIStyleHelper.SliderPalette palette,

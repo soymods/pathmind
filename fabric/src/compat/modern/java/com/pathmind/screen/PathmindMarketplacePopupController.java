@@ -1,6 +1,7 @@
 package com.pathmind.screen;
 
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.control.PathmindDropdownRenderer;
 import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
@@ -554,31 +555,30 @@ final class PathmindMarketplacePopupController {
         if (animProgress <= 0.001f) {
             return;
         }
+        int visibleCount = Math.min(6, presetOptions.size());
         PathmindMarketplaceScreen.Rect bounds = screen.getUpdateConfirmSourceDropdownBounds(popupX, popupY, popupWidth, presetOptions.size());
-        int animatedHeight = Math.max(1, (int) (bounds.height() * animProgress));
-        context.enableScissor(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + animatedHeight + 1);
-        UIStyleHelper.drawBeveledPanel(
+        PathmindDropdownRenderer.renderTextList(
             context,
-            bounds.x(),
-            bounds.y(),
-            bounds.width(),
-            bounds.height(),
-            UITheme.BACKGROUND_SECONDARY,
-            UITheme.BORDER_DEFAULT,
-            UITheme.PANEL_INNER_BORDER
+            screen.textRenderer(),
+            PathmindDropdownRenderer.TextListSpec.builder()
+                .bounds(bounds.x(), bounds.y(), bounds.width())
+                .rows(PathmindMarketplaceScreen.SORT_OPTION_HEIGHT, visibleCount, presetOptions.size())
+                .scroll(0, 0, 0)
+                .animation(animProgress)
+                .hoverPoint(mouseX, mouseY)
+                .colors(screen.getAccentColor(), UITheme.TEXT_PRIMARY)
+                .textLayout(8, 5, false, true)
+                .labels("", presetOptions::get)
+                .textColors(index -> presetOptions.get(index).equalsIgnoreCase(screen.publishSourcePresetName) ? screen.getAccentColor() : UITheme.TEXT_PRIMARY)
+                .chrome(new UIStyleHelper.ScrollContainerPalette(
+                    UITheme.BACKGROUND_SECONDARY,
+                    UITheme.BORDER_DEFAULT,
+                    UITheme.PANEL_INNER_BORDER,
+                    UITheme.BORDER_DEFAULT,
+                    UITheme.BORDER_DEFAULT
+                ), UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT)
+                .build()
         );
-        for (int i = 0; i < presetOptions.size() && i < 6; i++) {
-            int optionY = bounds.y() + i * PathmindMarketplaceScreen.SORT_OPTION_HEIGHT;
-            boolean hovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, bounds.x() + 1, optionY + 1, bounds.width() - 2, PathmindMarketplaceScreen.SORT_OPTION_HEIGHT - 1);
-            int optionColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-            context.fill(bounds.x() + 1, optionY + 1, bounds.x() + bounds.width() - 1, optionY + PathmindMarketplaceScreen.SORT_OPTION_HEIGHT, optionColor);
-            if (i > 0) {
-                context.drawHorizontalLine(bounds.x() + 1, bounds.x() + bounds.width() - 2, optionY, UITheme.BORDER_SUBTLE);
-            }
-            String presetName = presetOptions.get(i);
-            int textColor = presetName.equalsIgnoreCase(screen.publishSourcePresetName) ? screen.getAccentColor() : UITheme.TEXT_PRIMARY;
-            context.drawTextWithShadow(screen.textRenderer(), Text.literal(presetName), bounds.x() + 8, optionY + 5, textColor);
-        }
-        context.disableScissor();
     }
+
 }

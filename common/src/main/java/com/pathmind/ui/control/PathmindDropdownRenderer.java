@@ -68,7 +68,8 @@ public final class PathmindDropdownRenderer {
                 int textX = spec.centerText
                     ? spec.x + Math.max(spec.textPadding, (spec.width - textRenderer.getWidth(rowText)) / 2)
                     : spec.x + spec.textPadding;
-                int textColor = hovered ? rowPalette.textColor() : spec.textColor;
+                int baseTextColor = spec.textColorProvider == null ? spec.textColor : spec.textColorProvider.apply(optionIndex);
+                int textColor = hovered ? rowPalette.textColor() : baseTextColor;
                 context.drawText(textRenderer, Text.literal(rowText), textX, rowTop + spec.textOffsetY, textColor, false);
             }
         }
@@ -112,6 +113,7 @@ public final class PathmindDropdownRenderer {
         private final boolean renderText;
         private final String emptyLabel;
         private final IntFunction<String> labelProvider;
+        private final IntFunction<Integer> textColorProvider;
         private final UIStyleHelper.ScrollContainerPalette containerPalette;
         private final int scrollbarTrackColor;
         private final int scrollbarThumbColor;
@@ -138,6 +140,7 @@ public final class PathmindDropdownRenderer {
             this.renderText = builder.renderText;
             this.emptyLabel = builder.emptyLabel == null ? "" : builder.emptyLabel;
             this.labelProvider = builder.labelProvider == null ? index -> "" : builder.labelProvider;
+            this.textColorProvider = builder.textColorProvider;
             this.containerPalette = builder.containerPalette;
             this.scrollbarTrackColor = builder.scrollbarTrackColor;
             this.scrollbarThumbColor = builder.scrollbarThumbColor;
@@ -170,6 +173,7 @@ public final class PathmindDropdownRenderer {
         private boolean renderText = true;
         private String emptyLabel = "";
         private IntFunction<String> labelProvider;
+        private IntFunction<Integer> textColorProvider;
         private UIStyleHelper.ScrollContainerPalette containerPalette;
         private int scrollbarTrackColor;
         private int scrollbarThumbColor;
@@ -224,6 +228,11 @@ public final class PathmindDropdownRenderer {
         public Builder labels(String emptyLabel, IntFunction<String> labelProvider) {
             this.emptyLabel = emptyLabel;
             this.labelProvider = labelProvider;
+            return this;
+        }
+
+        public Builder textColors(IntFunction<Integer> textColorProvider) {
+            this.textColorProvider = textColorProvider;
             return this;
         }
 

@@ -14,6 +14,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.control.PathmindDropdownRenderer;
 import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.ToggleSwitch;
@@ -1574,35 +1575,30 @@ public class PathmindMarketplaceScreen extends Screen {
         }
 
         Rect dropdownBounds = getSortDropdownBounds(layout);
-        int animatedHeight = Math.max(1, (int) (dropdownBounds.height * animProgress));
-        context.enableScissor(dropdownBounds.x, dropdownBounds.y, dropdownBounds.x + dropdownBounds.width, dropdownBounds.y + animatedHeight);
-        UIStyleHelper.drawBeveledPanel(
-            context,
-            dropdownBounds.x,
-            dropdownBounds.y,
-            dropdownBounds.width,
-            dropdownBounds.height,
-            UITheme.BACKGROUND_SECONDARY,
-            UITheme.BORDER_DEFAULT,
-            UITheme.PANEL_INNER_BORDER
-        );
-
         SortMode[] modes = SortMode.values();
-        for (int i = 0; i < modes.length; i++) {
-            int optionY = dropdownBounds.y + i * SORT_OPTION_HEIGHT;
-            boolean hovered = animProgress >= 1f
-                && isPointInRect(mouseX, mouseY, dropdownBounds.x + 1, optionY + 1, dropdownBounds.width - 2, SORT_OPTION_HEIGHT - 1);
-            int optionColor = hovered ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG;
-            context.fill(dropdownBounds.x + 1, optionY + 1, dropdownBounds.x + dropdownBounds.width - 1, optionY + SORT_OPTION_HEIGHT, optionColor);
-            if (i > 0) {
-                context.drawHorizontalLine(dropdownBounds.x + 1, dropdownBounds.x + dropdownBounds.width - 2, optionY, UITheme.BORDER_SUBTLE);
-            }
-            int textColor = modes[i] == sortMode ? getAccentColor() : UITheme.TEXT_PRIMARY;
-            context.drawTextWithShadow(this.textRenderer, Text.literal(modes[i].label), dropdownBounds.x + 8, optionY + 5, textColor);
-        }
-        context.disableScissor();
+        PathmindDropdownRenderer.renderTextList(
+            context,
+            this.textRenderer,
+            PathmindDropdownRenderer.TextListSpec.builder()
+                .bounds(dropdownBounds.x, dropdownBounds.y, dropdownBounds.width)
+                .rows(SORT_OPTION_HEIGHT, modes.length, modes.length)
+                .scroll(0, 0, 0)
+                .animation(animProgress)
+                .hoverPoint(mouseX, mouseY)
+                .colors(getAccentColor(), UITheme.TEXT_PRIMARY)
+                .textLayout(8, 5, false, true)
+                .labels("", index -> modes[index].label)
+                .textColors(index -> modes[index] == sortMode ? getAccentColor() : UITheme.TEXT_PRIMARY)
+                .chrome(new UIStyleHelper.ScrollContainerPalette(
+                    UITheme.BACKGROUND_SECONDARY,
+                    UITheme.BORDER_DEFAULT,
+                    UITheme.PANEL_INNER_BORDER,
+                    UITheme.BORDER_DEFAULT,
+                    UITheme.BORDER_DEFAULT
+                ), UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT)
+                .build()
+        );
     }
-
     int drawWrappedValue(DrawContext context, int x, int y, int width, String value, int color, int maxLines) {
         for (String line : wrapText(value, width, maxLines)) {
             context.drawTextWithShadow(this.textRenderer, Text.literal(line), x, y, color);

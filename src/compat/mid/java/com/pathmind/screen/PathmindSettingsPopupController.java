@@ -16,7 +16,6 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.ScrollbarHelper;
-import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
@@ -979,24 +978,21 @@ final class PathmindSettingsPopupController {
             int rowY = listY + (i - startIndex) * SETTINGS_NODE_LIST_ROW_HEIGHT;
             boolean hovered = screen.isPointInRect(mouseX, mouseY, listX, rowY, listWidth, SETTINGS_NODE_LIST_ROW_HEIGHT);
             boolean editing = getEffectiveSettingsTargetType() == type && !screen.settingsNodeListView;
-            int rowBg = editing ? UITheme.DROPDOWN_OPTION_HOVER : hovered ? UITheme.BORDER_SECTION : UITheme.DROPDOWN_OPTION_BG;
-            int rowBorder = editing ? screen.getAccentColor() : UITheme.BORDER_SUBTLE;
-            context.fill(listX + 1, rowY + 1, listX + listWidth - 1, rowY + SETTINGS_NODE_LIST_ROW_HEIGHT - 1,
-                screen.getPopupAnimatedColor(screen.settingsPopupAnimation, rowBg));
-            DrawContextBridge.drawBorder(context, listX, rowY, listWidth, SETTINGS_NODE_LIST_ROW_HEIGHT,
-                screen.getPopupAnimatedColor(screen.settingsPopupAnimation, rowBorder));
-
-            String label = type.getDisplayName();
             String status = editing ? Text.translatable("pathmind.settings.nodeSettings.status.editing").getString() : hasEditedNodeSettings(type) ? Text.translatable("pathmind.settings.nodeSettings.status.edited").getString() : "";
-            int statusWidth = status.isEmpty() ? 0 : screen.textRenderer().getWidth(status);
-            int maxLabelWidth = Math.max(0, listWidth - 12 - statusWidth - (status.isEmpty() ? 0 : 8));
-            screen.drawPopupTextWithEllipsis(context, label, listX + 6, rowY + 6, maxLabelWidth,
-                screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
-            if (!status.isEmpty()) {
-                int statusColor = editing ? screen.getAccentColor() : screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY);
-                context.drawTextWithShadow(screen.textRenderer(), Text.literal(status),
-                    listX + listWidth - statusWidth - 6, rowY + 6, statusColor);
-            }
+            PathmindSettingsRowRenderer.renderStatusListRow(
+                context,
+                screen.textRenderer(),
+                listX,
+                rowY,
+                listWidth,
+                SETTINGS_NODE_LIST_ROW_HEIGHT,
+                type.getDisplayName(),
+                status,
+                hovered,
+                editing,
+                screen.getAccentColor(),
+                screen.settingsPopupAnimation
+            );
         }
         context.disableScissor();
     }

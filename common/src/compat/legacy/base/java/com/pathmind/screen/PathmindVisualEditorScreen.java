@@ -6073,37 +6073,22 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getValidationButtonX();
         int buttonY = getValidationButtonY();
         boolean active = validationPanelOpen;
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
-        if (!active) {
-            hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, false, disabled, "validation-button");
-        }
-
-        int statusColor = UITheme.TEXT_PRIMARY;
-        if (validationResult != null) {
-            if (validationResult.hasErrors()) {
-                statusColor = UITheme.STATE_ERROR;
-            } else if (validationResult.hasWarnings()) {
-                statusColor = UITheme.ACCENT_AMBER;
-            }
-        }
-        if (disabled) {
-            statusColor = UITheme.DROPDOWN_ACTION_DISABLED;
-        } else if (hovered || active) {
-            statusColor = validationResult != null && validationResult.hasIssues() ? statusColor : getAccentColor();
-        }
-
-        if (!disabled && validationResult != null && validationResult.hasIssues() && !validationPanelOpen) {
-            int severityBorder = validationResult.hasErrors() ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
-            DrawContextBridge.drawBorder(context, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE, severityBorder);
-        }
-
-        if (validationResult != null && validationResult.hasIssues()) {
-            drawValidationAlertIcon(context, buttonX, buttonY, statusColor);
-            drawValidationCountBadge(context, validationResult, buttonX, buttonY, disabled);
-        } else {
-            drawValidationConsoleIcon(context, buttonX, buttonY, statusColor);
-        }
-
+        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
+        float hoverProgress = getHoverProgress("validation-button", hovered || active);
+        PathmindValidationPanelRenderer.renderValidationButton(
+            context,
+            this.textRenderer,
+            buttonX,
+            buttonY,
+            VALIDATION_BUTTON_SIZE,
+            mouseX,
+            mouseY,
+            active,
+            disabled,
+            hoverProgress,
+            getAccentColor(),
+            validationResult
+        );
     }
 
     private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
@@ -6681,43 +6666,6 @@ public class PathmindVisualEditorScreen extends Screen {
         return NodeType.PARAM_AMOUNT.name().equals(port.getType())
             || NodeType.PARAM_DURATION.name().equals(port.getType())
             || NodeType.PARAM_DISTANCE.name().equals(port.getType());
-    }
-
-    private void drawValidationConsoleIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int left = buttonX + 4;
-        int top = buttonY + 4;
-        context.fill(left, top, left + 10, top + 1, color);
-        context.fill(left, top + 8, left + 10, top + 9, color);
-        context.fill(left, top, left + 1, top + 9, color);
-        context.fill(left + 9, top, left + 10, top + 9, color);
-        context.fill(left + 2, top + 2, left + 5, top + 3, color);
-        context.fill(left + 2, top + 4, left + 7, top + 5, color);
-        context.fill(left + 2, top + 6, left + 6, top + 7, color);
-    }
-
-    private void drawValidationAlertIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        int stemX = buttonX + VALIDATION_BUTTON_SIZE / 2 - 1;
-        int top = buttonY + 4;
-        context.fill(stemX, top, stemX + 2, top + 6, color);
-        context.fill(stemX, top + 8, stemX + 2, top + 10, color);
-    }
-
-    private void drawValidationCountBadge(DrawContext context, GraphValidationResult validationResult, int buttonX, int buttonY,
-                                          boolean disabled) {
-        int count = validationResult.getErrorCount() > 0 ? validationResult.getErrorCount() : validationResult.getWarningCount();
-        int badgeColor = validationResult.getErrorCount() > 0 ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
-        if (disabled) {
-            badgeColor = UITheme.DROPDOWN_ACTION_DISABLED;
-        }
-        String text = count > 9 ? "9+" : String.valueOf(count);
-        int textWidth = this.textRenderer.getWidth(text);
-        int badgeSize = Math.max(9, textWidth + 4);
-        int badgeX = buttonX + VALIDATION_BUTTON_SIZE - badgeSize + 1;
-        int badgeY = buttonY - 2;
-        context.fill(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize, badgeColor);
-        DrawContextBridge.drawBorder(context, badgeX, badgeY, badgeSize, badgeSize, UITheme.BORDER_HIGHLIGHT);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1,
-            UITheme.TEXT_PRIMARY);
     }
 
     float getHoverProgress(Object key, boolean hovered) {

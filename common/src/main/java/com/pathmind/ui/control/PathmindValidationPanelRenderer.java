@@ -3,6 +3,7 @@ package com.pathmind.ui.control;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.DrawContextBridge;
 import com.pathmind.validation.GraphValidationIssue;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.validation.GraphValidationSeverity;
@@ -26,6 +27,32 @@ public final class PathmindValidationPanelRenderer {
         }
         int limit = Math.min(maxVisibleRows, validationResult.getIssues().size());
         return validationResult.getIssues().subList(0, limit);
+    }
+
+    public static boolean renderValidationButton(DrawContext context,
+                                                 TextRenderer textRenderer,
+                                                 int buttonX, int buttonY, int buttonSize,
+                                                 int mouseX, int mouseY,
+                                                 boolean active, boolean disabled,
+                                                 float hoverProgress, int accentColor,
+                                                 GraphValidationResult validationResult) {
+        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, buttonSize, buttonSize);
+        PathmindWorkspaceChrome.drawToolbarButtonFrame(context, buttonX, buttonY, buttonSize, buttonSize, hovered, active, disabled, hoverProgress, accentColor);
+
+        int statusColor = getValidationStatusColor(validationResult, hovered, active, disabled, accentColor);
+        if (!disabled && validationResult != null && validationResult.hasIssues() && !active) {
+            int severityBorder = validationResult.hasErrors() ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
+            DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonSize, buttonSize, severityBorder);
+        }
+
+        if (validationResult != null && validationResult.hasIssues()) {
+            drawAlertIcon(context, buttonX, buttonY, buttonSize, statusColor);
+            drawCountBadge(context, textRenderer, validationResult, buttonX, buttonY, buttonSize, disabled);
+        } else {
+            drawConsoleIcon(context, buttonX, buttonY, statusColor);
+        }
+
+        return hovered;
     }
 
     public static int[] getPanelBounds(GraphValidationResult validationResult, TextRenderer textRenderer,
@@ -198,6 +225,64 @@ public final class PathmindValidationPanelRenderer {
 
     private static int getIssueTextHeight(List<OrderedText> wrappedLines, TextRenderer textRenderer) {
         return wrappedLines.size() * textRenderer.fontHeight + Math.max(0, wrappedLines.size() - 1) * 2;
+    }
+
+    private static int getValidationStatusColor(GraphValidationResult validationResult,
+                                                boolean hovered, boolean active, boolean disabled,
+                                                int accentColor) {
+        int statusColor = UITheme.TEXT_PRIMARY;
+        if (validationResult != null) {
+            if (validationResult.hasErrors()) {
+                statusColor = UITheme.STATE_ERROR;
+            } else if (validationResult.hasWarnings()) {
+                statusColor = UITheme.ACCENT_AMBER;
+            }
+        }
+        if (disabled) {
+            return UITheme.DROPDOWN_ACTION_DISABLED;
+        }
+        if (hovered || active) {
+            return validationResult != null && validationResult.hasIssues() ? statusColor : accentColor;
+        }
+        return statusColor;
+    }
+
+    private static void drawConsoleIcon(DrawContext context, int buttonX, int buttonY, int color) {
+        int left = buttonX + 4;
+        int top = buttonY + 4;
+        context.fill(left, top, left + 10, top + 1, color);
+        context.fill(left, top + 8, left + 10, top + 9, color);
+        context.fill(left, top, left + 1, top + 9, color);
+        context.fill(left + 9, top, left + 10, top + 9, color);
+        context.fill(left + 2, top + 2, left + 5, top + 3, color);
+        context.fill(left + 2, top + 4, left + 7, top + 5, color);
+        context.fill(left + 2, top + 6, left + 6, top + 7, color);
+    }
+
+    private static void drawAlertIcon(DrawContext context, int buttonX, int buttonY, int buttonSize, int color) {
+        int stemX = buttonX + buttonSize / 2 - 1;
+        int top = buttonY + 4;
+        context.fill(stemX, top, stemX + 2, top + 6, color);
+        context.fill(stemX, top + 8, stemX + 2, top + 10, color);
+    }
+
+    private static void drawCountBadge(DrawContext context, TextRenderer textRenderer,
+                                       GraphValidationResult validationResult, int buttonX, int buttonY,
+                                       int buttonSize, boolean disabled) {
+        int count = validationResult.getErrorCount() > 0 ? validationResult.getErrorCount() : validationResult.getWarningCount();
+        int badgeColor = validationResult.getErrorCount() > 0 ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
+        if (disabled) {
+            badgeColor = UITheme.DROPDOWN_ACTION_DISABLED;
+        }
+        String text = count > 9 ? "9+" : String.valueOf(count);
+        int textWidth = textRenderer.getWidth(text);
+        int badgeSize = Math.max(9, textWidth + 4);
+        int badgeX = buttonX + buttonSize - badgeSize + 1;
+        int badgeY = buttonY - 2;
+        context.fill(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize, badgeColor);
+        DrawContextBridge.drawBorder(context, badgeX, badgeY, badgeSize, badgeSize, UITheme.BORDER_HIGHLIGHT);
+        context.drawTextWithShadow(textRenderer, Text.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1,
+            UITheme.TEXT_PRIMARY);
     }
 
     private static boolean contains(int mouseX, int mouseY, int x, int y, int width, int height) {

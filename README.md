@@ -135,6 +135,8 @@ Imported marketplace presets and exported graphs also flow through this preset s
 
 ## Development
 
+For a contributor-oriented map of the node system, execution routing, UI helpers, localization rules, and compat source-set expectations, see [`docs/node-architecture.md`](docs/node-architecture.md).
+
 ### Build From Source
 
 ```bash

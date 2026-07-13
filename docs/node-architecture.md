@@ -58,27 +58,39 @@ When loading, `NodeGraphPersistence.convertToNodes`:
 
 `convertToConnections` then restores normal graph edges. It skips sensor-linked nodes and uses conflict replacement so an input socket or output socket does not accumulate multiple restored connections.
 
-## Node Types, Metadata, And Traits
+## Node Types, Catalog Metadata, And Traits
 
 `NodeType` is the stable enum used in save data. It should remain the durable id for a node kind.
 
-Metadata that does not need to live directly on the enum has been pushed into registries:
+Most mutable node metadata now belongs in `NodeCatalog`. Treat the catalog as the first place to look when changing how a node appears, where it is listed, what values it produces, what parameter slots it accepts, and which execution family handles it.
 
-- `NodeTypeDefinition`: category, sidebar visibility, whether the type has parameters, and whether it requires Baritone or UI Utils.
-- `NodeParameterDefinitionRegistry`: default parameters by node type and by `NodeMode`.
-- `NodeTraitRegistry`: value traits, boolean sensor membership, parameter-node membership, parameter slot counts, parameter slot labels, and accepted parameter traits.
-- `NodeCompatibility`: slot compatibility rules for sensor, action, and parameter attachments.
-- `NodeBehaviorDefinitionRegistry`: newer behavior definitions for parameter/comparable behavior.
+Catalog-owned metadata includes:
+
+- category and sidebar placement;
+- dependency flags such as Baritone and UI Utils;
+- default parameters by node type and `NodeMode`;
+- provided value traits;
+- accepted parameter traits per slot;
+- slot counts and slot labels;
+- required slot rules;
+- sidebar group headings;
+- execution routes.
+
+The older registry classes still exist mostly as compatibility facades:
+
+- `NodeParameterDefinitionRegistry` forwards default-parameter lookups to the catalog.
+- `NodeTraitRegistry` forwards trait and slot-schema lookups to the catalog.
+- `NodeCompatibility` still owns slot compatibility checks, but those checks should line up with catalog traits and slot schemas.
 
 This is why the system can feel spread out. A node's behavior is not defined in one class:
 
 - `NodeType` names the kind.
-- `NodeTypeDefinition` categorizes it.
-- `NodeParameterDefinitionRegistry` creates its editable fields.
-- `NodeTraitRegistry` says what value it provides or accepts.
+- `NodeCatalog` categorizes it, exposes it in the sidebar, defines default parameters, defines traits and parameter slots, and declares its execution route.
 - `NodeCompatibility` decides whether it can attach to another node.
 - `NodeCommandDispatcher` decides which executor runs it.
 - The executor class contains most command-side behavior.
+
+For new work, prefer adding metadata to `NodeCatalog` and keeping the compatibility registries thin. If a registry needs a new public method for an old call site, it should usually delegate to the catalog instead of creating a second source of truth.
 
 ## Live Node Objects
 
@@ -185,7 +197,7 @@ This scope is why `RUN_PRESET`, `CUSTOM_NODE`, and `TEMPLATE` can start nested g
 
 `Node.execute` does preflight checks, verifies required parameter slots, checks empty parameters, moves to the Minecraft client thread when necessary, and then calls `NodeCommandDispatcher.execute`.
 
-`NodeCommandDispatcher` is a type switch that maps node types to command families:
+Execution routing is declared in `NodeCatalog` and consumed through `NodeCommandDispatcher`. The dispatcher should stay a compatibility facade that maps catalog routes to focused executor classes:
 
 - `NodeInventoryCommandExecutor`: hotbar, drop, slot clicks, screen clicks, item movement.
 - `NodeGuiCommandExecutor`: UI Utils integration and player GUI open/close.
@@ -200,7 +212,7 @@ This scope is why `RUN_PRESET`, `CUSTOM_NODE`, and `TEMPLATE` can start nested g
 - `NodeSensorCommandExecutor`: boolean sensor evaluation.
 - `NodeVariableListCommandExecutor`: variables and runtime lists.
 
-Adding a command node should generally mean adding metadata/parameters/traits plus one focused executor implementation, not adding more logic to `Node.java`.
+Adding a command node should generally mean adding catalog metadata plus one focused executor implementation, not adding more logic to `Node.java`.
 
 ## Presets As Custom Nodes
 
@@ -222,17 +234,139 @@ Saved presets can expose `customNodeDefinition`. `NodeGraphPersistence` discover
 When adding or changing a node type, prefer the smallest owner:
 
 1. Add stable type identity in `NodeType` only if a new persisted type is needed.
-2. Add category/dependency/sidebar metadata in `NodeTypeDefinition`.
-3. Add default fields in `NodeParameterDefinitionRegistry`.
-4. Add value traits and slot requirements in `NodeTraitRegistry`.
-5. Add slot compatibility in `NodeCompatibility` when attachment rules change.
-6. Add parameter/comparable behavior through the behavior registries when possible.
-7. Put command execution in the executor for that behavior family, or create a new executor if it is a distinct family.
-8. Keep `Node.java` wrappers thin and behavior-free.
-9. Update `NodeGraphPersistence` only when the node has new persisted state beyond ordinary parameters, mode, position, connections, and attachments.
-10. Update `GraphValidator` when the new type introduces a new graph-level invariant.
+2. Add category, dependency, sidebar, default parameter, trait, slot-schema, and route metadata in `NodeCatalog`.
+3. Add slot compatibility in `NodeCompatibility` when attachment rules change.
+4. Add parameter/comparable behavior through behavior helpers when possible.
+5. Put command execution in the executor for that behavior family, or create a new executor if it is a distinct family.
+6. Keep `Node.java` wrappers thin and behavior-free.
+7. Update `NodeGraphPersistence` only when the node has new persisted state beyond ordinary parameters, mode, position, connections, and attachments.
+8. Update `GraphValidator` when the new type introduces a new graph-level invariant.
 
 The goal is for `Node.java` and `NodeGraph.java` to keep losing responsibilities over time while preserving old save data and public APIs.
+
+## Contributor Workflow: Adding Or Changing A Node
+
+Use this checklist for most node changes.
+
+1. Choose the stable id.
+
+   Add a `NodeType` only for a new persisted node kind. Renaming enum constants breaks old saves unless there is an explicit migration path, so prefer changing display text through language keys when the behavior is the same.
+
+2. Define catalog metadata.
+
+   Update `NodeCatalog` for category, sidebar grouping, dependency flags, default parameters, provided traits, accepted parameter traits, slot labels, required slots, and execution route. If a node is moved to another category, colors and sidebar placement should follow from the catalog category.
+
+3. Add or update translations.
+
+   Node display names and descriptions live in language files under `common/src/main/resources/assets/pathmind/lang` and `src/main/resources/assets/pathmind/lang`. Add every key to every language file. If text appears in UI, use `Text.translatable(...)`, not hardcoded English.
+
+4. Implement behavior.
+
+   Put runtime behavior in the relevant executor family. Use `NodeCommandDispatcher` only to route to that family. Avoid growing `Node.java` unless you are adding a narrow compatibility wrapper or unavoidable node-state access.
+
+5. Validate graph rules.
+
+   Update `GraphValidator` when the node changes graph-level correctness, dependency requirements, required slots, event semantics, or custom-node behavior.
+
+6. Persist only special state.
+
+   Ordinary position, type, mode, parameters, connections, and attachments are already persisted. Only touch `NodeGraphPersistence` and `NodeGraphData` when the node needs additional state.
+
+7. Mirror compat copies.
+
+   If you touch a file under `common/src/compat/...`, update the matching `src/compat/...` and `fabric/src/compat/...` copies unless there is a documented version-specific reason not to. The current expectation is that these major editor files stay mirrored:
+
+   - `PathmindVisualEditorScreen`
+   - `PathmindMarketplaceScreen`
+   - `PathmindSettingsPopupController`
+   - `PathmindPresetPopupController`
+   - `PathmindMarketplacePopupController`
+   - `PathmindMarketplaceGraphPreviewRenderer`
+
+8. Verify the change.
+
+   For narrow node metadata changes, `./gradlew compileJava -q` is usually enough while iterating. For compat, persistence, validation, or execution-route changes, run `./gradlew test -q` and `./gradlew buildAllTargets -q` before release.
+
+## UI And Localization Guidance
+
+All user-facing text should be translatable. Use `Text.translatable("pathmind.some.key")` in UI code and add matching entries to every language file. Avoid `Text.literal(...)` for English words. Literals are fine for symbols, brand names, generated user content, file paths, numbers, and runtime data that should not be translated.
+
+When adding UI text:
+
+1. Add the key to `common/src/main/resources/assets/pathmind/lang/en_us.json`.
+2. Add the same key to every other language file in `common/src/main/resources/assets/pathmind/lang`.
+3. Mirror language files to `src/main/resources/assets/pathmind/lang`.
+4. Use the key from UI code with `Text.translatable(...)`.
+5. For tooltips, pass translated strings through `TooltipRenderer` or an existing helper.
+
+Common UI helper ownership:
+
+- `PathmindWorkspaceChrome`: workspace buttons, play/stop/publish/marketplace chrome, icon-button frames, and workspace button hit testing.
+- `PathmindPopupRenderer`: shared popup frames, animated action buttons, section frames, badges, and popup text-button styling.
+- `PathmindDropdownRenderer`: shared dropdown drawing.
+- `PathmindSettingsRowRenderer`: settings rows and selector rows.
+- `PathmindValidationPanelRenderer`: validation button and validation panel rows.
+- `PathmindIconRenderer`: small shared icons.
+- `PathmindPresetPopupController`: create/rename/delete/publish preset popups.
+- `PathmindSettingsPopupController`: settings popup rendering and settings-node selection.
+- `PathmindMarketplacePopupController`: marketplace detail, publish, confirm, and account popups.
+
+If new UI repeats button, popup, dropdown, row, or validation styling, first add a small helper to one of these owners instead of duplicating drawing code in `PathmindVisualEditorScreen` or `PathmindMarketplaceScreen`.
+
+## Compat Source Set Rules
+
+The project has three relevant source trees:
+
+- `common/src`: shared Architectury/common code and the source of truth for most compat UI files.
+- `fabric/src`: Fabric platform source set.
+- `src`: legacy/top-level Fabric source tree that is still kept aligned for compatibility.
+
+Version-specific UI files are split under:
+
+- `compat/legacy/base`
+- `compat/mid`
+- `compat/modern`
+
+For mirrored files, make the change in `common/src` first, then copy the exact result to `src` and `fabric/src`. If a source set truly needs a different implementation, leave a short comment near the divergent code explaining why, and include that divergence in this document so future cleanup passes do not erase it accidentally.
+
+Useful mirror check:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+rels = [
+    'compat/modern/java/com/pathmind/screen/PathmindVisualEditorScreen.java',
+    'compat/mid/java/com/pathmind/screen/PathmindVisualEditorScreen.java',
+    'compat/legacy/base/java/com/pathmind/screen/PathmindVisualEditorScreen.java',
+    'compat/modern/java/com/pathmind/screen/PathmindMarketplaceScreen.java',
+    'compat/mid/java/com/pathmind/screen/PathmindMarketplaceScreen.java',
+    'compat/legacy/base/java/com/pathmind/screen/PathmindMarketplaceScreen.java',
+]
+for rel in rels:
+    for root in ['src', 'fabric/src']:
+        same = (Path('common/src') / rel).read_bytes() == (Path(root) / rel).read_bytes()
+        print(f'{rel} {root}: {"ok" if same else "DRIFT"}')
+PY
+```
+
+## Verification Checklist
+
+Use the smallest verification that matches the risk:
+
+- Metadata-only node/category/text change: `./gradlew compileJava -q`
+- Validation or execution-route change: `./gradlew test -q`
+- Compat source-set or platform-sensitive change: `./gradlew buildAllTargets -q`
+- Resource/language change: parse every JSON language file and run `git diff --check`
+- Before shipping: run `./gradlew buildAllTargets -q`
+
+Useful cleanup scans:
+
+```bash
+rg -n 'Text\.literal\(Text\.translatable|RawJsonEditor|pathmind\.rawJson|rawJson|RAW_JSON' common/src src/main src/compat fabric/src --glob '!build/**'
+rg -n 'drawText\([^\n]*"|drawTextWithShadow\([^\n]*"|Text\.literal\("[A-Za-z]' common/src src/main src/compat fabric/src --glob '!build/**'
+```
+
+These scans are not perfect. Symbols, brand names, user-provided text, file paths, and generated runtime data can be valid literals. Treat hits as review prompts, not automatic failures.
 
 ## Practical Debugging Map
 
@@ -242,9 +376,9 @@ Use this map when tracing a bug:
 - Graph JSON looks wrong: inspect `NodeGraphData` and `NodeGraphPersistence.buildNodeGraphData`.
 - Saved graph loads incorrectly: inspect `NodeGraphPersistence.convertToNodes` and `convertToConnections`.
 - Editor drag/drop, selection, rendering, connection creation, or inline edit issue: start in `NodeGraph`, then the version-specific `PathmindVisualEditorScreen`.
-- Parameter defaults are wrong: inspect `NodeParameterDefinitionRegistry`.
-- Parameter node cannot attach: inspect `NodeTraitRegistry` and `NodeCompatibility`.
-- Node category/sidebar behavior is wrong: inspect `NodeTypeDefinition`.
+- Parameter defaults are wrong: inspect `NodeCatalog`, then the `NodeParameterDefinitionRegistry` facade if a call site is stale.
+- Parameter node cannot attach: inspect `NodeCatalog`, then `NodeTraitRegistry` and `NodeCompatibility`.
+- Node category/sidebar/color/trait behavior is wrong: inspect `NodeCatalog`.
 - Validation warning/error is wrong: inspect `GraphValidator`.
 - Node runs but does the wrong action: inspect `NodeCommandDispatcher`, then the executor for that node family.
 - Nested preset/custom-node behavior is wrong: inspect `NodeFlowCommandExecutor.executeRunPresetNode`, `ExecutionManager.executeExternalBranch*`, and `NodeGraphPersistence.resolveCustomNodeDefinition`.

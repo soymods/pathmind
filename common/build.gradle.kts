@@ -13,10 +13,6 @@ architectury {
     common("fabric", "neoforge")
 }
 
-loom {
-    accessWidenerPath = file("src/main/resources/pathmind.accesswidener")
-}
-
 val requestedMinecraftVersion = rootProject.extra["requestedMinecraftVersion"] as String
 val requestedYarnMappings = rootProject.extra["yarnMappings"] as String
 val neoforgeVersion = rootProject.extra["neoforgeVersion"] as? String

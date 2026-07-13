@@ -44,6 +44,7 @@ public final class SettingsManager {
         public Boolean skipPresetDeleteConfirm = false;
         public Boolean skipMarketplaceDeleteConfirm = false;
         public Boolean skipMarketplaceUpdateConfirm = false;
+        public Boolean firstRunTutorialCompleted = false;
         public Integer nodeDelayMs = 150;
         public Boolean gotoAllowBreakWhileExecuting = false;
         public Boolean gotoAllowPlaceWhileExecuting = false;
@@ -234,6 +235,9 @@ public final class SettingsManager {
         }
         if (settings.skipMarketplaceUpdateConfirm == null) {
             settings.skipMarketplaceUpdateConfirm = false;
+        }
+        if (settings.firstRunTutorialCompleted == null) {
+            settings.firstRunTutorialCompleted = false;
         }
         if (settings.nodeDelayMs == null) {
             settings.nodeDelayMs = 150;

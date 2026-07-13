@@ -29,7 +29,6 @@ base {
 }
 
 loom {
-    accessWidenerPath = project(":common").file("src/main/resources/pathmind.accesswidener")
     runs {
         named("client") {
             vmArgs("-Xms1G", "-Xmx3G")

@@ -30,6 +30,7 @@ import com.pathmind.ui.control.PathmindWorkspaceChrome;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.menu.ContextMenuSelection;
+import com.pathmind.ui.onboarding.FirstRunTutorialOverlay;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.NodeParameterOverlay;
@@ -317,6 +318,8 @@ public class PathmindVisualEditorScreen extends Screen {
     final PopupAnimationHandler settingsPopupAnimation = new PopupAnimationHandler();
     private final PathmindSettingsPopupController settingsPopupController = new PathmindSettingsPopupController(this);
     private final PathmindPresetPopupController presetPopupController = new PathmindPresetPopupController(this);
+    private final FirstRunTutorialOverlay firstRunTutorialOverlay = new FirstRunTutorialOverlay();
+    private boolean firstRunTutorialPending = false;
     private final AnimatedValue validationPanelAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
     private boolean validationPanelOpen = false;
     Settings currentSettings;
@@ -429,6 +432,7 @@ public class PathmindVisualEditorScreen extends Screen {
         this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
         this.showHudOverlays = currentSettings.showHudOverlays == null || currentSettings.showHudOverlays;
         this.skipPresetDeleteConfirm = currentSettings.skipPresetDeleteConfirm != null && currentSettings.skipPresetDeleteConfirm;
+        this.firstRunTutorialPending = currentSettings.firstRunTutorialCompleted == null || !currentSettings.firstRunTutorialCompleted;
         this.nodeDelayMs = MathHelper.clamp(
             currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150,
             NODE_DELAY_MIN_MS,
@@ -797,6 +801,20 @@ public class PathmindVisualEditorScreen extends Screen {
             DrawContextBridge.startNewRootLayer(context);
             nodeGraph.renderScreenCoordinateCaptureOverlay(context, this.textRenderer, mouseX, mouseY);
         }
+        maybeShowFirstRunTutorial();
+        if (firstRunTutorialOverlay.isVisible()) {
+            DrawContextBridge.startNewRootLayer(context);
+            firstRunTutorialOverlay.render(
+                context,
+                this.textRenderer,
+                mouseX,
+                mouseY,
+                this.width,
+                this.height,
+                getAccentColor(),
+                this::getFirstRunTutorialTargetBounds
+            );
+        }
         DrawContextBridge.startNewRootLayer(context);
         renderCustomCursor(context, mouseX, mouseY);
         } finally {
@@ -818,6 +836,104 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         PathmindCursor.showSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
         systemCursorHidden = false;
+    }
+
+    private void maybeShowFirstRunTutorial() {
+        if (!firstRunTutorialPending || firstRunTutorialOverlay.isVisible()) {
+            return;
+        }
+        if (isScreenPopupVisible()
+            || nodeGraph.isScreenCoordinateCaptureActive()
+            || parameterOverlay != null && parameterOverlay.isVisible()
+            || bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
+            return;
+        }
+        firstRunTutorialPending = false;
+        firstRunTutorialOverlay.show();
+    }
+
+    private void completeFirstRunTutorial() {
+        firstRunTutorialPending = false;
+        if (currentSettings == null) {
+            currentSettings = SettingsManager.getCurrent();
+        }
+        currentSettings.firstRunTutorialCompleted = true;
+        SettingsManager.save(currentSettings);
+    }
+
+    void replayFirstRunTutorial() {
+        firstRunTutorialPending = false;
+        closeSettingsPopup();
+        settingsPopupAnimation.hideInstant();
+        firstRunTutorialOverlay.show();
+    }
+
+    private int[] getFirstRunTutorialTargetBounds(FirstRunTutorialOverlay.Target target) {
+        return switch (target) {
+            case PRESETS -> new int[]{
+                getTitleTextX(),
+                0,
+                Math.max(160, Math.min(this.width - getTitleTextX() - 8, getPresetTabRightLimit() - getTitleTextX())),
+                TITLE_BAR_HEIGHT
+            };
+            case SIDEBAR -> new int[]{
+                0,
+                TITLE_BAR_HEIGHT,
+                Math.max(Sidebar.getCollapsedWidth(), sidebar.getWidth()),
+                Math.max(1, this.height - TITLE_BAR_HEIGHT)
+            };
+            case WORKSPACE -> new int[]{
+                Math.max(sidebar.getWidth() + 24, this.width / 2 - 150),
+                Math.max(TITLE_BAR_HEIGHT + 36, this.height / 2 - 95),
+                Math.min(300, Math.max(120, this.width - sidebar.getWidth() - 48)),
+                Math.min(190, Math.max(90, this.height - TITLE_BAR_HEIGHT - 72))
+            };
+            case EDIT_NODE -> getFirstRunTutorialNodeBounds();
+            case RUN_CONTROLS -> new int[]{
+                getStopButtonX() - 4,
+                getStopButtonY() - 4,
+                getPlayButtonX() + PLAY_BUTTON_SIZE - getStopButtonX() + 8,
+                Math.max(PLAY_BUTTON_SIZE, STOP_BUTTON_SIZE) + 8
+            };
+            case VALIDATION -> new int[]{
+                getValidationButtonX() - 4,
+                getValidationButtonY() - 4,
+                VALIDATION_BUTTON_SIZE + 8,
+                VALIDATION_BUTTON_SIZE + 8
+            };
+            case MARKETPLACE -> new int[]{
+                getPublishButtonX() - 4,
+                getWorkspaceButtonY() - 4,
+                getMarketplaceButtonX() + MARKETPLACE_BUTTON_WIDTH - getPublishButtonX() + 8,
+                BOTTOM_BUTTON_SIZE + 8
+            };
+            case NONE -> new int[]{this.width / 2 - 1, this.height / 2 - 1, 2, 2};
+        };
+    }
+
+    private int[] getFirstRunTutorialNodeBounds() {
+        Node fallback = null;
+        for (Node node : nodeGraph.getNodes()) {
+            if (node == null) {
+                continue;
+            }
+            if (node.getType() != NodeType.STICKY_NOTE && node.getType() != NodeType.START) {
+                fallback = node;
+                break;
+            }
+        }
+        if (fallback == null) {
+            return null;
+        }
+        int x = nodeGraph.worldToScreenX(fallback.getX());
+        int y = nodeGraph.worldToScreenY(fallback.getY());
+        float scale = Math.max(0.1f, nodeGraph.getZoomScale());
+        return new int[]{
+            x,
+            y,
+            Math.max(32, Math.round(fallback.getWidth() * scale)),
+            Math.max(24, Math.round(fallback.getHeight() * scale))
+        };
     }
 
     private void renderCustomCursor(DrawContext context, int mouseX, int mouseY) {
@@ -1283,6 +1399,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 return nodeGraph.commitScreenCoordinateCapture((int) mouseX, (int) mouseY);
             }
             return true;
+        }
+        if (firstRunTutorialOverlay.isVisible()) {
+            return firstRunTutorialOverlay.mouseClicked(mouseX, mouseY, button, this::completeFirstRunTutorial);
         }
         if (missingBaritonePopupAnimation.isVisible()) {
             return handleMissingBaritonePopupClick(mouseX, mouseY, button);
@@ -2031,6 +2150,9 @@ public class PathmindVisualEditorScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+        if (firstRunTutorialOverlay.isVisible()) {
+            return true;
+        }
         if (missingBaritonePopupAnimation.isVisible()) {
             return true;
         }
@@ -2234,6 +2356,9 @@ public class PathmindVisualEditorScreen extends Screen {
         int keyCode = input.key();
         int scanCode = input.scancode();
         int modifiers = input.modifiers();
+        if (firstRunTutorialOverlay.isVisible()) {
+            return firstRunTutorialOverlay.keyPressed(keyCode, this::completeFirstRunTutorial);
+        }
         if (nodeSearchOpen) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeNodeSearch();
@@ -2528,6 +2653,9 @@ public class PathmindVisualEditorScreen extends Screen {
     public boolean charTyped(CharInput input) {
         int modifiers = input.modifiers();
         char chr = (char) input.codepoint();
+        if (firstRunTutorialOverlay.isVisible()) {
+            return true;
+        }
         if (nodeSearchOpen) {
             if (nodeSearchField != null && nodeSearchField.charTyped(input)) {
                 return true;
@@ -2650,6 +2778,9 @@ public class PathmindVisualEditorScreen extends Screen {
     
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (firstRunTutorialOverlay.isVisible()) {
+            return true;
+        }
         if (nodeGraph.isScreenCoordinateCaptureActive()) {
             return true;
         }
@@ -7364,6 +7495,10 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsPopupController.restoreExamplePresets();
     }
 
+    int[] getSettingsReplayTutorialButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        return settingsPopupController.getSettingsReplayTutorialButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+    }
+
     int getAccentColor() {
         return accentOption != null ? accentOption.color : UITheme.ACCENT_DEFAULT;
     }
@@ -7656,6 +7791,13 @@ public class PathmindVisualEditorScreen extends Screen {
         if (isPointInRect(mouseXi, mouseYi, restoreExamplesButtonBounds[0], restoreExamplesButtonBounds[1],
             restoreExamplesButtonBounds[2], restoreExamplesButtonBounds[3])) {
             restoreExamplePresets();
+            return true;
+        }
+        int[] replayTutorialButtonBounds = getSettingsReplayTutorialButtonBounds(
+            popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        if (isPointInRect(mouseXi, mouseYi, replayTutorialButtonBounds[0], replayTutorialButtonBounds[1],
+            replayTutorialButtonBounds[2], replayTutorialButtonBounds[3])) {
+            replayFirstRunTutorial();
             return true;
         }
 

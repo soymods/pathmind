@@ -108,7 +108,7 @@ final class PathmindSettingsPopupController {
 
         int settingDividerY = sectionDividerY + 22;
         int gridRowCenterY = (sectionDividerY + settingDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, Text.translatable("pathmind.settings.screen.showGrid").getString(), screen.showGrid, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, Text.translatable("pathmind.settings.showGrid").getString(), screen.showGrid, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, settingDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
@@ -121,7 +121,7 @@ final class PathmindSettingsPopupController {
 
         int footerDividerY = lowDetailDividerY + 22;
         int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.screen.renderConnectionsOnTop").getString(), screen.renderConnectionsOnTop, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.renderConnectionsOnTop").getString(), screen.renderConnectionsOnTop, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
@@ -133,13 +133,13 @@ final class PathmindSettingsPopupController {
 
         int overlayDividerY = chatDividerY + 22;
         int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.screen.showChatErrors").getString(), screen.showChatErrors, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.showChatErrors").getString(), screen.showChatErrors, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int hudDividerY = overlayDividerY + 22;
         int hudRowCenterY = (overlayDividerY + hudDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, hudRowCenterY, Text.translatable("pathmind.settings.screen.showHudOverlays").getString(), screen.showHudOverlays, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, hudRowCenterY, Text.translatable("pathmind.settings.showHudOverlays").getString(), screen.showHudOverlays, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, hudDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
@@ -256,6 +256,26 @@ final class PathmindSettingsPopupController {
             mouseX,
             mouseY,
             Text.translatable("pathmind.button.restore"),
+            PathmindPopupRenderer.ButtonStyle.DEFAULT,
+            screen.getAccentColor(),
+            screen.settingsPopupAnimation
+        );
+
+        int[] replayTutorialButtonBounds = getSettingsReplayTutorialButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
+        int replayTutorialRowCenterY = getSettingsReplayTutorialRowCenterY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
+        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16,
+            getSettingsReplayTutorialDividerY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY),
+            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.tutorial").getString(), contentX,
+            replayTutorialRowCenterY - screen.textRenderer().fontHeight / 2,
+            scaledWidth - 40 - replayTutorialButtonBounds[2] - 12, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
+        PathmindPopupRenderer.drawButton(
+            context,
+            screen.textRenderer(),
+            PathmindPopupLayout.rect(replayTutorialButtonBounds[0], replayTutorialButtonBounds[1], replayTutorialButtonBounds[2], replayTutorialButtonBounds[3]),
+            mouseX,
+            mouseY,
+            Text.translatable("pathmind.button.replay"),
             PathmindPopupRenderer.ButtonStyle.DEFAULT,
             screen.getAccentColor(),
             screen.settingsPopupAnimation
@@ -761,6 +781,23 @@ final class PathmindSettingsPopupController {
         return clearCacheButtonBounds[1] + clearCacheButtonBounds[3] + 10;
     }
 
+    int[] getSettingsReplayTutorialButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        int dividerY = getSettingsReplayTutorialDividerY(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int buttonY = dividerY + 8;
+        int buttonX = popupX + popupWidth - SETTINGS_SECTION_BUTTON_WIDTH - 20;
+        return new int[]{buttonX, buttonY, SETTINGS_SECTION_BUTTON_WIDTH, SETTINGS_SECTION_BUTTON_HEIGHT};
+    }
+
+    int getSettingsReplayTutorialRowCenterY(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        return getSettingsReplayTutorialButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY)[1]
+            + SETTINGS_SECTION_BUTTON_HEIGHT / 2;
+    }
+
+    int getSettingsReplayTutorialDividerY(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        return restoreExamplesButtonBounds[1] + restoreExamplesButtonBounds[3] + 10;
+    }
+
     void restoreExamplePresets() {
         OnboardingPresetManager.RestoreResult result = OnboardingPresetManager.restoreExamplePresets();
         NodeErrorNotificationOverlay overlay = NodeErrorNotificationOverlay.getInstance();
@@ -1064,8 +1101,8 @@ final class PathmindSettingsPopupController {
         int contentX = popupX + 20;
         int nodeSettingsBodyY = getSettingsNodeSectionBodyY(popupY);
         int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY, popupWidth - 40);
-        int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-        int contentBottom = restoreExamplesButtonBounds[1] + restoreExamplesButtonBounds[3];
+        int[] replayTutorialButtonBounds = getSettingsReplayTutorialButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int contentBottom = replayTutorialButtonBounds[1] + replayTutorialButtonBounds[3];
         return Math.max(0, contentBottom - bodyBottom + 24);
     }
 

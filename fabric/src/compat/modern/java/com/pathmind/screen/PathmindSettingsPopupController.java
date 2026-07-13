@@ -107,7 +107,7 @@ final class PathmindSettingsPopupController {
 
         int settingDividerY = sectionDividerY + 22;
         int gridRowCenterY = (sectionDividerY + settingDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, Text.translatable("pathmind.settings.screen.showGrid").getString(), screen.showGrid, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, Text.translatable("pathmind.settings.showGrid").getString(), screen.showGrid, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, settingDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
@@ -120,7 +120,7 @@ final class PathmindSettingsPopupController {
 
         int footerDividerY = lowDetailDividerY + 22;
         int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.screen.renderConnectionsOnTop").getString(), screen.renderConnectionsOnTop, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.renderConnectionsOnTop").getString(), screen.renderConnectionsOnTop, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
@@ -132,13 +132,13 @@ final class PathmindSettingsPopupController {
 
         int overlayDividerY = chatDividerY + 22;
         int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.screen.showChatErrors").getString(), screen.showChatErrors, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.showChatErrors").getString(), screen.showChatErrors, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int hudDividerY = overlayDividerY + 22;
         int hudRowCenterY = (overlayDividerY + hudDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, hudRowCenterY, Text.translatable("pathmind.settings.screen.showHudOverlays").getString(), screen.showHudOverlays, popupX, scaledWidth);
+        renderToggleRow(context, mouseX, mouseY, contentX, hudRowCenterY, Text.translatable("pathmind.settings.showHudOverlays").getString(), screen.showHudOverlays, popupX, scaledWidth);
         context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, hudDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 

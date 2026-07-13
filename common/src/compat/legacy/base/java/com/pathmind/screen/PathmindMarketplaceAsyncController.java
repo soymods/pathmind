@@ -52,6 +52,13 @@ final class PathmindMarketplaceAsyncController {
         onClientThread(client, MarketplaceService.fetchMarketplaceModeratorStatus(accessToken, userId), callback);
     }
 
+    static void fetchPresetById(MinecraftClient client,
+                                String accessToken,
+                                String presetId,
+                                BiConsumer<MarketplacePreset, Throwable> callback) {
+        onClientThread(client, MarketplaceService.fetchPresetById(accessToken, presetId), callback);
+    }
+
     static void downloadPresetToTempFile(MinecraftClient client,
                                          MarketplacePreset preset,
                                          String accessToken,

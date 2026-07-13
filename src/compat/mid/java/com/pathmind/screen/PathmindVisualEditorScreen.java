@@ -9,7 +9,6 @@ import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.data.WorkspaceFileAccess;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
-import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeCategory;
@@ -5872,29 +5871,12 @@ public class PathmindVisualEditorScreen extends Screen {
         Optional<String> linkedPresetId = PresetManager.getMarketplaceLinkedPresetId(activePresetName);
         MarketplaceAuthManager.AuthSession cachedSession = MarketplaceAuthManager.getCachedSession().orElse(null);
         if (cachedSession != null && linkedPresetId.isPresent()) {
-            MarketplaceAuthManager.ensureValidSession().whenComplete((session, sessionThrowable) -> {
-                if (this.client == null) {
-                    return;
+            PathmindMarketplaceFlowController.resolveLinkedPreset(this.client, cachedSession, linkedPresetId, result -> {
+                if (result.status() == PathmindMarketplaceFlowController.LinkedPresetStatus.FOUND) {
+                    this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, result.preset()));
+                } else {
+                    this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
                 }
-                this.client.execute(() -> {
-                    if (sessionThrowable != null || session == null) {
-                        this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
-                        return;
-                    }
-                    MarketplaceService.fetchPresetById(session.getAccessToken(), linkedPresetId.get())
-                        .whenComplete((preset, throwable) -> {
-                            if (this.client == null) {
-                                return;
-                            }
-                            this.client.execute(() -> {
-                                if (throwable == null && preset != null) {
-                                    this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, preset));
-                                } else {
-                                    this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
-                                }
-                            });
-                        });
-                });
             });
             return;
         }

@@ -85,7 +85,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * The main visual editor screen for Pathmind.
@@ -5549,40 +5548,25 @@ public class PathmindVisualEditorScreen extends Screen {
         if (publishPresetSession != null && linkedPresetId.isPresent()) {
             publishPresetBusy = true;
             setPublishPresetStatus(Text.translatable("pathmind.status.openingPublishedPreset").getString(), UITheme.TEXT_SECONDARY);
-            MarketplaceAuthManager.ensureValidSession()
-                .whenComplete((session, sessionThrowable) -> {
-                    if (this.client == null) {
-                        return;
+            PathmindMarketplaceFlowController.resolveLinkedPreset(this.client, publishPresetSession, linkedPresetId, result -> {
+                publishPresetBusy = false;
+                if (result.status() == PathmindMarketplaceFlowController.LinkedPresetStatus.FOUND) {
+                    publishPresetSession = result.session();
+                    clearPublishPresetStatus();
+                    if (this.client != null) {
+                        this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, result.preset()));
                     }
-                    this.client.execute(() -> {
-                        if (sessionThrowable != null || session == null) {
-                            publishPresetBusy = false;
-                            publishPresetSession = null;
-                            setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
-                            openRawPublishPresetPopup();
-                            return;
-                        }
-                        publishPresetSession = session;
-                        MarketplaceService.fetchPresetById(session.getAccessToken(), linkedPresetId.get())
-                            .whenComplete((preset, throwable) -> {
-                                if (this.client == null) {
-                                    return;
-                                }
-                                this.client.execute(() -> {
-                                    publishPresetBusy = false;
-                                    if (throwable == null && preset != null) {
-                                        clearPublishPresetStatus();
-                                        if (this.client != null) {
-                                            this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, preset));
-                                        }
-                                        return;
-                                    }
-                                    setPublishPresetStatus(Text.translatable("pathmind.marketplace.linkedPresetNotFound").getString(), UITheme.STATE_WARNING);
-                                    openRawPublishPresetPopup();
-                                });
-                            });
-                    });
-                });
+                    return;
+                }
+                if (result.status() == PathmindMarketplaceFlowController.LinkedPresetStatus.SESSION_EXPIRED) {
+                    publishPresetSession = null;
+                    setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
+                } else {
+                    publishPresetSession = result.session();
+                    setPublishPresetStatus(Text.translatable("pathmind.marketplace.linkedPresetNotFound").getString(), UITheme.STATE_WARNING);
+                }
+                openRawPublishPresetPopup();
+            });
             return;
         }
         openRawPublishPresetPopup();
@@ -6059,43 +6043,38 @@ public class PathmindVisualEditorScreen extends Screen {
 
         publishPresetBusy = true;
         setPublishPresetStatus(Text.translatable("pathmind.status.publishingPreset").getString(), UITheme.TEXT_SECONDARY);
-        MarketplaceAuthManager.ensureValidSession().whenComplete((session, sessionThrowable) -> {
-            if (this.client == null) {
+        PathmindMarketplaceAsyncController.ensureValidSession(this.client, (session, sessionThrowable) -> {
+            if (sessionThrowable != null || session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
+                publishPresetBusy = false;
+                publishPresetSession = null;
+                setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
                 return;
             }
-            this.client.execute(() -> {
-                if (sessionThrowable != null || session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
-                    publishPresetBusy = false;
-                    publishPresetSession = null;
-                    setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
-                    return;
-                }
-                publishPresetSession = session;
-                MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.validatePublish(session.getUserId());
-                if (!limitCheck.permitted()) {
-                    publishPresetBusy = false;
-                    setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
-                    return;
-                }
-                MarketplaceService.PublishRequest request = PathmindMarketplaceActions.publishRequest(
-                    presetPath,
-                    null,
-                    desiredName.trim(),
-                    fallback(session.getDisplayName(), fallback(session.getEmail(), Text.translatable("pathmind.status.discordUser").getString())),
-                    publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
-                    publishPresetTagsField == null ? "" : publishPresetTagsField.getText(),
-                    getCurrentMinecraftVersion(),
-                    getModVersion(),
-                    publishPresetPublic
-                );
-                MarketplaceService.publishPreset(session.getAccessToken(), session.getUserId(), request)
-                    .whenComplete((preset, publishThrowable) -> {
-                        if (this.client == null) {
-                            return;
-                        }
-                        this.client.execute(() -> finishPublishPreset(preset, publishThrowable));
-                    });
-            });
+            publishPresetSession = session;
+            MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.validatePublish(session.getUserId());
+            if (!limitCheck.permitted()) {
+                publishPresetBusy = false;
+                setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
+                return;
+            }
+            MarketplaceService.PublishRequest request = PathmindMarketplaceActions.publishRequest(
+                presetPath,
+                null,
+                desiredName.trim(),
+                fallback(session.getDisplayName(), fallback(session.getEmail(), Text.translatable("pathmind.status.discordUser").getString())),
+                publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
+                publishPresetTagsField == null ? "" : publishPresetTagsField.getText(),
+                getCurrentMinecraftVersion(),
+                getModVersion(),
+                publishPresetPublic
+            );
+            PathmindMarketplaceAsyncController.publishPreset(
+                this.client,
+                session.getAccessToken(),
+                session.getUserId(),
+                request,
+                this::finishPublishPreset
+            );
         });
     }
 
@@ -6105,20 +6084,15 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         publishPresetBusy = true;
         setPublishPresetStatus(Text.translatable("pathmind.status.openingDiscordSignIn").getString(), UITheme.TEXT_SECONDARY);
-        MarketplaceAuthManager.startDiscordSignIn().whenComplete((session, throwable) -> {
-            if (this.client == null) {
+        PathmindMarketplaceAsyncController.startDiscordSignIn(this.client, (session, throwable) -> {
+            publishPresetBusy = false;
+            if (throwable != null || session == null) {
+                publishPresetSession = null;
+                setPublishPresetStatus(fallback(throwable == null ? null : throwable.getMessage(), Text.translatable("pathmind.status.discordSignInFailed").getString()), UITheme.STATE_ERROR);
                 return;
             }
-            this.client.execute(() -> {
-                publishPresetBusy = false;
-                if (throwable != null || session == null) {
-                    publishPresetSession = null;
-                    setPublishPresetStatus(fallback(throwable == null ? null : throwable.getMessage(), Text.translatable("pathmind.status.discordSignInFailed").getString()), UITheme.STATE_ERROR);
-                    return;
-                }
-                publishPresetSession = session;
-                setPublishPresetStatus(Text.translatable("pathmind.status.signedInAs", fallback(session.getDisplayName(), fallback(session.getEmail(), Text.translatable("pathmind.status.discordUser").getString()))).getString(), getAccentColor());
-            });
+            publishPresetSession = session;
+            setPublishPresetStatus(Text.translatable("pathmind.status.signedInAs", fallback(session.getDisplayName(), fallback(session.getEmail(), Text.translatable("pathmind.status.discordUser").getString()))).getString(), getAccentColor());
         });
     }
 

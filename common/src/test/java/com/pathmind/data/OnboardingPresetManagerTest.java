@@ -1,8 +1,5 @@
 package com.pathmind.data;
 
-import com.pathmind.nodes.Node;
-import com.pathmind.nodes.NodeConnection;
-import com.pathmind.nodes.NodeType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,12 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,34 +27,23 @@ class OnboardingPresetManagerTest {
 
             NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
             assertNotNull(loaded, preset.name());
-            List<Node> nodes = NodeGraphPersistence.convertToNodes(loaded);
-            Map<String, Node> byId = nodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
-            List<NodeConnection> connections = NodeGraphPersistence.convertToConnections(loaded, byId);
-
-            assertFalse(nodes.isEmpty(), preset.name());
-            assertTrue(nodes.stream().anyMatch(node -> node.getType() == NodeType.START), preset.name());
-            assertTrue(nodes.stream().anyMatch(node -> node.getType() == NodeType.STICKY_NOTE), preset.name());
-            assertEquals(preset.connections().size(), connections.size(), preset.name());
+            assertEquals(preset.nodes().size(), loaded.getNodes().size(), preset.name());
+            assertEquals(preset.connections().size(), loaded.getConnections().size(), preset.name());
         }
     }
 
     @Test
-    void logicExampleContainsVariableBranchAndAttachedSensor() {
-        OnboardingPresetManager.ExamplePreset preset = OnboardingPresetManager.createExamplePresets().get(1);
-        Path savePath = tempDir.resolve("logic.json");
-        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(preset.nodes(), preset.connections(), savePath));
+    void examplePresetsAreTemporarilyEmpty() {
+        List<OnboardingPresetManager.ExamplePreset> presets = OnboardingPresetManager.createExamplePresets();
 
-        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
-        List<Node> nodes = NodeGraphPersistence.convertToNodes(loaded);
-
-        Node branch = nodes.stream()
-            .filter(node -> node.getType() == NodeType.CONTROL_IF_ELSE)
-            .findFirst()
-            .orElseThrow();
-
-        assertNotNull(branch.getAttachedSensor());
-        assertEquals(NodeType.OPERATOR_GREATER, branch.getAttachedSensor().getType());
-        assertEquals(2, branch.getOutputSocketCount());
+        assertEquals(3, presets.size());
+        assertEquals("Basics", presets.get(0).name());
+        assertEquals("Variables and If Else", presets.get(1).name());
+        assertEquals("Relative Variables and Lists", presets.get(2).name());
+        for (OnboardingPresetManager.ExamplePreset preset : presets) {
+            assertTrue(preset.nodes().isEmpty(), preset.name());
+            assertTrue(preset.connections().isEmpty(), preset.name());
+        }
     }
 
     @Test
@@ -69,7 +51,7 @@ class OnboardingPresetManagerTest {
         Path baseDirectory = tempDir.resolve("pathmind");
         Path presetsDirectory = baseDirectory.resolve("presets");
         Files.createDirectories(presetsDirectory);
-        Path existingPreset = presetsDirectory.resolve("Example 1 - Basics.json");
+        Path existingPreset = presetsDirectory.resolve("Basics.json");
         Files.writeString(existingPreset, "custom", StandardCharsets.UTF_8);
 
         OnboardingPresetManager.RestoreResult skipped = OnboardingPresetManager.restoreExamplePresets(baseDirectory, false);
@@ -95,7 +77,7 @@ class OnboardingPresetManagerTest {
         OnboardingPresetManager.ensureExamplePresetsInstalled(baseDirectory, true);
         assertEquals(3, countJsonFiles(presetsDirectory));
 
-        Files.delete(presetsDirectory.resolve("Example 1 - Basics.json"));
+        Files.delete(presetsDirectory.resolve("Basics.json"));
         OnboardingPresetManager.ensureExamplePresetsInstalled(baseDirectory, true);
         assertEquals(2, countJsonFiles(presetsDirectory));
     }

@@ -240,6 +240,83 @@ public final class PathmindSettingsRowRenderer {
         }
     }
 
+    public static void renderAccentOption(DrawContext context, TextRenderer textRenderer,
+                                          int x, int y, int width, int height,
+                                          String label, int swatchColor,
+                                          boolean selected, float hoverProgress,
+                                          int accentColor, PopupAnimationHandler animation) {
+        int bgColor = AnimationHelper.lerpColor(
+            selected ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG,
+            selected ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION,
+            hoverProgress
+        );
+        int borderColor = AnimationHelper.lerpColor(selected ? accentColor : UITheme.BORDER_SUBTLE, accentColor, hoverProgress);
+        UIStyleHelper.drawBeveledPanel(
+            context,
+            x,
+            y,
+            width,
+            height,
+            PathmindPopupRenderer.animatedColor(animation, bgColor),
+            PathmindPopupRenderer.animatedColor(animation, borderColor),
+            PathmindPopupRenderer.animatedColor(animation, UITheme.PANEL_INNER_BORDER)
+        );
+
+        int swatchSize = 8;
+        int swatchX = x + 4;
+        int swatchY = y + (height - swatchSize) / 2;
+        context.fill(
+            swatchX,
+            swatchY,
+            swatchX + swatchSize,
+            swatchY + swatchSize,
+            PathmindPopupRenderer.animatedColor(animation, swatchColor)
+        );
+
+        int labelX = swatchX + swatchSize + 4;
+        int labelY = y + (height - textRenderer.fontHeight) / 2 + 1;
+        int maxLabelWidth = Math.max(0, x + width - labelX - 4);
+        String rowText = TextRenderUtil.trimWithEllipsis(textRenderer, label == null ? "" : label, maxLabelWidth);
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(rowText),
+            labelX,
+            labelY,
+            PathmindPopupRenderer.animatedColor(animation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, accentColor, hoverProgress))
+        );
+    }
+
+    public static void renderDescriptionListRow(DrawContext context, TextRenderer textRenderer,
+                                                int x, int y, int width, int height,
+                                                String label, String description,
+                                                boolean hovered, boolean selected,
+                                                float hoverProgress, int accentColor,
+                                                PopupAnimationHandler animation) {
+        int rowBg = selected ? UITheme.DROPDOWN_OPTION_HOVER : hovered ? UITheme.BACKGROUND_TERTIARY : UITheme.DROPDOWN_OPTION_BG;
+        context.fill(x, y, x + width, y + height, PathmindPopupRenderer.animatedColor(animation, rowBg));
+        if (selected) {
+            DrawContextBridge.drawBorder(context, x, y, width, height, PathmindPopupRenderer.animatedColor(animation, accentColor));
+        }
+
+        int labelColor = PathmindPopupRenderer.animatedColor(animation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, accentColor, hoverProgress));
+        int metaColor = PathmindPopupRenderer.animatedColor(animation, AnimationHelper.lerpColor(UITheme.TEXT_TERTIARY, UITheme.TEXT_SECONDARY, hoverProgress));
+        int maxTextWidth = Math.max(0, width - 16);
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(TextRenderUtil.trimWithEllipsis(textRenderer, label == null ? "" : label, maxTextWidth)),
+            x + 8,
+            y + 6,
+            labelColor
+        );
+        context.drawTextWithShadow(
+            textRenderer,
+            Text.literal(TextRenderUtil.trimWithEllipsis(textRenderer, description == null ? "" : description, maxTextWidth)),
+            x + 8,
+            y + 16,
+            metaColor
+        );
+    }
+
     private static UIStyleHelper.SliderPalette animatedSliderPalette(UIStyleHelper.SliderPalette palette,
                                                                      PopupAnimationHandler animation) {
         return new UIStyleHelper.SliderPalette(

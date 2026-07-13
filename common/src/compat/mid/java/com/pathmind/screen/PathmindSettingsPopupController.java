@@ -6,14 +6,12 @@ import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
-import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.control.PathmindPopupLayout;
 import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindSettingsRowRenderer;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.ScrollbarHelper;
 import net.minecraft.client.gui.DrawContext;
@@ -253,33 +251,20 @@ final class PathmindSettingsPopupController {
 
     void drawAccentOption(DrawContext context, int x, int y, AccentOption option, boolean hovered, boolean selected) {
         float hoverProgress = selected ? 1f : screen.getHoverProgress("settings-accent-option:" + option.name(), hovered);
-        int bgColor = AnimationHelper.lerpColor(
-            selected ? UITheme.DROPDOWN_OPTION_HOVER : UITheme.DROPDOWN_OPTION_BG,
-            selected ? UITheme.BORDER_FOCUS : UITheme.BORDER_SECTION,
-            hoverProgress
-        );
-        int borderColor = AnimationHelper.lerpColor(selected ? screen.getAccentColor() : UITheme.BORDER_SUBTLE, screen.getAccentColor(), hoverProgress);
-        UIStyleHelper.drawBeveledPanel(
+        PathmindSettingsRowRenderer.renderAccentOption(
             context,
+            screen.textRenderer(),
             x,
             y,
             SETTINGS_OPTION_WIDTH,
             SETTINGS_OPTION_HEIGHT,
-            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, bgColor),
-            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, borderColor),
-            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.PANEL_INNER_BORDER)
+            option.label,
+            option.color,
+            selected,
+            hoverProgress,
+            screen.getAccentColor(),
+            screen.settingsPopupAnimation
         );
-
-        int swatchSize = 8;
-        int swatchX = x + 4;
-        int swatchY = y + (SETTINGS_OPTION_HEIGHT - swatchSize) / 2;
-        context.fill(swatchX, swatchY, swatchX + swatchSize, swatchY + swatchSize,
-            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, option.color));
-
-        int labelX = swatchX + swatchSize + 4;
-        int labelY = y + (SETTINGS_OPTION_HEIGHT - screen.textRenderer().fontHeight) / 2 + 1;
-        context.drawTextWithShadow(screen.textRenderer(), Text.literal(option.label), labelX, labelY,
-            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, screen.getAccentColor(), hoverProgress)));
     }
 
     void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int popupX, int scaledWidth) {
@@ -880,19 +865,21 @@ final class PathmindSettingsPopupController {
             boolean hovered = screen.isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
             boolean selected = type == selectedType;
             float hoverProgress = selected ? 1f : screen.getHoverProgress("settings-node-selector:" + type.name(), hovered);
-            int rowBg = screen.getPopupAnimatedColor(screen.settingsPopupAnimation,
-                selected ? UITheme.DROPDOWN_OPTION_HOVER : hovered ? UITheme.BACKGROUND_TERTIARY : UITheme.DROPDOWN_OPTION_BG);
-            context.fill(bounds[0], bounds[1], bounds[0] + bounds[2], bounds[1] + bounds[3], rowBg);
-            if (selected) {
-                DrawContextBridge.drawBorder(context, bounds[0], bounds[1], bounds[2], bounds[3], screen.getPopupAnimatedColor(screen.settingsPopupAnimation, screen.getAccentColor()));
-            }
-
-            int labelColor = screen.getPopupAnimatedColor(screen.settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, screen.getAccentColor(), hoverProgress));
-            int metaColor = screen.getPopupAnimatedColor(screen.settingsPopupAnimation, AnimationHelper.lerpColor(UITheme.TEXT_TERTIARY, UITheme.TEXT_SECONDARY, hoverProgress));
-            context.drawTextWithShadow(screen.textRenderer(), Text.literal(type.getDisplayName()),
-                bounds[0] + 8, bounds[1] + 6, labelColor);
-            context.drawTextWithShadow(screen.textRenderer(), Text.literal(getSettingsNodeTypeDescription(type)),
-                bounds[0] + 8, bounds[1] + 16, metaColor);
+            PathmindSettingsRowRenderer.renderDescriptionListRow(
+                context,
+                screen.textRenderer(),
+                bounds[0],
+                bounds[1],
+                bounds[2],
+                bounds[3],
+                type.getDisplayName(),
+                getSettingsNodeTypeDescription(type),
+                hovered,
+                selected,
+                hoverProgress,
+                screen.getAccentColor(),
+                screen.settingsPopupAnimation
+            );
         }
         if (filteredTypes.isEmpty()) {
             context.drawTextWithShadow(screen.textRenderer(), Text.literal(Text.translatable("pathmind.settings.nodeSettings.noMatches").getString()),

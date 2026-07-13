@@ -467,7 +467,7 @@ public class PathmindMarketplaceScreen extends Screen {
             boolean exitProfileHovered = isPointInRect(mouseX, mouseY, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height);
             drawActionButton(context, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height,
                 Text.translatable("pathmind.marketplace.backToMarket").getString(), exitProfileHovered, false);
-            String countLabel = Text.translatable("pathmind.marketplace.publicPresetCount", presets.size(), presets.size() == 1 ? "" : "s").getString();
+            String countLabel = translatedCount("pathmind.marketplace.publicPresetCount", presets.size());
             int countX = layout.bodyX + layout.bodyWidth - this.textRenderer.getWidth(countLabel);
             context.drawTextWithShadow(this.textRenderer, Text.literal(countLabel), countX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
 
@@ -645,18 +645,18 @@ public class PathmindMarketplaceScreen extends Screen {
 
         int textX = avatarX + avatarSize + 8;
         int statsWidth = Math.max(
-            this.textRenderer.getWidth(author.presetCount() + " presets"),
-            Math.max(this.textRenderer.getWidth(author.totalDownloads() + " dl"), this.textRenderer.getWidth(author.totalLikes() + " likes"))
+            this.textRenderer.getWidth(translatedCount("pathmind.marketplace.publicPresetCount", author.presetCount())),
+            Math.max(this.textRenderer.getWidth(Text.translatable("pathmind.marketplace.downloadsShort", author.totalDownloads()).getString()), this.textRenderer.getWidth(Text.translatable("pathmind.marketplace.likesShort", author.totalLikes()).getString()))
         );
         int textWidth = Math.max(48, rect.width - (textX - rect.x) - statsWidth - 16);
         String authorName = TextRenderUtil.trimWithEllipsis(this.textRenderer, author.displayName(), textWidth);
         context.drawTextWithShadow(this.textRenderer, Text.literal(authorName), textX, rect.y + 8, UITheme.TEXT_HEADER);
-        String secondary = author.presetCount() + " public preset" + (author.presetCount() == 1 ? "" : "s");
+        String secondary = translatedCount("pathmind.marketplace.publicPresetCount", author.presetCount());
         context.drawTextWithShadow(this.textRenderer, Text.literal(secondary), textX, rect.y + 20, UITheme.TEXT_SECONDARY);
 
         int statsX = rect.x + rect.width - statsWidth - 8;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(author.totalDownloads() + " dl"), statsX, rect.y + 8, UITheme.STATE_SUCCESS);
-        context.drawTextWithShadow(this.textRenderer, Text.literal(author.totalLikes() + " likes"), statsX, rect.y + 20, UITheme.MARKETPLACE_LIKE);
+        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.marketplace.downloadsShort", author.totalDownloads()), statsX, rect.y + 8, UITheme.STATE_SUCCESS);
+        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.marketplace.likesShort", author.totalLikes()), statsX, rect.y + 20, UITheme.MARKETPLACE_LIKE);
     }
 
     private void renderAuthorDirectoryAvatar(DrawContext context, int x, int y, int size, AuthorSummary author) {
@@ -1311,7 +1311,7 @@ public class PathmindMarketplaceScreen extends Screen {
         cursorY += 14;
 
         int downloadsWidth = Math.max(54, this.textRenderer.getWidth(popupPreset.getDownloadsCount() + " downloads") + 12);
-        int likesWidth = Math.max(42, this.textRenderer.getWidth(popupPreset.getLikesCount() + " likes") + 12);
+        int likesWidth = Math.max(42, this.textRenderer.getWidth(Text.translatable("pathmind.marketplace.likesShort", popupPreset.getLikesCount()).getString()) + 12);
         drawPopupStatPill(context, textX, cursorY, downloadsWidth, Text.translatable("pathmind.marketplace.downloads").getString(), Integer.toString(popupPreset.getDownloadsCount()));
         drawPopupStatPill(context, textX + downloadsWidth + 6, cursorY, likesWidth, Text.translatable("pathmind.marketplace.likes").getString(), Integer.toString(popupPreset.getLikesCount()));
         cursorY += 24;
@@ -2488,8 +2488,7 @@ public class PathmindMarketplaceScreen extends Screen {
             hovered || active,
             disabled
         );
-        UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height,
-            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+        UIStyleHelper.drawTextButtonFrame(context, x, y, width, height, palette);
         int textColor = palette.textColor();
         int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
         int textY = y + (height - this.textRenderer.fontHeight) / 2;
@@ -4482,6 +4481,10 @@ public class PathmindMarketplaceScreen extends Screen {
         return String.join(", ", tags);
     }
 
+    private static String translatedCount(String baseKey, int count) {
+        return Text.translatable(count == 1 ? baseKey + ".one" : baseKey + ".other", count).getString();
+    }
+
     private static String formatTimestamp(String value) {
         if (value == null || value.isBlank()) {
             return Text.translatable("pathmind.marketplace.unknown").getString();
@@ -4551,7 +4554,7 @@ public class PathmindMarketplaceScreen extends Screen {
             if (isAuthorDirectoryMode()) {
                 statusMessage = Text.translatable("pathmind.status.loadedAuthors", authorResults.size(), authorResults.size() == 1 ? "" : "s").getString();
             } else {
-                statusMessage = Text.translatable("pathmind.status.loadedPresets", presets.size(), presets.size() == 1 ? "" : "s").getString();
+                statusMessage = translatedCount("pathmind.status.loadedPresets", presets.size());
             }
         }
     }

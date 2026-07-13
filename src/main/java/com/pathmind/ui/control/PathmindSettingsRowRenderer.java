@@ -182,22 +182,21 @@ public final class PathmindSettingsRowRenderer {
                                            int value, int min, int max,
                                            int accentColor, PopupAnimationHandler animation,
                                            float sliderHoverProgress) {
-        int trackColor = AnimationHelper.lerpColor(UITheme.DROPDOWN_OPTION_BG, UITheme.DROPDOWN_OPTION_HOVER, sliderHoverProgress);
-        int trackBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, accentColor, sliderHoverProgress * 0.45f);
-        trackColor = animation.getAnimatedPopupColor(trackColor);
-        trackBorder = animation.getAnimatedPopupColor(trackBorder);
-        context.fill(sliderX, sliderY, sliderX + sliderWidth, sliderY + sliderHeight, trackColor);
-        DrawContextBridge.drawBorder(context, sliderX, sliderY, sliderWidth, sliderHeight, trackBorder);
+        UIStyleHelper.SliderPalette trackPalette = animatedSliderPalette(
+            UIStyleHelper.getSliderPalette(accentColor, sliderHoverProgress, false, false),
+            animation
+        );
+        UIStyleHelper.drawSliderTrack(context, sliderX, sliderY, sliderWidth, sliderHeight, trackPalette);
 
         int clamped = Math.max(min, Math.min(value, max));
         float t = max == min ? 0f : (clamped - min) / (float) (max - min);
         int handleX = sliderX + Math.round(t * (sliderWidth - sliderHandleWidth));
         int handleY = centerY - sliderHandleHeight / 2;
-        int handleColor = animation.getAnimatedPopupColor(accentColor);
-        int handleBorder = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, accentColor, sliderHoverProgress);
-        handleBorder = PathmindPopupRenderer.animatedColor(animation, handleBorder);
-        context.fill(handleX, handleY, handleX + sliderHandleWidth, handleY + sliderHandleHeight, handleColor);
-        DrawContextBridge.drawBorder(context, handleX, handleY, sliderHandleWidth, sliderHandleHeight, handleBorder);
+        UIStyleHelper.SliderPalette handlePalette = animatedSliderPalette(
+            UIStyleHelper.getSliderPalette(accentColor, sliderHoverProgress, true, false),
+            animation
+        );
+        UIStyleHelper.drawSliderHandle(context, handleX, handleY, sliderHandleWidth, sliderHandleHeight, handlePalette);
     }
 
     private static UIStyleHelper.SliderPalette animatedSliderPalette(UIStyleHelper.SliderPalette palette,

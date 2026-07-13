@@ -21,6 +21,9 @@ public final class UIStyleHelper {
     public record TextButtonPalette(int backgroundColor, int borderColor, int innerBorderColor, int textColor) {
     }
 
+    public record ToolbarButtonPalette(int backgroundColor, int borderColor, int innerBorderColor) {
+    }
+
     public record FieldPalette(int backgroundColor, int borderColor, int innerBorderColor, int textColor, int placeholderColor) {
     }
 
@@ -58,6 +61,37 @@ public final class UIStyleHelper {
     public static void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
                                               int backgroundColor, int outerBorderColor, int innerBorderColor) {
         drawBeveledPanel(context, x, y, width, height, backgroundColor, outerBorderColor, innerBorderColor);
+    }
+
+    public static void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
+                                              ToolbarButtonPalette palette) {
+        if (palette == null) {
+            return;
+        }
+        drawToolbarButtonFrame(context, x, y, width, height,
+            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+    }
+
+    public static void drawTextButtonFrame(DrawContext context, int x, int y, int width, int height,
+                                           TextButtonPalette palette) {
+        if (palette == null) {
+            return;
+        }
+        drawBeveledPanel(context, x, y, width, height,
+            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+    }
+
+    public static ToolbarButtonPalette getToolbarButtonPalette(int accentColor, float hoverProgress, boolean active, boolean disabled) {
+        float easedHover = AnimationHelper.easeOutQuad(Math.max(0f, Math.min(1f, hoverProgress)));
+        if (disabled) {
+            return new ToolbarButtonPalette(UITheme.TOOLBAR_BG_DISABLED, UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
+        }
+
+        int idleBackground = active ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG;
+        int hoverBackground = active ? UITheme.TOOLBAR_BG_ACTIVE : UITheme.TOOLBAR_BG_HOVER;
+        int backgroundColor = AnimationHelper.lerpColor(idleBackground, hoverBackground, easedHover);
+        int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_DEFAULT, accentColor, active ? 1f : easedHover);
+        return new ToolbarButtonPalette(backgroundColor, borderColor, UITheme.PANEL_INNER_BORDER);
     }
 
     public static TextButtonPalette getTextButtonPalette(TextButtonStyle style, int accentColor, boolean hovered, boolean disabled) {

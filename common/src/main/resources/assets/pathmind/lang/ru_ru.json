@@ -457,7 +457,6 @@
   "pathmind.marketplace.minecraftMismatch": "Minecraft: создано для %s, у вас %s",
   "pathmind.marketplace.pathmindCompatible": "Pathmind: совместимо с %s",
   "pathmind.marketplace.pathmindMismatch": "Pathmind: создано для %s, у вас %s",
-  "pathmind.marketplace.publicPresetCount": "%s публичных пресетов",
   "pathmind.marketplace.versionAny": "Любая",
   "pathmind.marketplace.graphMode": "Режим: %s",
   "pathmind.marketplace.graphMessage": "Сообщение: %s",
@@ -602,7 +601,6 @@
   "pathmind.status.noPresetsSearch": "Пресеты не соответствуют поиску.",
   "pathmind.status.noSavedSearch": "Сохраненные пресеты не соответствуют поиску.",
   "pathmind.status.loadedAuthors": "Загружено авторов: %s%s.",
-  "pathmind.status.loadedPresets": "Загружено пресетов: %s%s.",
   "pathmind.status.presetNameExistsOrInvalid": "Имя пресета уже существует или недействительно.",
   "pathmind.status.selectPresetToRename": "Выберите пресет для переименования.",
   "pathmind.tooltip.resetView": "Сбросить вид",
@@ -689,5 +687,9 @@
   "pathmind.sidebar.group.variables": "Переменные",
   "pathmind.sidebar.group.viewInput": "Вид и ввод",
   "pathmind.sidebar.group.worldWeather": "Мир и погода",
-  "pathmind.sidebar.group.writingOutput": "Письмо и вывод"
+  "pathmind.sidebar.group.writingOutput": "Письмо и вывод",
+  "pathmind.marketplace.publicPresetCount.one": "%s публичный пресет",
+  "pathmind.marketplace.publicPresetCount.other": "%s публичных пресетов",
+  "pathmind.status.loadedPresets.one": "Загружен %s пресет.",
+  "pathmind.status.loadedPresets.other": "Загружено %s пресетов."
 }

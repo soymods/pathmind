@@ -457,7 +457,6 @@
   "pathmind.marketplace.minecraftMismatch": "Minecraft: erstellt für %s, du nutzt %s",
   "pathmind.marketplace.pathmindCompatible": "Pathmind: kompatibel mit %s",
   "pathmind.marketplace.pathmindMismatch": "Pathmind: erstellt für %s, du hast %s",
-  "pathmind.marketplace.publicPresetCount": "%s öffentliche(s) Preset(s)",
   "pathmind.marketplace.versionAny": "Beliebig",
   "pathmind.marketplace.graphMode": "Modus: %s",
   "pathmind.marketplace.graphMessage": "Nachricht: %s",
@@ -602,7 +601,6 @@
   "pathmind.status.noPresetsSearch": "Keine Presets entsprechen deiner Suche.",
   "pathmind.status.noSavedSearch": "Keine gespeicherten Presets entsprechen deiner Suche.",
   "pathmind.status.loadedAuthors": "%s Autor(en) geladen.",
-  "pathmind.status.loadedPresets": "%s Preset(s) geladen.",
   "pathmind.status.presetNameExistsOrInvalid": "Der Preset-Name existiert bereits oder ist ungültig.",
   "pathmind.status.selectPresetToRename": "Wähle ein Preset zum Umbenennen aus.",
   "pathmind.tooltip.resetView": "Ansicht zurücksetzen",
@@ -657,5 +655,9 @@
   "pathmind.marketplace.sort.newest": "Neueste",
   "pathmind.marketplace.sort.updated": "Aktualisiert",
   "pathmind.marketplace.sort.name": "Name",
-  "pathmind.marketplace.sort.author": "Autor"
+  "pathmind.marketplace.sort.author": "Autor",
+  "pathmind.marketplace.publicPresetCount.one": "%s öffentliches Preset",
+  "pathmind.marketplace.publicPresetCount.other": "%s öffentliche Presets",
+  "pathmind.status.loadedPresets.one": "%s Preset geladen.",
+  "pathmind.status.loadedPresets.other": "%s Presets geladen."
 }

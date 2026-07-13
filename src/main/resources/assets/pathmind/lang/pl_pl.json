@@ -457,7 +457,6 @@
   "pathmind.marketplace.minecraftMismatch": "Minecraft: utworzone dla %s, używasz %s",
   "pathmind.marketplace.pathmindCompatible": "Pathmind: zgodne z %s",
   "pathmind.marketplace.pathmindMismatch": "Pathmind: utworzone dla %s, masz %s",
-  "pathmind.marketplace.publicPresetCount": "%s publicznych presetów",
   "pathmind.marketplace.versionAny": "Dowolna",
   "pathmind.marketplace.graphMode": "Tryb: %s",
   "pathmind.marketplace.graphMessage": "Wiadomość: %s",
@@ -602,7 +601,6 @@
   "pathmind.status.noPresetsSearch": "Żaden preset nie pasuje do wyszukiwania.",
   "pathmind.status.noSavedSearch": "Żaden zapisany preset nie pasuje do wyszukiwania.",
   "pathmind.status.loadedAuthors": "Załadowano %s autor(ów).",
-  "pathmind.status.loadedPresets": "Załadowano %s preset(ów).",
   "pathmind.status.presetNameExistsOrInvalid": "Nazwa presetu już istnieje lub jest nieprawidłowa.",
   "pathmind.status.selectPresetToRename": "Wybierz preset do zmiany nazwy.",
   "pathmind.tooltip.resetView": "Resetuj widok",
@@ -689,5 +687,9 @@
   "pathmind.sidebar.group.variables": "Zmienne",
   "pathmind.sidebar.group.viewInput": "Widok i wejście",
   "pathmind.sidebar.group.worldWeather": "Świat i pogoda",
-  "pathmind.sidebar.group.writingOutput": "Pisanie i wyjście"
+  "pathmind.sidebar.group.writingOutput": "Pisanie i wyjście",
+  "pathmind.marketplace.publicPresetCount.one": "%s publiczny preset",
+  "pathmind.marketplace.publicPresetCount.other": "%s publicznych presetów",
+  "pathmind.status.loadedPresets.one": "Załadowano %s preset.",
+  "pathmind.status.loadedPresets.other": "Załadowano %s presetów."
 }

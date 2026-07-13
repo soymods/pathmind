@@ -127,8 +127,7 @@ public class StyledButton {
         float hoverProg = hoverProgress.getValue();
 
         UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapStyle(style), accentColor, hoverProg, !enabled);
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height,
-            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+        UIStyleHelper.drawTextButtonFrame(context, x, y, width, height, palette);
 
         int textColor = palette.textColor();
         int textX = x + width / 2;
@@ -236,8 +235,7 @@ public class StyledButton {
                                     int x, int y, int width, int height,
                                     String label, Style style, boolean hovered, int accentColor) {
         UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapStyle(style), accentColor, hovered, false);
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height,
-            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+        UIStyleHelper.drawTextButtonFrame(context, x, y, width, height, palette);
 
         int textX = x + width / 2;
         int textY = y + (height - textRenderer.fontHeight) / 2 + 1;

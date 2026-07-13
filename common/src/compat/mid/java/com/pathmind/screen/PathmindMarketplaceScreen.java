@@ -70,7 +70,6 @@ public class PathmindMarketplaceScreen extends Screen {
         return PathmindI18n.tr(key, args);
     }
 
-    private static final String MARKETPLACE_MODERATOR_USER_ID = "4f1bdb60-3d3f-44ad-85ac-83f324da5e3e";
     static final int OUTER_PADDING = 12;
     static final int TOP_BAR_HEIGHT = 30;
     static final int SECTION_TOP_GAP = 4;
@@ -291,7 +290,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     return;
                 }
 
-                allPresets = dedupePresetsById(results);
+                allPresets = PathmindMarketplaceActions.dedupePresetsById(results);
                 applyFilters();
             });
         });
@@ -2289,29 +2288,6 @@ public class PathmindMarketplaceScreen extends Screen {
         publishStatusColor = color;
     }
 
-    private String extractThrowableMessage(Throwable throwable, String fallbackMessage) {
-        if (throwable == null) {
-            return fallbackMessage;
-        }
-        Throwable leaf = throwable;
-        while (leaf.getCause() != null && leaf.getCause() != leaf) {
-            leaf = leaf.getCause();
-        }
-        String deepest = leaf.getMessage();
-        if (deepest != null && !deepest.isBlank()) {
-            return deepest;
-        }
-        Throwable current = throwable;
-        while (current != null) {
-            String message = current.getMessage();
-            if (message != null && !message.isBlank()) {
-                return message;
-            }
-            current = current.getCause();
-        }
-        return fallbackMessage;
-    }
-
     void renderAccountAvatar(DrawContext context, int x, int y, int size) {
         int background = accountPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_PRIMARY);
         int border = accountPopupAnimation.getAnimatedPopupColor(getAccentColor());
@@ -2500,18 +2476,13 @@ public class PathmindMarketplaceScreen extends Screen {
         authBusy = true;
         setActiveSubmissionStatus(editingPreset == null ? Text.translatable("pathmind.status.publishingPreset").getString() : Text.translatable("pathmind.status.savingMetadata").getString(), UITheme.TEXT_SECONDARY);
 
-        String slugSource = editingPreset != null && name.equalsIgnoreCase(fallback(editingPreset.getName(), ""))
-            ? fallback(editingPreset.getSlug(), name)
-            : name;
-        MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
+        MarketplaceService.PublishRequest request = PathmindMarketplaceActions.publishRequest(
             localPresetPath,
-            editingPreset == null ? null : editingPreset.getStorageBucket(),
-            editingPreset == null ? null : editingPreset.getFilePath(),
-            sanitizeSlug(slugSource),
+            editingPreset,
             name,
             fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), Text.translatable("pathmind.status.discordUser").getString())),
             publishDescriptionField == null ? "" : publishDescriptionField.getText().trim(),
-            parseTags(publishTagsField == null ? "" : publishTagsField.getText()),
+            publishTagsField == null ? "" : publishTagsField.getText(),
             this.client != null ? this.client.getGameVersion() : Text.translatable("pathmind.marketplace.unknown").getString(),
             getInstalledPathmindVersion(),
             publishVisibilityPublic
@@ -2559,7 +2530,7 @@ public class PathmindMarketplaceScreen extends Screen {
         publishBusy = false;
         authBusy = false;
         if (throwable != null) {
-            setActiveSubmissionStatus(extractThrowableMessage(throwable, wasEditing ? Text.translatable("pathmind.status.metadataUpdateFailed").getString() : Text.translatable("pathmind.status.publishFailed").getString()), UITheme.STATE_ERROR);
+            setActiveSubmissionStatus(PathmindMarketplaceActions.extractThrowableMessage(throwable, wasEditing ? Text.translatable("pathmind.status.metadataUpdateFailed").getString() : Text.translatable("pathmind.status.publishFailed").getString()), UITheme.STATE_ERROR);
             return;
         }
         if (!wasEditing && preset != null && authSession != null && authSession.getUserId() != null && !authSession.getUserId().isBlank()) {
@@ -2702,7 +2673,7 @@ public class PathmindMarketplaceScreen extends Screen {
         authBusy = false;
         if (throwable != null) {
             if (fromPopup && popupPreset != null && preset != null && preset.getId() != null && preset.getId().equals(popupPreset.getId())) {
-                popupStatusMessage = extractThrowableMessage(throwable, Text.translatable("pathmind.status.deleteFailed").getString());
+                popupStatusMessage = PathmindMarketplaceActions.extractThrowableMessage(throwable, Text.translatable("pathmind.status.deleteFailed").getString());
                 popupStatusColor = UITheme.STATE_ERROR;
             }
             return;
@@ -2799,19 +2770,7 @@ public class PathmindMarketplaceScreen extends Screen {
         authBusy = true;
         popupStatusMessage = Text.translatable("pathmind.status.updatingUploadedPreset").getString();
         popupStatusColor = UITheme.TEXT_SECONDARY;
-        MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
-            localPresetPath,
-            popupPreset.getStorageBucket(),
-            popupPreset.getFilePath(),
-            fallback(popupPreset.getSlug(), sanitizeSlug(popupPreset.getName())),
-            popupPreset.getName(),
-            popupPreset.getAuthorName(),
-            popupPreset.getDescription(),
-            popupPreset.getTags(),
-            popupPreset.getGameVersion(),
-            popupPreset.getPathmindVersion(),
-            popupPreset.isPublished()
-        );
+        MarketplaceService.PublishRequest request = PathmindMarketplaceActions.updateFromLocalRequest(localPresetPath, popupPreset);
 
         withFreshAuthSession(session -> MarketplaceService.updatePresetMetadata(session.getAccessToken(), popupPreset, request)
             .whenComplete((updatedPreset, throwable) -> {
@@ -2822,7 +2781,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     publishBusy = false;
                     authBusy = false;
                     if (throwable != null || updatedPreset == null) {
-                        popupStatusMessage = extractThrowableMessage(throwable, Text.translatable("pathmind.status.presetUpdateFailed").getString());
+                        popupStatusMessage = PathmindMarketplaceActions.extractThrowableMessage(throwable, Text.translatable("pathmind.status.presetUpdateFailed").getString());
                         popupStatusColor = UITheme.STATE_ERROR;
                         return;
                     }
@@ -2840,20 +2799,15 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private boolean isOwnPreset(MarketplacePreset preset) {
-        if (preset == null || authSession == null) {
-            return false;
-        }
-        String presetAuthorUserId = fallback(preset.getAuthorUserId(), "");
-        String currentUserId = fallback(authSession.getUserId(), "");
-        return !presetAuthorUserId.isBlank() && presetAuthorUserId.equals(currentUserId);
+        return PathmindMarketplaceActions.isOwnPreset(preset, authSession == null ? null : authSession.getUserId());
     }
 
     boolean canManagePreset(MarketplacePreset preset) {
-        return isOwnPreset(preset) || isMarketplaceModerator || isKnownMarketplaceModerator(authSession == null ? null : authSession.getUserId());
+        return PathmindMarketplaceActions.canManagePreset(preset, authSession == null ? null : authSession.getUserId(), isMarketplaceModerator);
     }
 
     private boolean isKnownMarketplaceModerator(String userId) {
-        return userId != null && MARKETPLACE_MODERATOR_USER_ID.equalsIgnoreCase(userId.trim());
+        return PathmindMarketplaceActions.isKnownMarketplaceModerator(userId);
     }
 
     private void setPresetLiked(String presetId, boolean liked) {
@@ -2901,10 +2855,10 @@ public class PathmindMarketplaceScreen extends Screen {
         if (presetId == null || presetId.isBlank()) {
             return;
         }
-        allPresets = updatePresetCountList(allPresets, presetId, likesDelta, downloadsDelta);
-        presets = updatePresetCountList(presets, presetId, likesDelta, downloadsDelta);
+        allPresets = PathmindMarketplaceActions.updatePresetCountList(allPresets, presetId, likesDelta, downloadsDelta);
+        presets = PathmindMarketplaceActions.updatePresetCountList(presets, presetId, likesDelta, downloadsDelta);
         if (popupPreset != null && presetId.equals(popupPreset.getId())) {
-            popupPreset = updatedPresetCounts(popupPreset, likesDelta, downloadsDelta);
+            popupPreset = PathmindMarketplaceActions.updatedPresetCounts(popupPreset, likesDelta, downloadsDelta);
         }
     }
 
@@ -2913,8 +2867,8 @@ public class PathmindMarketplaceScreen extends Screen {
             refreshListings();
             return;
         }
-        allPresets = upsertPresetList(allPresets, preset);
-        presets = upsertPresetList(presets, preset);
+        allPresets = PathmindMarketplaceActions.upsertPresetList(allPresets, preset);
+        presets = PathmindMarketplaceActions.upsertPresetList(presets, preset);
         if (popupPreset != null && preset.getId().equals(popupPreset.getId())) {
             popupPreset = preset;
         }
@@ -2925,103 +2879,12 @@ public class PathmindMarketplaceScreen extends Screen {
             refreshListings();
             return;
         }
-        allPresets = removePresetFromList(allPresets, presetId);
-        presets = removePresetFromList(presets, presetId);
+        allPresets = PathmindMarketplaceActions.removePresetFromList(allPresets, presetId);
+        presets = PathmindMarketplaceActions.removePresetFromList(presets, presetId);
         if (popupPreset != null && presetId.equals(popupPreset.getId())) {
             popupPreset = null;
         }
         selectedIndex = presets.isEmpty() ? -1 : Math.max(0, Math.min(selectedIndex, presets.size() - 1));
-    }
-
-    private List<MarketplacePreset> removePresetFromList(List<MarketplacePreset> source, String presetId) {
-        if (source == null || source.isEmpty()) {
-            return List.of();
-        }
-        List<MarketplacePreset> updated = new ArrayList<>(source.size());
-        for (MarketplacePreset preset : source) {
-            if (preset == null || presetId.equals(preset.getId())) {
-                continue;
-            }
-            updated.add(preset);
-        }
-        return List.copyOf(updated);
-    }
-
-    private List<MarketplacePreset> dedupePresetsById(List<MarketplacePreset> source) {
-        if (source == null || source.isEmpty()) {
-            return List.of();
-        }
-        Map<String, MarketplacePreset> presetsById = new LinkedHashMap<>();
-        List<MarketplacePreset> presetsWithoutId = new ArrayList<>();
-        for (MarketplacePreset preset : source) {
-            if (preset == null) {
-                continue;
-            }
-            String presetId = normalizePresetId(preset.getId());
-            if (presetId.isEmpty()) {
-                presetsWithoutId.add(preset);
-            } else {
-                presetsById.putIfAbsent(presetId, preset);
-            }
-        }
-        List<MarketplacePreset> deduped = new ArrayList<>(presetsById.size() + presetsWithoutId.size());
-        deduped.addAll(presetsById.values());
-        deduped.addAll(presetsWithoutId);
-        return List.copyOf(deduped);
-    }
-
-    private String normalizePresetId(String presetId) {
-        return presetId == null ? "" : presetId.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private List<MarketplacePreset> upsertPresetList(List<MarketplacePreset> source, MarketplacePreset preset) {
-        List<MarketplacePreset> updated = new ArrayList<>(source == null ? List.of() : source);
-        boolean replaced = false;
-        for (int i = 0; i < updated.size(); i++) {
-            MarketplacePreset candidate = updated.get(i);
-            if (candidate != null && preset.getId().equals(candidate.getId())) {
-                updated.set(i, preset);
-                replaced = true;
-                break;
-            }
-        }
-        if (!replaced) {
-            updated.add(0, preset);
-        }
-        return dedupePresetsById(updated);
-    }
-
-    private List<MarketplacePreset> updatePresetCountList(List<MarketplacePreset> source, String presetId, int likesDelta, int downloadsDelta) {
-        if (source == null || source.isEmpty()) {
-            return List.of();
-        }
-        List<MarketplacePreset> updated = new ArrayList<>(source.size());
-        for (MarketplacePreset preset : source) {
-            updated.add(presetId.equals(preset.getId()) ? updatedPresetCounts(preset, likesDelta, downloadsDelta) : preset);
-        }
-        return List.copyOf(updated);
-    }
-
-    private MarketplacePreset updatedPresetCounts(MarketplacePreset preset, int likesDelta, int downloadsDelta) {
-        return new MarketplacePreset(
-            preset.getId(),
-            preset.getSlug(),
-            preset.getAuthorUserId(),
-            preset.getName(),
-            preset.getAuthorName(),
-            preset.getAuthorAvatarUrl(),
-            preset.getDescription(),
-            preset.getTags(),
-            preset.getGameVersion(),
-            preset.getPathmindVersion(),
-            Math.max(0, preset.getLikesCount() + likesDelta),
-            Math.max(0, preset.getDownloadsCount() + downloadsDelta),
-            preset.getStorageBucket(),
-            preset.getFilePath(),
-            preset.isPublished(),
-            preset.getCreatedAt(),
-            preset.getUpdatedAt()
-        );
     }
 
     int getAccentColor() {
@@ -3048,7 +2911,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     String fallback(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
+        return PathmindMarketplaceActions.fallback(value, fallback);
     }
 
     private void drawBackArrow(DrawContext context, int x, int y, int color) {
@@ -3405,7 +3268,7 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
         filtered.sort(sortMode.comparator);
-        presets = dedupePresetsById(filtered);
+        presets = PathmindMarketplaceActions.dedupePresetsById(filtered);
         authorResults = buildAuthorResults(filtered);
         pageIndex = Math.max(0, Math.min(pageIndex, getMaxPageIndex()));
         int currentCount = getCurrentResultCount();
@@ -3632,29 +3495,6 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private String normalizeSearch(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).trim();
-    }
-
-    private List<String> parseTags(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
-        List<String> tags = new ArrayList<>();
-        for (String token : value.split(",")) {
-            String normalized = token == null ? "" : token.trim();
-            if (!normalized.isEmpty() && !tags.contains(normalized)) {
-                tags.add(normalized);
-            }
-        }
-        return List.copyOf(tags);
-    }
-
-    private String sanitizeSlug(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().toLowerCase(Locale.ROOT)
-            .replaceAll("[^a-z0-9]+", "-")
-            .replaceAll("(^-+|-+$)", "");
     }
 
     CompatibilityStatus getCompatibilityStatus(MarketplacePreset preset) {

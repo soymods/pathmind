@@ -18,6 +18,7 @@ import com.pathmind.ui.menu.ContextMenuRenderer;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
+import com.pathmind.ui.control.PathmindDropdownRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -5520,7 +5521,6 @@ public class NodeGraph {
         int dropdownWidth = getRandomRoundingDropdownWidth(node);
         int listTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
         int listLeft = node.getRandomRoundingFieldLeft() - cameraX;
-        int listRight = listLeft + dropdownWidth;
         int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
         DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
             optionCount,
@@ -5529,66 +5529,25 @@ public class NodeGraph {
             listTop,
             screenHeight
         );
-        int listHeight = layout.height;
-        int listBottom = listTop + listHeight;
-        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
         int accentColor = getSelectedNodeAccentColor();
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
 
-        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
-        UIStyleHelper.drawScrollContainer(context, listLeft, listTop, dropdownWidth, listHeight, containerPalette);
-
         randomRoundingDropdownScrollOffset = MathHelper.clamp(randomRoundingDropdownScrollOffset, 0, layout.maxScrollOffset);
-        randomRoundingDropdownHoverIndex = -1;
-        if (animProgress >= 1f
-            && transformedMouseX >= listLeft && transformedMouseX <= listRight
-            && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
-            int row = (transformedMouseY - listTop) / rowHeight;
-            if (row >= 0 && row < layout.visibleCount) {
-                randomRoundingDropdownHoverIndex = randomRoundingDropdownScrollOffset + row;
-            }
-        }
-
-        int visibleCount = layout.visibleCount;
-        for (int row = 0; row < visibleCount; row++) {
-            int optionIndex = randomRoundingDropdownScrollOffset + row;
-            String optionLabel = options.isEmpty() ? tr("pathmind.dropdown.noOptions") : options.get(optionIndex).label();
-            int rowTop = listTop + row * rowHeight;
-            int rowBottom = rowTop + rowHeight;
-            boolean hovered = options.isEmpty() ? row == 0 && randomRoundingDropdownHoverIndex >= 0 : optionIndex == randomRoundingDropdownHoverIndex;
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(accentColor, hovered ? 1f : 0f, false, false);
-            if (hovered) {
-                UIStyleHelper.drawDropdownRow(context, listLeft + 1, rowTop + 1, dropdownWidth - 2, rowHeight - 1, rowPalette);
-            }
-            int textPadding = 5;
-            int maxTextWidth = dropdownWidth - (textPadding * 2) - DROPDOWN_SCROLLBAR_ALLOWANCE;
-            String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
-            int textOffsetY = 4;
-            drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + textPadding, rowTop + textOffsetY, hovered ? rowPalette.textColor() : UITheme.TEXT_PRIMARY);
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
+        randomRoundingDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
             context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            optionCount,
-            layout.visibleCount,
-            randomRoundingDropdownScrollOffset,
-            layout.maxScrollOffset,
-            containerPalette.trackColor(),
-            containerPalette.thumbColor()
+            textRenderer,
+            PathmindDropdownRenderer.TextListSpec.builder()
+                .bounds(listLeft, listTop, dropdownWidth)
+                .rows(rowHeight, layout.visibleCount, options.size())
+                .scroll(randomRoundingDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
+                .animation(animProgress)
+                .hoverPoint(transformedMouseX, transformedMouseY)
+                .colors(accentColor, UITheme.TEXT_PRIMARY)
+                .textLayout(5, 4, false, shouldRenderNodeText())
+                .labels(tr("pathmind.dropdown.noOptions"), index -> options.get(index).label())
+                .chrome(containerPalette, containerPalette.trackColor(), containerPalette.thumbColor(), containerPalette.borderColor())
+                .build()
         );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            containerPalette.borderColor()
-        );
-        context.disableScissor();
     }
 
     private void renderMessageInputFields(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar,
@@ -7315,81 +7274,40 @@ public class NodeGraph {
         int visibleCount = layout.visibleCount;
         schematicDropdownScrollOffset = MathHelper.clamp(schematicDropdownScrollOffset, 0, layout.maxScrollOffset);
 
-        int listHeight = layout.height;
-        int listBottom = listTop + listHeight;
         int dropdownWidth = getSchematicDropdownWidth(node);
         int listLeft = node.getSchematicFieldLeft() - cameraX;
-        int listRight = listLeft + dropdownWidth;
-        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
         int accentColor = isOverSidebar ? toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-
-        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
-        UIStyleHelper.drawScrollContainer(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            new UIStyleHelper.ScrollContainerPalette(
-                isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
-                isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
-                isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
-                containerPalette.trackColor(),
-                containerPalette.thumbColor()
-            )
+        UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
+            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
+            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
+            isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
+            containerPalette.trackColor(),
+            containerPalette.thumbColor()
         );
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
-        schematicDropdownHoverIndex = -1;
-        if (animProgress >= 1f
-            && worldMouseX >= node.getSchematicFieldLeft()
-            && worldMouseX <= node.getSchematicFieldLeft() + dropdownWidth
-            && worldMouseY >= node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2
-            && worldMouseY <= node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 + listHeight) {
-            int row = (worldMouseY - (node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2)) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            if (row >= 0 && row < visibleCount) {
-                schematicDropdownHoverIndex = schematicDropdownScrollOffset + row;
-            }
-        }
-
-        for (int row = 0; row < visibleCount; row++) {
-            int optionIndex = schematicDropdownScrollOffset + row;
-            String optionLabel = options.isEmpty() ? tr("pathmind.dropdown.noSchematicsFound") : options.get(optionIndex);
-            int rowTop = listTop + row * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            int rowBottom = rowTop + SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            boolean hovered = options.isEmpty() ? row == 0 && schematicDropdownHoverIndex >= 0 : optionIndex == schematicDropdownHoverIndex;
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(accentColor, hovered ? 1f : 0f, false, false);
-            if (hovered) {
-                UIStyleHelper.drawDropdownRow(context, listLeft + 1, rowTop + 1, dropdownWidth - 2, SCHEMATIC_DROPDOWN_ROW_HEIGHT - 1, rowPalette);
-            }
-            String rowText = trimTextToWidth(optionLabel, textRenderer, dropdownWidth - 6 - DROPDOWN_SCROLLBAR_ALLOWANCE);
-            drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + 3, rowTop + 4, hovered ? rowPalette.textColor() : textColor);
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
+        schematicDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
             context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            optionCount,
-            layout.visibleCount,
-            schematicDropdownScrollOffset,
-            layout.maxScrollOffset,
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
-            isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor()
+            textRenderer,
+            PathmindDropdownRenderer.TextListSpec.builder()
+                .bounds(listLeft, listTop, dropdownWidth)
+                .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
+                .scroll(schematicDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
+                .animation(animProgress)
+                .hoverPoint(worldMouseX - cameraX, worldMouseY - cameraY)
+                .colors(accentColor, textColor)
+                .textLayout(3, 4, false, shouldRenderNodeText())
+                .labels(tr("pathmind.dropdown.noSchematicsFound"), options::get)
+                .chrome(
+                    adjustedPalette,
+                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
+                    isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor(),
+                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
+                )
+                .build()
         );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
-        );
-        context.disableScissor();
     }
 
     private void renderRunPresetDropdownList(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
@@ -7418,81 +7336,40 @@ public class NodeGraph {
         int visibleCount = layout.visibleCount;
         runPresetDropdownScrollOffset = MathHelper.clamp(runPresetDropdownScrollOffset, 0, layout.maxScrollOffset);
 
-        int listHeight = layout.height;
-        int listBottom = listTop + listHeight;
         int dropdownWidth = getRunPresetDropdownWidth(node);
         int listLeft = node.getStopTargetFieldLeft() - cameraX;
-        int listRight = listLeft + dropdownWidth;
-        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
         int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-
-        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
-        UIStyleHelper.drawScrollContainer(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            new UIStyleHelper.ScrollContainerPalette(
-                isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
-                isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
-                isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
-                containerPalette.trackColor(),
-                containerPalette.thumbColor()
-            )
+        UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
+            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
+            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
+            isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
+            containerPalette.trackColor(),
+            containerPalette.thumbColor()
         );
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
-        runPresetDropdownHoverIndex = -1;
-        if (animProgress >= 1f
-            && worldMouseX >= node.getStopTargetFieldLeft()
-            && worldMouseX <= node.getStopTargetFieldLeft() + dropdownWidth
-            && worldMouseY >= node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2
-            && worldMouseY <= node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 + listHeight) {
-            int row = (worldMouseY - (node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2)) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            if (row >= 0 && row < visibleCount) {
-                runPresetDropdownHoverIndex = runPresetDropdownScrollOffset + row;
-            }
-        }
-
-        for (int row = 0; row < visibleCount; row++) {
-            int optionIndex = runPresetDropdownScrollOffset + row;
-            String optionLabel = options.isEmpty() ? tr("pathmind.dropdown.noPresetsFound") : options.get(optionIndex);
-            int rowTop = listTop + row * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            int rowBottom = rowTop + SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            boolean hovered = options.isEmpty() ? row == 0 && runPresetDropdownHoverIndex >= 0 : optionIndex == runPresetDropdownHoverIndex;
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(accentColor, hovered ? 1f : 0f, false, false);
-            if (hovered) {
-                UIStyleHelper.drawDropdownRow(context, listLeft + 1, rowTop + 1, dropdownWidth - 2, SCHEMATIC_DROPDOWN_ROW_HEIGHT - 1, rowPalette);
-            }
-            String rowText = trimTextToWidth(optionLabel, textRenderer, dropdownWidth - 6 - DROPDOWN_SCROLLBAR_ALLOWANCE);
-            drawNodeText(context, textRenderer, Text.literal(rowText), listLeft + 3, rowTop + 4, hovered ? rowPalette.textColor() : textColor);
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
+        runPresetDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
             context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            optionCount,
-            layout.visibleCount,
-            runPresetDropdownScrollOffset,
-            layout.maxScrollOffset,
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
-            isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor()
+            textRenderer,
+            PathmindDropdownRenderer.TextListSpec.builder()
+                .bounds(listLeft, listTop, dropdownWidth)
+                .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
+                .scroll(runPresetDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
+                .animation(animProgress)
+                .hoverPoint(worldMouseX - cameraX, worldMouseY - cameraY)
+                .colors(accentColor, textColor)
+                .textLayout(3, 4, false, shouldRenderNodeText())
+                .labels(tr("pathmind.dropdown.noPresetsFound"), options::get)
+                .chrome(
+                    adjustedPalette,
+                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
+                    isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor(),
+                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
+                )
+                .build()
         );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
-        );
-        context.disableScissor();
     }
 
     private void renderAmountSignDropdownList(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
@@ -7516,82 +7393,41 @@ public class NodeGraph {
         int visibleCount = layout.visibleCount;
         amountSignDropdownScrollOffset = MathHelper.clamp(amountSignDropdownScrollOffset, 0, layout.maxScrollOffset);
 
-        int listHeight = layout.height;
-        int listBottom = listTop + listHeight;
         int dropdownWidth = getAmountSignDropdownWidth(node);
         int listLeft = node.getAmountSignToggleLeft() - cameraX;
-        int listRight = listLeft + dropdownWidth;
-        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
         int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-
-        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
-        UIStyleHelper.drawScrollContainer(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            new UIStyleHelper.ScrollContainerPalette(
-                isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
-                isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
-                isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
-                containerPalette.trackColor(),
-                containerPalette.thumbColor()
-            )
+        UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
+            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
+            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
+            isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
+            containerPalette.trackColor(),
+            containerPalette.thumbColor()
         );
 
         float zoom = Math.max(0.01f, getZoomScale());
         int transformedMouseX = Math.round(mouseX / zoom);
         int transformedMouseY = Math.round(mouseY / zoom);
-        amountSignDropdownHoverIndex = -1;
-        if (animProgress >= 1f
-            && transformedMouseX >= listLeft
-            && transformedMouseX <= listRight
-            && transformedMouseY >= listTop
-            && transformedMouseY <= listBottom) {
-            int row = (transformedMouseY - listTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            if (row >= 0 && row < visibleCount) {
-                amountSignDropdownHoverIndex = amountSignDropdownScrollOffset + row;
-            }
-        }
-
-        for (int row = 0; row < visibleCount; row++) {
-            int optionIndex = amountSignDropdownScrollOffset + row;
-            String optionLabel = options.get(optionIndex);
-            int rowTop = listTop + row * SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            int rowBottom = rowTop + SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-            boolean hovered = optionIndex == amountSignDropdownHoverIndex;
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(accentColor, hovered ? 1f : 0f, false, false);
-            if (hovered) {
-                UIStyleHelper.drawDropdownRow(context, listLeft + 1, rowTop + 1, dropdownWidth - 2, SCHEMATIC_DROPDOWN_ROW_HEIGHT - 1, rowPalette);
-            }
-            int textX = listLeft + Math.max(DROPDOWN_SIDE_PADDING, (dropdownWidth - textRenderer.getWidth(optionLabel)) / 2);
-            drawNodeText(context, textRenderer, Text.literal(optionLabel), textX, rowTop + 4, hovered ? rowPalette.textColor() : textColor);
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
+        amountSignDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
             context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            optionCount,
-            layout.visibleCount,
-            amountSignDropdownScrollOffset,
-            layout.maxScrollOffset,
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
-            isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor()
+            textRenderer,
+            PathmindDropdownRenderer.TextListSpec.builder()
+                .bounds(listLeft, listTop, dropdownWidth)
+                .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, optionCount)
+                .scroll(amountSignDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
+                .animation(animProgress)
+                .hoverPoint(transformedMouseX, transformedMouseY)
+                .colors(accentColor, textColor)
+                .textLayout(DROPDOWN_SIDE_PADDING, 4, true, shouldRenderNodeText())
+                .labels("", options::get)
+                .chrome(
+                    adjustedPalette,
+                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
+                    isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor(),
+                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
+                )
+                .build()
         );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
-        );
-        context.disableScissor();
     }
 
     public boolean isEditingCoordinateField() {

@@ -73,9 +73,9 @@ public final class OnboardingPresetManager {
 
     static List<ExamplePreset> createExamplePresets() {
         return List.of(
-            emptyPreset("Basics"),
-            emptyPreset("Variables and If Else"),
-            emptyPreset("Relative Variables and Lists")
+            emptyPreset("example 1"),
+            emptyPreset("example 2"),
+            emptyPreset("example 3")
         );
     }
 

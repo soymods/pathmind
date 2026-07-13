@@ -72,6 +72,11 @@ public final class PathmindPopupRenderer {
         );
     }
 
+    public static String buttonHoverKey(ButtonStyle style, Text label, int x, int y, int width, int height) {
+        String labelText = label == null ? "" : label.getString();
+        return "popup-button:" + style + ":" + labelText + ":" + x + ":" + y + ":" + width + ":" + height;
+    }
+
     public static void drawContainer(DrawContext context, int x, int y, int width, int height,
                                      PopupAnimationHandler animation) {
         UIStyleHelper.drawBeveledPanel(
@@ -140,6 +145,19 @@ public final class PathmindPopupRenderer {
 
     public static int animatedColor(PopupAnimationHandler animation, int baseColor) {
         return animation == null ? baseColor : animation.getAnimatedPopupColor(baseColor);
+    }
+
+    public static boolean enableScissor(DrawContext context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
+        int width = Math.max(1, scaledWidth);
+        int height = Math.max(1, scaledHeight);
+        context.enableScissor(popupX, popupY, popupX + width, popupY + height);
+        return true;
+    }
+
+    public static void disableScissor(DrawContext context, boolean enabled) {
+        if (enabled) {
+            context.disableScissor();
+        }
     }
 
     private static UIStyleHelper.TextButtonStyle mapButtonStyle(ButtonStyle style) {

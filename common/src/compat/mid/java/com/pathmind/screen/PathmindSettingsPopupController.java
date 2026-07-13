@@ -227,7 +227,7 @@ final class PathmindSettingsPopupController {
         screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.clearCache").getString(), contentX, clearCacheRowCenterY - screen.textRenderer().fontHeight / 2,
             scaledWidth - 40 - clearCacheButtonBounds[2] - 12, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
         screen.drawPopupButton(context, clearCacheButtonBounds[0], clearCacheButtonBounds[1], clearCacheButtonBounds[2], clearCacheButtonBounds[3],
-            clearCacheHovered, Text.literal(Text.translatable("pathmind.button.clear").getString()), PopupButtonStyle.DEFAULT, screen.settingsPopupAnimation);
+            clearCacheHovered, Text.literal(Text.translatable("pathmind.button.clear").getString()), PathmindPopupRenderer.ButtonStyle.DEFAULT, screen.settingsPopupAnimation);
 
         int buttonWidth = 90;
         int buttonHeight = 20;
@@ -247,7 +247,7 @@ final class PathmindSettingsPopupController {
         renderSettingsPopupScrollbar(context, popupX, popupY, scaledWidth, scaledHeight, maxScroll);
         boolean closeHovered = screen.isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
         screen.drawPopupButton(context, buttonX, buttonY, buttonWidth, buttonHeight, closeHovered,
-            Text.translatable("pathmind.button.close"), PopupButtonStyle.ACCENT, screen.settingsPopupAnimation);
+            Text.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.ACCENT, screen.settingsPopupAnimation);
         screen.disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }

@@ -110,6 +110,27 @@ class NodeCatalogTest {
         assertNotNull(NodeCatalog.sidebarPlacement(NodeType.PARAM_WAYPOINT, true, true));
     }
 
+    @Test
+    void catalogOwnsCoreNodeTraits() {
+        assertTrue(NodeCatalog.isBooleanSensor(NodeType.SENSOR_IS_DAYTIME));
+        assertTrue(NodeCatalog.isBooleanSensor(NodeType.OPERATOR_EQUALS));
+        assertFalse(NodeCatalog.isBooleanSensor(NodeType.SENSOR_POSITION_OF));
+
+        assertTrue(NodeCatalog.isParameterNode(NodeType.PARAM_BLOCK));
+        assertTrue(NodeCatalog.isParameterNode(NodeType.SENSOR_POSITION_OF));
+        assertTrue(NodeCatalog.isParameterNode(NodeType.VARIABLE));
+        assertFalse(NodeCatalog.isParameterNode(NodeType.WALK));
+
+        assertTrue(NodeCatalog.usesMinimalNodePresentation(NodeType.CROUCH));
+        assertTrue(NodeCatalog.usesMinimalNodePresentation(NodeType.OPERATOR_GREATER));
+        assertFalse(NodeCatalog.usesMinimalNodePresentation(NodeType.MESSAGE));
+
+        assertTrue(NodeCatalog.shouldRenderInlineParameters(NodeType.UI_UTILS));
+        assertTrue(NodeCatalog.hasBooleanToggle(NodeType.SENSOR_IS_RAINING));
+        assertTrue(NodeCatalog.hasPopupEditButton(NodeType.PARAM_INVENTORY_SLOT));
+        assertFalse(NodeCatalog.hasPopupEditButton(NodeType.PARAM_BOOLEAN));
+    }
+
     private static boolean containsNode(List<NodeCatalog.SidebarGroup> groups, NodeType type) {
         for (NodeCatalog.SidebarGroup group : groups) {
             if (group.nodes().contains(type)) {

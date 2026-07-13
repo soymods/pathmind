@@ -313,6 +313,137 @@ public final class NodeCatalog {
 
         tag(NodeFlag.REQUIRES_UI_UTILS, NodeType.UI_UTILS);
 
+        tag(NodeFlag.BOOLEAN_SENSOR,
+            NodeType.SENSOR_TOUCHING_BLOCK,
+            NodeType.SENSOR_TOUCHING_ENTITY,
+            NodeType.SENSOR_AT_COORDINATES,
+            NodeType.SENSOR_IS_DAYTIME,
+            NodeType.SENSOR_IS_RAINING,
+            NodeType.SENSOR_HEALTH_BELOW,
+            NodeType.SENSOR_HUNGER_BELOW,
+            NodeType.SENSOR_ITEM_IN_INVENTORY,
+            NodeType.SENSOR_ITEM_IN_SLOT,
+            NodeType.SENSOR_VILLAGER_TRADE,
+            NodeType.SENSOR_IN_STOCK,
+            NodeType.SENSOR_IS_SWIMMING,
+            NodeType.SENSOR_IS_IN_LAVA,
+            NodeType.SENSOR_IS_UNDERWATER,
+            NodeType.SENSOR_IS_FALLING,
+            NodeType.SENSOR_IS_RENDERED,
+            NodeType.SENSOR_IS_VISIBLE,
+            NodeType.SENSOR_KEY_PRESSED,
+            NodeType.SENSOR_CHAT_MESSAGE,
+            NodeType.SENSOR_JOINED_SERVER,
+            NodeType.SENSOR_ATTRIBUTE_DETECTION,
+            NodeType.SENSOR_FABRIC_EVENT,
+            NodeType.SENSOR_GUI_FILLED,
+            NodeType.OPERATOR_EQUALS,
+            NodeType.OPERATOR_NOT,
+            NodeType.OPERATOR_BOOLEAN_NOT,
+            NodeType.OPERATOR_BOOLEAN_OR,
+            NodeType.OPERATOR_BOOLEAN_AND,
+            NodeType.OPERATOR_BOOLEAN_XOR,
+            NodeType.OPERATOR_GREATER,
+            NodeType.OPERATOR_LESS);
+
+        tag(NodeFlag.PARAMETER_NODE,
+            NodeType.SENSOR_POSITION_OF,
+            NodeType.SENSOR_DISTANCE_BETWEEN,
+            NodeType.SENSOR_TARGETED_BLOCK,
+            NodeType.SENSOR_TARGETED_ENTITY,
+            NodeType.SENSOR_TARGETED_BLOCK_FACE,
+            NodeType.SENSOR_LOOK_DIRECTION,
+            NodeType.SENSOR_CURRENT_HAND,
+            NodeType.SENSOR_IS_ON_GROUND,
+            NodeType.SENSOR_FIND_TRADE,
+            NodeType.SENSOR_SLOT_ITEM_COUNT,
+            NodeType.VARIABLE,
+            NodeType.OPERATOR_RANDOM,
+            NodeType.OPERATOR_MOD,
+            NodeType.LIST_ITEM,
+            NodeType.LIST_LENGTH);
+
+        tag(NodeFlag.SENSOR_WITHOUT_PARAMETER_SLOT,
+            NodeType.SENSOR_IS_DAYTIME,
+            NodeType.SENSOR_IS_RAINING,
+            NodeType.SENSOR_IS_SWIMMING,
+            NodeType.SENSOR_IS_IN_LAVA,
+            NodeType.SENSOR_IS_UNDERWATER,
+            NodeType.SENSOR_IS_ON_GROUND,
+            NodeType.SENSOR_IS_FALLING,
+            NodeType.SENSOR_HEALTH_BELOW,
+            NodeType.SENSOR_HUNGER_BELOW,
+            NodeType.SENSOR_FABRIC_EVENT,
+            NodeType.SENSOR_TARGETED_BLOCK,
+            NodeType.SENSOR_TARGETED_ENTITY,
+            NodeType.SENSOR_TARGETED_BLOCK_FACE,
+            NodeType.SENSOR_LOOK_DIRECTION,
+            NodeType.SENSOR_CURRENT_HAND);
+
+        tag(NodeFlag.SENSOR_REQUIRES_PARAMETER,
+            NodeType.SENSOR_TOUCHING_BLOCK,
+            NodeType.SENSOR_TOUCHING_ENTITY,
+            NodeType.SENSOR_AT_COORDINATES,
+            NodeType.SENSOR_DISTANCE_BETWEEN,
+            NodeType.SENSOR_ITEM_IN_INVENTORY,
+            NodeType.SENSOR_ITEM_IN_SLOT,
+            NodeType.SENSOR_FIND_TRADE,
+            NodeType.SENSOR_SLOT_ITEM_COUNT,
+            NodeType.SENSOR_ATTRIBUTE_DETECTION,
+            NodeType.SENSOR_CHAT_MESSAGE,
+            NodeType.SENSOR_JOINED_SERVER,
+            NodeType.SENSOR_GUI_FILLED);
+
+        tag(NodeFlag.MINIMAL_PRESENTATION,
+            NodeType.STOP_CHAIN,
+            NodeType.STOP_ALL,
+            NodeType.START_CHAIN,
+            NodeType.RUN_PRESET,
+            NodeType.CRAWL,
+            NodeType.CROUCH,
+            NodeType.SPRINT,
+            NodeType.FLY,
+            NodeType.JUMP,
+            NodeType.CONTROL_FORK,
+            NodeType.CONTROL_JOIN_ANY,
+            NodeType.CONTROL_JOIN_ALL,
+            NodeType.SENSOR_TARGETED_BLOCK_FACE,
+            NodeType.SENSOR_TARGETED_BLOCK,
+            NodeType.SENSOR_TARGETED_ENTITY,
+            NodeType.SENSOR_LOOK_DIRECTION,
+            NodeType.SENSOR_CURRENT_HAND,
+            NodeType.SENSOR_IS_ON_GROUND,
+            NodeType.OPERATOR_EQUALS,
+            NodeType.OPERATOR_NOT,
+            NodeType.OPERATOR_BOOLEAN_OR,
+            NodeType.OPERATOR_BOOLEAN_AND,
+            NodeType.OPERATOR_BOOLEAN_XOR,
+            NodeType.OPERATOR_GREATER,
+            NodeType.OPERATOR_LESS,
+            NodeType.OPEN_INVENTORY,
+            NodeType.CLOSE_GUI);
+
+        tag(NodeFlag.RENDER_INLINE_PARAMETERS,
+            NodeType.UI_UTILS,
+            NodeType.SENSOR_FABRIC_EVENT,
+            NodeType.SENSOR_ATTRIBUTE_DETECTION,
+            NodeType.TRADE,
+            NodeType.REMOVE_LIST_ITEM);
+
+        tag(NodeFlag.BOOLEAN_TOGGLE,
+            NodeType.SENSOR_IS_SWIMMING,
+            NodeType.SENSOR_IS_IN_LAVA,
+            NodeType.SENSOR_IS_UNDERWATER,
+            NodeType.SENSOR_IS_FALLING,
+            NodeType.SENSOR_IS_DAYTIME,
+            NodeType.SENSOR_IS_RAINING,
+            NodeType.SENSOR_GUI_FILLED);
+
+        tag(NodeFlag.POPUP_EDIT_BUTTON,
+            NodeType.PARAM_INVENTORY_SLOT,
+            NodeType.PARAM_KEY,
+            NodeType.PARAM_VILLAGER_TRADE);
+
         sidebar(NodeCategory.FLOW, "pathmind.sidebar.group.entryPoints",
             NodeType.START,
             NodeType.START_CHAIN,
@@ -568,6 +699,49 @@ public final class NodeCatalog {
 
     public static boolean requiresUiUtils(NodeType type) {
         return hasFlag(type, NodeFlag.REQUIRES_UI_UTILS);
+    }
+
+    public static boolean isBooleanSensor(NodeType type) {
+        return hasFlag(type, NodeFlag.BOOLEAN_SENSOR);
+    }
+
+    public static boolean isParameterNode(NodeType type) {
+        return category(type) == NodeCategory.PARAMETERS || hasFlag(type, NodeFlag.PARAMETER_NODE);
+    }
+
+    public static boolean isSensorWithoutParameterSlot(NodeType type) {
+        return hasFlag(type, NodeFlag.SENSOR_WITHOUT_PARAMETER_SLOT);
+    }
+
+    public static boolean isSensorParameterRequired(NodeType type) {
+        return hasFlag(type, NodeFlag.SENSOR_REQUIRES_PARAMETER);
+    }
+
+    public static boolean usesMinimalNodePresentation(NodeType type) {
+        return hasFlag(type, NodeFlag.MINIMAL_PRESENTATION);
+    }
+
+    public static boolean shouldRenderInlineParameters(NodeType type) {
+        return hasFlag(type, NodeFlag.RENDER_INLINE_PARAMETERS);
+    }
+
+    public static boolean isInlineParameterNode(NodeType type) {
+        return isParameterNode(type)
+            && type != NodeType.OPERATOR_MOD
+            && type != NodeType.PARAM_DURATION
+            && type != NodeType.SENSOR_POSITION_OF
+            && type != NodeType.SENSOR_DISTANCE_BETWEEN
+            && type != NodeType.SENSOR_LOOK_DIRECTION
+            && type != NodeType.SENSOR_FIND_TRADE
+            && type != NodeType.SENSOR_SLOT_ITEM_COUNT;
+    }
+
+    public static boolean hasBooleanToggle(NodeType type) {
+        return hasFlag(type, NodeFlag.BOOLEAN_TOGGLE);
+    }
+
+    public static boolean hasPopupEditButton(NodeType type) {
+        return isParameterNode(type) && hasFlag(type, NodeFlag.POPUP_EDIT_BUTTON);
     }
 
     public static boolean shouldDisplayInSidebar(NodeType type, boolean baritoneAvailable, boolean uiUtilsAvailable) {
@@ -1139,6 +1313,14 @@ public final class NodeCatalog {
         HAS_PARAMETERS,
         HIDDEN_FROM_SIDEBAR,
         REQUIRES_BARITONE,
-        REQUIRES_UI_UTILS
+        REQUIRES_UI_UTILS,
+        BOOLEAN_SENSOR,
+        PARAMETER_NODE,
+        SENSOR_WITHOUT_PARAMETER_SLOT,
+        SENSOR_REQUIRES_PARAMETER,
+        MINIMAL_PRESENTATION,
+        RENDER_INLINE_PARAMETERS,
+        BOOLEAN_TOGGLE,
+        POPUP_EDIT_BUTTON
     }
 }

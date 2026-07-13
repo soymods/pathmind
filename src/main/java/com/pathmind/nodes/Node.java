@@ -665,7 +665,7 @@ public class Node {
     }
 
     public boolean isSensorNode() {
-        return isSensorType(type);
+        return NodeCatalog.isBooleanSensor(type);
     }
 
     public boolean isStickyNote() {
@@ -677,42 +677,27 @@ public class Node {
     }
 
     boolean isComparisonOperator() {
-        return type == NodeType.OPERATOR_EQUALS
-            || type == NodeType.OPERATOR_NOT
-            || type == NodeType.OPERATOR_BOOLEAN_OR
-            || type == NodeType.OPERATOR_BOOLEAN_AND
-            || type == NodeType.OPERATOR_BOOLEAN_XOR
-            || type == NodeType.OPERATOR_GREATER
-            || type == NodeType.OPERATOR_LESS;
+        return NodeCatalog.isBooleanSensor(type) && NodeCatalog.category(type) == NodeCategory.DATA;
     }
 
     public boolean isParameterNode() {
-        return NodeTraitRegistry.isParameterNode(type);
+        return NodeCatalog.isParameterNode(type);
     }
 
     public boolean shouldRenderInlineParameters() {
-        return type == NodeType.UI_UTILS
-            || type == NodeType.SENSOR_FABRIC_EVENT
-            || type == NodeType.SENSOR_ATTRIBUTE_DETECTION
-            || type == NodeType.TRADE
-            || type == NodeType.REMOVE_LIST_ITEM;
+        return NodeCatalog.shouldRenderInlineParameters(type);
     }
 
     boolean isInlineParameterNode() {
-        return isParameterNode()
-            && type != NodeType.OPERATOR_MOD
-            && type != NodeType.PARAM_DURATION
-            && type != NodeType.SENSOR_POSITION_OF
-            && type != NodeType.SENSOR_DISTANCE_BETWEEN
-            && type != NodeType.SENSOR_SLOT_ITEM_COUNT;
+        return NodeCatalog.isInlineParameterNode(type);
     }
 
     public static boolean isSensorType(NodeType nodeType) {
-        return NodeTraitRegistry.isBooleanSensor(nodeType);
+        return NodeCatalog.isBooleanSensor(nodeType);
     }
 
     public static boolean isParameterType(NodeType nodeType) {
-        return NodeTraitRegistry.isParameterNode(nodeType);
+        return NodeCatalog.isParameterNode(nodeType);
     }
 
     public boolean canAcceptSensor() {
@@ -746,26 +731,7 @@ public class Node {
     }
 
     public boolean usesMinimalNodePresentation() {
-        return isStopControlNode()
-            || type == NodeType.START_CHAIN
-            || type == NodeType.RUN_PRESET
-            || type == NodeType.CRAWL
-            || type == NodeType.CROUCH
-            || type == NodeType.SPRINT
-            || type == NodeType.FLY
-            || type == NodeType.JUMP
-            || type == NodeType.CONTROL_FORK
-            || type == NodeType.CONTROL_JOIN_ANY
-            || type == NodeType.CONTROL_JOIN_ALL
-            || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || type == NodeType.SENSOR_TARGETED_BLOCK
-            || type == NodeType.SENSOR_TARGETED_ENTITY
-            || type == NodeType.SENSOR_LOOK_DIRECTION
-            || type == NodeType.SENSOR_CURRENT_HAND
-            || type == NodeType.SENSOR_IS_ON_GROUND
-            || isComparisonOperator()
-            || type == NodeType.OPEN_INVENTORY
-            || type == NodeType.CLOSE_GUI;
+        return NodeCatalog.usesMinimalNodePresentation(type);
     }
 
     public boolean canAcceptParameterAt(int slotIndex) {
@@ -2930,13 +2896,7 @@ public class Node {
     }
 
     public boolean hasBooleanToggle() {
-        return type == NodeType.SENSOR_IS_SWIMMING
-            || type == NodeType.SENSOR_IS_IN_LAVA
-            || type == NodeType.SENSOR_IS_UNDERWATER
-            || type == NodeType.SENSOR_IS_FALLING
-            || type == NodeType.SENSOR_IS_DAYTIME
-            || type == NodeType.SENSOR_IS_RAINING
-            || type == NodeType.SENSOR_GUI_FILLED;
+        return NodeCatalog.hasBooleanToggle(type);
     }
 
     public boolean getBooleanToggleValue() {
@@ -3494,12 +3454,7 @@ public class Node {
     }
 
     public boolean hasPopupEditButton() {
-        if (!isParameterNode() || type == NodeType.PARAM_SCHEMATIC || type == NodeType.PARAM_BOOLEAN) {
-            return false;
-        }
-        return type == NodeType.PARAM_INVENTORY_SLOT
-            || type == NodeType.PARAM_KEY
-            || type == NodeType.PARAM_VILLAGER_TRADE;
+        return NodeCatalog.hasPopupEditButton(type);
     }
 
     public int getPopupEditButtonLeft() {
@@ -6758,7 +6713,7 @@ public class Node {
     }
 
     private boolean sensorRequiresParameterNode() {
-        return NodeTraitRegistry.isSensorParameterRequired(type);
+        return NodeCatalog.isSensorParameterRequired(type);
     }
 
     private NodeEventSensorEvaluator eventSensorEvaluator() {

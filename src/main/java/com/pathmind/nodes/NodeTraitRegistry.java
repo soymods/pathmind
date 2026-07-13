@@ -6,70 +6,6 @@ import java.util.EnumSet;
 import java.util.Map;
 
 public final class NodeTraitRegistry {
-    private static final EnumSet<NodeType> BOOLEAN_SENSORS = EnumSet.of(
-        NodeType.SENSOR_TOUCHING_BLOCK,
-        NodeType.SENSOR_TOUCHING_ENTITY,
-        NodeType.SENSOR_AT_COORDINATES,
-        NodeType.SENSOR_IS_DAYTIME,
-        NodeType.SENSOR_IS_RAINING,
-        NodeType.SENSOR_HEALTH_BELOW,
-        NodeType.SENSOR_HUNGER_BELOW,
-        NodeType.SENSOR_ITEM_IN_INVENTORY,
-        NodeType.SENSOR_ITEM_IN_SLOT,
-        NodeType.SENSOR_VILLAGER_TRADE,
-        NodeType.SENSOR_IN_STOCK,
-        NodeType.SENSOR_IS_SWIMMING,
-        NodeType.SENSOR_IS_IN_LAVA,
-        NodeType.SENSOR_IS_UNDERWATER,
-        NodeType.SENSOR_IS_FALLING,
-        NodeType.SENSOR_IS_RENDERED,
-        NodeType.SENSOR_IS_VISIBLE,
-        NodeType.SENSOR_KEY_PRESSED,
-        NodeType.SENSOR_CHAT_MESSAGE,
-        NodeType.SENSOR_JOINED_SERVER,
-        NodeType.SENSOR_ATTRIBUTE_DETECTION,
-        NodeType.SENSOR_FABRIC_EVENT,
-        NodeType.SENSOR_GUI_FILLED,
-        NodeType.OPERATOR_EQUALS,
-        NodeType.OPERATOR_NOT,
-        NodeType.OPERATOR_BOOLEAN_NOT,
-        NodeType.OPERATOR_BOOLEAN_OR,
-        NodeType.OPERATOR_BOOLEAN_AND,
-        NodeType.OPERATOR_BOOLEAN_XOR,
-        NodeType.OPERATOR_GREATER,
-        NodeType.OPERATOR_LESS
-    );
-    private static final EnumSet<NodeType> SENSORS_WITHOUT_PARAMETER_SLOT = EnumSet.of(
-        NodeType.SENSOR_IS_DAYTIME,
-        NodeType.SENSOR_IS_RAINING,
-        NodeType.SENSOR_IS_SWIMMING,
-        NodeType.SENSOR_IS_IN_LAVA,
-        NodeType.SENSOR_IS_UNDERWATER,
-        NodeType.SENSOR_IS_ON_GROUND,
-        NodeType.SENSOR_IS_FALLING,
-        NodeType.SENSOR_HEALTH_BELOW,
-        NodeType.SENSOR_HUNGER_BELOW,
-        NodeType.SENSOR_FABRIC_EVENT,
-        NodeType.SENSOR_GUI_FILLED,
-        NodeType.SENSOR_TARGETED_BLOCK,
-        NodeType.SENSOR_TARGETED_ENTITY,
-        NodeType.SENSOR_TARGETED_BLOCK_FACE,
-        NodeType.SENSOR_LOOK_DIRECTION,
-        NodeType.SENSOR_CURRENT_HAND
-    );
-    private static final EnumSet<NodeType> SENSORS_REQUIRING_PARAMETER = EnumSet.of(
-        NodeType.SENSOR_TOUCHING_BLOCK,
-        NodeType.SENSOR_TOUCHING_ENTITY,
-        NodeType.SENSOR_AT_COORDINATES,
-        NodeType.SENSOR_DISTANCE_BETWEEN,
-        NodeType.SENSOR_ITEM_IN_INVENTORY,
-        NodeType.SENSOR_ITEM_IN_SLOT,
-        NodeType.SENSOR_SLOT_ITEM_COUNT,
-        NodeType.SENSOR_ATTRIBUTE_DETECTION,
-        NodeType.SENSOR_CHAT_MESSAGE,
-        NodeType.SENSOR_JOINED_SERVER
-    );
-
     private static final EnumMap<NodeType, EnumSet<NodeValueTrait>> PROVIDED_TRAITS;
     private static final EnumMap<NodeType, EnumSet<NodeValueTrait>> PARAMETER_ACCEPTED_TRAITS;
     private static final EnumMap<NodeType, Integer> PARAMETER_SLOT_COUNTS;
@@ -408,43 +344,19 @@ public final class NodeTraitRegistry {
     }
 
     public static boolean isBooleanSensor(NodeType type) {
-        return type != null && BOOLEAN_SENSORS.contains(type);
+        return NodeCatalog.isBooleanSensor(type);
     }
 
     public static boolean isSensorWithoutParameterSlot(NodeType type) {
-        return type != null && SENSORS_WITHOUT_PARAMETER_SLOT.contains(type);
+        return NodeCatalog.isSensorWithoutParameterSlot(type);
     }
 
     public static boolean isSensorParameterRequired(NodeType type) {
-        return type != null && SENSORS_REQUIRING_PARAMETER.contains(type);
+        return NodeCatalog.isSensorParameterRequired(type);
     }
 
     public static boolean isParameterNode(NodeType type) {
-        if (type == null) {
-            return false;
-        }
-        if (type.getCategory() == NodeCategory.PARAMETERS) {
-            return true;
-        }
-        if (type == NodeType.SENSOR_POSITION_OF
-            || type == NodeType.SENSOR_DISTANCE_BETWEEN
-            || type == NodeType.SENSOR_TARGETED_BLOCK
-            || type == NodeType.SENSOR_TARGETED_ENTITY
-            || type == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || type == NodeType.SENSOR_LOOK_DIRECTION
-            || type == NodeType.SENSOR_CURRENT_HAND
-            || type == NodeType.SENSOR_IS_ON_GROUND
-            || type == NodeType.SENSOR_SLOT_ITEM_COUNT) {
-            return true;
-        }
-        if (type == NodeType.VARIABLE
-            || type == NodeType.OPERATOR_RANDOM
-            || type == NodeType.OPERATOR_MOD
-            || type == NodeType.LIST_ITEM
-            || type == NodeType.LIST_LENGTH) {
-            return true;
-        }
-        return false;
+        return NodeCatalog.isParameterNode(type);
     }
 
     public static EnumSet<NodeValueTrait> getProvidedTraits(NodeType type) {

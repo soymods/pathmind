@@ -36,7 +36,7 @@ public final class NodeCompatibility {
         switch (slotType) {
             case SENSOR:
                 return canHostSlot(host.getType(), NodeSlotType.SENSOR)
-                    && NodeTraitRegistry.isBooleanSensor(candidate.getType());
+                    && NodeCatalog.isBooleanSensor(candidate.getType());
             case ACTION:
                 return canAttachActionNode(host, candidate);
             case PARAMETER:
@@ -77,8 +77,8 @@ public final class NodeCompatibility {
         }
 
         EnumSet<NodeValueTrait> provided = candidate.getProvidedTraits();
-        boolean isBooleanSensor = NodeTraitRegistry.isBooleanSensor(candidateType);
-        boolean isParameterLike = NodeTraitRegistry.isParameterNode(candidateType)
+        boolean isBooleanSensor = NodeCatalog.isBooleanSensor(candidateType);
+        boolean isParameterLike = NodeCatalog.isParameterNode(candidateType)
             || !provided.isEmpty()
             || candidateType == NodeType.VARIABLE;
         if (!isParameterLike) {

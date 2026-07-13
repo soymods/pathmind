@@ -9,6 +9,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCompatibility;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
+import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeTraitRegistry;
 import com.pathmind.nodes.NodeType;
 
@@ -261,7 +262,7 @@ public final class GraphValidator {
         if (valueNode == null) {
             return null;
         }
-        if (valueNode.isSensorNode() && NodeTraitRegistry.isBooleanSensor(valueNode.getType())) {
+        if (valueNode.isSensorNode() && NodeCatalog.isBooleanSensor(valueNode.getType())) {
             return NodeType.PARAM_BOOLEAN;
         }
         NodeType resolved = valueNode.getResolvedValueType();

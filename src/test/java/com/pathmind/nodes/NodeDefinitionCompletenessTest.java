@@ -92,7 +92,7 @@ class NodeDefinitionCompletenessTest {
     @Test
     void parameterNodesAndValueNodesDeclareProvidedTraits() {
         for (NodeType type : NodeType.values()) {
-            if (!NodeTraitRegistry.isParameterNode(type)) {
+            if (!NodeCatalog.isParameterNode(type)) {
                 continue;
             }
             assertFalse(NodeTraitRegistry.getProvidedTraits(type).isEmpty(),
@@ -123,7 +123,7 @@ class NodeDefinitionCompletenessTest {
         Set<NodeType> missingRoutes = EnumSet.allOf(NodeType.class).stream()
             .filter(type -> !NodeCommandDispatcher.hasExplicitRoute(type))
             .filter(type -> !EXECUTION_MANAGER_ROUTED_TYPES.contains(type))
-            .filter(type -> !NodeTraitRegistry.isParameterNode(type))
+            .filter(type -> !NodeCatalog.isParameterNode(type))
             .filter(type -> !ENTRY_ONLY_TYPES.contains(type))
             .filter(type -> !EDITOR_ONLY_TYPES.contains(type))
             .filter(type -> !VALUE_ONLY_TYPES.contains(type))
@@ -139,7 +139,7 @@ class NodeDefinitionCompletenessTest {
             if (!type.requiresBaritone() && !type.requiresUiUtils()) {
                 continue;
             }
-            assertTrue(NodeCommandDispatcher.hasExplicitRoute(type) || VALUE_ONLY_TYPES.contains(type) || NodeTraitRegistry.isParameterNode(type),
+            assertTrue(NodeCommandDispatcher.hasExplicitRoute(type) || VALUE_ONLY_TYPES.contains(type) || NodeCatalog.isParameterNode(type),
                 () -> "Dependency-gated node is neither routed nor explicitly value-only: " + type);
         }
     }

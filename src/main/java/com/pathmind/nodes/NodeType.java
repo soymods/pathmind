@@ -198,28 +198,28 @@ public enum NodeType {
     }
 
     public boolean isDraggableFromSidebar() {
-        return NodeTypeDefinition.isDraggableFromSidebar(this);
+        return NodeCatalog.isDraggableFromSidebar(this);
     }
     
     /**
      * Get the category this node belongs to for sidebar organization
      */
     public NodeCategory getCategory() {
-        return NodeTypeDefinition.getCategory(this);
+        return NodeCatalog.category(this);
     }
     
     /**
      * Check if this node type requires parameters
      */
     public boolean hasParameters() {
-        return NodeTypeDefinition.hasParameters(this);
+        return NodeCatalog.hasParameters(this);
     }
 
     public boolean requiresBaritone() {
-        return NodeTypeDefinition.requiresBaritone(this);
+        return NodeCatalog.requiresBaritone(this);
     }
 
     public boolean requiresUiUtils() {
-        return NodeTypeDefinition.requiresUiUtils(this);
+        return NodeCatalog.requiresUiUtils(this);
     }
 }

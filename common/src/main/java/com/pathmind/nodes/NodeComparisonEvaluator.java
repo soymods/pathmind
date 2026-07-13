@@ -85,7 +85,7 @@ final class NodeComparisonEvaluator {
         if (operand == null) {
             return Optional.empty();
         }
-        if (operand.isSensorNode() && NodeTraitRegistry.isBooleanSensor(operand.getType())) {
+        if (operand.isSensorNode() && NodeCatalog.isBooleanSensor(operand.getType())) {
             return Optional.of(operand.evaluateSensor());
         }
         if (operand.getType() == NodeType.VARIABLE) {
@@ -287,7 +287,7 @@ final class NodeComparisonEvaluator {
             Node resolved = owner.resolveListItemValueNode(node, null, false, null);
             return resolved != null ? resolveComparableBoolean(resolved) : Optional.empty();
         }
-        if (node.isSensorNode() && NodeTraitRegistry.isBooleanSensor(node.getType())) {
+        if (node.isSensorNode() && NodeCatalog.isBooleanSensor(node.getType())) {
             return Optional.of(node.evaluateSensor());
         }
         return resolveBooleanFromNode(node);

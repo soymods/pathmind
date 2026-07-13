@@ -63,7 +63,7 @@ final class NodeVariableListCommandExecutor {
         }
         NodeType valueType = valueNode.getType();
         Map<String, String> values;
-        if (valueNode.isSensorNode() && NodeTraitRegistry.isBooleanSensor(valueType)) {
+        if (valueNode.isSensorNode() && NodeCatalog.isBooleanSensor(valueType)) {
             boolean sensorResult = valueNode.evaluateSensor();
             values = new HashMap<>();
             values.put("Toggle", Boolean.toString(sensorResult));

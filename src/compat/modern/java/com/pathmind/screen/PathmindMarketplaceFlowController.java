@@ -2,6 +2,8 @@ package com.pathmind.screen;
 
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
+import com.pathmind.marketplace.MarketplaceRateLimitManager;
+import com.pathmind.marketplace.MarketplaceService;
 import net.minecraft.client.MinecraftClient;
 
 import java.util.Optional;
@@ -39,11 +41,47 @@ final class PathmindMarketplaceFlowController {
         });
     }
 
+    static void submitPublish(MinecraftClient client,
+                              MarketplacePreset editingPreset,
+                              MarketplaceService.PublishRequest request,
+                              Consumer<PublishResult> callback) {
+        PathmindMarketplaceAsyncController.ensureValidSession(client, (session, sessionThrowable) -> {
+            if (sessionThrowable != null || session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
+                callback.accept(PublishResult.sessionExpired(sessionThrowable));
+                return;
+            }
+
+            if (editingPreset == null) {
+                MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.validatePublish(session.getUserId());
+                if (!limitCheck.permitted()) {
+                    callback.accept(PublishResult.rateLimited(session, limitCheck.message()));
+                    return;
+                }
+            }
+
+            if (editingPreset == null) {
+                PathmindMarketplaceAsyncController.publishPreset(client, session.getAccessToken(), session.getUserId(), request, (preset, throwable) ->
+                    callback.accept(PublishResult.completed(session, preset, throwable, false))
+                );
+            } else {
+                PathmindMarketplaceAsyncController.updatePresetMetadata(client, session.getAccessToken(), editingPreset, request, (preset, throwable) ->
+                    callback.accept(PublishResult.completed(session, preset, throwable, true))
+                );
+            }
+        });
+    }
+
     enum LinkedPresetStatus {
         MISSING_LOCAL_LINK,
         SESSION_EXPIRED,
         FOUND,
         NOT_FOUND
+    }
+
+    enum PublishStatus {
+        SESSION_EXPIRED,
+        RATE_LIMITED,
+        COMPLETED
     }
 
     static final class LinkedPresetResult {
@@ -92,6 +130,64 @@ final class PathmindMarketplaceFlowController {
 
         Throwable throwable() {
             return throwable;
+        }
+    }
+
+    static final class PublishResult {
+        private final PublishStatus status;
+        private final MarketplaceAuthManager.AuthSession session;
+        private final MarketplacePreset preset;
+        private final Throwable throwable;
+        private final String limitMessage;
+
+        private PublishResult(PublishStatus status,
+                              MarketplaceAuthManager.AuthSession session,
+                              MarketplacePreset preset,
+                              Throwable throwable,
+                              String limitMessage) {
+            this.status = status;
+            this.session = session;
+            this.preset = preset;
+            this.throwable = throwable;
+            this.limitMessage = limitMessage;
+        }
+
+        static PublishResult sessionExpired(Throwable throwable) {
+            return new PublishResult(PublishStatus.SESSION_EXPIRED, null, null, throwable, null);
+        }
+
+        static PublishResult rateLimited(MarketplaceAuthManager.AuthSession session, String limitMessage) {
+            return new PublishResult(PublishStatus.RATE_LIMITED, session, null, null, limitMessage);
+        }
+
+        static PublishResult completed(MarketplaceAuthManager.AuthSession session,
+                                       MarketplacePreset preset,
+                                       Throwable throwable,
+                                       boolean editing) {
+            if (throwable == null && !editing && preset != null && session != null && session.getUserId() != null && !session.getUserId().isBlank()) {
+                MarketplaceRateLimitManager.recordSuccessfulPublish(session.getUserId());
+            }
+            return new PublishResult(PublishStatus.COMPLETED, session, preset, throwable, null);
+        }
+
+        PublishStatus status() {
+            return status;
+        }
+
+        MarketplaceAuthManager.AuthSession session() {
+            return session;
+        }
+
+        MarketplacePreset preset() {
+            return preset;
+        }
+
+        Throwable throwable() {
+            return throwable;
+        }
+
+        String limitMessage() {
+            return limitMessage;
         }
     }
 }

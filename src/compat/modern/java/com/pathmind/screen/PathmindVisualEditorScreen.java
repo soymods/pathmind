@@ -10,7 +10,6 @@ import com.pathmind.data.WorkspaceFileAccess;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
-import com.pathmind.marketplace.MarketplaceRateLimitManager;
 import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCatalog;
@@ -6043,38 +6042,31 @@ public class PathmindVisualEditorScreen extends Screen {
 
         publishPresetBusy = true;
         setPublishPresetStatus(Text.translatable("pathmind.status.publishingPreset").getString(), UITheme.TEXT_SECONDARY);
-        PathmindMarketplaceAsyncController.ensureValidSession(this.client, (session, sessionThrowable) -> {
-            if (sessionThrowable != null || session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
-                publishPresetBusy = false;
-                publishPresetSession = null;
-                setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
-                return;
-            }
-            publishPresetSession = session;
-            MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.validatePublish(session.getUserId());
-            if (!limitCheck.permitted()) {
-                publishPresetBusy = false;
-                setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
-                return;
-            }
-            MarketplaceService.PublishRequest request = PathmindMarketplaceActions.publishRequest(
+        MarketplaceService.PublishRequest request = PathmindMarketplaceActions.publishRequest(
                 presetPath,
                 null,
                 desiredName.trim(),
-                fallback(session.getDisplayName(), fallback(session.getEmail(), Text.translatable("pathmind.status.discordUser").getString())),
+                fallback(publishPresetSession.getDisplayName(), fallback(publishPresetSession.getEmail(), Text.translatable("pathmind.status.discordUser").getString())),
                 publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
                 publishPresetTagsField == null ? "" : publishPresetTagsField.getText(),
                 getCurrentMinecraftVersion(),
                 getModVersion(),
                 publishPresetPublic
-            );
-            PathmindMarketplaceAsyncController.publishPreset(
-                this.client,
-                session.getAccessToken(),
-                session.getUserId(),
-                request,
-                this::finishPublishPreset
-            );
+        );
+        PathmindMarketplaceFlowController.submitPublish(this.client, null, request, result -> {
+            if (result.status() == PathmindMarketplaceFlowController.PublishStatus.SESSION_EXPIRED) {
+                publishPresetBusy = false;
+                publishPresetSession = null;
+                setPublishPresetStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
+                return;
+            }
+            publishPresetSession = result.session();
+            if (result.status() == PathmindMarketplaceFlowController.PublishStatus.RATE_LIMITED) {
+                publishPresetBusy = false;
+                setPublishPresetStatus(result.limitMessage(), UITheme.STATE_WARNING);
+                return;
+            }
+            finishPublishPreset(result.preset(), result.throwable());
         });
     }
 
@@ -6102,10 +6094,6 @@ public class PathmindVisualEditorScreen extends Screen {
             setPublishPresetStatus(buildPublishFailureMessage(throwable), UITheme.STATE_ERROR);
             return;
         }
-        if (preset != null && publishPresetSession != null && publishPresetSession.getUserId() != null && !publishPresetSession.getUserId().isBlank()) {
-            MarketplaceRateLimitManager.recordSuccessfulPublish(publishPresetSession.getUserId());
-        }
-
         closePublishPresetPopup();
         if (preset != null) {
             PresetManager.setMarketplaceLinkedPreset(activePresetName, preset.getId());

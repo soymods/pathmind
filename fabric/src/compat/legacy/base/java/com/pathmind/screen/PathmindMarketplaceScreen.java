@@ -2369,29 +2369,22 @@ public class PathmindMarketplaceScreen extends Screen {
             publishVisibilityPublic
         );
 
-        PathmindMarketplaceAsyncController.ensureValidSession(this.client, (session, throwable) -> {
-                if (throwable != null || session == null) {
-                    publishBusy = false;
-                    authBusy = false;
-                    authSession = null;
-                    setActiveSubmissionStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_ERROR);
-                    return;
-                }
-                authSession = session;
-                if (editingPreset == null) {
-                    MarketplaceRateLimitManager.LimitCheck limitCheck = MarketplaceRateLimitManager.validatePublish(session.getUserId());
-                    if (!limitCheck.permitted()) {
-                        publishBusy = false;
-                        authBusy = false;
-                        setActiveSubmissionStatus(limitCheck.message(), UITheme.STATE_WARNING);
-                        return;
-                    }
-                }
-                if (editingPreset == null) {
-                    PathmindMarketplaceAsyncController.publishPreset(this.client, session.getAccessToken(), session.getUserId(), request, this::finishPublishSubmission);
-                } else {
-                    PathmindMarketplaceAsyncController.updatePresetMetadata(this.client, session.getAccessToken(), editingPreset, request, this::finishPublishSubmission);
-                }
+        PathmindMarketplaceFlowController.submitPublish(this.client, editingPreset, request, result -> {
+            if (result.status() == PathmindMarketplaceFlowController.PublishStatus.SESSION_EXPIRED) {
+                publishBusy = false;
+                authBusy = false;
+                authSession = null;
+                setActiveSubmissionStatus(Text.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_ERROR);
+                return;
+            }
+            authSession = result.session();
+            if (result.status() == PathmindMarketplaceFlowController.PublishStatus.RATE_LIMITED) {
+                publishBusy = false;
+                authBusy = false;
+                setActiveSubmissionStatus(result.limitMessage(), UITheme.STATE_WARNING);
+                return;
+            }
+            finishPublishSubmission(result.preset(), result.throwable());
         });
     }
 
@@ -2404,9 +2397,6 @@ public class PathmindMarketplaceScreen extends Screen {
         if (throwable != null) {
             setActiveSubmissionStatus(PathmindMarketplaceActions.extractThrowableMessage(throwable, wasEditing ? Text.translatable("pathmind.status.metadataUpdateFailed").getString() : Text.translatable("pathmind.status.publishFailed").getString()), UITheme.STATE_ERROR);
             return;
-        }
-        if (!wasEditing && preset != null && authSession != null && authSession.getUserId() != null && !authSession.getUserId().isBlank()) {
-            MarketplaceRateLimitManager.recordSuccessfulPublish(authSession.getUserId());
         }
         if (preset != null) {
             invalidatePreviewGraph(preset);

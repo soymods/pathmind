@@ -71,33 +71,33 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private static final String MARKETPLACE_MODERATOR_USER_ID = "4f1bdb60-3d3f-44ad-85ac-83f324da5e3e";
-    private static final int OUTER_PADDING = 12;
-    private static final int TOP_BAR_HEIGHT = 30;
-    private static final int SECTION_TOP_GAP = 4;
-    private static final int SECTION_HEADER_HEIGHT = 54;
-    private static final int SECTION_BODY_PADDING = 12;
-    private static final int FOOTER_HEIGHT = 14;
-    private static final int CARD_GAP = 8;
-    private static final int PRESET_GRID_COLUMNS = 4;
-    private static final int PRESET_GRID_ROWS = 8;
-    private static final int CARD_MAX_WIDTH = 140;
-    private static final int CARD_SIZE = 128;
+    static final int OUTER_PADDING = 12;
+    static final int TOP_BAR_HEIGHT = 30;
+    static final int SECTION_TOP_GAP = 4;
+    static final int SECTION_HEADER_HEIGHT = 54;
+    static final int SECTION_BODY_PADDING = 12;
+    static final int FOOTER_HEIGHT = 14;
+    static final int CARD_GAP = 8;
+    static final int PRESET_GRID_COLUMNS = 4;
+    static final int PRESET_GRID_ROWS = 8;
+    static final int CARD_MAX_WIDTH = 140;
+    static final int CARD_SIZE = 128;
     private static final int BACK_BUTTON_SIZE = 18;
-    private static final int REFRESH_BUTTON_SIZE = 18;
+    static final int REFRESH_BUTTON_SIZE = 18;
     private static final int PAGE_CONTROL_GAP = 18;
     private static final int PAGE_NUMBER_GAP = 14;
-    private static final int SEARCH_FIELD_WIDTH = 154;
-    private static final int SEARCH_FIELD_HEIGHT = 18;
-    private static final int SORT_BUTTON_WIDTH = 82;
-    private static final int SORT_BUTTON_HEIGHT = 18;
+    static final int SEARCH_FIELD_WIDTH = 154;
+    static final int SEARCH_FIELD_HEIGHT = 18;
+    static final int SORT_BUTTON_WIDTH = 82;
+    static final int SORT_BUTTON_HEIGHT = 18;
     static final int SORT_OPTION_HEIGHT = 18;
-    private static final int MY_PRESETS_BUTTON_WIDTH = 86;
-    private static final int MY_PRESET_FILTER_BUTTON_HEIGHT = 16;
+    static final int MY_PRESETS_BUTTON_WIDTH = 86;
+    static final int MY_PRESET_FILTER_BUTTON_HEIGHT = 16;
     private static final int MY_PRESET_FILTER_ALL_WIDTH = 34;
     private static final int MY_PRESET_FILTER_PUBLIC_WIDTH = 50;
     private static final int MY_PRESET_FILTER_PRIVATE_WIDTH = 54;
-    private static final int AUTHOR_ROW_HEIGHT = 42;
-    private static final int AUTHOR_ROW_GAP = 8;
+    static final int AUTHOR_ROW_HEIGHT = 42;
+    static final int AUTHOR_ROW_GAP = 8;
     private static final int ACCOUNT_BUTTON_MIN_WIDTH = SORT_BUTTON_HEIGHT;
     private static final int MAX_CONCURRENT_PREVIEW_GRAPH_REQUESTS = 3;
     private static final int PREVIEW_THUMBNAIL_WIDTH = 112;
@@ -3442,160 +3442,59 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Layout getLayout() {
-        int topBarY = OUTER_PADDING;
-        int backButtonX = OUTER_PADDING;
-        int backButtonY = topBarY + 2;
-
-        int sectionX = OUTER_PADDING;
-        int sectionY = topBarY + TOP_BAR_HEIGHT + SECTION_TOP_GAP;
-        int sectionWidth = this.width - OUTER_PADDING * 2;
-        int sectionHeight = this.height - sectionY - OUTER_PADDING;
-        int bodyX = sectionX + SECTION_BODY_PADDING;
-        int bodyWidth = sectionWidth - SECTION_BODY_PADDING * 2;
-
-        int searchFieldX = bodyX;
-        int searchFieldY = sectionY + 5;
-        int sortButtonX = searchFieldX + SEARCH_FIELD_WIDTH + 8;
-        int sortButtonY = searchFieldY;
-        int myPresetsButtonX = bodyX + bodyWidth - MY_PRESETS_BUTTON_WIDTH;
-        int myPresetsButtonY = searchFieldY;
-        int resultRowY = searchFieldY + SORT_BUTTON_HEIGHT + 6;
-        int refreshButtonX = myPresetsButtonX - REFRESH_BUTTON_SIZE - 8;
-        int refreshButtonY = searchFieldY;
-        int accountButtonX = this.width - OUTER_PADDING - getAccountButtonWidth();
-        int accountButtonY = topBarY + 2;
-
-        return new Layout(topBarY, backButtonX, backButtonY, sectionX, sectionY, sectionWidth, sectionHeight,
-            bodyX, bodyWidth, refreshButtonX, refreshButtonY, accountButtonX, accountButtonY, searchFieldX, searchFieldY,
-            sortButtonX, sortButtonY, myPresetsButtonX, myPresetsButtonY, resultRowY);
+        return PathmindMarketplaceLayout.screen(this.width, this.height, getAccountButtonWidth());
     }
 
     PopupLayout getPopupLayout(Layout layout) {
-        int width = Math.min(360, this.width - 40);
-        int height = Math.min(330, this.height - 40);
-        int x = (this.width - width) / 2;
-        int y = (this.height - height) / 2;
-        int buttonWidth = 64;
-        int buttonHeight = 18;
-        int buttonY = y + height - 28;
-        int closeButtonX = x + width - buttonWidth * 4 - 28;
-        int authButtonX = x + width - buttonWidth * 3 - 22;
-        int deleteButtonX = x + width - buttonWidth * 2 - 16;
-        int downloadButtonX = x + width - buttonWidth - 10;
-        return new PopupLayout(x, y, width, height, closeButtonX, authButtonX, deleteButtonX, downloadButtonX, buttonY, buttonWidth, buttonHeight);
+        return PathmindMarketplaceLayout.presetPopup(this.width, this.height);
     }
 
     ConfirmPopupLayout getConfirmPopupLayout(Layout layout) {
-        int width = Math.min(336, this.width - 40);
-        int height = pendingConfirmAction == ConfirmAction.UPDATE ? 236 : 164;
-        int x = (this.width - width) / 2;
-        int y = (this.height - height) / 2;
-        int buttonWidth = 88;
-        int buttonHeight = 18;
-        int buttonY = y + height - 28;
-        int cancelButtonX = x + 14;
-        int confirmButtonX = x + width - buttonWidth - 14;
-        return new ConfirmPopupLayout(x, y, width, height, cancelButtonX, confirmButtonX, buttonY, buttonWidth, buttonHeight);
+        return PathmindMarketplaceLayout.confirmPopup(this.width, this.height, pendingConfirmAction == ConfirmAction.UPDATE);
     }
 
     Rect getUpdateConfirmSourceFieldRect(int popupX, int popupY, int popupWidth) {
-        return new Rect(popupX + 20, popupY + 105, popupWidth - 40, 18);
+        return PathmindMarketplaceLayout.updateConfirmSourceField(popupX, popupY, popupWidth);
     }
 
     Rect getUpdateConfirmSourceDropdownBounds(int popupX, int popupY, int popupWidth, int optionCount) {
-        Rect field = getUpdateConfirmSourceFieldRect(popupX, popupY, popupWidth);
-        int rows = Math.max(1, Math.min(6, optionCount));
-        return new Rect(field.x, field.y + field.height + 4, field.width, rows * SORT_OPTION_HEIGHT);
+        return PathmindMarketplaceLayout.updateConfirmSourceDropdown(popupX, popupY, popupWidth, optionCount);
     }
 
     Rect getPopupPreviewRect(int popupX, int popupY, int popupWidth, int popupHeight, int scrollOffset) {
-        int contentTop = popupY + 40;
-        return new Rect(
-            popupX + 12,
-            contentTop - scrollOffset,
-            popupWidth - 24,
-            120
-        );
+        return PathmindMarketplaceLayout.popupPreview(popupX, popupY, popupWidth, scrollOffset);
     }
 
     AccountPopupLayout getAccountPopupLayout(Layout layout) {
-        int width = Math.min(320, this.width - 40);
-        int height = 180;
-        int x = (this.width - width) / 2;
-        int y = (this.height - height) / 2;
-        int buttonWidth = 96;
-        int buttonHeight = 18;
-        int buttonY = y + height - 28;
-        int closeButtonX = x + width - buttonWidth * 2 - 16;
-        int signOutButtonX = x + width - buttonWidth - 10;
-        return new AccountPopupLayout(x, y, width, height, closeButtonX, signOutButtonX, buttonY, buttonWidth, buttonHeight);
+        return PathmindMarketplaceLayout.accountPopup(this.width, this.height);
     }
 
     PublishPopupLayout getPublishPopupLayout(Layout layout) {
-        int width = Math.min(392, this.width - 40);
-        int height = Math.min(274, this.height - 40);
-        int x = (this.width - width) / 2;
-        int y = (this.height - height) / 2;
-        int buttonWidth = 88;
-        int buttonHeight = 18;
-        int buttonY = y + height - 28;
-        int cancelButtonX = x + width - buttonWidth * 3 - 22;
-        int authButtonX = x + width - buttonWidth * 2 - 16;
-        int submitButtonX = x + width - buttonWidth - 10;
-        return new PublishPopupLayout(x, y, width, height, cancelButtonX, authButtonX, submitButtonX, buttonY, buttonWidth, buttonHeight);
+        return PathmindMarketplaceLayout.publishPopup(this.width, this.height);
     }
 
     private Rect getCardRect(Layout layout, int absoluteIndex, int scrollOffset) {
-        int columns = getGridColumns();
-        int bodyY = layout.sectionY + getSectionHeaderHeight() + 2;
-        int availableWidth = layout.bodyWidth;
-        int cardWidth = Math.min(CARD_MAX_WIDTH, (availableWidth - (columns - 1) * CARD_GAP) / columns);
-        int column = absoluteIndex % columns;
-        int row = absoluteIndex / columns;
-        int startX = layout.bodyX;
-        return new Rect(
-            startX + column * (cardWidth + CARD_GAP),
-            bodyY + row * (CARD_SIZE + CARD_GAP) - scrollOffset,
-            cardWidth,
-            CARD_SIZE
-        );
+        return PathmindMarketplaceLayout.card(layout, absoluteIndex, getSectionHeaderHeight(), scrollOffset);
     }
 
     private int getGridColumns() {
-        return PRESET_GRID_COLUMNS;
+        return PathmindMarketplaceLayout.gridColumns();
     }
 
     private int getCardsPerPage(Layout layout) {
-        return PRESET_GRID_COLUMNS * PRESET_GRID_ROWS;
+        return PathmindMarketplaceLayout.cardsPerPage();
     }
 
     private int getFirstVisibleCardIndex(Layout layout, int scrollOffset) {
-        if (presets.isEmpty()) {
-            return 0;
-        }
-        int columns = Math.max(1, getGridColumns());
-        int headerHeight = getSectionHeaderHeight();
-        int bodyY = layout.sectionY + headerHeight;
-        int firstRow = Math.max(0, (scrollOffset - CARD_SIZE) / (CARD_SIZE + CARD_GAP));
-        int firstIndex = firstRow * columns;
-        return Math.max(0, Math.min(firstIndex, presets.size() - 1));
+        return PathmindMarketplaceLayout.firstVisibleCardIndex(presets.size(), scrollOffset);
     }
 
     private int getLastVisibleCardIndex(Layout layout, int scrollOffset) {
-        if (presets.isEmpty()) {
-            return -1;
-        }
-        int columns = Math.max(1, getGridColumns());
-        int headerHeight = getSectionHeaderHeight();
-        int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
-        int lastRow = Math.max(0, (scrollOffset + bodyHeight + CARD_SIZE) / (CARD_SIZE + CARD_GAP));
-        int lastIndex = (lastRow + 1) * columns - 1;
-        return Math.max(0, Math.min(lastIndex, presets.size() - 1));
+        return PathmindMarketplaceLayout.lastVisibleCardIndex(layout, presets.size(), getSectionHeaderHeight(), scrollOffset);
     }
 
     private int getAuthorEntriesPerPage(Layout layout) {
-        int availableHeight = layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT - 8;
-        return Math.max(1, (availableHeight + AUTHOR_ROW_GAP) / (AUTHOR_ROW_HEIGHT + AUTHOR_ROW_GAP));
+        return PathmindMarketplaceLayout.authorEntriesPerPage(layout, getSectionHeaderHeight());
     }
 
     private int getEntriesPerPage(Layout layout) {
@@ -3621,17 +3520,11 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Rect getSortDropdownBounds(Layout layout) {
-        return new Rect(layout.sortButtonX, layout.sortButtonY + SORT_BUTTON_HEIGHT, SORT_BUTTON_WIDTH, SortMode.values().length * SORT_OPTION_HEIGHT);
+        return PathmindMarketplaceLayout.sortDropdown(layout, SortMode.values().length);
     }
 
     private Rect getAuthorRowRect(Layout layout, int pageOffset) {
-        int bodyY = layout.sectionY + getSectionHeaderHeight() + 2;
-        return new Rect(
-            layout.bodyX,
-            bodyY + pageOffset * (AUTHOR_ROW_HEIGHT + AUTHOR_ROW_GAP),
-            layout.bodyWidth,
-            AUTHOR_ROW_HEIGHT
-        );
+        return PathmindMarketplaceLayout.authorRow(layout, pageOffset, getSectionHeaderHeight());
     }
 
     private PageHitAreas getPageHitAreas(Layout layout) {
@@ -3830,7 +3723,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Rect getExitProfileRect(Layout layout) {
-        return new Rect(layout.bodyX, layout.searchFieldY, 92, SORT_BUTTON_HEIGHT);
+        return PathmindMarketplaceLayout.exitProfile(layout);
     }
 
     private void openAuthorProfile(MarketplacePreset preset, boolean closePopup) {
@@ -4034,10 +3927,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private int getSectionHeaderHeight() {
-        if (isViewingAuthorProfile()) {
-            return SECTION_HEADER_HEIGHT;
-        }
-        return myPresetsOnly ? SECTION_HEADER_HEIGHT + MY_PRESET_FILTER_BUTTON_HEIGHT + 8 : SECTION_HEADER_HEIGHT;
+        return PathmindMarketplaceLayout.sectionHeaderHeight(isViewingAuthorProfile(), myPresetsOnly);
     }
 
     record Rect(int x, int y, int width, int height) {

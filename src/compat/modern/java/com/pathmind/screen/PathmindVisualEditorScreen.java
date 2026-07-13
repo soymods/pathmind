@@ -6675,30 +6675,20 @@ public class PathmindVisualEditorScreen extends Screen {
             && !PresetManager.hasMarketplaceLinkedPresetChanges(activePresetName);
     }
 
-private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
-        int buttonX = getHomeButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, false, false, "workspace-home");
-        int iconColor = hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        PathmindWorkspaceChrome.drawHomeIcon(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, iconColor);
-        return hovered;
+    private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+        return renderWorkspaceIconButton(context, getHomeButtonX(), buttonY, mouseX, mouseY,
+            false, false, "workspace-home", PathmindWorkspaceChrome::drawHomeIcon);
     }
 
     private boolean renderClearButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
-        int buttonX = getClearButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, clearPopupAnimation.isVisible(), false, "workspace-clear");
-        int iconColor = (hovered || clearPopupAnimation.isVisible()) ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        PathmindWorkspaceChrome.drawClearIcon(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, iconColor);
-        return hovered;
+        return renderWorkspaceIconButton(context, getClearButtonX(), buttonY, mouseX, mouseY,
+            clearPopupAnimation.isVisible(), false, "workspace-clear", PathmindWorkspaceChrome::drawClearIcon);
     }
 
     private boolean renderImportExportButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
-        int buttonX = getImportExportButtonX();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, importExportPopupAnimation.isVisible(), false, "workspace-import-export");
-        int iconColor = (hovered || importExportPopupAnimation.isVisible()) ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        PathmindWorkspaceChrome.drawImportExportIcon(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, iconColor);
-        return hovered;
+        return renderWorkspaceIconButton(context, getImportExportButtonX(), buttonY, mouseX, mouseY,
+            importExportPopupAnimation.isVisible(), false, "workspace-import-export", PathmindWorkspaceChrome::drawImportExportIcon);
     }
-
 
     private boolean renderValidationButton(DrawContext context, int mouseX, int mouseY, boolean disabled,
                                         GraphValidationResult validationResult) {
@@ -6742,30 +6732,57 @@ private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, in
     private boolean renderRawJsonToggleButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getRawJsonButtonX();
         int buttonY = getRawJsonButtonY();
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, RAW_JSON_BUTTON_SIZE, RAW_JSON_BUTTON_SIZE);
-        drawToolbarButtonFrame(context, buttonX, buttonY, RAW_JSON_BUTTON_SIZE, RAW_JSON_BUTTON_SIZE, hovered, rawJsonMode, disabled, "raw-json-button");
-        int iconColor = disabled ? UITheme.DROPDOWN_ACTION_DISABLED : (hovered || rawJsonMode ? getAccentColor() : UITheme.TEXT_PRIMARY);
-        String icon = "{ }";
-        int textX = buttonX + Math.max(1, (RAW_JSON_BUTTON_SIZE - this.textRenderer.getWidth(icon)) / 2);
-        int textY = buttonY + (RAW_JSON_BUTTON_SIZE - this.textRenderer.fontHeight) / 2 + 1;
-        context.drawText(this.textRenderer, icon, textX, textY, iconColor, false);
-        return hovered;
+        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, RAW_JSON_BUTTON_SIZE, RAW_JSON_BUTTON_SIZE);
+        float hoverProgress = getHoverProgress("raw-json-button", hovered || rawJsonMode);
+        return PathmindWorkspaceChrome.renderIconButton(
+            context,
+            buttonX,
+            buttonY,
+            RAW_JSON_BUTTON_SIZE,
+            mouseX,
+            mouseY,
+            rawJsonMode,
+            disabled,
+            hoverProgress,
+            getAccentColor(),
+            (iconContext, x, y, size, color) -> {
+                String icon = "{ }";
+                int textX = x + Math.max(1, (size - this.textRenderer.getWidth(icon)) / 2);
+                int textY = y + (size - this.textRenderer.fontHeight) / 2 + 1;
+                iconContext.drawText(this.textRenderer, icon, textX, textY, color, false);
+            }
+        );
     }
 
     private void renderRawJsonSaveButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getValidationButtonX();
         int buttonY = getValidationButtonY();
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
+        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
         boolean active = rawJsonDirty;
-        drawToolbarButtonFrame(context, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE, hovered, active, disabled, "raw-json-save-button");
-        int iconColor = disabled ? UITheme.DROPDOWN_ACTION_DISABLED : (hovered || active ? getAccentColor() : UITheme.TEXT_PRIMARY);
+        float hoverProgress = getHoverProgress("raw-json-save-button", hovered || active);
+        PathmindWorkspaceChrome.renderIconButton(
+            context,
+            buttonX,
+            buttonY,
+            VALIDATION_BUTTON_SIZE,
+            mouseX,
+            mouseY,
+            active,
+            disabled,
+            hoverProgress,
+            getAccentColor(),
+            (iconContext, x, y, size, color) -> drawRawJsonSaveIcon(iconContext, x, y, color)
+        );
+    }
+
+    private void drawRawJsonSaveIcon(DrawContext context, int buttonX, int buttonY, int color) {
         int left = buttonX + 4;
         int top = buttonY + 3;
         int size = 10;
-        DrawContextBridge.drawBorder(context, left, top, size, size, iconColor);
-        context.fill(left + 2, top + 2, left + size - 2, top + 4, iconColor);
+        DrawContextBridge.drawBorder(context, left, top, size, size, color);
+        context.fill(left + 2, top + 2, left + size - 2, top + 4, color);
         context.fill(left + size - 4, top + 2, left + size - 2, top + 5, UITheme.BACKGROUND_SECTION);
-        context.drawHorizontalLine(left + 2, left + size - 3, top + 7, iconColor);
+        context.drawHorizontalLine(left + 2, left + size - 3, top + 7, color);
     }
 
     private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
@@ -7471,22 +7488,32 @@ private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, in
 
 
     private void renderSettingsButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
-        int buttonX = getSettingsButtonX();
-        int buttonY = getSettingsButtonY();
-        boolean active = settingsPopupAnimation.isVisible();
-        boolean hovered = renderButtonBackground(context, buttonX, buttonY, mouseX, mouseY, active, disabled, "settings-button");
-
-        int iconColor = disabled ? UITheme.DROPDOWN_ACTION_DISABLED
-                : (hovered || active) ? getAccentColor() : UITheme.TEXT_PRIMARY;
-        drawSettingsIcon(context, buttonX, buttonY, iconColor);
+        boolean hovered = renderWorkspaceIconButton(context, getSettingsButtonX(), getSettingsButtonY(), mouseX, mouseY,
+            settingsPopupAnimation.isVisible(), disabled, "settings-button", PathmindWorkspaceChrome::drawSettingsIcon);
 
         if (hovered && showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
             TooltipRenderer.render(context, this.textRenderer, Text.translatable("pathmind.settings.title").getString(), mouseX, mouseY, this.width, this.height);
         }
     }
 
-    private void drawSettingsIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        PathmindWorkspaceChrome.drawSettingsIcon(context, buttonX, buttonY, BOTTOM_BUTTON_SIZE, color);
+    private boolean renderWorkspaceIconButton(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY,
+                                              boolean active, boolean disabled, Object hoverKey,
+                                              PathmindWorkspaceChrome.IconPainter iconPainter) {
+        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
+        float hoverProgress = getHoverProgress(hoverKey, hovered || active);
+        return PathmindWorkspaceChrome.renderIconButton(
+            context,
+            buttonX,
+            buttonY,
+            BOTTOM_BUTTON_SIZE,
+            mouseX,
+            mouseY,
+            active,
+            disabled,
+            hoverProgress,
+            getAccentColor(),
+            iconPainter
+        );
     }
 
     private boolean renderButtonBackground(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY,

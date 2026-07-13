@@ -11,6 +11,11 @@ import net.minecraft.text.Text;
  * Shared rendering and layout primitives for workspace toolbar chrome.
  */
 public final class PathmindWorkspaceChrome {
+    @FunctionalInterface
+    public interface IconPainter {
+        void draw(DrawContext context, int x, int y, int size, int color);
+    }
+
     private PathmindWorkspaceChrome() {
     }
 
@@ -56,6 +61,25 @@ public final class PathmindWorkspaceChrome {
         boolean hovered = !disabled && contains(mouseX, mouseY, x, y, width, height);
         drawToolbarButtonFrame(context, x, y, width, height, hovered, active, disabled, hoverProgress, accentColor);
         return hovered;
+    }
+
+    public static boolean renderIconButton(DrawContext context, int x, int y, int size,
+                                           int mouseX, int mouseY, boolean active, boolean disabled,
+                                           float hoverProgress, int accentColor, IconPainter iconPainter) {
+        boolean hovered = !disabled && contains(mouseX, mouseY, x, y, size, size);
+        drawToolbarButtonFrame(context, x, y, size, size, hovered, active, disabled, hoverProgress, accentColor);
+        int iconColor = iconColor(hovered, active, disabled, accentColor);
+        if (iconPainter != null) {
+            iconPainter.draw(context, x, y, size, iconColor);
+        }
+        return hovered;
+    }
+
+    public static int iconColor(boolean hovered, boolean active, boolean disabled, int accentColor) {
+        if (disabled) {
+            return UITheme.DROPDOWN_ACTION_DISABLED;
+        }
+        return hovered || active ? accentColor : UITheme.TEXT_PRIMARY;
     }
 
     public static void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,

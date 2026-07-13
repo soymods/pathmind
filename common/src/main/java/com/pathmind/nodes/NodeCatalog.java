@@ -1,5 +1,6 @@
 package com.pathmind.nodes;
 
+import com.pathmind.data.SettingsManager;
 import net.minecraft.text.Text;
 
 import java.util.ArrayList;
@@ -9,6 +10,9 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static com.pathmind.nodes.NodeParameterDefinition.dynamic;
+import static com.pathmind.nodes.NodeParameterDefinition.of;
 
 /**
  * Central catalog for node metadata and sidebar placement.
@@ -21,7 +25,12 @@ public final class NodeCatalog {
     private static final Map<NodeType, NodeDefinition> DEFINITIONS = new EnumMap<>(NodeType.class);
     private static final Map<NodeType, EnumSet<NodeValueTrait>> PROVIDED_TRAITS = new EnumMap<>(NodeType.class);
     private static final Map<NodeType, ParameterSchema> PARAMETER_SCHEMAS = new EnumMap<>(NodeType.class);
+    private static final Map<NodeType, List<NodeParameterDefinition>> TYPE_PARAMETER_DEFINITIONS = new EnumMap<>(NodeType.class);
+    private static final Map<NodeMode, List<NodeParameterDefinition>> MODE_PARAMETER_DEFINITIONS = new EnumMap<>(NodeMode.class);
     private static final List<SidebarGroupDefinition> SIDEBAR_GROUPS = new ArrayList<>();
+    private static final String BOOLEAN_MODE_LITERAL = "literal";
+    private static final String DIRECTION_MODE_EXACT = "exact";
+    private static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
 
     static {
         define(NodeCategory.FLOW,
@@ -838,6 +847,262 @@ public final class NodeCatalog {
         parameterHost(NodeType.CREATE_LIST, "Target", NodeValueTrait.ANY);
         parameterHost(NodeType.TRADE, "Villager Trade", NodeValueTrait.NUMBER);
         parameterHost(NodeType.PARAM_BLOCK_FACE, "Target", NodeValueTrait.COORDINATE, NodeValueTrait.BLOCK);
+
+        modeParameters(NodeMode.GOTO_XYZ,
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.GOTO_XZ,
+            of("X", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.GOTO_Y, of("Y", ParameterType.INTEGER, "64"));
+        modeParameters(NodeMode.GOTO_BLOCK, of("Block", ParameterType.STRING, "stone"));
+        modeParameters(NodeMode.GOAL_XYZ,
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.GOAL_XZ,
+            of("X", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.GOAL_Y, of("Y", ParameterType.INTEGER, "64"));
+        modeParameters(NodeMode.COLLECT_SINGLE,
+            of("Block", ParameterType.BLOCK_TYPE, "stone"),
+            of("Amount", ParameterType.INTEGER, "1"));
+        modeParameters(NodeMode.COLLECT_MULTIPLE, of("Blocks", ParameterType.STRING, "stone,dirt"));
+        modeParameters(NodeMode.BUILD_PLAYER, of("Schematic", ParameterType.STRING, ""));
+        modeParameters(NodeMode.BUILD_XYZ,
+            of("Schematic", ParameterType.STRING, ""),
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.EXPLORE_XYZ,
+            of("X", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.EXPLORE_FILTER, of("Filter", ParameterType.STRING, "explore.txt"));
+        modeParameters(NodeMode.FOLLOW_PLAYER, of("Player", ParameterType.STRING, "Self"));
+        modeParameters(NodeMode.FOLLOW_ENTITY_TYPE, of("Entity", ParameterType.STRING, "cow"));
+        modeParameters(NodeMode.CRAFT_PLAYER_GUI,
+            of("Item", ParameterType.STRING, "stick"),
+            of("Amount", ParameterType.INTEGER, "1"));
+        modeParameters(NodeMode.CRAFT_CRAFTING_TABLE,
+            of("Item", ParameterType.STRING, "stick"),
+            of("Amount", ParameterType.INTEGER, "1"));
+        modeParameters(NodeMode.FARM_RANGE, of("Range", ParameterType.INTEGER, "10"));
+        modeParameters(NodeMode.FARM_WAYPOINT,
+            of("Waypoint", ParameterType.STRING, "farm"),
+            of("Range", ParameterType.INTEGER, "10"));
+        modeParameters(NodeMode.WAIT_SECONDS, of("Duration", ParameterType.DOUBLE, ""));
+        modeParameters(NodeMode.WAIT_TICKS, of("Duration", ParameterType.DOUBLE, ""));
+        modeParameters(NodeMode.WAIT_MINUTES, of("Duration", ParameterType.DOUBLE, ""));
+        modeParameters(NodeMode.WAIT_HOURS, of("Duration", ParameterType.DOUBLE, ""));
+        modeParameters(NodeMode.UI_UTILS_SET_SEND_PACKETS, of("Enabled", ParameterType.BOOLEAN, "true"));
+        modeParameters(NodeMode.UI_UTILS_SET_DELAY_PACKETS, of("Enabled", ParameterType.BOOLEAN, "true"));
+        modeParameters(NodeMode.UI_UTILS_SET_ENABLED, of("Enabled", ParameterType.BOOLEAN, "true"));
+        modeParameters(NodeMode.UI_UTILS_SET_BYPASS_RESOURCE_PACK, of("Enabled", ParameterType.BOOLEAN, "true"));
+        modeParameters(NodeMode.UI_UTILS_SET_FORCE_DENY_RESOURCE_PACK, of("Enabled", ParameterType.BOOLEAN, "true"));
+        modeParameters(NodeMode.UI_UTILS_FABRICATE_CLICK_SLOT,
+            of("ui_click_sync_id", "SyncId", ParameterType.INTEGER, "-1"),
+            of("ui_click_revision", "Revision", ParameterType.INTEGER, "-1"),
+            of("ui_click_slot", "Slot", ParameterType.INTEGER, "0"),
+            of("ui_click_button", "Button", ParameterType.INTEGER, "0"),
+            of("ui_click_action", "Action", ParameterType.STRING, "PICKUP"),
+            of("ui_click_times", "TimesToSend", ParameterType.INTEGER, "1"),
+            of("ui_click_delay", "Delay", ParameterType.BOOLEAN, "false"));
+        modeParameters(NodeMode.UI_UTILS_FABRICATE_BUTTON_CLICK,
+            of("ui_button_sync_id", "SyncId", ParameterType.INTEGER, "-1"),
+            of("ui_button_id", "ButtonId", ParameterType.INTEGER, "0"),
+            of("ui_button_times", "TimesToSend", ParameterType.INTEGER, "1"),
+            of("ui_button_delay", "Delay", ParameterType.BOOLEAN, "false"));
+
+        typeParameters(NodeType.PLACE,
+            of("Block", ParameterType.BLOCK_TYPE, "stone"),
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        typeParameters(NodeType.WAIT, of("Duration", ParameterType.DOUBLE, "0.0"));
+        typeParameters(NodeType.START_CHAIN, of("StartNumber", ParameterType.INTEGER, ""));
+        typeParameters(NodeType.RUN_PRESET, of("Preset", ParameterType.STRING, ""));
+        typeParameters(NodeType.CUSTOM_NODE, of("Preset", ParameterType.STRING, ""));
+        typeParameters(NodeType.TEMPLATE, of("Preset", ParameterType.STRING, ""));
+        typeParameters(NodeType.STOP_CHAIN, of("StartNumber", ParameterType.INTEGER, ""));
+        typeParameters(NodeType.HOTBAR,
+            of("hotbar_slot", "Slot", ParameterType.INTEGER, "0"),
+            of("Item", ParameterType.STRING, ""));
+        typeParameters(NodeType.DROP_ITEM,
+            of("All", ParameterType.BOOLEAN, "false"),
+            of("Count", ParameterType.INTEGER, "1"),
+            of("UseAmount", ParameterType.BOOLEAN, "false"),
+            of("IntervalSeconds", ParameterType.DOUBLE, "0.0"));
+        typeParameters(NodeType.DROP_SLOT,
+            of("drop_slot_index", "Slot", ParameterType.INTEGER, "0"),
+            of("Count", ParameterType.INTEGER, "0"),
+            of("EntireStack", ParameterType.BOOLEAN, "true"));
+        typeParameters(NodeType.CLICK_SLOT, of("click_slot_index", "Slot", ParameterType.INTEGER, "0"));
+        typeParameters(NodeType.CLICK_SCREEN,
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "0"));
+        typeParameters(NodeType.MOVE_ITEM,
+            of("move_item_source_slot", "SourceSlot", ParameterType.INTEGER, "0"),
+            of("move_item_target_slot", "TargetSlot", ParameterType.INTEGER, "9"),
+            of("Count", ParameterType.INTEGER, "0"));
+        typeParameters(NodeType.EQUIP_ARMOR,
+            of("equip_armor_source_slot", "SourceSlot", ParameterType.INTEGER, "0"),
+            of("equip_armor_slot", "ArmorSlot", ParameterType.STRING, "head"));
+        typeParameters(NodeType.EQUIP_HAND,
+            of("equip_hand_source_slot", "SourceSlot", ParameterType.INTEGER, "0"),
+            of("equip_hand_hand", "Hand", ParameterType.STRING, "main"));
+        typeParameters(NodeType.WRITE_BOOK, of("Page", ParameterType.INTEGER, "1"));
+        typeParameters(NodeType.USE,
+            of("Hand", ParameterType.STRING, "main"),
+            of("UseDurationSeconds", ParameterType.DOUBLE, "0.0"),
+            of("UseAmount", ParameterType.BOOLEAN, "false"),
+            of("RepeatCount", ParameterType.INTEGER, "1"),
+            of("UseIntervalSeconds", ParameterType.DOUBLE, "0.0"),
+            of("StopIfUnavailable", ParameterType.BOOLEAN, "true"),
+            of("UseUntilEmpty", ParameterType.BOOLEAN, "false"),
+            of("AllowBlockInteraction", ParameterType.BOOLEAN, "true"),
+            of("AllowEntityInteraction", ParameterType.BOOLEAN, "true"),
+            of("SwingAfterUse", ParameterType.BOOLEAN, "true"),
+            of("SneakWhileUsing", ParameterType.BOOLEAN, "false"),
+            of("RestoreSneakState", ParameterType.BOOLEAN, "true"));
+        typeParameters(NodeType.SWING,
+            of("Duration", ParameterType.DOUBLE, "0.0"),
+            of("UseAmount", ParameterType.BOOLEAN, "false"));
+        typeParameters(NodeType.INTERACT,
+            of("Hand", ParameterType.STRING, "main"),
+            of("Block", ParameterType.BLOCK_TYPE, ""),
+            of("PreferEntity", ParameterType.BOOLEAN, "true"),
+            of("PreferBlock", ParameterType.BOOLEAN, "true"),
+            of("FallbackToItemUse", ParameterType.BOOLEAN, "true"),
+            of("SwingOnSuccess", ParameterType.BOOLEAN, "true"),
+            of("SneakWhileInteracting", ParameterType.BOOLEAN, "false"),
+            of("RestoreSneakState", ParameterType.BOOLEAN, "true"));
+        typeParameters(NodeType.PLACE_HAND,
+            of("Hand", ParameterType.STRING, "main"),
+            of("SneakWhilePlacing", ParameterType.BOOLEAN, "false"),
+            of("SwingOnPlace", ParameterType.BOOLEAN, "true"),
+            of("RequireBlockHit", ParameterType.BOOLEAN, "true"),
+            of("RestoreSneakState", ParameterType.BOOLEAN, "true"));
+        typeParameters(NodeType.TRADE,
+            of("trade_number", "Number", ParameterType.INTEGER, "1"),
+            of("trade_count", "Count", ParameterType.INTEGER, "1"));
+        typeParameters(NodeType.LOOK,
+            of("look_yaw", "Yaw", ParameterType.DOUBLE, "0.0"),
+            of("look_pitch", "Pitch", ParameterType.DOUBLE, "0.0"));
+        typeParameters(NodeType.WALK,
+            of("Duration", ParameterType.DOUBLE, "1.0"),
+            of("Distance", ParameterType.DOUBLE, "0.0"));
+        typeParameters(NodeType.PRESS_KEY,
+            of("Key", ParameterType.STRING, "GLFW_KEY_SPACE"),
+            of("Duration", ParameterType.DOUBLE, "0.0"),
+            of("UseAmount", ParameterType.BOOLEAN, "false"));
+        typeParameters(NodeType.CONTROL_REPEAT, of("Count", ParameterType.INTEGER, "10"));
+        typeParameters(NodeType.EVENT_FUNCTION, of("Name", ParameterType.STRING, "function"));
+        typeParameters(NodeType.EVENT_CALL, of("Name", ParameterType.STRING, "function"));
+        typeParameters(NodeType.VARIABLE, of("Variable", ParameterType.STRING, "variable"));
+        typeParameters(NodeType.CREATE_LIST,
+            of("List", ParameterType.STRING, "list"),
+            dynamic("create_list_use_radius", "UseRadius", ParameterType.BOOLEAN, () -> Boolean.toString(Boolean.TRUE.equals(SettingsManager.getCurrent().createListUseCustomRadius))),
+            dynamic("create_list_radius", "Radius", ParameterType.DOUBLE, () -> Double.toString(SettingsManager.getCurrent().createListRadius == null ? 64 : SettingsManager.getCurrent().createListRadius)),
+            of("create_list_use_block_cap", "UseBlockCap", ParameterType.BOOLEAN, "false"),
+            of("create_list_max_blocks", "MaxBlocks", ParameterType.INTEGER, "256"));
+        typeParameters(
+            List.of(NodeType.ADD_TO_LIST, NodeType.REMOVE_FIRST_FROM_LIST, NodeType.REMOVE_LAST_FROM_LIST, NodeType.REMOVE_FROM_LIST, NodeType.LIST_LENGTH),
+            of("List", ParameterType.STRING, "list"));
+        typeParameters(List.of(NodeType.REMOVE_LIST_ITEM, NodeType.LIST_ITEM),
+            of("List", ParameterType.STRING, "list"),
+            of("Index", ParameterType.INTEGER, "1"));
+        typeParameters(NodeType.OPERATOR_RANDOM,
+            of("Min", ParameterType.DOUBLE, "0.0"),
+            of("Max", ParameterType.DOUBLE, "1.0"),
+            of("Seed", ParameterType.STRING, "Any"),
+            of("random_rounding_mode", "Rounding", ParameterType.STRING, "round"),
+            of("random_use_rounding", "UseRounding", ParameterType.BOOLEAN, "false"));
+        typeParameters(List.of(NodeType.OPERATOR_GREATER, NodeType.OPERATOR_LESS),
+            of("Inclusive", ParameterType.BOOLEAN, "false"));
+        typeParameters(NodeType.CHANGE_VARIABLE,
+            of("change_variable_amount", "Amount", ParameterType.INTEGER, "1"),
+            of("change_variable_operation", "Operation", ParameterType.STRING, "+"));
+        typeParameters(
+            List.of(NodeType.SENSOR_TOUCHING_BLOCK, NodeType.SENSOR_TOUCHING_ENTITY, NodeType.SENSOR_AT_COORDINATES,
+                NodeType.SENSOR_IS_DAYTIME, NodeType.SENSOR_IS_RAINING, NodeType.SENSOR_ITEM_IN_INVENTORY,
+                NodeType.SENSOR_ITEM_IN_SLOT),
+            of("Amount", ParameterType.INTEGER, "1"),
+            of("UseAmount", ParameterType.BOOLEAN, "false"));
+        typeParameters(List.of(NodeType.SENSOR_VILLAGER_TRADE, NodeType.SENSOR_IN_STOCK),
+            of("trade_number", "Number", ParameterType.INTEGER, "1"));
+        typeParameters(NodeType.SENSOR_HEALTH_BELOW, of("Amount", ParameterType.DOUBLE, "10.0"));
+        typeParameters(NodeType.SENSOR_HUNGER_BELOW, of("Amount", ParameterType.INTEGER, "10"));
+        typeParameters(NodeType.SENSOR_IS_FALLING, of("Distance", ParameterType.DOUBLE, "0.25"));
+        typeParameters(List.of(NodeType.SENSOR_IS_RENDERED, NodeType.SENSOR_IS_VISIBLE),
+            of("Resource", ParameterType.STRING, "stone"));
+        typeParameters(NodeType.SENSOR_CHAT_MESSAGE,
+            of("Amount", ParameterType.DOUBLE, "10.0"),
+            of("UseAmount", ParameterType.BOOLEAN, "true"));
+        typeParameters(NodeType.SENSOR_FABRIC_EVENT, of("Event", ParameterType.STRING, "Any"));
+        typeParameters(NodeType.SENSOR_ATTRIBUTE_DETECTION,
+            of("Attribute", ParameterType.STRING, AttributeDetectionConfig.AttributeOption.NAME.id()),
+            of("Value", ParameterType.STRING, ""));
+        typeParameters(NodeType.PARAM_COORDINATE,
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "64"),
+            of("Z", ParameterType.INTEGER, "0"));
+        typeParameters(NodeType.PARAM_BLOCK,
+            of("Block", ParameterType.STRING, ""),
+            of("State", ParameterType.STRING, ""));
+        typeParameters(NodeType.PARAM_ITEM, of("Item", ParameterType.STRING, ""));
+        typeParameters(NodeType.PARAM_VILLAGER_TRADE,
+            of("Profession", ParameterType.STRING, "librarian"),
+            of("Item", ParameterType.STRING, "book"));
+        typeParameters(NodeType.PARAM_ENTITY,
+            of("Entity", ParameterType.STRING, ""),
+            of("State", ParameterType.STRING, ""));
+        typeParameters(NodeType.PARAM_PLAYER, of("Player", ParameterType.STRING, "Self"));
+        typeParameters(NodeType.PARAM_MESSAGE, of("Text", ParameterType.STRING, ""));
+        typeParameters(NodeType.PARAM_WAYPOINT,
+            of("Waypoint", ParameterType.STRING, "home"),
+            of("Range", ParameterType.INTEGER, "10"));
+        typeParameters(NodeType.PARAM_SCHEMATIC,
+            of("Schematic", ParameterType.STRING, ""),
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        typeParameters(NodeType.PARAM_INVENTORY_SLOT,
+            of("inventory_slot_index", "Slot", ParameterType.INTEGER, "0"),
+            of("inventory_slot_mode", "Mode", ParameterType.STRING, "player_inventory"));
+        typeParameters(NodeType.PARAM_DURATION, of("Duration", ParameterType.DOUBLE, ""));
+        typeParameters(NodeType.PARAM_AMOUNT, of("Amount", ParameterType.DOUBLE, "1.0"));
+        typeParameters(NodeType.PARAM_BOOLEAN,
+            of("boolean_mode", "Mode", ParameterType.STRING, BOOLEAN_MODE_LITERAL),
+            of("boolean_toggle", "Toggle", ParameterType.BOOLEAN, "true"),
+            of("boolean_variable", "Variable", ParameterType.STRING, ""));
+        typeParameters(NodeType.PARAM_HAND, of("Hand", ParameterType.STRING, "main"));
+        typeParameters(NodeType.PARAM_GUI, of("GUI", ParameterType.STRING, "Any"));
+        typeParameters(NodeType.PARAM_KEY, of("Key", ParameterType.STRING, "GLFW_KEY_SPACE"));
+        typeParameters(NodeType.PARAM_MOUSE_BUTTON, of("MouseButton", ParameterType.STRING, "Left"));
+        typeParameters(NodeType.PARAM_RANGE, of("Range", ParameterType.INTEGER, "6"));
+        typeParameters(NodeType.PARAM_DISTANCE, of("Distance", ParameterType.DOUBLE, "2.0"));
+        typeParameters(NodeType.PARAM_DIRECTION,
+            of("direction_mode", "Mode", ParameterType.STRING, DIRECTION_MODE_EXACT),
+            of("direction_cardinal", "Direction", ParameterType.STRING, ""),
+            of("direction_yaw", "Yaw", ParameterType.DOUBLE, "0.0"),
+            of("direction_pitch", "Pitch", ParameterType.DOUBLE, "0.0"),
+            of("direction_yaw_offset", "YawOffset", ParameterType.DOUBLE, "0.0"),
+            of("direction_pitch_offset", "PitchOffset", ParameterType.DOUBLE, "0.0"),
+            of("direction_distance", "Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
+        typeParameters(NodeType.PARAM_BLOCK_FACE, of("Face", ParameterType.STRING, "north"));
+        typeParameters(NodeType.PARAM_ROTATION,
+            of("rotation_yaw", "Yaw", ParameterType.DOUBLE, "0.0"),
+            of("rotation_pitch", "Pitch", ParameterType.DOUBLE, "0.0"),
+            of("rotation_yaw_offset", "YawOffset", ParameterType.DOUBLE, "0.0"),
+            of("rotation_pitch_offset", "PitchOffset", ParameterType.DOUBLE, "0.0"),
+            of("rotation_distance", "Distance", ParameterType.DOUBLE, Double.toString(DEFAULT_DIRECTION_DISTANCE)));
+        typeParameters(NodeType.PARAM_PLACE_TARGET,
+            of("Block", ParameterType.BLOCK_TYPE, "stone"),
+            of("X", ParameterType.INTEGER, "0"),
+            of("Y", ParameterType.INTEGER, "0"),
+            of("Z", ParameterType.INTEGER, "0"));
+        typeParameters(NodeType.PARAM_CLOSEST, of("Range", ParameterType.INTEGER, "5"));
     }
 
     private NodeCatalog() {
@@ -979,6 +1244,26 @@ public final class NodeCatalog {
     public static boolean isParameterSlotAlwaysRequired(NodeType hostType, int slotIndex) {
         ParameterSlot slot = parameterSlot(hostType, slotIndex);
         return slot != null && slot.required();
+    }
+
+    public static void initializeParameters(List<NodeParameter> parameters, NodeType type, NodeMode mode) {
+        List<NodeParameterDefinition> definitions = mode != null
+            ? MODE_PARAMETER_DEFINITIONS.get(mode)
+            : TYPE_PARAMETER_DEFINITIONS.get(type);
+        if (definitions == null) {
+            return;
+        }
+        for (NodeParameterDefinition definition : definitions) {
+            parameters.add(definition.createParameter());
+        }
+    }
+
+    public static boolean hasParameterDefinitions(NodeType type) {
+        return TYPE_PARAMETER_DEFINITIONS.containsKey(type);
+    }
+
+    public static boolean hasParameterDefinitions(NodeMode mode) {
+        return MODE_PARAMETER_DEFINITIONS.containsKey(mode);
     }
 
     public static boolean shouldDisplayInSidebar(NodeType type, boolean baritoneAvailable, boolean uiUtilsAvailable) {
@@ -1521,6 +1806,20 @@ public final class NodeCatalog {
 
     private static void parameterHost(NodeType type, ParameterSlot... slots) {
         PARAMETER_SCHEMAS.put(type, new ParameterSchema(List.of(slots)));
+    }
+
+    private static void typeParameters(NodeType type, NodeParameterDefinition... definitions) {
+        TYPE_PARAMETER_DEFINITIONS.put(type, List.of(definitions));
+    }
+
+    private static void typeParameters(List<NodeType> types, NodeParameterDefinition... definitions) {
+        for (NodeType type : types) {
+            typeParameters(type, definitions);
+        }
+    }
+
+    private static void modeParameters(NodeMode mode, NodeParameterDefinition... definitions) {
+        MODE_PARAMETER_DEFINITIONS.put(mode, List.of(definitions));
     }
 
     private static ParameterSlot slot(String label, boolean required, NodeValueTrait... acceptedTraits) {

@@ -27,7 +27,7 @@ final class PathmindNeoForgeMainMenuButton extends Button {
     }
 
     @Override
-    protected void renderContents(GuiGraphics context, int mouseX, int mouseY, float delta) {
+    protected void renderWidget(GuiGraphics context, int mouseX, int mouseY, float delta) {
         setTooltip(Tooltip.create(OPEN_EDITOR));
         drawButtonBackground(context);
 

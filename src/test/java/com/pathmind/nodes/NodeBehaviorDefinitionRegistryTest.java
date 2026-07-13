@@ -198,6 +198,24 @@ class NodeBehaviorDefinitionRegistryTest {
     }
 
     @Test
+    void mathNodeExportsMultipleExpressionsAndComparableNumber() {
+        Node owner = new Node(NodeType.CONTROL_IF, 0, 0);
+        Node math = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
+        math.setMessageLines(java.util.List.of("1 + 2", "4 * 5"));
+        NodeBehaviorDefinition definition = NodeBehaviorDefinitionRegistry.get(NodeType.CHANGE_VARIABLE);
+
+        Map<String, String> values = math.exportParameterValues();
+        Optional<Double> comparable = definition.resolveComparableNumber(owner, math);
+
+        assertEquals("3, 20", values.get("Amount"));
+        assertEquals("3, 20", values.get("Count"));
+        assertEquals("3, 20", values.get("Threshold"));
+        assertEquals("3, 20", values.get("Value"));
+        assertEquals(Optional.of(3.0), comparable);
+        assertFalse(math.hasMessageScopeToggle());
+    }
+
+    @Test
     void durationDefinitionExportsSecondsAliases() {
         Node duration = new Node(NodeType.PARAM_DURATION, 0, 0);
         duration.setMode(NodeMode.WAIT_MINUTES);

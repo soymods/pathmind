@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.EnumSet;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
@@ -151,6 +152,21 @@ class NodeCatalogTest {
         assertEquals(EnumSet.of(NodeValueTrait.GUI), NodeCatalog.acceptedTraits(NodeType.SENSOR_GUI_FILLED, 0));
     }
 
+    @Test
+    void catalogOwnsDefaultParameterTemplates() {
+        assertTrue(NodeCatalog.hasParameterDefinitions(NodeType.PRESS_KEY));
+        assertTrue(parameterIds(NodeType.PRESS_KEY).contains("duration"));
+        assertTrue(parameterIds(NodeType.PRESS_KEY).contains("useamount"));
+
+        assertEquals(List.of("changevariableamount", "changevariableoperation"), parameterIds(NodeType.CHANGE_VARIABLE));
+        assertTrue(parameterIds(NodeType.PARAM_DIRECTION).contains("directionyawoffset"));
+        assertTrue(parameterIds(NodeType.PARAM_DIRECTION).contains("directionpitchoffset"));
+
+        List<NodeParameter> modeParameters = new ArrayList<>();
+        NodeCatalog.initializeParameters(modeParameters, NodeType.GOTO, NodeMode.GOTO_XYZ);
+        assertEquals(List.of("x", "y", "z"), modeParameters.stream().map(NodeParameter::getId).toList());
+    }
+
     private static boolean containsNode(List<NodeCatalog.SidebarGroup> groups, NodeType type) {
         for (NodeCatalog.SidebarGroup group : groups) {
             if (group.nodes().contains(type)) {
@@ -171,6 +187,12 @@ class NodeCatalogTest {
             }
         }
         assertTrue(duplicates.isEmpty(), () -> "Duplicate sidebar nodes: " + duplicates);
+    }
+
+    private static List<String> parameterIds(NodeType type) {
+        List<NodeParameter> parameters = new ArrayList<>();
+        NodeCatalog.initializeParameters(parameters, type, null);
+        return parameters.stream().map(NodeParameter::getId).toList();
     }
 
     private static Map<String, String> loadEnglishTranslations() throws IOException {

@@ -2806,7 +2806,7 @@ public class Node {
             case SENSOR_LOOK_DIRECTION -> {
                 MinecraftClient client = MinecraftClient.getInstance();
                 if (client != null && client.player != null) {
-                    float yaw = client.player.getYaw();
+                    float yaw = normalizeLookYaw(client.player.getYaw());
                     float pitch = client.player.getPitch();
                     String yawValue = formatFloat(yaw);
                     String pitchValue = formatFloat(pitch);
@@ -4802,6 +4802,10 @@ public class Node {
 
     private static String formatFloat(float value) {
         return String.format(Locale.ROOT, "%.3f", value);
+    }
+
+    static float normalizeLookYaw(float yaw) {
+        return MathHelper.wrapDegrees(yaw);
     }
 
     static int parseNodeInt(Node node, String name, int defaultValue) {

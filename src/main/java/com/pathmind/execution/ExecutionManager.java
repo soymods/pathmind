@@ -1769,7 +1769,7 @@ public class ExecutionManager {
 
                             @Override
                             public Node guardForIteration(Node controlNode, Node outerRepeatUntilGuard) {
-                                return controlNode;
+                                return outerRepeatUntilGuard;
                             }
                         }
                     ).thenCompose(ignored ->

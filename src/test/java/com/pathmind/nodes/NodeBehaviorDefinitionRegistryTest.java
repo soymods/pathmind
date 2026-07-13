@@ -182,6 +182,15 @@ class NodeBehaviorDefinitionRegistryTest {
     }
 
     @Test
+    void lookDirectionYawNormalizesToSignedRotationRange() {
+        assertEquals(-179.0F, Node.normalizeLookYaw(181.0F));
+        assertEquals(0.0F, Node.normalizeLookYaw(360.0F));
+        assertEquals(-180.0F, Node.normalizeLookYaw(540.0F));
+        assertEquals(179.0F, Node.normalizeLookYaw(-181.0F));
+        assertEquals(0.0F, Node.normalizeLookYaw(1440.0F));
+    }
+
+    @Test
     void amountDefinitionExportsAliasesAndComparableNumber() {
         Node owner = new Node(NodeType.CONTROL_IF, 0, 0);
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);

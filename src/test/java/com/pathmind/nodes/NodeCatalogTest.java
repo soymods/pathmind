@@ -167,6 +167,19 @@ class NodeCatalogTest {
         assertEquals(List.of("x", "y", "z"), modeParameters.stream().map(NodeParameter::getId).toList());
     }
 
+    @Test
+    void catalogOwnsExecutionRoutes() {
+        assertEquals(NodeCatalog.ExecutionRoute.SENSOR_EVALUATION, NodeCatalog.executionRoute(NodeType.SENSOR_GUI_FILLED));
+        assertEquals(NodeCatalog.ExecutionRoute.SENSOR_EVALUATION, NodeCatalog.executionRoute(NodeType.SENSOR_FIND_TRADE));
+        assertEquals(NodeCatalog.ExecutionRoute.RUN_PRESET, NodeCatalog.executionRoute(NodeType.RUN_PRESET));
+        assertEquals(NodeCatalog.ExecutionRoute.RUN_PRESET, NodeCatalog.executionRoute(NodeType.CUSTOM_NODE));
+        assertEquals(NodeCatalog.ExecutionRoute.REMOVE_LIST_ITEM, NodeCatalog.executionRoute(NodeType.REMOVE_LIST_ITEM));
+
+        assertTrue(NodeCommandDispatcher.hasExplicitRoute(NodeType.SENSOR_FIND_TRADE));
+        assertFalse(NodeCommandDispatcher.hasExplicitRoute(NodeType.PARAM_BLOCK));
+        assertNull(NodeCatalog.executionRoute(NodeType.PARAM_BLOCK));
+    }
+
     private static boolean containsNode(List<NodeCatalog.SidebarGroup> groups, NodeType type) {
         for (NodeCatalog.SidebarGroup group : groups) {
             if (group.nodes().contains(type)) {

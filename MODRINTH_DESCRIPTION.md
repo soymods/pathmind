@@ -22,14 +22,10 @@
 </p>
 
 <p align="center">
-  Created by <b>soymods</b>
-</p>
-
-<p align="center">
   🇺🇸 English · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇵🇱 Polski · 🇧🇷 Português (BR) · 🇷🇺 Русский
 </p>
 
-## Features
+---
 
 <div align="center">
   <picture>
@@ -39,6 +35,8 @@
     <img src="https://raw.githubusercontent.com/soymods/assets/main/soymods-assets/pathmind/preview_screenshot.png" width="350">
   </picture>
 </div>
+
+## Features
 
 ### Visual Automation
 - **Node-Based Editor**: Build automation visually with nodes, connections, and editable parameters instead of commands or scripts
@@ -65,6 +63,18 @@
 - **Publish Your Own Work**: Share your presets with the community through the built-in marketplace
 - **Start From Examples**: Import existing presets and adapt them to your own world, style, or ideas
 
+## Video Showcase
+
+<iframe
+  width="700"
+  height="394"
+  src="https://www.youtube.com/embed/N3i3QUtPH1g"
+  title="Pathmind Showcase"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen>
+</iframe>
+
 ## Quick Start
 
 ### Prerequisites
@@ -87,10 +97,6 @@
 4. **Launch and Enjoy**
    - Start Minecraft with Fabric
    - Use your configured keybind to open the visual editor
-
-## How to Use
-
-<iframe src="https://www.youtube.com/embed/6hy3GnehBpA" allowfullscreen></iframe>
 
 ### Opening the Editor
 - Use your configured keybind to open Pathmind

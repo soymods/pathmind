@@ -27,6 +27,7 @@ public final class NodeCatalog {
     private static final Map<NodeType, ParameterSchema> PARAMETER_SCHEMAS = new EnumMap<>(NodeType.class);
     private static final Map<NodeType, List<NodeParameterDefinition>> TYPE_PARAMETER_DEFINITIONS = new EnumMap<>(NodeType.class);
     private static final Map<NodeMode, List<NodeParameterDefinition>> MODE_PARAMETER_DEFINITIONS = new EnumMap<>(NodeMode.class);
+    private static final Map<NodeType, ExecutionRoute> EXECUTION_ROUTES = new EnumMap<>(NodeType.class);
     private static final List<SidebarGroupDefinition> SIDEBAR_GROUPS = new ArrayList<>();
     private static final String BOOLEAN_MODE_LITERAL = "literal";
     private static final String DIRECTION_MODE_EXACT = "exact";
@@ -1103,6 +1104,103 @@ public final class NodeCatalog {
             of("Y", ParameterType.INTEGER, "0"),
             of("Z", ParameterType.INTEGER, "0"));
         typeParameters(NodeType.PARAM_CLOSEST, of("Range", ParameterType.INTEGER, "5"));
+
+        route(ExecutionRoute.SET_VARIABLE, NodeType.SET_VARIABLE);
+        route(ExecutionRoute.CHANGE_VARIABLE, NodeType.CHANGE_VARIABLE);
+        route(ExecutionRoute.GOTO, NodeType.GOTO);
+        route(ExecutionRoute.TRAVEL, NodeType.TRAVEL);
+        route(ExecutionRoute.GOAL, NodeType.GOAL);
+        route(ExecutionRoute.COLLECT, NodeType.COLLECT);
+        route(ExecutionRoute.BUILD, NodeType.BUILD);
+        route(ExecutionRoute.EXPLORE, NodeType.EXPLORE);
+        route(ExecutionRoute.FOLLOW, NodeType.FOLLOW);
+        route(ExecutionRoute.CONTROL_REPEAT, NodeType.CONTROL_REPEAT);
+        route(ExecutionRoute.CONTROL_REPEAT_UNTIL, NodeType.CONTROL_REPEAT_UNTIL);
+        route(ExecutionRoute.CONTROL_WAIT_UNTIL, NodeType.CONTROL_WAIT_UNTIL);
+        route(ExecutionRoute.CONTROL_FOREVER, NodeType.CONTROL_FOREVER);
+        route(ExecutionRoute.CONTROL_IF, NodeType.CONTROL_IF);
+        route(ExecutionRoute.CONTROL_IF_ELSE, NodeType.CONTROL_IF_ELSE);
+        route(ExecutionRoute.CONTROL_FORK, NodeType.CONTROL_FORK);
+        route(ExecutionRoute.CONTROL_JOIN_ANY, NodeType.CONTROL_JOIN_ANY);
+        route(ExecutionRoute.CONTROL_JOIN_ALL, NodeType.CONTROL_JOIN_ALL);
+        route(ExecutionRoute.FARM, NodeType.FARM);
+        route(ExecutionRoute.STOP, NodeType.STOP);
+        route(ExecutionRoute.START_CHAIN, NodeType.START_CHAIN);
+        route(ExecutionRoute.RUN_PRESET, NodeType.RUN_PRESET, NodeType.CUSTOM_NODE, NodeType.TEMPLATE);
+        route(ExecutionRoute.STOP_CHAIN, NodeType.STOP_CHAIN);
+        route(ExecutionRoute.STOP_ALL, NodeType.STOP_ALL);
+        route(ExecutionRoute.PLACE, NodeType.PLACE);
+        route(ExecutionRoute.CRAFT, NodeType.CRAFT);
+        route(ExecutionRoute.OPEN_INVENTORY, NodeType.OPEN_INVENTORY);
+        route(ExecutionRoute.CLOSE_GUI, NodeType.CLOSE_GUI);
+        route(ExecutionRoute.WRITE_BOOK, NodeType.WRITE_BOOK);
+        route(ExecutionRoute.WRITE_SIGN, NodeType.WRITE_SIGN);
+        route(ExecutionRoute.UI_UTILS, NodeType.UI_UTILS);
+        route(ExecutionRoute.WAIT, NodeType.WAIT);
+        route(ExecutionRoute.MESSAGE, NodeType.MESSAGE);
+        route(ExecutionRoute.HOTBAR, NodeType.HOTBAR);
+        route(ExecutionRoute.DROP_ITEM, NodeType.DROP_ITEM);
+        route(ExecutionRoute.DROP_SLOT, NodeType.DROP_SLOT);
+        route(ExecutionRoute.CLICK_SLOT, NodeType.CLICK_SLOT);
+        route(ExecutionRoute.CLICK_SCREEN, NodeType.CLICK_SCREEN);
+        route(ExecutionRoute.MOVE_ITEM, NodeType.MOVE_ITEM);
+        route(ExecutionRoute.USE, NodeType.USE);
+        route(ExecutionRoute.BREAK, NodeType.BREAK);
+        route(ExecutionRoute.PLACE_HAND, NodeType.PLACE_HAND);
+        route(ExecutionRoute.LOOK, NodeType.LOOK);
+        route(ExecutionRoute.WALK, NodeType.WALK);
+        route(ExecutionRoute.JUMP, NodeType.JUMP);
+        route(ExecutionRoute.PRESS_KEY, NodeType.PRESS_KEY);
+        route(ExecutionRoute.CRAWL, NodeType.CRAWL);
+        route(ExecutionRoute.CROUCH, NodeType.CROUCH);
+        route(ExecutionRoute.SPRINT, NodeType.SPRINT);
+        route(ExecutionRoute.FLY, NodeType.FLY);
+        route(ExecutionRoute.INTERACT, NodeType.INTERACT);
+        route(ExecutionRoute.TRADE, NodeType.TRADE);
+        route(ExecutionRoute.SWING, NodeType.SWING);
+        route(ExecutionRoute.EQUIP_ARMOR, NodeType.EQUIP_ARMOR);
+        route(ExecutionRoute.EQUIP_HAND, NodeType.EQUIP_HAND);
+        route(ExecutionRoute.SENSOR_EVALUATION,
+            NodeType.SENSOR_TOUCHING_BLOCK,
+            NodeType.SENSOR_TOUCHING_ENTITY,
+            NodeType.SENSOR_AT_COORDINATES,
+            NodeType.SENSOR_IS_DAYTIME,
+            NodeType.SENSOR_IS_RAINING,
+            NodeType.SENSOR_HEALTH_BELOW,
+            NodeType.SENSOR_HUNGER_BELOW,
+            NodeType.SENSOR_ITEM_IN_INVENTORY,
+            NodeType.SENSOR_ITEM_IN_SLOT,
+            NodeType.SENSOR_VILLAGER_TRADE,
+            NodeType.SENSOR_IN_STOCK,
+            NodeType.SENSOR_IS_SWIMMING,
+            NodeType.SENSOR_IS_IN_LAVA,
+            NodeType.SENSOR_IS_UNDERWATER,
+            NodeType.SENSOR_IS_FALLING,
+            NodeType.SENSOR_IS_RENDERED,
+            NodeType.SENSOR_IS_VISIBLE,
+            NodeType.SENSOR_KEY_PRESSED,
+            NodeType.SENSOR_CHAT_MESSAGE,
+            NodeType.SENSOR_JOINED_SERVER,
+            NodeType.SENSOR_FABRIC_EVENT,
+            NodeType.SENSOR_ATTRIBUTE_DETECTION,
+            NodeType.SENSOR_GUI_FILLED,
+            NodeType.SENSOR_TARGETED_BLOCK,
+            NodeType.SENSOR_TARGETED_ENTITY,
+            NodeType.SENSOR_LOOK_DIRECTION,
+            NodeType.SENSOR_CURRENT_HAND,
+            NodeType.SENSOR_TARGETED_BLOCK_FACE,
+            NodeType.SENSOR_FIND_TRADE);
+        route(ExecutionRoute.CREATE_LIST, NodeType.CREATE_LIST);
+        route(ExecutionRoute.ADD_TO_LIST, NodeType.ADD_TO_LIST);
+        route(ExecutionRoute.REMOVE_FIRST_FROM_LIST, NodeType.REMOVE_FIRST_FROM_LIST);
+        route(ExecutionRoute.REMOVE_LAST_FROM_LIST, NodeType.REMOVE_LAST_FROM_LIST);
+        route(ExecutionRoute.REMOVE_LIST_ITEM, NodeType.REMOVE_LIST_ITEM);
+        route(ExecutionRoute.REMOVE_FROM_LIST, NodeType.REMOVE_FROM_LIST);
+        route(ExecutionRoute.PATH, NodeType.PATH);
+        route(ExecutionRoute.INVERT, NodeType.INVERT);
+        route(ExecutionRoute.COME, NodeType.COME);
+        route(ExecutionRoute.SURFACE, NodeType.SURFACE);
+        route(ExecutionRoute.TUNNEL, NodeType.TUNNEL);
     }
 
     private NodeCatalog() {
@@ -1264,6 +1362,14 @@ public final class NodeCatalog {
 
     public static boolean hasParameterDefinitions(NodeMode mode) {
         return MODE_PARAMETER_DEFINITIONS.containsKey(mode);
+    }
+
+    public static ExecutionRoute executionRoute(NodeType type) {
+        return type == null ? null : EXECUTION_ROUTES.get(type);
+    }
+
+    public static boolean hasExecutionRoute(NodeType type) {
+        return executionRoute(type) != null;
     }
 
     public static boolean shouldDisplayInSidebar(NodeType type, boolean baritoneAvailable, boolean uiUtilsAvailable) {
@@ -1822,6 +1928,12 @@ public final class NodeCatalog {
         MODE_PARAMETER_DEFINITIONS.put(mode, List.of(definitions));
     }
 
+    private static void route(ExecutionRoute route, NodeType... types) {
+        for (NodeType type : types) {
+            EXECUTION_ROUTES.put(type, route);
+        }
+    }
+
     private static ParameterSlot slot(String label, boolean required, NodeValueTrait... acceptedTraits) {
         String slotLabel = label == null || label.isBlank() ? "Parameter" : label;
         EnumSet<NodeValueTrait> traits = acceptedTraits.length == 0
@@ -1884,6 +1996,76 @@ public final class NodeCatalog {
                 ? EnumSet.noneOf(NodeValueTrait.class)
                 : EnumSet.copyOf(acceptedTraits);
         }
+    }
+
+    public enum ExecutionRoute {
+        SET_VARIABLE,
+        CHANGE_VARIABLE,
+        GOTO,
+        TRAVEL,
+        GOAL,
+        COLLECT,
+        BUILD,
+        EXPLORE,
+        FOLLOW,
+        CONTROL_REPEAT,
+        CONTROL_REPEAT_UNTIL,
+        CONTROL_WAIT_UNTIL,
+        CONTROL_FOREVER,
+        CONTROL_IF,
+        CONTROL_IF_ELSE,
+        CONTROL_FORK,
+        CONTROL_JOIN_ANY,
+        CONTROL_JOIN_ALL,
+        FARM,
+        STOP,
+        START_CHAIN,
+        RUN_PRESET,
+        STOP_CHAIN,
+        STOP_ALL,
+        PLACE,
+        CRAFT,
+        OPEN_INVENTORY,
+        CLOSE_GUI,
+        WRITE_BOOK,
+        WRITE_SIGN,
+        UI_UTILS,
+        WAIT,
+        MESSAGE,
+        HOTBAR,
+        DROP_ITEM,
+        DROP_SLOT,
+        CLICK_SLOT,
+        CLICK_SCREEN,
+        MOVE_ITEM,
+        USE,
+        BREAK,
+        PLACE_HAND,
+        LOOK,
+        WALK,
+        JUMP,
+        PRESS_KEY,
+        CRAWL,
+        CROUCH,
+        SPRINT,
+        FLY,
+        INTERACT,
+        TRADE,
+        SWING,
+        EQUIP_ARMOR,
+        EQUIP_HAND,
+        SENSOR_EVALUATION,
+        CREATE_LIST,
+        ADD_TO_LIST,
+        REMOVE_FIRST_FROM_LIST,
+        REMOVE_LAST_FROM_LIST,
+        REMOVE_LIST_ITEM,
+        REMOVE_FROM_LIST,
+        PATH,
+        INVERT,
+        COME,
+        SURFACE,
+        TUNNEL
     }
 
     private record SidebarGroupDefinition(

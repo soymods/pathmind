@@ -1013,8 +1013,47 @@ class ExecutionManagerValidationTest {
         assertEquals(3, action.executionCount());
     }
 
+    @Test
+    void repeatUntilFinishesBodyBeforeRecheckingCondition() throws Exception {
+        AtomicInteger conditionCount = new AtomicInteger();
+        AtomicInteger firstActionCount = new AtomicInteger();
+        AtomicInteger secondActionCount = new AtomicInteger();
+        RepeatUntilCountingNode repeatUntil = new RepeatUntilCountingNode(() -> conditionCount.get() > 0);
+        CountingNode firstAction = new CountingNode(NodeType.MESSAGE, firstActionCount) {
+            @Override
+            public CompletableFuture<Void> execute(int executionId) {
+                conditionCount.incrementAndGet();
+                setNextOutputSocket(0);
+                return super.execute(executionId);
+            }
+        };
+        CountingNode secondAction = new CountingNode(NodeType.MESSAGE, secondActionCount);
+        assertTrue(repeatUntil.attachActionNode(firstAction));
+        repeatUntil.setNextOutputSocket(0);
+        NodeConnection bodyConnection = new NodeConnection(firstAction, secondAction, 0, 0);
+
+        CompletableFuture<Void> future = invokeContinueFromNode(
+            repeatUntil,
+            List.of(repeatUntil, firstAction, secondAction),
+            List.of(bodyConnection)
+        );
+
+        future.get(1, TimeUnit.SECONDS);
+        assertEquals(1, firstActionCount.get());
+        assertEquals(1, secondActionCount.get());
+    }
+
     @SuppressWarnings("unchecked")
     private CompletableFuture<Void> invokeContinueFromNode(Node node) throws Exception {
+        return invokeContinueFromNode(node, List.of(node), List.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private CompletableFuture<Void> invokeContinueFromNode(
+        Node node,
+        List<Node> graphNodes,
+        List<NodeConnection> graphConnections
+    ) throws Exception {
         Field cancelRequestedField = ExecutionManager.class.getDeclaredField("cancelRequested");
         cancelRequestedField.setAccessible(true);
         cancelRequestedField.set(manager, false);
@@ -1023,9 +1062,9 @@ class ExecutionManagerValidationTest {
             .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
             .findFirst()
             .orElseThrow();
-        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
+        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class, List.class, List.class);
         constructor.setAccessible(true);
-        Object controller = constructor.newInstance(node, 1);
+        Object controller = constructor.newInstance(node, 1, graphNodes, graphConnections);
 
         Method continueFromNode = ExecutionManager.class.getDeclaredMethod(
             "continueFromNode", Node.class, controllerClass, int.class, Node.class, int.class);

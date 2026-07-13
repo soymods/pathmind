@@ -130,7 +130,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private int pageIndex = 0;
     private boolean loading = false;
     private boolean initialFetchStarted = false;
-    private String statusMessage = "Loading published presets...";
+    private String statusMessage = Text.translatable("pathmind.marketplace.loadingPublishedPresets").getString();
     private MarketplacePreset popupPreset = null;
     private boolean importingPreset = false;
     private String popupStatusMessage = "";
@@ -286,7 +286,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void refreshListings() {
         loading = true;
-        statusMessage = myPresetsOnly ? "Loading your presets..." : "Loading published presets...";
+        statusMessage = myPresetsOnly ? Text.translatable("pathmind.marketplace.loadingYourPresets").getString() : Text.translatable("pathmind.marketplace.loadingPublishedPresets").getString();
         CompletableFuture<List<MarketplacePreset>> request = myPresetsOnly && authSession != null
             ? MarketplaceService.fetchManageablePresets(authSession.getAccessToken())
             : MarketplaceService.fetchPublishedPresets(sortMode.toListingMode());
@@ -302,7 +302,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     selectedIndex = -1;
                     pageIndex = 0;
                     galleryScrollOffset = 0;
-                    statusMessage = myPresetsOnly ? "Failed to load your presets." : "Failed to load marketplace presets.";
+                    statusMessage = myPresetsOnly ? Text.translatable("pathmind.marketplace.failedLoadYourPresets").getString() : Text.translatable("pathmind.marketplace.failedLoadPresets").getString();
                     return;
                 }
 
@@ -397,8 +397,8 @@ public class PathmindMarketplaceScreen extends Screen {
         String subtitle = TextRenderUtil.trimWithEllipsis(
             this.textRenderer,
             isViewingAuthorProfile()
-                ? "Viewing " + fallback(viewedAuthorName, "Creator") + "'s public presets"
-                : "Browse community presets",
+                ? Text.translatable("pathmind.marketplace.viewingCreatorPresets", fallback(viewedAuthorName, Text.translatable("pathmind.marketplace.unknownCreator").getString())).getString()
+                : Text.translatable("pathmind.marketplace.browseCommunityPresets").getString(),
             Math.max(80, this.width - 140)
         );
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(subtitle), this.width / 2, layout.topBarY + 14, UITheme.TEXT_SECONDARY);
@@ -448,7 +448,7 @@ public class PathmindMarketplaceScreen extends Screen {
         context.enableScissor(layout.bodyX, scissorTop, layout.bodyX + layout.bodyWidth, bodyY + bodyHeight);
 
         if (loading || getCurrentResultCount() == 0) {
-            String message = loading ? "Fetching latest listings..." : fallback(statusMessage, "Nothing to show yet.");
+            String message = loading ? Text.translatable("pathmind.marketplace.fetchingListings").getString() : fallback(statusMessage, Text.translatable("pathmind.marketplace.nothingToShow").getString());
             int messageColor = loading ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(message),
                 layout.bodyX + layout.bodyWidth / 2, bodyY + bodyHeight / 2, messageColor);
@@ -490,8 +490,8 @@ public class PathmindMarketplaceScreen extends Screen {
             Rect exitProfileRect = getExitProfileRect(layout);
             boolean exitProfileHovered = isPointInRect(mouseX, mouseY, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height);
             drawActionButton(context, exitProfileRect.x, exitProfileRect.y, exitProfileRect.width, exitProfileRect.height,
-                "Back to Market", exitProfileHovered, false);
-            String countLabel = presets.size() + " public preset" + (presets.size() == 1 ? "" : "s");
+                Text.translatable("pathmind.marketplace.backToMarket").getString(), exitProfileHovered, false);
+            String countLabel = Text.translatable("pathmind.marketplace.publicPresetCount", presets.size(), presets.size() == 1 ? "" : "s").getString();
             int countX = layout.bodyX + layout.bodyWidth - this.textRenderer.getWidth(countLabel);
             context.drawTextWithShadow(this.textRenderer, Text.literal(countLabel), countX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
 
@@ -500,7 +500,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int avatarY = layout.searchFieldY;
             renderViewedAuthorAvatar(context, avatarX, avatarY, avatarSize);
             String profileTitle = TextRenderUtil.trimWithEllipsis(this.textRenderer,
-                fallback(viewedAuthorName, "Unknown Creator"), Math.max(80, layout.bodyWidth - 20));
+                fallback(viewedAuthorName, Text.translatable("pathmind.marketplace.unknownCreator").getString()), Math.max(80, layout.bodyWidth - 20));
             int titleX = layout.bodyX + (layout.bodyWidth - this.textRenderer.getWidth(profileTitle)) / 2;
             context.drawTextWithShadow(this.textRenderer, Text.literal(profileTitle), titleX, avatarY + avatarSize + 4, UITheme.TEXT_HEADER);
             return;
@@ -542,7 +542,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int publicX = allX + MY_PRESET_FILTER_ALL_WIDTH + 6;
             int privateX = publicX + MY_PRESET_FILTER_PUBLIC_WIDTH + 6;
             drawActionButton(context, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT,
-                "All", isPointInRect(mouseX, mouseY, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT), false,
+                Text.translatable("pathmind.option.all").getString(), isPointInRect(mouseX, mouseY, allX, filterY, MY_PRESET_FILTER_ALL_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT), false,
                 myPresetsFilter == MyPresetsFilter.ALL);
             drawActionButton(context, publicX, filterY, MY_PRESET_FILTER_PUBLIC_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT,
                 Text.translatable("pathmind.option.public").getString(), isPointInRect(mouseX, mouseY, publicX, filterY, MY_PRESET_FILTER_PUBLIC_WIDTH, MY_PRESET_FILTER_BUTTON_HEIGHT), false,
@@ -554,10 +554,10 @@ public class PathmindMarketplaceScreen extends Screen {
 
         int resultCount = getCurrentResultCount();
         String resultLabel = loading
-            ? "Loading..."
+            ? Text.translatable("pathmind.marketplace.loading").getString()
             : isAuthorDirectoryMode()
-                ? resultCount + " author" + (resultCount == 1 ? "" : "s")
-                : resultCount + " result" + (resultCount == 1 ? "" : "s");
+                ? Text.translatable("pathmind.marketplace.authorCount", resultCount, resultCount == 1 ? "" : "s").getString()
+                : Text.translatable("pathmind.marketplace.resultCount", resultCount, resultCount == 1 ? "" : "s").getString();
         int resultWidth = this.textRenderer.getWidth(resultLabel);
         int resultX = Math.max(layout.sortButtonX + SORT_BUTTON_WIDTH + 8, layout.refreshButtonX - resultWidth - 6);
         context.drawTextWithShadow(this.textRenderer, Text.literal(resultLabel), resultX, layout.searchFieldY + 5, UITheme.TEXT_SECONDARY);
@@ -614,8 +614,8 @@ public class PathmindMarketplaceScreen extends Screen {
         int footerY = previewY + previewHeight + 5;
         context.fill(rect.x + 5, footerY - 1, rect.x + rect.width - 5, rect.y + rect.height - 5, MARKET_FOOTER);
         int textX = rect.x + 8;
-        String downloadsLine = preset.getDownloadsCount() + " dl";
-        String likesLine = preset.getLikesCount() + " like";
+        String downloadsLine = Text.translatable("pathmind.marketplace.downloadsShort", preset.getDownloadsCount()).getString();
+        String likesLine = Text.translatable("pathmind.marketplace.likesShort", preset.getLikesCount()).getString();
         int statsRight = rect.x + rect.width - 8;
         int footerTop = previewY + previewHeight + 8;
         int statsLineY = footerTop + 3;
@@ -626,7 +626,7 @@ public class PathmindMarketplaceScreen extends Screen {
             Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, preset.getName(), textWidth)),
             textX, footerTop - 1, UITheme.TEXT_HEADER);
         Rect authorRect = getCardAuthorRect(rect, preset);
-        String authorLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, "by " + fallback(preset.getAuthorName(), "Unknown"), textWidth);
+        String authorLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, Text.translatable("pathmind.marketplace.byAuthor", fallback(preset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString())).getString(), textWidth);
         boolean authorHovered = isPointInRect(mouseX, mouseY, authorRect.x, authorRect.y, authorRect.width, authorRect.height);
         renderAuthorLink(context, "marketplace-author-card:" + preset.getId(), authorLabel, textX, footerTop + 10, authorHovered,
             UITheme.TEXT_SECONDARY, UITheme.TEXT_PRIMARY);
@@ -1048,13 +1048,13 @@ public class PathmindMarketplaceScreen extends Screen {
             return bodyLines;
         }
         if (node.getMode() != null) {
-            bodyLines.add("Mode: " + node.getMode().getDisplayName());
+            bodyLines.add(Text.translatable("pathmind.marketplace.graphMode", node.getMode().getDisplayName()).getString());
         }
         if (node.getType() == com.pathmind.nodes.NodeType.MESSAGE) {
             for (String line : node.getMessageLines()) {
                 String value = fallback(line, "").trim();
                 if (!value.isEmpty()) {
-                    bodyLines.add("Message: " + value);
+                    bodyLines.add(Text.translatable("pathmind.marketplace.graphMessage", value).getString());
                 }
             }
         }
@@ -1066,7 +1066,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 String slotLabel = node.getParameterSlotLabel(entry.getKey());
                 String childLabel = entry.getValue().getDisplayName().getString();
                 if (slotLabel == null || slotLabel.isBlank()) {
-                    slotLabel = "Param " + (entry.getKey() + 1);
+                    slotLabel = Text.translatable("pathmind.marketplace.graphParam", entry.getKey() + 1).getString();
                 }
                 bodyLines.add(slotLabel + ": " + childLabel);
                 if (bodyLines.size() >= 6) {
@@ -1305,7 +1305,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 textX, cursorY, presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
             cursorY += 14;
         }
-        String popupAuthorLabel = "by " + TextRenderUtil.trimWithEllipsis(this.textRenderer, fallback(popupPreset.getAuthorName(), "Unknown"), textWidth - 20);
+        String popupAuthorLabel = Text.translatable("pathmind.marketplace.byAuthor", TextRenderUtil.trimWithEllipsis(this.textRenderer, fallback(popupPreset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString()), textWidth - 20)).getString();
         popupAuthorHitRect = new Rect(textX, cursorY, this.textRenderer.getWidth(popupAuthorLabel), this.textRenderer.fontHeight + 1);
         boolean popupAuthorHovered = isPointInRect(mouseX, mouseY, popupAuthorHitRect.x, popupAuthorHitRect.y, popupAuthorHitRect.width, popupAuthorHitRect.height);
         renderAuthorLink(
@@ -1375,7 +1375,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int descriptionTop = cursorY + 8;
         int descriptionHeight = popupMetadataEditing
             ? 46
-            : Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
+            : Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), Text.translatable("pathmind.marketplace.noDescription").getString()), 5) + 18);
         UIStyleHelper.drawBeveledPanel(
             context,
             textX,
@@ -1399,7 +1399,7 @@ public class PathmindMarketplaceScreen extends Screen {
             cursorY = descriptionTop + descriptionHeight;
         } else {
             cursorY = drawWrappedValue(context, textX + 8, descriptionTop + 18, textWidth - 16,
-                fallback(popupPreset.getDescription(), "No description provided."),
+                fallback(popupPreset.getDescription(), Text.translatable("pathmind.marketplace.noDescription").getString()),
                 presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY), 5);
         }
 
@@ -1423,13 +1423,13 @@ public class PathmindMarketplaceScreen extends Screen {
             presetPopupAnimation.getAnimatedPopupColor(compatibilityStatus.minecraftColor()));
         cursorY += compatibilityHeight + 18;
 
-        String sharedLine = "Published " + formatTimestamp(popupPreset.getCreatedAt()) + "  •  Updated " + formatTimestamp(popupPreset.getUpdatedAt());
+        String sharedLine = Text.translatable("pathmind.marketplace.publishedUpdated", formatTimestamp(popupPreset.getCreatedAt()), formatTimestamp(popupPreset.getUpdatedAt())).getString();
         cursorY = drawWrappedValue(context, textX, cursorY, textWidth, sharedLine,
             presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
         if (authSession == null) {
             cursorY = drawWrappedValue(context, textX, cursorY, textWidth,
-                "Sign in with Discord to like presets and count imports.",
+                Text.translatable("pathmind.marketplace.signInLikeImport").getString(),
                 presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
         }
         context.disableScissor();
@@ -1490,7 +1490,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 deleteBusy ? "..." : Text.translatable("pathmind.button.delete").getString(), deleteHovered, deleteBusy || publishBusy, presetPopupAnimation, popupDeleteHoverAnimation.getValue());
         }
         drawAnimatedActionButton(context, downloadButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            importingPreset ? "Downloading..." : "Download", downloadHovered, importingPreset || deleteBusy, presetPopupAnimation);
+            importingPreset ? Text.translatable("pathmind.status.downloading").getString() : Text.translatable("pathmind.button.download").getString(), downloadHovered, importingPreset || deleteBusy, presetPopupAnimation);
         context.disableScissor();
     }
 
@@ -1518,14 +1518,14 @@ public class PathmindMarketplaceScreen extends Screen {
         int textWidth = popupWidth - (textX - popupX) - 12;
         context.drawTextWithShadow(this.textRenderer,
             Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer,
-                fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")), textWidth)),
+                fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), Text.translatable("pathmind.status.discordUser").getString())), textWidth)),
             textX, contentY + 2, accountPopupAnimation.getAnimatedPopupColor(getAccentColor()));
         contentY += 16;
         contentY = drawWrappedValue(context, textX, contentY + 2, textWidth,
-            "Provider: " + fallback(authSession.getProvider(), "discord"),
+            Text.translatable("pathmind.marketplace.provider", fallback(authSession.getProvider(), "discord")).getString(),
             accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
         contentY = drawWrappedValue(context, textX, contentY, textWidth,
-            "User ID: " + fallback(authSession.getUserId(), "Unknown"),
+            Text.translatable("pathmind.marketplace.userId", fallback(authSession.getUserId(), Text.translatable("pathmind.marketplace.unknown").getString())).getString(),
             accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
         int closeButtonX = popupX + (popup.closeButtonX - popup.x);
         int signOutButtonX = popupX + (popup.signOutButtonX - popup.x);
@@ -1533,9 +1533,9 @@ public class PathmindMarketplaceScreen extends Screen {
         boolean closeHovered = isPointInRect(mouseX, mouseY, closeButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         boolean signOutHovered = isPointInRect(mouseX, mouseY, signOutButtonX, buttonY, popup.buttonWidth, popup.buttonHeight);
         drawAnimatedActionButton(context, closeButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            "Close", closeHovered, false, accountPopupAnimation);
+            Text.translatable("pathmind.button.close").getString(), closeHovered, false, accountPopupAnimation);
         drawAnimatedActionButton(context, signOutButtonX, buttonY, popup.buttonWidth, popup.buttonHeight,
-            "Sign Out", signOutHovered, authBusy, accountPopupAnimation);
+            Text.translatable("pathmind.button.signOut").getString(), signOutHovered, authBusy, accountPopupAnimation);
         context.disableScissor();
     }
 
@@ -1558,8 +1558,8 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentWidth = popupWidth - 24;
         int sourceY = popupY + 40;
         String sourceLine = editingPreset == null
-            ? "Source preset: " + fallback(publishSourcePresetName, "Unknown")
-            : "Editing listing by " + fallback(editingPreset.getAuthorName(), "Unknown");
+            ? Text.translatable("pathmind.marketplace.sourcePreset", fallback(publishSourcePresetName, Text.translatable("pathmind.marketplace.unknown").getString())).getString()
+            : Text.translatable("pathmind.marketplace.editingListingBy", fallback(editingPreset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString())).getString();
         drawWrappedValue(context, contentX, sourceY, contentWidth,
             sourceLine,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
@@ -1574,7 +1574,7 @@ public class PathmindMarketplaceScreen extends Screen {
         drawPublishField(context, mouseX, mouseY, contentX, descriptionLabelY, fieldWidth, fieldHeight, Text.translatable("pathmind.field.description").getString(), publishDescriptionField, labelGap);
         drawPublishField(context, mouseX, mouseY, contentX, tagsLabelY, fieldWidth, fieldHeight, Text.translatable("pathmind.field.tags").getString(), publishTagsField, labelGap);
 
-        String tagsHint = "Comma-separated tags. Slug updates automatically from the name.";
+        String tagsHint = Text.translatable("pathmind.marketplace.tagsHint").getString();
         drawWrappedValue(context, contentX, popupY + 166, contentWidth, tagsHint,
             publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
@@ -1635,11 +1635,11 @@ public class PathmindMarketplaceScreen extends Screen {
         String title = confirmAction == ConfirmAction.DELETE ? Text.translatable("pathmind.marketplace.deleteUploadedPreset").getString() : Text.translatable("pathmind.marketplace.updateUploadedPreset").getString();
         drawMarketplacePopupFrame(context, popupX, popupY, popupWidth, popupHeight, confirmPopupAnimation, title, true);
         String lineOne = confirmAction == ConfirmAction.DELETE
-            ? "Delete this uploaded preset from Pathmind Marketplace?"
-            : "Overwrite the uploaded preset with your current local graph?";
+            ? Text.translatable("pathmind.marketplace.deleteUploadedConfirm").getString()
+            : Text.translatable("pathmind.marketplace.overwriteUploadedConfirm").getString();
         String lineTwo = confirmAction == ConfirmAction.DELETE
-            ? "This removes the cloud copy and cannot be undone."
-            : "This replaces the current uploaded version for all future downloads.";
+            ? Text.translatable("pathmind.marketplace.deleteUploadedWarning").getString()
+            : Text.translatable("pathmind.marketplace.overwriteUploadedWarning").getString();
 
         int contentX = popupX + 20;
         int contentWidth = popupWidth - 40;
@@ -1667,7 +1667,7 @@ public class PathmindMarketplaceScreen extends Screen {
                 confirmPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
             );
             String displayPresetName = fallback(publishSourcePresetName, "");
-            String displayText = displayPresetName.isBlank() ? "Select a local preset" : displayPresetName;
+            String displayText = displayPresetName.isBlank() ? Text.translatable("pathmind.marketplace.selectLocalPreset").getString() : displayPresetName;
             int textColor = displayPresetName.isBlank() ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
             context.drawTextWithShadow(this.textRenderer,
                 Text.literal(TextRenderUtil.trimWithEllipsis(this.textRenderer, displayText, sourceWidth - 24)),
@@ -2076,7 +2076,7 @@ public class PathmindMarketplaceScreen extends Screen {
             if (showUpdateButton
                 && isPointInRect(mouseX, mouseY, updateButtonX, buttonY, popup.buttonWidth, popup.buttonHeight)) {
                 if (!hasLocalChanges) {
-                    popupStatusMessage = "No local changes to upload.";
+                    popupStatusMessage = Text.translatable("pathmind.status.noLocalChangesToUpload").getString();
                     popupStatusColor = UITheme.TEXT_SECONDARY;
                 } else if (!publishBusy && !deleteBusy && !importingPreset) {
                     openConfirmPopup(ConfirmAction.UPDATE, popupPreset, true);
@@ -2731,17 +2731,17 @@ public class PathmindMarketplaceScreen extends Screen {
         height += popupMetadataEditing ? 8 : 0;
         height += 30 + 8;
         height += measureWrappedValueHeight(textWidth,
-            "Published " + formatTimestamp(popupPreset.getCreatedAt()) + "  •  Updated " + formatTimestamp(popupPreset.getUpdatedAt()),
+            Text.translatable("pathmind.marketplace.publishedUpdated", formatTimestamp(popupPreset.getCreatedAt()), formatTimestamp(popupPreset.getUpdatedAt())).getString(),
             2);
         if (authSession == null) {
             height += measureWrappedValueHeight(textWidth,
-                "Sign in with Discord to like presets and count imports.",
+                Text.translatable("pathmind.marketplace.signInLikeImport").getString(),
                 2);
         }
         height += 2;
         height += popupMetadataEditing
             ? 46
-            : Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), "No description provided."), 5) + 18);
+            : Math.max(42, measureWrappedValueHeight(textWidth - 16, fallback(popupPreset.getDescription(), Text.translatable("pathmind.marketplace.noDescription").getString()), 5) + 18);
         return height;
     }
 
@@ -2876,7 +2876,7 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         importingPreset = true;
-        popupStatusMessage = "Downloading preset...";
+        popupStatusMessage = Text.translatable("pathmind.status.downloadingPreset").getString();
         popupStatusColor = UITheme.TEXT_SECONDARY;
 
         MarketplaceService.downloadPresetToTempFile(popupPreset, authSession == null ? null : authSession.getAccessToken()).whenComplete((path, throwable) -> {
@@ -2890,7 +2890,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private void finishPresetImport(Path path, Throwable throwable) {
         if (throwable != null || path == null) {
             importingPreset = false;
-            popupStatusMessage = "Download failed.";
+            popupStatusMessage = Text.translatable("pathmind.status.downloadFailed").getString();
             popupStatusColor = UITheme.STATE_ERROR;
             cleanupTempFile(path);
             return;
@@ -2900,7 +2900,7 @@ public class PathmindMarketplaceScreen extends Screen {
             NodeGraphData data = NodeGraphPersistence.loadNodeGraphFromPath(path);
             if (data == null) {
                 importingPreset = false;
-                popupStatusMessage = "Downloaded file is not a valid preset.";
+                popupStatusMessage = Text.translatable("pathmind.status.invalidDownloadedPreset").getString();
                 popupStatusColor = UITheme.STATE_ERROR;
                 cleanupTempFile(path);
                 return;
@@ -2910,7 +2910,7 @@ public class PathmindMarketplaceScreen extends Screen {
             java.util.Optional<String> importedPreset = PresetManager.importPresetFromFile(path, requestedName);
             if (importedPreset.isEmpty()) {
                 importingPreset = false;
-                popupStatusMessage = "Failed to import preset.";
+                popupStatusMessage = Text.translatable("pathmind.status.failedImportPreset").getString();
                 popupStatusColor = UITheme.STATE_ERROR;
                 cleanupTempFile(path);
                 return;
@@ -2938,7 +2938,7 @@ public class PathmindMarketplaceScreen extends Screen {
             }
             cleanupTempFile(path);
             importingPreset = false;
-            popupStatusMessage = "Imported \"" + importedPreset.get() + "\".";
+            popupStatusMessage = Text.translatable("pathmind.status.importedPreset", importedPreset.get()).getString();
             popupStatusColor = getAccentColor();
             presetPopupAnimation.hide();
             popupPreset = null;
@@ -2947,7 +2947,7 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         } catch (Exception e) {
             importingPreset = false;
-            popupStatusMessage = "Import failed.";
+            popupStatusMessage = Text.translatable("pathmind.status.importFailed").getString();
             popupStatusColor = UITheme.STATE_ERROR;
             cleanupTempFile(path);
         }
@@ -2995,7 +2995,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     triggerSavePulse(preset);
                 }
                 if (popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(preset.getId())) {
-                    popupStatusMessage = deleted ? "Removed local save." : "Failed to remove local save.";
+                    popupStatusMessage = deleted ? Text.translatable("pathmind.status.removedLocalSave").getString() : Text.translatable("pathmind.status.failedRemoveLocalSave").getString();
                     popupStatusColor = deleted ? UITheme.TEXT_SECONDARY : UITheme.STATE_ERROR;
                 }
                 return;
@@ -3003,7 +3003,7 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         importingPreset = true;
         if (popupPreset != null) {
-            popupStatusMessage = isPresetSavedLocally(preset) ? "Already saved locally." : "Saving preset locally...";
+            popupStatusMessage = isPresetSavedLocally(preset) ? Text.translatable("pathmind.status.alreadySavedLocally").getString() : Text.translatable("pathmind.status.savingPresetLocally").getString();
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
         MarketplaceService.downloadPresetToTempFile(preset, authSession == null ? null : authSession.getAccessToken()).whenComplete((path, throwable) -> {
@@ -3018,7 +3018,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (throwable != null || path == null) {
             importingPreset = false;
             if (popupPreset != null) {
-                popupStatusMessage = "Failed to save preset locally.";
+                popupStatusMessage = Text.translatable("pathmind.status.failedSavePresetLocally").getString();
                 popupStatusColor = UITheme.STATE_ERROR;
             }
             cleanupTempFile(path);
@@ -3031,7 +3031,7 @@ public class PathmindMarketplaceScreen extends Screen {
             importingPreset = false;
             if (importedPreset.isEmpty()) {
                 if (popupPreset != null) {
-                    popupStatusMessage = "Failed to save preset locally.";
+                    popupStatusMessage = Text.translatable("pathmind.status.failedSavePresetLocally").getString();
                     popupStatusColor = UITheme.STATE_ERROR;
                 }
                 return;
@@ -3044,7 +3044,7 @@ public class PathmindMarketplaceScreen extends Screen {
             applyFilters();
             triggerSavePulse(preset);
             if (popupPreset != null) {
-                popupStatusMessage = "Saved locally as \"" + importedPreset.get() + "\".";
+                popupStatusMessage = Text.translatable("pathmind.status.savedLocallyAs", importedPreset.get()).getString();
                 popupStatusColor = UITheme.MARKETPLACE_SAVE;
             }
             if (activateAfterImport) {
@@ -3057,7 +3057,7 @@ public class PathmindMarketplaceScreen extends Screen {
             importingPreset = false;
             cleanupTempFile(path);
             if (popupPreset != null) {
-                popupStatusMessage = "Failed to save preset locally.";
+                popupStatusMessage = Text.translatable("pathmind.status.failedSavePresetLocally").getString();
                 popupStatusColor = UITheme.STATE_ERROR;
             }
         }
@@ -3081,7 +3081,7 @@ public class PathmindMarketplaceScreen extends Screen {
                         applyFilters();
                     }
                     if (!silent && popupPreset != null) {
-                        popupStatusMessage = "Sign in to like presets and count downloads.";
+                        popupStatusMessage = Text.translatable("pathmind.status.signInLikePresets").getString();
                         popupStatusColor = UITheme.TEXT_TERTIARY;
                     }
                     return;
@@ -3113,7 +3113,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     authBusy = false;
                     if (throwable != null || likedPresetIds == null) {
                         if (!silent && popupPreset != null) {
-                            popupStatusMessage = "Failed to load your likes.";
+                            popupStatusMessage = Text.translatable("pathmind.status.failedLoadLikes").getString();
                             popupStatusColor = UITheme.STATE_ERROR;
                         }
                         return;
@@ -3121,7 +3121,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     this.likedPresetIds.clear();
                     this.likedPresetIds.addAll(likedPresetIds);
                     if (!silent && popupPreset != null) {
-                        popupStatusMessage = "Signed in as " + fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")) + ".";
+                        popupStatusMessage = Text.translatable("pathmind.status.signedInAs", fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), Text.translatable("pathmind.status.discordUser").getString()))).getString();
                         popupStatusColor = getAccentColor();
                     }
                 });
@@ -3135,7 +3135,7 @@ public class PathmindMarketplaceScreen extends Screen {
         if (authSession == null) {
             authBusy = true;
             if (popupPreset != null) {
-                popupStatusMessage = "Opening Discord sign-in...";
+                popupStatusMessage = Text.translatable("pathmind.status.openingDiscordSignIn").getString();
                 popupStatusColor = UITheme.TEXT_SECONDARY;
             }
             MarketplaceAuthManager.startDiscordSignIn().whenComplete((session, throwable) -> {
@@ -3146,7 +3146,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     authBusy = false;
                     if (throwable != null || session == null) {
                         if (popupPreset != null) {
-                            popupStatusMessage = fallback(throwable == null ? null : throwable.getMessage(), "Discord sign-in failed.");
+                            popupStatusMessage = fallback(throwable == null ? null : throwable.getMessage(), Text.translatable("pathmind.status.discordSignInFailed").getString());
                             popupStatusColor = UITheme.STATE_ERROR;
                         }
                         return;
@@ -3185,7 +3185,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     applyFilters();
                 }
                 if (popupPreset != null) {
-                    popupStatusMessage = throwable == null ? "Signed out." : "Failed to sign out cleanly.";
+                    popupStatusMessage = throwable == null ? Text.translatable("pathmind.status.signedOut").getString() : Text.translatable("pathmind.status.failedSignOutCleanly").getString();
                     popupStatusColor = throwable == null ? UITheme.TEXT_SECONDARY : UITheme.STATE_ERROR;
                 }
             });
@@ -3576,7 +3576,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
         publishBusy = true;
         authBusy = true;
-        setActiveSubmissionStatus(editingPreset == null ? "Publishing preset..." : "Saving metadata...", UITheme.TEXT_SECONDARY);
+        setActiveSubmissionStatus(editingPreset == null ? Text.translatable("pathmind.status.publishingPreset").getString() : Text.translatable("pathmind.status.savingMetadata").getString(), UITheme.TEXT_SECONDARY);
 
         String slugSource = editingPreset != null && name.equalsIgnoreCase(fallback(editingPreset.getName(), ""))
             ? fallback(editingPreset.getSlug(), name)
@@ -3587,10 +3587,10 @@ public class PathmindMarketplaceScreen extends Screen {
             editingPreset == null ? null : editingPreset.getFilePath(),
             sanitizeSlug(slugSource),
             name,
-            fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), "Discord user")),
+            fallback(authSession.getDisplayName(), fallback(authSession.getEmail(), Text.translatable("pathmind.status.discordUser").getString())),
             publishDescriptionField == null ? "" : publishDescriptionField.getText().trim(),
             parseTags(publishTagsField == null ? "" : publishTagsField.getText()),
-            this.client != null ? this.client.getGameVersion() : "Unknown",
+            this.client != null ? this.client.getGameVersion() : Text.translatable("pathmind.marketplace.unknown").getString(),
             getInstalledPathmindVersion(),
             publishVisibilityPublic
         );
@@ -3637,7 +3637,7 @@ public class PathmindMarketplaceScreen extends Screen {
         publishBusy = false;
         authBusy = false;
         if (throwable != null) {
-            setActiveSubmissionStatus(extractThrowableMessage(throwable, wasEditing ? "Metadata update failed." : "Publish failed."), UITheme.STATE_ERROR);
+            setActiveSubmissionStatus(extractThrowableMessage(throwable, wasEditing ? Text.translatable("pathmind.status.metadataUpdateFailed").getString() : Text.translatable("pathmind.status.publishFailed").getString()), UITheme.STATE_ERROR);
             return;
         }
         if (!wasEditing && preset != null && authSession != null && authSession.getUserId() != null && !authSession.getUserId().isBlank()) {
@@ -3650,9 +3650,9 @@ public class PathmindMarketplaceScreen extends Screen {
         } else {
             refreshListings();
         }
-        statusMessage = wasEditing ? "Metadata updated." : "Preset published.";
+        statusMessage = wasEditing ? Text.translatable("pathmind.status.metadataUpdated").getString() : Text.translatable("pathmind.status.presetPublished").getString();
         if (inlineMetadataEdit && popupPreset != null && preset != null && preset.getId() != null && preset.getId().equals(popupPreset.getId())) {
-            popupStatusMessage = "Metadata updated.";
+            popupStatusMessage = Text.translatable("pathmind.status.metadataUpdated").getString();
             popupStatusColor = getAccentColor();
             endPopupMetadataEdit(true);
             applyFilters();
@@ -3663,7 +3663,7 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         closePublishPopup();
         if (preset != null) {
-            openPresetPopup(preset, wasEditing ? "Preset updated." : "Preset published.", getAccentColor());
+            openPresetPopup(preset, wasEditing ? Text.translatable("pathmind.status.presetUpdated").getString() : Text.translatable("pathmind.status.presetPublished").getString(), getAccentColor());
         }
         applyFilters();
     }
@@ -3687,7 +3687,7 @@ public class PathmindMarketplaceScreen extends Screen {
         authBusy = true;
         pendingLikePresetId = target.getId();
         if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
-            popupStatusMessage = isPresetLiked(target) ? "Removing like..." : "Saving like...";
+            popupStatusMessage = isPresetLiked(target) ? Text.translatable("pathmind.status.removingLike").getString() : Text.translatable("pathmind.status.savingLike").getString();
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
         withFreshAuthSession(session -> MarketplaceService.toggleLike(session.getAccessToken(), target.getId(), session.getUserId())
@@ -3700,7 +3700,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     pendingLikePresetId = null;
                     if (throwable != null || liked == null) {
                         if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
-                            popupStatusMessage = "Like update failed.";
+                            popupStatusMessage = Text.translatable("pathmind.status.likeUpdateFailed").getString();
                             popupStatusColor = UITheme.STATE_ERROR;
                         }
                         return;
@@ -3709,7 +3709,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     triggerLikePulse(target);
                     applyPresetCountUpdate(target.getId(), liked ? 1 : -1, 0);
                     if (updatePopupStatus && popupPreset != null && popupPreset.getId() != null && popupPreset.getId().equals(target.getId())) {
-                        popupStatusMessage = liked ? "Preset liked." : "Like removed.";
+                        popupStatusMessage = liked ? Text.translatable("pathmind.status.presetLiked").getString() : Text.translatable("pathmind.status.likeRemoved").getString();
                         popupStatusColor = getAccentColor();
                     }
                 });
@@ -3749,7 +3749,7 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         if (authSession == null) {
             if (fromPopup) {
-                popupStatusMessage = "Sign in before deleting presets.";
+                popupStatusMessage = Text.translatable("pathmind.status.signInBeforeDeletingPresets").getString();
                 popupStatusColor = UITheme.STATE_WARNING;
             }
             handleAuthButton();
@@ -3761,7 +3761,7 @@ public class PathmindMarketplaceScreen extends Screen {
         pendingDeleteFallbackPresetName = fromPopup ? findLocalPresetNameForMarketplacePreset(preset).orElse(null) : null;
         triggerDeletePulse(preset);
         if (fromPopup) {
-            popupStatusMessage = "Deleting preset...";
+            popupStatusMessage = Text.translatable("pathmind.status.deletingPreset").getString();
             popupStatusColor = UITheme.TEXT_SECONDARY;
         }
         withFreshAuthSession(session -> MarketplaceService.deletePreset(session.getAccessToken(), preset.getId(), preset.getStorageBucket(), preset.getFilePath())
@@ -3780,7 +3780,7 @@ public class PathmindMarketplaceScreen extends Screen {
         authBusy = false;
         if (throwable != null) {
             if (fromPopup && popupPreset != null && preset != null && preset.getId() != null && preset.getId().equals(popupPreset.getId())) {
-                popupStatusMessage = extractThrowableMessage(throwable, "Delete failed.");
+                popupStatusMessage = extractThrowableMessage(throwable, Text.translatable("pathmind.status.deleteFailed").getString());
                 popupStatusColor = UITheme.STATE_ERROR;
             }
             return;
@@ -3792,7 +3792,7 @@ public class PathmindMarketplaceScreen extends Screen {
             PresetManager.clearMarketplaceLinkedPresetById(preset.getId());
         }
         removePreset(preset == null ? null : preset.getId());
-        statusMessage = "Preset deleted.";
+        statusMessage = Text.translatable("pathmind.status.presetDeleted").getString();
         if (fromPopup && deletedCurrentPopup) {
             if (fallbackPresetName != null && !fallbackPresetName.isBlank()) {
                 closePopup();
@@ -3865,7 +3865,7 @@ public class PathmindMarketplaceScreen extends Screen {
             selectedPresetName = findLocalPresetNameForMarketplacePreset(popupPreset).orElse("");
         }
         if (selectedPresetName.isEmpty()) {
-            popupStatusMessage = "Select a local preset to upload.";
+            popupStatusMessage = Text.translatable("pathmind.status.selectLocalPresetToUpload").getString();
             popupStatusColor = UITheme.STATE_ERROR;
             return;
         }
@@ -3879,7 +3879,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
         publishBusy = true;
         authBusy = true;
-        popupStatusMessage = "Updating uploaded preset...";
+        popupStatusMessage = Text.translatable("pathmind.status.updatingUploadedPreset").getString();
         popupStatusColor = UITheme.TEXT_SECONDARY;
         MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
             localPresetPath,
@@ -3904,7 +3904,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     publishBusy = false;
                     authBusy = false;
                     if (throwable != null || updatedPreset == null) {
-                        popupStatusMessage = extractThrowableMessage(throwable, "Preset update failed.");
+                        popupStatusMessage = extractThrowableMessage(throwable, Text.translatable("pathmind.status.presetUpdateFailed").getString());
                         popupStatusColor = UITheme.STATE_ERROR;
                         return;
                     }
@@ -3913,7 +3913,7 @@ public class PathmindMarketplaceScreen extends Screen {
                     upsertPreset(updatedPreset);
                     popupPreset = updatedPreset;
                     requestPreviewGraph(updatedPreset);
-                    popupStatusMessage = "Preset updated from local changes.";
+                    popupStatusMessage = Text.translatable("pathmind.status.presetUpdatedFromLocalChanges").getString();
                     popupStatusColor = getAccentColor();
                     applyFilters();
                 });
@@ -4598,14 +4598,14 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private static String formatTags(List<String> tags) {
         if (tags == null || tags.isEmpty()) {
-            return "No tags";
+            return Text.translatable("pathmind.marketplace.noTags").getString();
         }
         return String.join(", ", tags);
     }
 
     private static String formatTimestamp(String value) {
         if (value == null || value.isBlank()) {
-            return "Unknown";
+            return Text.translatable("pathmind.marketplace.unknown").getString();
         }
         String normalized = value.replace('T', ' ');
         int dotIndex = normalized.indexOf('.');
@@ -4651,28 +4651,28 @@ public class PathmindMarketplaceScreen extends Screen {
         int currentCount = getCurrentResultCount();
         selectedIndex = currentCount == 0 ? -1 : Math.max(0, Math.min(selectedIndex, currentCount - 1));
         if (myPresetsOnly && authSession == null) {
-            statusMessage = "Sign in to view your presets.";
+            statusMessage = Text.translatable("pathmind.status.signInViewPresets").getString();
         } else if (isAuthorDirectoryMode() && authorResults.isEmpty()) {
-            statusMessage = query.isEmpty() ? "No authors with public presets found." : "No authors match your search.";
+            statusMessage = query.isEmpty() ? Text.translatable("pathmind.status.noAuthorsPublic").getString() : Text.translatable("pathmind.status.noAuthorsSearch").getString();
         } else if (isViewingAuthorProfile() && presets.isEmpty()) {
-            statusMessage = "No public presets from this creator matched your filters.";
+            statusMessage = Text.translatable("pathmind.status.noCreatorPresets").getString();
         } else if (allPresets.isEmpty()) {
-            statusMessage = myPresetsOnly ? "No presets in your cloud library yet." : "No published presets found.";
+            statusMessage = myPresetsOnly ? Text.translatable("pathmind.status.noCloudPresets").getString() : Text.translatable("pathmind.status.noPublishedPresets").getString();
         } else if (presets.isEmpty()) {
             if (myPresetsOnly) {
                 statusMessage = switch (myPresetsFilter) {
-                    case PUBLIC -> "No public presets match your search.";
-                    case PRIVATE -> "No private presets match your search.";
-                    default -> "No presets match your search.";
+                    case PUBLIC -> Text.translatable("pathmind.status.noPublicSearch").getString();
+                    case PRIVATE -> Text.translatable("pathmind.status.noPrivateSearch").getString();
+                    default -> Text.translatable("pathmind.status.noPresetsSearch").getString();
                 };
             } else {
-                statusMessage = sortMode == SortMode.SAVED ? "No saved presets match your search." : "No presets match your search.";
+                statusMessage = sortMode == SortMode.SAVED ? Text.translatable("pathmind.status.noSavedSearch").getString() : Text.translatable("pathmind.status.noPresetsSearch").getString();
             }
         } else {
             if (isAuthorDirectoryMode()) {
-                statusMessage = "Loaded " + authorResults.size() + " author" + (authorResults.size() == 1 ? "" : "s") + ".";
+                statusMessage = Text.translatable("pathmind.status.loadedAuthors", authorResults.size(), authorResults.size() == 1 ? "" : "s").getString();
             } else {
-                statusMessage = "Loaded " + presets.size() + " preset" + (presets.size() == 1 ? "" : "s") + ".";
+                statusMessage = Text.translatable("pathmind.status.loadedPresets", presets.size(), presets.size() == 1 ? "" : "s").getString();
             }
         }
     }
@@ -4692,7 +4692,7 @@ public class PathmindMarketplaceScreen extends Screen {
             }
             AuthorAccumulator accumulator = authors.computeIfAbsent(key, ignored -> new AuthorAccumulator(
                 key,
-                fallback(preset.getAuthorName(), "Unknown"),
+                fallback(preset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString()),
                 fallback(preset.getAuthorAvatarUrl(), ""),
                 preset
             ));
@@ -4740,8 +4740,8 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Rect getCardAuthorRect(Rect cardRect, MarketplacePreset preset) {
-        String downloadsLine = preset.getDownloadsCount() + " dl";
-        String likesLine = preset.getLikesCount() + " like";
+        String downloadsLine = Text.translatable("pathmind.marketplace.downloadsShort", preset.getDownloadsCount()).getString();
+        String likesLine = Text.translatable("pathmind.marketplace.likesShort", preset.getLikesCount()).getString();
         int statsBlockWidth = Math.max(this.textRenderer.getWidth(downloadsLine), this.textRenderer.getWidth(likesLine));
         int textWidth = Math.max(32, cardRect.width - 16 - statsBlockWidth - 8);
         int previewY = cardRect.y + 8;
@@ -4749,7 +4749,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int footerTop = previewY + previewHeight + 8;
         int authorY = footerTop + 10;
         int textX = cardRect.x + 8;
-        String authorLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, "by " + fallback(preset.getAuthorName(), "Unknown"), textWidth);
+        String authorLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, Text.translatable("pathmind.marketplace.byAuthor", fallback(preset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString())).getString(), textWidth);
         return new Rect(textX, authorY, this.textRenderer.getWidth(authorLabel), this.textRenderer.fontHeight + 1);
     }
 
@@ -4781,7 +4781,7 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
         viewedAuthorKey = authorKey;
-        viewedAuthorName = fallback(preset.getAuthorName(), "Unknown");
+        viewedAuthorName = fallback(preset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString());
         viewedAuthorAvatarUrl = resolveViewedAuthorAvatarUrl(preset);
         viewedAuthorAvatarTextureUrl = null;
         viewedAuthorAvatarTextureId = null;
@@ -4898,23 +4898,23 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private CompatibilityStatus getCompatibilityStatus(MarketplacePreset preset) {
-        String currentMinecraftVersion = this.client != null ? this.client.getGameVersion() : "Unknown";
+        String currentMinecraftVersion = this.client != null ? this.client.getGameVersion() : Text.translatable("pathmind.marketplace.unknown").getString();
         String currentPathmindVersion = getInstalledPathmindVersion();
 
-        String presetMinecraftVersion = fallback(preset.getGameVersion(), "Any");
+        String presetMinecraftVersion = fallback(preset.getGameVersion(), Text.translatable("pathmind.marketplace.versionAny").getString());
         boolean minecraftCompatible = isVersionLooseMatch(presetMinecraftVersion, currentMinecraftVersion)
             || isAnyVersion(presetMinecraftVersion);
         String minecraftLine = minecraftCompatible
-            ? "Minecraft: compatible with " + currentMinecraftVersion
-            : "Minecraft: built for " + presetMinecraftVersion + ", you are on " + currentMinecraftVersion;
+            ? Text.translatable("pathmind.marketplace.minecraftCompatible", currentMinecraftVersion).getString()
+            : Text.translatable("pathmind.marketplace.minecraftMismatch", presetMinecraftVersion, currentMinecraftVersion).getString();
 
-        String presetPathmindVersion = fallback(preset.getPathmindVersion(), "Unknown");
+        String presetPathmindVersion = fallback(preset.getPathmindVersion(), Text.translatable("pathmind.marketplace.unknown").getString());
         boolean pathmindCompatible = isVersionLooseMatch(presetPathmindVersion, currentPathmindVersion)
             || isAnyVersion(presetPathmindVersion)
             || "current".equalsIgnoreCase(presetPathmindVersion);
         String pathmindLine = pathmindCompatible
-            ? "Pathmind: compatible with " + currentPathmindVersion
-            : "Pathmind: built for " + presetPathmindVersion + ", you have " + currentPathmindVersion;
+            ? Text.translatable("pathmind.marketplace.pathmindCompatible", currentPathmindVersion).getString()
+            : Text.translatable("pathmind.marketplace.pathmindMismatch", presetPathmindVersion, currentPathmindVersion).getString();
 
         return new CompatibilityStatus(
             minecraftLine,
@@ -4970,7 +4970,7 @@ public class PathmindMarketplaceScreen extends Screen {
         Optional<String> version = FabricLoader.getInstance()
             .getModContainer(PathmindMod.MOD_ID)
             .map(container -> container.getMetadata().getVersion().getFriendlyString());
-        return version.orElse("Unknown");
+        return version.orElse(Text.translatable("pathmind.marketplace.unknown").getString());
     }
 
     private static boolean isPointInRect(int x, int y, int rectX, int rectY, int width, int height) {

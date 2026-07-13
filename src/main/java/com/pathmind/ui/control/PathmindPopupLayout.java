@@ -125,6 +125,49 @@ public final class PathmindPopupLayout {
         );
     }
 
+    public static Rect settingsBody(int popupX, int popupY, int popupWidth, int popupHeight) {
+        int bodyX = popupX + 1;
+        int bodyTop = popupY + 40;
+        int buttonY = popupY + popupHeight - 20 - 16;
+        int bodyBottom = buttonY - 8;
+        return rect(bodyX, bodyTop, Math.max(1, popupWidth - 2), Math.max(1, bodyBottom - bodyTop));
+    }
+
+    public static int settingsContentX(int popupX) {
+        return popupX + 20;
+    }
+
+    public static int settingsNodeSectionLabelY(int contentPopupY, int optionHeight) {
+        int languageLabelY = contentPopupY + 44;
+        int languageButtonY = languageLabelY + 12;
+        int accentLabelY = languageButtonY + 50;
+        int accentOptionsY = accentLabelY + 12;
+        int sectionDividerY = accentOptionsY + optionHeight + 10;
+        int settingDividerY = sectionDividerY + 22;
+        int lowDetailDividerY = settingDividerY + 22;
+        int footerDividerY = lowDetailDividerY + 22;
+        int chatDividerY = footerDividerY + 22;
+        int overlayDividerY = chatDividerY + 22;
+        int hudDividerY = overlayDividerY + 22;
+        int profilerDividerY = hudDividerY + 22;
+        int delayDividerY = profilerDividerY + 26;
+        return delayDividerY + 12;
+    }
+
+    public static int settingsNodeSectionBodyY(int contentPopupY, int optionHeight) {
+        return settingsNodeSectionLabelY(contentPopupY, optionHeight) + 14;
+    }
+
+    public static Rect settingsCloseButton(int popupX, int popupY, int popupWidth, int popupHeight,
+                                           int buttonWidth, int buttonHeight) {
+        return rect(
+            popupX + popupWidth - buttonWidth - 20,
+            popupY + popupHeight - buttonHeight - 16,
+            buttonWidth,
+            buttonHeight
+        );
+    }
+
     public record PublishPresetLayout(
         Rect popup,
         int fieldX,

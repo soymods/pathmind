@@ -5293,68 +5293,41 @@ public class PathmindVisualEditorScreen extends Screen {
     private void renderPlayButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getPlayButtonX();
         int buttonY = getPlayButtonY();
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
-        boolean active = executing;
-
-        drawToolbarButtonFrame(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, hovered, active, disabled, "play-button");
-
-        int bgColor = executing ? UITheme.TOOLBAR_EXECUTE_BG : UITheme.TOOLBAR_BG;
-        if (hovered) {
-            bgColor = executing ? UITheme.TOOLBAR_EXECUTE_HOVER : UITheme.TOOLBAR_BG_ACTIVE;
-        } else if (disabled && !executing) {
-            bgColor = UITheme.TOOLBAR_BG_DISABLED;
-        }
-        context.fill(buttonX + 1, buttonY + 1, buttonX + PLAY_BUTTON_SIZE - 1, buttonY + PLAY_BUTTON_SIZE - 1, bgColor);
-        if (executing) {
-            DrawContextBridge.drawBorder(context, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE, UITheme.STATE_SUCCESS);
-        }
-
-        int iconColor = executing ? UITheme.STATE_SUCCESS : UITheme.TOOLBAR_EXECUTE_ICON;
-        if (hovered) {
-            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_HOVER;
-        } else if (disabled && !executing) {
-            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_DISABLED;
-        }
-        drawPlayIcon(context, buttonX, buttonY, iconColor);
-    }
-
-    private void drawPlayIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        PathmindIconRenderer.drawPlay(context, buttonX, buttonY, PLAY_BUTTON_SIZE, color);
+        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
+        float hoverProgress = getHoverProgress("play-button", hovered || executing);
+        PathmindWorkspaceChrome.renderPlayButton(
+            context,
+            buttonX,
+            buttonY,
+            PLAY_BUTTON_SIZE,
+            mouseX,
+            mouseY,
+            disabled,
+            executing,
+            hoverProgress,
+            getAccentColor()
+        );
     }
 
     private void renderStopButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getStopButtonX();
         int buttonY = getStopButtonY();
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
-        boolean active = executing;
-
-        drawToolbarButtonFrame(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, hovered, active, disabled, "stop-button");
-
-        int bgColor = executing ? UITheme.TOOLBAR_STOP_BG : UITheme.TOOLBAR_BG;
-        if (hovered) {
-            bgColor = executing ? UITheme.TOOLBAR_STOP_HOVER : UITheme.TOOLBAR_BG_ACTIVE;
-        } else if (disabled && !executing) {
-            bgColor = UITheme.TOOLBAR_BG_DISABLED;
-        }
-        context.fill(buttonX + 1, buttonY + 1, buttonX + STOP_BUTTON_SIZE - 1, buttonY + STOP_BUTTON_SIZE - 1, bgColor);
-        if (executing) {
-            int borderColor = hovered ? UITheme.TOOLBAR_STOP_BORDER_HOVER : UITheme.TOOLBAR_STOP_BORDER;
-            DrawContextBridge.drawBorder(context, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE, borderColor);
-        }
-
-        int iconColor = executing ? UITheme.TOOLBAR_STOP_ICON : UITheme.TOOLBAR_STOP_ICON_INACTIVE;
-        if (hovered) {
-            iconColor = executing ? UITheme.TOOLBAR_STOP_ICON_HOVER : UITheme.STATE_ERROR;
-        } else if (disabled && !executing) {
-            iconColor = UITheme.TOOLBAR_STOP_ICON_DISABLED;
-        }
-        drawStopIcon(context, buttonX, buttonY, iconColor);
-    }
-
-    private void drawStopIcon(DrawContext context, int buttonX, int buttonY, int color) {
-        PathmindIconRenderer.drawStop(context, buttonX, buttonY, STOP_BUTTON_SIZE, color);
+        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
+        float hoverProgress = getHoverProgress("stop-button", hovered || executing);
+        PathmindWorkspaceChrome.renderStopButton(
+            context,
+            buttonX,
+            buttonY,
+            STOP_BUTTON_SIZE,
+            mouseX,
+            mouseY,
+            disabled,
+            executing,
+            hoverProgress,
+            getAccentColor()
+        );
     }
 
     private void renderPresetDropdown(DrawContext context, int mouseX, int mouseY, boolean disabled) {
@@ -5502,11 +5475,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getPlayButtonX() {
-        return this.width - PLAY_BUTTON_SIZE - PLAY_BUTTON_MARGIN;
+        return PathmindWorkspaceChrome.playButtonX(this.width, PLAY_BUTTON_SIZE, PLAY_BUTTON_MARGIN);
     }
 
     private int getPlayButtonY() {
-        return TITLE_BAR_HEIGHT + PLAY_BUTTON_MARGIN;
+        return PathmindWorkspaceChrome.playButtonY(TITLE_BAR_HEIGHT, PLAY_BUTTON_MARGIN);
     }
 
     private int getValidationButtonX() {
@@ -5520,7 +5493,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (shouldShowExecutionControls()) {
             return getPlayButtonY() + PLAY_BUTTON_SIZE + CONTROL_BUTTON_GAP;
         }
-        return TITLE_BAR_HEIGHT + PLAY_BUTTON_MARGIN;
+        return PathmindWorkspaceChrome.playButtonY(TITLE_BAR_HEIGHT, PLAY_BUTTON_MARGIN);
     }
 
     private int getRawJsonButtonX() {
@@ -5554,7 +5527,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getStopButtonX() {
-        return getPlayButtonX() - CONTROL_BUTTON_GAP - STOP_BUTTON_SIZE;
+        return PathmindWorkspaceChrome.stopButtonX(getPlayButtonX(), CONTROL_BUTTON_GAP, STOP_BUTTON_SIZE);
     }
 
     private int getStopButtonY() {
@@ -7546,17 +7519,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean isMarketplaceButtonClicked(int mouseX, int mouseY, int button) {
-        if (button != 0) return false;
-        int buttonX = getMarketplaceButtonX();
-        int buttonY = getWorkspaceButtonY();
-        return PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
+        return PathmindWorkspaceChrome.primaryClickInBounds(mouseX, mouseY, button, getMarketplaceButtonX(), getWorkspaceButtonY(), MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isPublishButtonClicked(int mouseX, int mouseY, int button) {
-        if (button != 0) return false;
-        int buttonX = getPublishButtonX();
-        int buttonY = getWorkspaceButtonY();
-        return PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
+        return PathmindWorkspaceChrome.primaryClickInBounds(mouseX, mouseY, button, getPublishButtonX(), getWorkspaceButtonY(), BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
     private boolean isSettingsButtonClicked(int mouseX, int mouseY, int button) {
@@ -7574,11 +7541,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean isPointInPlayButton(int mouseX, int mouseY) {
-        return isPointInRect(mouseX, mouseY, getPlayButtonX(), getPlayButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
+        return PathmindWorkspaceChrome.contains(mouseX, mouseY, getPlayButtonX(), getPlayButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
     }
 
     private boolean isPointInStopButton(int mouseX, int mouseY) {
-        return isPointInRect(mouseX, mouseY, getStopButtonX(), getStopButtonY(), STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
+        return PathmindWorkspaceChrome.contains(mouseX, mouseY, getStopButtonX(), getStopButtonY(), STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
     }
 
     private boolean isPointInZoomMinus(int mouseX, int mouseY) {

@@ -3,6 +3,7 @@ package com.pathmind.ui.control;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.DrawContextBridge;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
@@ -51,8 +52,24 @@ public final class PathmindWorkspaceChrome {
         return settingsButtonX + (buttonSize + spacing) * 3;
     }
 
+    public static int playButtonX(int screenWidth, int buttonSize, int margin) {
+        return screenWidth - buttonSize - margin;
+    }
+
+    public static int playButtonY(int titleBarHeight, int margin) {
+        return titleBarHeight + margin;
+    }
+
+    public static int stopButtonX(int playButtonX, int gap, int buttonSize) {
+        return playButtonX - gap - buttonSize;
+    }
+
     public static boolean contains(int mouseX, int mouseY, int x, int y, int width, int height) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+    }
+
+    public static boolean primaryClickInBounds(int mouseX, int mouseY, int button, int x, int y, int width, int height) {
+        return button == 0 && contains(mouseX, mouseY, x, y, width, height);
     }
 
     public static boolean renderButtonFrame(DrawContext context, int x, int y, int width, int height,
@@ -125,6 +142,63 @@ public final class PathmindWorkspaceChrome {
         );
         UIStyleHelper.drawToolbarButtonFrame(context, x, y, size, size, background, border, UITheme.PANEL_INNER_BORDER);
         PathmindIconRenderer.drawPublishArrow(context, x, y, size, iconColor);
+        return hovered;
+    }
+
+    public static boolean renderPlayButton(DrawContext context, int x, int y, int size,
+                                           int mouseX, int mouseY, boolean disabled,
+                                           boolean executing, float hoverProgress,
+                                           int accentColor) {
+        boolean hovered = !disabled && contains(mouseX, mouseY, x, y, size, size);
+        drawToolbarButtonFrame(context, x, y, size, size, hovered, executing, disabled, hoverProgress, accentColor);
+
+        int bgColor = executing ? UITheme.TOOLBAR_EXECUTE_BG : UITheme.TOOLBAR_BG;
+        if (hovered) {
+            bgColor = executing ? UITheme.TOOLBAR_EXECUTE_HOVER : UITheme.TOOLBAR_BG_ACTIVE;
+        } else if (disabled && !executing) {
+            bgColor = UITheme.TOOLBAR_BG_DISABLED;
+        }
+        context.fill(x + 1, y + 1, x + size - 1, y + size - 1, bgColor);
+        if (executing) {
+            DrawContextBridge.drawBorder(context, x, y, size, size, UITheme.STATE_SUCCESS);
+        }
+
+        int iconColor = executing ? UITheme.STATE_SUCCESS : UITheme.TOOLBAR_EXECUTE_ICON;
+        if (hovered) {
+            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_HOVER;
+        } else if (disabled && !executing) {
+            iconColor = UITheme.TOOLBAR_EXECUTE_ICON_DISABLED;
+        }
+        PathmindIconRenderer.drawPlay(context, x, y, size, iconColor);
+        return hovered;
+    }
+
+    public static boolean renderStopButton(DrawContext context, int x, int y, int size,
+                                           int mouseX, int mouseY, boolean disabled,
+                                           boolean executing, float hoverProgress,
+                                           int accentColor) {
+        boolean hovered = !disabled && contains(mouseX, mouseY, x, y, size, size);
+        drawToolbarButtonFrame(context, x, y, size, size, hovered, executing, disabled, hoverProgress, accentColor);
+
+        int bgColor = executing ? UITheme.TOOLBAR_STOP_BG : UITheme.TOOLBAR_BG;
+        if (hovered) {
+            bgColor = executing ? UITheme.TOOLBAR_STOP_HOVER : UITheme.TOOLBAR_BG_ACTIVE;
+        } else if (disabled && !executing) {
+            bgColor = UITheme.TOOLBAR_BG_DISABLED;
+        }
+        context.fill(x + 1, y + 1, x + size - 1, y + size - 1, bgColor);
+        if (executing) {
+            int borderColor = hovered ? UITheme.TOOLBAR_STOP_BORDER_HOVER : UITheme.TOOLBAR_STOP_BORDER;
+            DrawContextBridge.drawBorder(context, x, y, size, size, borderColor);
+        }
+
+        int iconColor = executing ? UITheme.TOOLBAR_STOP_ICON : UITheme.TOOLBAR_STOP_ICON_INACTIVE;
+        if (hovered) {
+            iconColor = executing ? UITheme.TOOLBAR_STOP_ICON_HOVER : UITheme.STATE_ERROR;
+        } else if (disabled && !executing) {
+            iconColor = UITheme.TOOLBAR_STOP_ICON_DISABLED;
+        }
+        PathmindIconRenderer.drawStop(context, x, y, size, iconColor);
         return hovered;
     }
 

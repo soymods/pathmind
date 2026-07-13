@@ -6077,15 +6077,13 @@ public class PathmindVisualEditorScreen extends Screen {
                     setPublishPresetStatus(limitCheck.message(), UITheme.STATE_WARNING);
                     return;
                 }
-                MarketplaceService.PublishRequest request = new MarketplaceService.PublishRequest(
+                MarketplaceService.PublishRequest request = PathmindMarketplaceActions.publishRequest(
                     presetPath,
                     null,
-                    null,
-                    sanitizePublishSlug(desiredName),
                     desiredName.trim(),
                     fallback(session.getDisplayName(), fallback(session.getEmail(), Text.translatable("pathmind.status.discordUser").getString())),
                     publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getText().trim(),
-                    parsePublishTags(publishPresetTagsField == null ? "" : publishPresetTagsField.getText()),
+                    publishPresetTagsField == null ? "" : publishPresetTagsField.getText(),
                     getCurrentMinecraftVersion(),
                     getModVersion(),
                     publishPresetPublic
@@ -7964,29 +7962,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private String getCurrentMinecraftVersion() {
         return this.client != null ? this.client.getGameVersion() : "Unknown";
-    }
-
-    private List<String> parsePublishTags(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
-        List<String> tags = new ArrayList<>();
-        for (String token : value.split(",")) {
-            String normalized = token == null ? "" : token.trim();
-            if (!normalized.isEmpty() && !tags.contains(normalized)) {
-                tags.add(normalized);
-            }
-        }
-        return List.copyOf(tags);
-    }
-
-    private String sanitizePublishSlug(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().toLowerCase(Locale.ROOT)
-            .replaceAll("[^a-z0-9]+", "-")
-            .replaceAll("(^-+|-+$)", "");
     }
 
     String fallback(String value, String fallback) {

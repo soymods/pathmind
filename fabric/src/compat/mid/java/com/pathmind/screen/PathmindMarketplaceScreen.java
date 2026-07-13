@@ -98,9 +98,6 @@ public class PathmindMarketplaceScreen extends Screen {
     static final int AUTHOR_ROW_HEIGHT = 42;
     static final int AUTHOR_ROW_GAP = 8;
     private static final int ACCOUNT_BUTTON_MIN_WIDTH = SORT_BUTTON_HEIGHT;
-    private static final int MAX_CONCURRENT_PREVIEW_GRAPH_REQUESTS = 3;
-    private static final HttpClient AVATAR_HTTP_CLIENT = HttpClient.newHttpClient();
-
     private final Screen parent;
     private final boolean openPublishOnInit;
     private final String preferredPublishPresetName;
@@ -145,19 +142,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private boolean isMarketplaceModerator = false;
     private boolean myPresetsOnly = false;
     private MyPresetsFilter myPresetsFilter = MyPresetsFilter.ALL;
-    private String avatarTextureUrl = null;
-    private Identifier avatarTextureId = null;
-    private boolean avatarLoading = false;
     private String viewedAuthorAvatarUrl = null;
-    private String viewedAuthorAvatarTextureUrl = null;
-    private Identifier viewedAuthorAvatarTextureId = null;
-    private boolean viewedAuthorAvatarLoading = false;
-    private final Map<String, Identifier> authorDirectoryAvatarTextures = new HashMap<>();
-    private final Set<String> authorDirectoryAvatarLoading = new HashSet<>();
-    private final Map<String, PreviewGraphModel> previewGraphCache = new HashMap<>();
-    private final Set<String> previewGraphLoading = new HashSet<>();
-    private final Queue<MarketplacePreset> previewGraphQueue = new ArrayDeque<>();
-    private final Set<String> previewGraphQueued = new HashSet<>();
     private final Map<String, Long> likePulseEndTimes = new HashMap<>();
     private final Map<String, Long> savePulseEndTimes = new HashMap<>();
     private final Map<String, Long> deletePulseEndTimes = new HashMap<>();
@@ -199,6 +184,8 @@ public class PathmindMarketplaceScreen extends Screen {
     private boolean systemCursorHidden = false;
     final PathmindMarketplaceGraphPreviewRenderer graphPreviewRenderer = new PathmindMarketplaceGraphPreviewRenderer(this);
     private final PathmindMarketplacePopupController popupController = new PathmindMarketplacePopupController(this);
+    private final PathmindMarketplacePreviewLoader previewLoader = new PathmindMarketplacePreviewLoader();
+    private final PathmindMarketplaceAvatarLoader avatarLoader = new PathmindMarketplaceAvatarLoader();
 
     public PathmindMarketplaceScreen(Screen parent) {
         this(parent, false, null, null);
@@ -675,77 +662,15 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     PreviewGraphModel getCachedPreviewGraph(MarketplacePreset preset) {
-        if (preset == null || preset.getId() == null) {
-            return null;
-        }
-        return previewGraphCache.get(preset.getId());
+        return previewLoader.getCached(preset);
     }
 
     void requestPreviewGraph(MarketplacePreset preset) {
-        String presetId = preset == null ? null : preset.getId();
-        if (presetId == null || previewGraphCache.containsKey(presetId) || previewGraphLoading.contains(presetId) || previewGraphQueued.contains(presetId)) {
-            return;
-        }
-        if (previewGraphLoading.size() >= MAX_CONCURRENT_PREVIEW_GRAPH_REQUESTS) {
-            previewGraphQueue.add(preset);
-            previewGraphQueued.add(presetId);
-            return;
-        }
-        startPreviewGraphRequest(preset, presetId);
-    }
-
-    private void startPreviewGraphRequest(MarketplacePreset preset, String presetId) {
-        previewGraphLoading.add(presetId);
-        MarketplaceService.fetchPresetGraphData(preset, authSession == null ? null : authSession.getAccessToken()).whenComplete((graphData, throwable) -> {
-            if (this.client == null) {
-                return;
-            }
-            this.client.execute(() -> {
-                previewGraphLoading.remove(presetId);
-                if (throwable == null && graphData != null) {
-                    previewGraphCache.put(presetId, buildPreviewGraphModel(graphData));
-                }
-                drainPreviewGraphQueue();
-            });
-        });
-    }
-
-    private void drainPreviewGraphQueue() {
-        while (previewGraphLoading.size() < MAX_CONCURRENT_PREVIEW_GRAPH_REQUESTS && !previewGraphQueue.isEmpty()) {
-            MarketplacePreset queuedPreset = previewGraphQueue.poll();
-            String queuedPresetId = queuedPreset == null ? null : queuedPreset.getId();
-            if (queuedPresetId == null) {
-                continue;
-            }
-            previewGraphQueued.remove(queuedPresetId);
-            if (previewGraphCache.containsKey(queuedPresetId) || previewGraphLoading.contains(queuedPresetId)) {
-                continue;
-            }
-            startPreviewGraphRequest(queuedPreset, queuedPresetId);
-        }
+        previewLoader.request(this.client, preset, authSession == null ? null : authSession.getAccessToken());
     }
 
     private void invalidatePreviewGraph(MarketplacePreset preset) {
-        if (preset == null || preset.getId() == null) {
-            return;
-        }
-        previewGraphCache.remove(preset.getId());
-        previewGraphLoading.remove(preset.getId());
-        previewGraphQueued.remove(preset.getId());
-        previewGraphQueue.removeIf(queuedPreset -> preset.getId().equals(queuedPreset.getId()));
-    }
-
-    private PreviewGraphModel buildPreviewGraphModel(NodeGraphData graphData) {
-        List<Node> rebuiltNodes = NodeGraphPersistence.convertToNodes(graphData);
-        Map<String, Node> nodeLookup = new HashMap<>();
-        for (Node node : rebuiltNodes) {
-            nodeLookup.put(node.getId(), node);
-        }
-        List<NodeGraphData.ConnectionData> connections = graphData.getConnections() == null
-            ? List.of()
-            : List.copyOf(graphData.getConnections());
-        List<Node> nodes = List.copyOf(rebuiltNodes);
-        return new PreviewGraphModel(nodes, connections, nodeLookup, GraphBounds.of(nodes));
+        previewLoader.invalidate(preset);
     }
 
     private void drawGalleryBackdrop(DrawContext context, int x, int y, int width, int height) {
@@ -2334,115 +2259,15 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private Identifier getOrRequestAvatarTexture() {
-        if (authSession == null || authSession.getAvatarUrl() == null || authSession.getAvatarUrl().isBlank()) {
-            return null;
-        }
-        if (authSession.getAvatarUrl().equals(avatarTextureUrl) && avatarTextureId != null) {
-            return avatarTextureId;
-        }
-        if (avatarLoading) {
-            return avatarTextureId;
-        }
-        avatarLoading = true;
-        String avatarUrl = authSession.getAvatarUrl();
-        CompletableFuture.supplyAsync(() -> downloadAvatarImage(avatarUrl)).whenComplete((image, throwable) -> {
-            if (this.client == null) {
-                avatarLoading = false;
-                return;
-            }
-            this.client.execute(() -> {
-                avatarLoading = false;
-                if (throwable == null && image != null) {
-                    avatarTextureUrl = avatarUrl;
-                    avatarTextureId = registerAvatarTexture(avatarUrl, image);
-                }
-            });
-        });
-        return avatarTextureId;
+        return avatarLoader.getAccount(this.client, authSession == null ? null : authSession.getAvatarUrl());
     }
 
     private Identifier getOrRequestViewedAuthorAvatarTexture() {
-        if (viewedAuthorAvatarUrl == null || viewedAuthorAvatarUrl.isBlank()) {
-            return null;
-        }
-        if (viewedAuthorAvatarTextureId != null && viewedAuthorAvatarUrl.equals(viewedAuthorAvatarTextureUrl)) {
-            return viewedAuthorAvatarTextureId;
-        }
-        if (viewedAuthorAvatarLoading) {
-            return viewedAuthorAvatarTextureId;
-        }
-        viewedAuthorAvatarLoading = true;
-        String avatarUrl = viewedAuthorAvatarUrl;
-        CompletableFuture.supplyAsync(() -> downloadAvatarImage(avatarUrl)).whenComplete((image, throwable) -> {
-            if (this.client == null) {
-                viewedAuthorAvatarLoading = false;
-                return;
-            }
-            this.client.execute(() -> {
-                viewedAuthorAvatarLoading = false;
-                if (throwable == null && image != null && avatarUrl.equals(viewedAuthorAvatarUrl)) {
-                    viewedAuthorAvatarTextureUrl = avatarUrl;
-                    viewedAuthorAvatarTextureId = registerAvatarTexture(avatarUrl, image);
-                }
-            });
-        });
-        return viewedAuthorAvatarTextureId;
+        return avatarLoader.getViewedAuthor(this.client, viewedAuthorAvatarUrl);
     }
 
     private Identifier getOrRequestAuthorDirectoryAvatarTexture(AuthorSummary author) {
-        if (author == null || author.avatarUrl() == null || author.avatarUrl().isBlank()) {
-            return null;
-        }
-        Identifier existing = authorDirectoryAvatarTextures.get(author.avatarUrl());
-        if (existing != null) {
-            return existing;
-        }
-        if (authorDirectoryAvatarLoading.contains(author.avatarUrl())) {
-            return null;
-        }
-        authorDirectoryAvatarLoading.add(author.avatarUrl());
-        String avatarUrl = author.avatarUrl();
-        CompletableFuture.supplyAsync(() -> downloadAvatarImage(avatarUrl)).whenComplete((image, throwable) -> {
-            if (this.client == null) {
-                authorDirectoryAvatarLoading.remove(avatarUrl);
-                return;
-            }
-            this.client.execute(() -> {
-                authorDirectoryAvatarLoading.remove(avatarUrl);
-                if (throwable == null && image != null) {
-                    authorDirectoryAvatarTextures.put(avatarUrl, registerAvatarTexture(avatarUrl, image));
-                }
-            });
-        });
-        return null;
-    }
-
-    private NativeImage downloadAvatarImage(String avatarUrl) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(avatarUrl))
-                .GET()
-                .build();
-            HttpResponse<InputStream> response = AVATAR_HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                return null;
-            }
-            try (InputStream input = response.body()) {
-                return NativeImage.read(input);
-            }
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private Identifier registerAvatarTexture(String avatarUrl, NativeImage image) {
-        if (this.client == null || image == null) {
-            return null;
-        }
-        NativeImageBackedTexture texture = TextureCompatibilityBridge.createNativeImageBackedTexture("pathmind_marketplace_avatar", image);
-        Identifier id = Identifier.of("pathmind", "textures/dynamic/marketplace_avatar_" + Integer.toHexString(avatarUrl.hashCode()));
-        this.client.getTextureManager().registerTexture(id, texture);
-        return id;
+        return avatarLoader.getAuthorDirectory(this.client, author == null ? null : author.avatarUrl());
     }
 
     private void startToggleLike() {
@@ -3406,9 +3231,7 @@ public class PathmindMarketplaceScreen extends Screen {
         viewedAuthorKey = authorKey;
         viewedAuthorName = fallback(preset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString());
         viewedAuthorAvatarUrl = resolveViewedAuthorAvatarUrl(preset);
-        viewedAuthorAvatarTextureUrl = null;
-        viewedAuthorAvatarTextureId = null;
-        viewedAuthorAvatarLoading = false;
+        avatarLoader.clearViewedAuthor();
         myPresetsOnly = false;
         myPresetsFilter = MyPresetsFilter.ALL;
         pageIndex = 0;
@@ -3424,9 +3247,7 @@ public class PathmindMarketplaceScreen extends Screen {
         viewedAuthorKey = null;
         viewedAuthorName = null;
         viewedAuthorAvatarUrl = null;
-        viewedAuthorAvatarTextureUrl = null;
-        viewedAuthorAvatarTextureId = null;
-        viewedAuthorAvatarLoading = false;
+        avatarLoader.clearViewedAuthor();
         pageIndex = 0;
         galleryScrollOffset = 0;
         applyFilters();

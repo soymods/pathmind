@@ -14,6 +14,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.theme.UIStyleHelper;
@@ -965,31 +966,14 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     int drawPopupEditableField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, String label, TextFieldWidget field) {
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), x, y,
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        int fieldY = y + 11;
-        drawPopupFieldFrame(context, mouseX, mouseY, x, fieldY, width, 18, field);
-        if (field != null) {
-            field.setPosition(x + 6, fieldY + 5);
-            field.setWidth(width - 12);
-            field.render(context, mouseX, mouseY, 0f);
-        }
-        return fieldY + 18;
+        return PathmindPopupRenderer.drawPopupTextFieldRow(context, this.textRenderer, field, mouseX, mouseY, x, y, width,
+            label, getAccentColor(), presetPopupAnimation);
     }
 
     void drawPopupFieldFrame(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height, TextFieldWidget field) {
         boolean hovered = isPointInRect(mouseX, mouseY, x, y, width, height);
         boolean focused = field != null && field.isFocused();
-        UIStyleHelper.drawToolbarButtonFrame(
-            context,
-            x,
-            y,
-            width,
-            height,
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
-            presetPopupAnimation.getAnimatedPopupColor(focused || hovered ? getAccentColor() : UITheme.BORDER_SUBTLE),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
-        );
+        PathmindPopupRenderer.drawPopupFieldFrame(context, x, y, width, height, hovered, focused, getAccentColor(), presetPopupAnimation);
     }
 
     @Override
@@ -1747,49 +1731,8 @@ public class PathmindMarketplaceScreen extends Screen {
 
     void drawAnimatedActionButton(DrawContext context, int x, int y, int width, int height, String label,
                                           boolean hovered, boolean disabled, PopupAnimationHandler animation, float hoverProgress) {
-        float easedHover = AnimationHelper.easeOutQuad(Math.max(0f, Math.min(1f, hoverProgress)));
-        UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(
-            UIStyleHelper.TextButtonStyle.DEFAULT,
-            getAccentColor(),
-            easedHover,
-            disabled
-        );
-        if (!disabled && easedHover > 0.001f) {
-            int glowColor = animation.getAnimatedPopupColor(AnimationHelper.lerpColor(getAccentColor(), UITheme.TEXT_HEADER, 0.22f));
-            int alpha = Math.min(84, Math.round(72f * easedHover * animation.getPopupAlpha()));
-            context.fill(x - 1, y - 1, x + width + 1, y + height + 1, (alpha << 24) | (glowColor & 0x00FFFFFF));
-        }
-        UIStyleHelper.drawToolbarButtonFrame(
-            context,
-            x,
-            y,
-            width,
-            height,
-            animation.getAnimatedPopupColor(palette.backgroundColor()),
-            animation.getAnimatedPopupColor(palette.borderColor()),
-            animation.getAnimatedPopupColor(palette.innerBorderColor())
-        );
-        int textX = x + (width - this.textRenderer.getWidth(label)) / 2;
-        int textY = y + (height - this.textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY,
-            animation.getAnimatedPopupColor(palette.textColor()));
-    }
-
-    private void drawPopupCloseIcon(DrawContext context, int x, int y, int color) {
-        context.fill(x, y, x + 1, y + 1, color);
-        context.fill(x + 7, y, x + 8, y + 1, color);
-        context.fill(x + 1, y + 1, x + 2, y + 2, color);
-        context.fill(x + 6, y + 1, x + 7, y + 2, color);
-        context.fill(x + 2, y + 2, x + 3, y + 3, color);
-        context.fill(x + 5, y + 2, x + 6, y + 3, color);
-        context.fill(x + 3, y + 3, x + 4, y + 4, color);
-        context.fill(x + 4, y + 3, x + 5, y + 4, color);
-        context.fill(x + 2, y + 4, x + 3, y + 5, color);
-        context.fill(x + 5, y + 4, x + 6, y + 5, color);
-        context.fill(x + 1, y + 5, x + 2, y + 6, color);
-        context.fill(x + 6, y + 5, x + 7, y + 6, color);
-        context.fill(x, y + 6, x + 1, y + 7, color);
-        context.fill(x + 7, y + 6, x + 8, y + 7, color);
+        PathmindPopupRenderer.drawAnimatedActionButton(context, this.textRenderer, x, y, width, height,
+            label, disabled, hoverProgress, getAccentColor(), animation);
     }
 
     private void drawAnimatedActionButton(DrawContext context, int x, int y, int width, int height, String label,
@@ -3342,15 +3285,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     void drawDropdownChevron(DrawContext context, int x, int y, int color, boolean open) {
-        if (open) {
-            context.drawHorizontalLine(x, x + 4, y + 2, color);
-            context.drawHorizontalLine(x + 1, x + 3, y + 1, color);
-            context.drawHorizontalLine(x + 2, x + 2, y, color);
-            return;
-        }
-        context.drawHorizontalLine(x, x + 4, y, color);
-        context.drawHorizontalLine(x + 1, x + 3, y + 1, color);
-        context.drawHorizontalLine(x + 2, x + 2, y + 2, color);
+        PathmindPopupRenderer.drawDropdownChevron(context, x, y, color, open);
     }
 
     private void drawHeartIcon(DrawContext context, int x, int y, int color) {
@@ -4060,23 +3995,8 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     int drawStatusBadge(DrawContext context, int x, int y, String label, int accentColor, boolean popup) {
-        String text = fallback(label, "");
-        int width = Math.max(26, this.textRenderer.getWidth(text) + 10);
-        int height = 12;
-        int background = popup
-            ? presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION)
-            : UITheme.BACKGROUND_SECTION;
-        int border = popup
-            ? presetPopupAnimation.getAnimatedPopupColor(accentColor)
-            : accentColor;
-        UIStyleHelper.drawBeveledPanel(context, x, y, width, height, background, border, popup
-            ? presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
-            : UITheme.PANEL_INNER_BORDER);
-        int textColor = popup
-            ? presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY)
-            : UITheme.TEXT_PRIMARY;
-        context.drawTextWithShadow(this.textRenderer, Text.literal(text), x + 5, y + 2, textColor);
-        return width;
+        return PathmindPopupRenderer.drawStatusBadge(context, this.textRenderer, x, y, fallback(label, ""), accentColor,
+            popup ? presetPopupAnimation : null);
     }
 
     private boolean isAnyVersion(String value) {

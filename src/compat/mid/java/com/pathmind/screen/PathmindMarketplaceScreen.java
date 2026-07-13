@@ -14,6 +14,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
+import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.theme.UIStyleHelper;
@@ -827,31 +828,14 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     int drawPopupEditableField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, String label, TextFieldWidget field) {
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), x, y,
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        int fieldY = y + 11;
-        drawPopupFieldFrame(context, mouseX, mouseY, x, fieldY, width, 18, field);
-        if (field != null) {
-            field.setPosition(x + 6, fieldY + 5);
-            field.setWidth(width - 12);
-            field.render(context, mouseX, mouseY, 0f);
-        }
-        return fieldY + 18;
+        return PathmindPopupRenderer.drawPopupTextFieldRow(context, this.textRenderer, field, mouseX, mouseY, x, y, width,
+            label, getAccentColor(), presetPopupAnimation);
     }
 
     void drawPopupFieldFrame(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height, TextFieldWidget field) {
         boolean hovered = isPointInRect(mouseX, mouseY, x, y, width, height);
         boolean focused = field != null && field.isFocused();
-        UIStyleHelper.drawToolbarButtonFrame(
-            context,
-            x,
-            y,
-            width,
-            height,
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
-            presetPopupAnimation.getAnimatedPopupColor(focused || hovered ? getAccentColor() : UITheme.BORDER_SUBTLE),
-            presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
-        );
+        PathmindPopupRenderer.drawPopupFieldFrame(context, x, y, width, height, hovered, focused, getAccentColor(), presetPopupAnimation);
     }
 
     @Override
@@ -1635,23 +1619,6 @@ public class PathmindMarketplaceScreen extends Screen {
         int textY = y + (height - this.textRenderer.fontHeight) / 2;
         context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, textY,
             animation.getAnimatedPopupColor(textColor));
-    }
-
-    private void drawPopupCloseIcon(DrawContext context, int x, int y, int color) {
-        context.fill(x, y, x + 1, y + 1, color);
-        context.fill(x + 7, y, x + 8, y + 1, color);
-        context.fill(x + 1, y + 1, x + 2, y + 2, color);
-        context.fill(x + 6, y + 1, x + 7, y + 2, color);
-        context.fill(x + 2, y + 2, x + 3, y + 3, color);
-        context.fill(x + 5, y + 2, x + 6, y + 3, color);
-        context.fill(x + 3, y + 3, x + 4, y + 4, color);
-        context.fill(x + 4, y + 3, x + 5, y + 4, color);
-        context.fill(x + 2, y + 4, x + 3, y + 5, color);
-        context.fill(x + 5, y + 4, x + 6, y + 5, color);
-        context.fill(x + 1, y + 5, x + 2, y + 6, color);
-        context.fill(x + 6, y + 5, x + 7, y + 6, color);
-        context.fill(x, y + 6, x + 1, y + 7, color);
-        context.fill(x + 7, y + 6, x + 8, y + 7, color);
     }
 
     private void drawAnimatedActionButton(DrawContext context, int x, int y, int width, int height, String label,
@@ -3185,15 +3152,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     void drawDropdownChevron(DrawContext context, int x, int y, int color, boolean open) {
-        if (open) {
-            context.drawHorizontalLine(x, x + 4, y + 2, color);
-            context.drawHorizontalLine(x + 1, x + 3, y + 1, color);
-            context.drawHorizontalLine(x + 2, x + 2, y, color);
-            return;
-        }
-        context.drawHorizontalLine(x, x + 4, y, color);
-        context.drawHorizontalLine(x + 1, x + 3, y + 1, color);
-        context.drawHorizontalLine(x + 2, x + 2, y + 2, color);
+        PathmindPopupRenderer.drawDropdownChevron(context, x, y, color, open);
     }
 
     private void drawHeartIcon(DrawContext context, int x, int y, int color) {

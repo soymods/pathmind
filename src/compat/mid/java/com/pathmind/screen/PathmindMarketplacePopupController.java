@@ -1,9 +1,9 @@
 package com.pathmind.screen;
 
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.gui.DrawContext;
@@ -48,7 +48,7 @@ final class PathmindMarketplacePopupController {
         int popupCloseX = popupX + popupWidth - 18;
         int popupCloseY = popupY + 10;
         boolean popupCloseHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, popupCloseX - 2, popupCloseY - 2, 12, 12);
-        drawPopupCloseIcon(context, popupCloseX, popupCloseY,
+        PathmindPopupRenderer.drawCloseIcon(context, popupCloseX, popupCloseY,
             screen.presetPopupAnimation.getAnimatedPopupColor(popupCloseHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY));
         context.drawHorizontalLine(popupX, popupX + popupWidth - 1, popupY + 28,
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
@@ -295,14 +295,6 @@ final class PathmindMarketplacePopupController {
         context.disableScissor();
     }
 
-    private void drawPopupCloseIcon(DrawContext context, int x, int y, int color) {
-        context.fill(x + 2, y + 2, x + 4, y + 4, color);
-        context.fill(x + 7, y + 2, x + 9, y + 4, color);
-        context.fill(x + 4, y + 4, x + 7, y + 7, color);
-        context.fill(x + 2, y + 7, x + 4, y + 9, color);
-        context.fill(x + 7, y + 7, x + 9, y + 9, color);
-    }
-
     void renderAccountPopup(DrawContext context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
         PathmindMarketplaceScreen.AccountPopupLayout popup = screen.getAccountPopupLayout(layout);
         context.fill(0, 0, screen.screenWidth(), screen.screenHeight(), screen.accountPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
@@ -494,19 +486,8 @@ final class PathmindMarketplacePopupController {
         int checkboxX = popupX + 20;
         int checkboxY = cursorY + 12;
         boolean checkboxHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, checkboxX - 2, checkboxY - 2, 14, 14);
-        context.fill(checkboxX, checkboxY, checkboxX + 10, checkboxY + 10,
-            screen.confirmPopupAnimation.getAnimatedPopupColor(UITheme.RENAME_INPUT_BG));
-        DrawContextBridge.drawBorder(context, checkboxX, checkboxY, 10, 10,
-            screen.confirmPopupAnimation.getAnimatedPopupColor(checkboxHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT));
-        if (skipConfirm) {
-            int checkColor = screen.confirmPopupAnimation.getAnimatedPopupColor(screen.getAccentColor());
-            context.fill(checkboxX + 2, checkboxY + 5, checkboxX + 3, checkboxY + 7, checkColor);
-            context.fill(checkboxX + 3, checkboxY + 6, checkboxX + 4, checkboxY + 8, checkColor);
-            context.fill(checkboxX + 4, checkboxY + 6, checkboxX + 5, checkboxY + 7, checkColor);
-            context.fill(checkboxX + 5, checkboxY + 5, checkboxX + 6, checkboxY + 6, checkColor);
-            context.fill(checkboxX + 6, checkboxY + 4, checkboxX + 7, checkboxY + 5, checkColor);
-            context.fill(checkboxX + 7, checkboxY + 3, checkboxX + 8, checkboxY + 4, checkColor);
-        }
+        PathmindPopupRenderer.drawCheckbox(context, checkboxX, checkboxY, skipConfirm, checkboxHovered,
+            screen.getAccentColor(), screen.confirmPopupAnimation);
         context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.option.dontShowAgain"),
             checkboxX + 18, checkboxY + 1, screen.confirmPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
 
@@ -525,25 +506,7 @@ final class PathmindMarketplacePopupController {
 
     private int drawPublishField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height,
                                  String label, TextFieldWidget field, int labelGap) {
-        context.drawTextWithShadow(screen.textRenderer(), Text.literal(label), x, y,
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        int fieldY = y + labelGap;
-        boolean hovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, x, fieldY, width, height);
-        boolean focused = field != null && field.isFocused();
-        UIStyleHelper.drawToolbarButtonFrame(
-            context,
-            x,
-            fieldY,
-            width,
-            height,
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SECTION),
-            screen.publishPopupAnimation.getAnimatedPopupColor(focused || hovered ? screen.getAccentColor() : UITheme.BORDER_SUBTLE),
-            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
-        );
-        if (field != null) {
-            field.setPosition(x + 6, fieldY + 5);
-            field.setWidth(width - 12);
-            field.render(context, mouseX, mouseY, 0f);
-        }
-        return fieldY + height;
-    }}
+        return PathmindPopupRenderer.drawPopupTextFieldRow(context, screen.textRenderer(), field, mouseX, mouseY,
+            x, y, width, label, screen.getAccentColor(), screen.publishPopupAnimation);
+    }
+}

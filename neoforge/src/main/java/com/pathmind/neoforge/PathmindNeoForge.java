@@ -439,10 +439,12 @@ public class PathmindNeoForge {
         if (event == null || !(event.getScreen() instanceof TitleScreen screen)) {
             return;
         }
-        Button button = Button.builder(Component.literal("P"), ignored ->
-                openVisualEditorOrWarn(Minecraft.getInstance(), screen))
-            .bounds(MAIN_MENU_BUTTON_MARGIN, MAIN_MENU_BUTTON_MARGIN, MAIN_MENU_BUTTON_SIZE, MAIN_MENU_BUTTON_SIZE)
-            .build();
+        Button button = new PathmindNeoForgeMainMenuButton(
+            MAIN_MENU_BUTTON_MARGIN,
+            MAIN_MENU_BUTTON_MARGIN,
+            MAIN_MENU_BUTTON_SIZE,
+            ignored -> openVisualEditorOrWarn(Minecraft.getInstance(), screen)
+        );
         addScreenInitButton(event, button);
     }
 

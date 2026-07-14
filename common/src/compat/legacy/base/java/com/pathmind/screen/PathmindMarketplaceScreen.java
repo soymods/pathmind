@@ -751,8 +751,8 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer, Text.literal(">"), cursorX, centerY, rightArrowColor);
     }
 
-    Rect getPublishPopupVisibilityToggleRect(int popupX, int popupY, int popupWidth) {
-        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, popupY + 188,
+    Rect getPublishPopupVisibilityToggleRect(int popupX, int popupWidth, int visibilityLabelY) {
+        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, visibilityLabelY - 1,
             publishVisibilityToggle.getWidth(), publishVisibilityToggle.getHeight());
     }
 
@@ -776,7 +776,8 @@ public class PathmindMarketplaceScreen extends Screen {
         }
 
         Layout layout = getLayout();
-        if (editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible()) {
+        if (editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible()
+            && !publishPopupOpen && !publishPopupAnimation.isVisible()) {
             close();
             return true;
         }
@@ -1674,13 +1675,21 @@ public class PathmindMarketplaceScreen extends Screen {
         return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, popupScrollOffset, 20);
     }
 
-    private ScrollbarHelper.Metrics getPublishPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight) {
+    ScrollbarHelper.Metrics getPublishPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight) {
         int contentTop = popupY + 40;
         int contentBottom = popupY + popupHeight - 52;
         int contentHeight = Math.max(24, contentBottom - contentTop);
         int contentHeightTotal = measurePublishPopupContentHeight(Math.max(32, popupWidth - 24), !publishStatusMessage.isEmpty());
         int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
         return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, publishPopupScrollOffset, 20);
+    }
+
+    int getPublishPopupScrollOffset() {
+        return publishPopupScrollOffset;
+    }
+
+    void setPublishPopupScrollOffset(int scrollOffset) {
+        publishPopupScrollOffset = scrollOffset;
     }
 
     private ScrollbarHelper.Metrics getGalleryScrollMetrics(Layout layout) {

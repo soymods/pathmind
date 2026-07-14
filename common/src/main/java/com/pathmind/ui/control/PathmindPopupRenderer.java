@@ -224,8 +224,9 @@ public final class PathmindPopupRenderer {
         boolean focused = field != null && field.isFocused();
         drawPopupFieldFrame(context, x, fieldY, width, 18, hovered, focused, accentColor, animation);
         if (field != null) {
-            field.setPosition(x + 6, fieldY + 5);
+            field.setPosition(x + 6, fieldY);
             field.setWidth(width - 12);
+            field.setHeight(18);
             field.render(context, mouseX, mouseY, 0f);
         }
         return fieldY + 18;

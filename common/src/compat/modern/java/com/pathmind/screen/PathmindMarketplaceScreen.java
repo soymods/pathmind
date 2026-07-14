@@ -758,7 +758,8 @@ public class PathmindMarketplaceScreen extends Screen {
         }
 
         Layout layout = getLayout();
-        if (editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible()) {
+        if (editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible()
+            && !publishPopupOpen && !publishPopupAnimation.isVisible()) {
             close();
             return true;
         }

@@ -236,6 +236,8 @@ public class Node {
     private static final int MESSAGE_FIELD_BOTTOM_MARGIN = 6;
     static final int MESSAGE_FIELD_MIN_CONTENT_WIDTH = 120;
     static final int MESSAGE_FIELD_TEXT_PADDING = 3;
+    public static final int MAX_MESSAGE_LINES = 128;
+    public static final int MAX_MESSAGE_LINE_LENGTH = 512;
     static final int MESSAGE_BUTTON_SIZE = 10;
     static final int MESSAGE_BUTTON_PADDING = 4;
     static final int MESSAGE_BUTTON_SPACING = 4;
@@ -3092,20 +3094,23 @@ public class Node {
     }
 
     public void setMessageLine(int index, String value) {
-        if (!hasMessageInputFields() || index < 0) {
+        if (!hasMessageInputFields() || index < 0 || index >= MAX_MESSAGE_LINES) {
             return;
         }
         while (index >= messageLines.size()) {
             messageLines.add(getDefaultMessageLineValue());
         }
-        messageLines.set(index, value == null ? "" : value);
+        messageLines.set(index, sanitizeMessageLine(value));
     }
 
     public void setMessageLines(List<String> lines) {
         messageLines.clear();
         if (lines != null) {
             for (String line : lines) {
-                messageLines.add(line == null ? "" : line);
+                if (messageLines.size() >= MAX_MESSAGE_LINES) {
+                    break;
+                }
+                messageLines.add(sanitizeMessageLine(line));
             }
         }
         if (messageLines.isEmpty()) {
@@ -3119,7 +3124,10 @@ public class Node {
         if (!hasMessageInputFields()) {
             return;
         }
-        String lineValue = value == null ? "" : value;
+        if (messageLines.size() >= MAX_MESSAGE_LINES) {
+            return;
+        }
+        String lineValue = sanitizeMessageLine(value);
         if (type == NodeType.CHANGE_VARIABLE && lineValue.isBlank()) {
             lineValue = getDefaultCalculationLineValue(messageLines.size());
         }
@@ -3186,6 +3194,14 @@ public class Node {
 
     private String getDefaultMessageLineValue() {
         return type == NodeType.CHANGE_VARIABLE ? getDefaultCalculationLineValue(messageLines.size()) : "Hello World";
+    }
+
+    private String sanitizeMessageLine(String value) {
+        String sanitized = value == null ? "" : value;
+        if (sanitized.length() > MAX_MESSAGE_LINE_LENGTH) {
+            return sanitized.substring(0, MAX_MESSAGE_LINE_LENGTH);
+        }
+        return sanitized;
     }
 
     private String getDefaultCalculationLineValue(int index) {

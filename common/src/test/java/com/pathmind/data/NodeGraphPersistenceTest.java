@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -172,6 +173,97 @@ class NodeGraphPersistenceTest {
         assertEquals(1, restoredNodes.size());
         assertEquals(NodeType.CHANGE_VARIABLE, restoredNodes.getFirst().getType());
         assertEquals(List.of("1 + 2", "$count * 4", "7 / 2"), restoredNodes.getFirst().getMessageLines());
+    }
+
+    @Test
+    void messageLinePayloadsAreCappedBeforeLayout() {
+        List<String> oversizedLines = new ArrayList<>();
+        for (int i = 0; i < Node.MAX_MESSAGE_LINES + 25; i++) {
+            oversizedLines.add("x".repeat(Node.MAX_MESSAGE_LINE_LENGTH + 25));
+        }
+
+        NodeGraphData.NodeData mathNode = new NodeGraphData.NodeData(
+            "math",
+            NodeType.CHANGE_VARIABLE,
+            null,
+            32,
+            48,
+            List.of()
+        );
+        mathNode.setMessageLines(oversizedLines);
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(
+            new NodeGraphData(List.of(mathNode), List.of())
+        );
+
+        assertEquals(1, restoredNodes.size());
+        Node restored = restoredNodes.getFirst();
+        assertEquals(Node.MAX_MESSAGE_LINES, restored.getMessageLines().size());
+        assertEquals(Node.MAX_MESSAGE_LINE_LENGTH, restored.getMessageLine(0).length());
+        assertTrue(restored.getHeight() < 5000);
+    }
+
+    @Test
+    void convertToNodesSkipsMalformedNodeIdsAndReferences() {
+        NodeGraphData.NodeData validStart = new NodeGraphData.NodeData(
+            "start",
+            NodeType.START,
+            null,
+            0,
+            0,
+            List.of()
+        );
+        validStart.setAttachedActionId(null);
+
+        NodeGraphData.NodeData missingId = new NodeGraphData.NodeData(
+            null,
+            NodeType.MESSAGE,
+            null,
+            40,
+            0,
+            List.of()
+        );
+
+        NodeGraphData.NodeData duplicateId = new NodeGraphData.NodeData(
+            "start",
+            NodeType.WAIT,
+            null,
+            80,
+            0,
+            List.of()
+        );
+
+        NodeGraphData.NodeData host = new NodeGraphData.NodeData(
+            "host",
+            NodeType.OPERATOR_BOOLEAN_AND,
+            null,
+            120,
+            0,
+            List.of()
+        );
+        List<NodeGraphData.ParameterAttachmentData> attachments = new ArrayList<>();
+        attachments.add(null);
+        attachments.add(new NodeGraphData.ParameterAttachmentData(0, null));
+        attachments.add(new NodeGraphData.ParameterAttachmentData(1, "missing"));
+        host.setParameterAttachments(attachments);
+
+        NodeGraphData data = new NodeGraphData(
+            List.of(validStart, missingId, duplicateId, host),
+            List.of(
+                new NodeGraphData.ConnectionData("start", null, 0, 0),
+                new NodeGraphData.ConnectionData("start", "missing", 0, 0)
+            )
+        );
+
+        List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(data);
+        Map<String, Node> byId = restoredNodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+        List<NodeConnection> restoredConnections = NodeGraphPersistence.convertToConnections(data, byId);
+
+        assertEquals(2, restoredNodes.size());
+        assertEquals(NodeType.START, byId.get("start").getType());
+        assertEquals(NodeType.OPERATOR_BOOLEAN_AND, byId.get("host").getType());
+        assertNull(byId.get("host").getAttachedParameter(0));
+        assertEquals(0, restoredConnections.size());
     }
 
     @Test

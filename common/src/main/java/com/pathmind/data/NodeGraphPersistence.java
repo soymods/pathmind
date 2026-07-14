@@ -18,12 +18,14 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -244,11 +246,24 @@ public class NodeGraphPersistence {
     public static List<Node> convertToNodes(NodeGraphData data) {
         List<Node> nodes = new ArrayList<>();
         Map<String, Node> nodeMap = new HashMap<>();
+        Set<String> usedNodeIds = new HashSet<>();
+        List<NodeGraphData.NodeData> nodeDataList = data != null && data.getNodes() != null
+            ? data.getNodes()
+            : List.of();
 
         // Create nodes
-        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
+        for (NodeGraphData.NodeData nodeData : nodeDataList) {
             if (nodeData == null || nodeData.getType() == null) {
                 System.err.println("Skipping unsupported node entry during conversion.");
+                continue;
+            }
+            String nodeId = nodeData.getId();
+            if (nodeId == null || nodeId.isBlank()) {
+                System.err.println("Skipping node entry with missing ID during conversion.");
+                continue;
+            }
+            if (!usedNodeIds.add(nodeId)) {
+                System.err.println("Skipping duplicate node ID during conversion: " + nodeId);
                 continue;
             }
             Node node = new Node(nodeData.getType(), nodeData.getX(), nodeData.getY());
@@ -257,9 +272,10 @@ public class NodeGraphPersistence {
             try {
                 java.lang.reflect.Field idField = Node.class.getDeclaredField("id");
                 idField.setAccessible(true);
-                idField.set(node, nodeData.getId());
+                idField.set(node, nodeId);
             } catch (Exception e) {
                 System.err.println("Failed to set node ID: " + e.getMessage());
+                continue;
             }
 
             // Set the mode if it exists (this will reinitialize parameters)
@@ -328,11 +344,11 @@ public class NodeGraphPersistence {
             node.recalculateDimensions();
 
             nodes.add(node);
-            nodeMap.put(nodeData.getId(), node);
+            nodeMap.put(nodeId, node);
         }
 
-        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
-            if (nodeData.getAttachedSensorId() != null) {
+        for (NodeGraphData.NodeData nodeData : nodeDataList) {
+            if (nodeData != null && !isBlank(nodeData.getAttachedSensorId())) {
                 Node control = nodeMap.get(nodeData.getId());
                 Node sensor = nodeMap.get(nodeData.getAttachedSensorId());
                 if (control != null && sensor != null) {
@@ -341,8 +357,8 @@ public class NodeGraphPersistence {
             }
         }
 
-        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
-            if (nodeData.getParentControlId() != null) {
+        for (NodeGraphData.NodeData nodeData : nodeDataList) {
+            if (nodeData != null && !isBlank(nodeData.getParentControlId())) {
                 Node sensor = nodeMap.get(nodeData.getId());
                 Node control = nodeMap.get(nodeData.getParentControlId());
                 if (sensor != null && control != null && sensor.isSensorNode()) {
@@ -351,8 +367,8 @@ public class NodeGraphPersistence {
             }
         }
 
-        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
-            if (nodeData.getAttachedActionId() != null) {
+        for (NodeGraphData.NodeData nodeData : nodeDataList) {
+            if (nodeData != null && !isBlank(nodeData.getAttachedActionId())) {
                 Node control = nodeMap.get(nodeData.getId());
                 Node child = nodeMap.get(nodeData.getAttachedActionId());
                 if (control != null && child != null) {
@@ -361,8 +377,8 @@ public class NodeGraphPersistence {
             }
         }
 
-        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
-            if (nodeData.getParentActionControlId() != null) {
+        for (NodeGraphData.NodeData nodeData : nodeDataList) {
+            if (nodeData != null && !isBlank(nodeData.getParentActionControlId())) {
                 Node child = nodeMap.get(nodeData.getId());
                 Node control = nodeMap.get(nodeData.getParentActionControlId());
                 if (child != null && control != null && control.canAcceptActionNode(child)) {
@@ -371,20 +387,26 @@ public class NodeGraphPersistence {
             }
         }
 
-        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
+        for (NodeGraphData.NodeData nodeData : nodeDataList) {
+            if (nodeData == null) {
+                continue;
+            }
             List<NodeGraphData.ParameterAttachmentData> attachments = nodeData.getParameterAttachments();
             if (attachments != null && !attachments.isEmpty()) {
                 Node host = nodeMap.get(nodeData.getId());
                 if (host != null) {
-                    attachments.sort(java.util.Comparator.comparingInt(NodeGraphData.ParameterAttachmentData::getSlotIndex));
-                    for (NodeGraphData.ParameterAttachmentData attachment : attachments) {
+                    List<NodeGraphData.ParameterAttachmentData> validAttachments = attachments.stream()
+                        .filter(attachment -> attachment != null && !isBlank(attachment.getParameterNodeId()))
+                        .sorted(java.util.Comparator.comparingInt(NodeGraphData.ParameterAttachmentData::getSlotIndex))
+                        .toList();
+                    for (NodeGraphData.ParameterAttachmentData attachment : validAttachments) {
                         Node parameter = nodeMap.get(attachment.getParameterNodeId());
                         if (parameter != null) {
                             host.attachParameter(parameter, attachment.getSlotIndex());
                         }
                     }
                 }
-            } else if (nodeData.getAttachedParameterId() != null) {
+            } else if (!isBlank(nodeData.getAttachedParameterId())) {
                 Node host = nodeMap.get(nodeData.getId());
                 Node parameter = nodeMap.get(nodeData.getAttachedParameterId());
                 if (host != null && parameter != null && parameter.getParentParameterHost() == null) {
@@ -393,12 +415,15 @@ public class NodeGraphPersistence {
             }
         }
 
-        for (NodeGraphData.NodeData nodeData : data.getNodes()) {
+        for (NodeGraphData.NodeData nodeData : nodeDataList) {
+            if (nodeData == null) {
+                continue;
+            }
             List<NodeGraphData.ParameterAttachmentData> attachments = nodeData.getParameterAttachments();
             if (attachments != null && !attachments.isEmpty()) {
                 continue;
             }
-            if (nodeData.getParentParameterHostId() != null) {
+            if (!isBlank(nodeData.getParentParameterHostId())) {
                 Node parameter = nodeMap.get(nodeData.getId());
                 Node host = nodeMap.get(nodeData.getParentParameterHostId());
                 if (parameter != null && host != null && parameter.isParameterNode()
@@ -442,7 +467,7 @@ public class NodeGraphPersistence {
     }
 
     private static void absorbLegacyWaitDurationAttachments(NodeGraphData data, List<Node> nodes, Map<String, Node> nodeMap) {
-        if (data == null) {
+        if (data == null || data.getNodes() == null) {
             return;
         }
         List<Node> legacyDurationNodes = new ArrayList<>();
@@ -461,10 +486,10 @@ public class NodeGraphPersistence {
                     }
                 }
             }
-            if (durationNodeId == null || durationNodeId.isBlank()) {
+            if (isBlank(durationNodeId)) {
                 durationNodeId = nodeData.getAttachedParameterId();
             }
-            if (durationNodeId == null || durationNodeId.isBlank()) {
+            if (isBlank(durationNodeId)) {
                 continue;
             }
 
@@ -712,8 +737,14 @@ public class NodeGraphPersistence {
      */
     public static List<NodeConnection> convertToConnections(NodeGraphData data, Map<String, Node> nodeMap) {
         List<NodeConnection> connections = new ArrayList<>();
+        if (data == null || data.getConnections() == null || nodeMap == null || nodeMap.isEmpty()) {
+            return connections;
+        }
 
         for (NodeGraphData.ConnectionData connData : data.getConnections()) {
+            if (connData == null || isBlank(connData.getOutputNodeId()) || isBlank(connData.getInputNodeId())) {
+                continue;
+            }
             Node outputNode = nodeMap.get(connData.getOutputNodeId());
             Node inputNode = nodeMap.get(connData.getInputNodeId());
 
@@ -734,6 +765,10 @@ public class NodeGraphPersistence {
         }
 
         return connections;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private static void addConnectionReplacingConflicts(List<NodeConnection> connections, Node outputNode, Node inputNode,

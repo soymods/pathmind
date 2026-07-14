@@ -630,6 +630,35 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void setVariableStoresModuloAsSingleNumericRuntimeValue() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node setVariable = new Node(NodeType.SET_VARIABLE, 0, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        Node modulo = new Node(NodeType.OPERATOR_MOD, 0, 0);
+        Node value = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        Node divisor = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        Node message = new Node(NodeType.MESSAGE, 0, 0);
+
+        setVariable.setOwningStartNode(start);
+        message.setOwningStartNode(start);
+        variable.getParameter("Variable").setStringValue("modResult");
+        value.getParameter("Amount").setStringValue("10");
+        divisor.getParameter("Amount").setStringValue("3");
+
+        assertTrue(modulo.attachParameter(value, 0));
+        assertTrue(modulo.attachParameter(divisor, 1));
+        assertTrue(setVariable.attachParameter(variable, 0));
+        assertTrue(setVariable.attachParameter(modulo, 1));
+
+        java.util.concurrent.CompletableFuture<Void> stored = new java.util.concurrent.CompletableFuture<>();
+        new NodeVariableListCommandExecutor(setVariable).executeSetVariableCommand(stored);
+
+        assertTrue(stored.isDone());
+        assertFalse(stored.isCompletedExceptionally());
+        assertEquals("1", message.resolveRuntimeVariablesInText("$modResult"));
+    }
+
+    @Test
     void standaloneCalculateExecutesWithoutVariableAttachment() {
         Node start = new Node(NodeType.START, 0, 0);
         Node calculate = new Node(NodeType.CHANGE_VARIABLE, 0, 0);

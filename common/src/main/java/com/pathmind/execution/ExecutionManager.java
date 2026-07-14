@@ -10,6 +10,8 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.screen.PathmindScreens;
+import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
+import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
@@ -48,6 +50,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ExecutionManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(ExecutionManager.class);
     private static final Executor CHAIN_COMPLETION_BOUNDARY_EXECUTOR = ForkJoinPool.commonPool();
+    private static final int MAX_CHAIN_EXECUTIONS_PER_START = 128;
+    private static final int MAX_FUNCTION_CALL_DEPTH = 32;
     public static final String CHAT_MESSAGE_EVENT_NAME = "chat_message";
     public static final String CHAT_SENDER_VARIABLE_NAME = "chat_sender";
     public static final String CHAT_MESSAGE_VARIABLE_NAME = "chat_message";
@@ -100,10 +104,13 @@ public class ExecutionManager {
         final Map<String, RuntimeList> runtimeLists;
         final Map<Node, Set<Integer>> joinBarrierInputs;
         final Map<String, List<HandlerTemplate>> functionHandlerTemplates;
+        final Map<Integer, Integer> executionFunctionDepths;
         final List<Node> graphNodes;
         final List<NodeConnection> graphConnections;
         final List<Node> functionSourceNodes;
         final List<NodeConnection> functionSourceConnections;
+        final AtomicInteger branchBudgetWarnings;
+        final AtomicInteger functionDepthWarnings;
 
         ChainController(Node startNode, int rootExecutionId) {
             this(startNode, rootExecutionId, null, List.of(), List.of());
@@ -125,10 +132,14 @@ public class ExecutionManager {
             this.runtimeLists = new ConcurrentHashMap<>();
             this.joinBarrierInputs = new ConcurrentHashMap<>();
             this.functionHandlerTemplates = new ConcurrentHashMap<>();
+            this.executionFunctionDepths = new ConcurrentHashMap<>();
+            this.executionFunctionDepths.put(rootExecutionId, 0);
             this.graphNodes = Collections.synchronizedList(new ArrayList<>(graphNodes == null ? List.of() : graphNodes));
             this.graphConnections = Collections.synchronizedList(new ArrayList<>(graphConnections == null ? List.of() : graphConnections));
             this.functionSourceNodes = Collections.synchronizedList(new ArrayList<>(graphNodes == null ? List.of() : graphNodes));
             this.functionSourceConnections = Collections.synchronizedList(new ArrayList<>(graphConnections == null ? List.of() : graphConnections));
+            this.branchBudgetWarnings = new AtomicInteger();
+            this.functionDepthWarnings = new AtomicInteger();
         }
     }
 
@@ -1802,7 +1813,7 @@ public class ExecutionManager {
                         if (cancelRequested || controller.cancelRequested) {
                             return CompletableFuture.completedFuture(null);
                         }
-                        return handleEventCallIfNeeded(currentNode, controller, repeatUntilGuard);
+                        return handleEventCallIfNeeded(currentNode, controller, executionId, repeatUntilGuard);
                     })
                     .thenCompose(ignoredFuture -> waitForExecutionResume())
                     .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller, executionId, repeatUntilGuard, arrivalInputSocket));
@@ -1843,7 +1854,8 @@ public class ExecutionManager {
         }, CompletableFuture.delayedExecutor(50L, TimeUnit.MILLISECONDS));
     }
 
-    private CompletableFuture<Void> handleEventCallIfNeeded(Node node, ChainController controller, Node repeatUntilGuard) {
+    private CompletableFuture<Void> handleEventCallIfNeeded(Node node, ChainController controller, int executionId,
+                                                            Node repeatUntilGuard) {
         if (cancelRequested || controller.cancelRequested || node.getType() != NodeType.EVENT_CALL) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1864,8 +1876,10 @@ public class ExecutionManager {
             if (cancelRequested || controller.cancelRequested) {
                 break;
             }
-            retainChainExecution(controller);
             int handlerExecutionId = allocateExecutionId();
+            if (!retainChainExecution(controller, handlerExecutionId, executionId, true)) {
+                continue;
+            }
             CompletableFuture<Void> handlerFuture = runEventHandler(handler, controller, handlerExecutionId, repeatUntilGuard);
             handlerFuture.whenComplete((ignored, throwable) ->
                 handleChainCompletion(controller, throwable, handlerExecutionId));
@@ -2142,8 +2156,10 @@ public class ExecutionManager {
                 break;
             }
             NodeConnection branchConnection = branchConnections.get(i);
-            retainChainExecution(controller);
             int branchExecutionId = allocateExecutionId();
+            if (!retainChainExecution(controller, branchExecutionId, executionId, false)) {
+                continue;
+            }
             CompletableFuture<Void> branchFuture = runChain(branchConnection.getInputNode(), controller, branchExecutionId,
                 repeatUntilGuard, branchConnection.getInputSocket());
             branchFuture.whenComplete((ignored, throwable) ->
@@ -2217,6 +2233,7 @@ public class ExecutionManager {
 
         if (executionId >= 0) {
             activeExecutionNodes.remove(executionId);
+            controller.executionFunctionDepths.remove(executionId);
             clearExecutionTiming(executionId);
             if (primaryExecutionId != null && primaryExecutionId == executionId) {
                 refreshPrimaryExecution();
@@ -2285,9 +2302,51 @@ public class ExecutionManager {
         resetActiveNodeTiming();
     }
 
-    private void retainChainExecution(ChainController controller) {
-        if (controller != null) {
-            controller.activeExecutions.incrementAndGet();
+    private boolean retainChainExecution(ChainController controller, int executionId, int parentExecutionId, boolean functionCall) {
+        if (controller == null) {
+            return false;
+        }
+
+        int parentDepth = controller.executionFunctionDepths.getOrDefault(parentExecutionId, 0);
+        int depth = functionCall ? parentDepth + 1 : parentDepth;
+        if (depth > MAX_FUNCTION_CALL_DEPTH) {
+            if (controller.functionDepthWarnings.getAndIncrement() < 3) {
+                LOGGER.warn("Skipping function call from START node {} because function call depth exceeded {}",
+                    controller.startNode != null ? controller.startNode.getStartNodeNumber() : "unknown",
+                    MAX_FUNCTION_CALL_DEPTH);
+                notifyExecutionBudgetWarning("Pathmind stopped a runaway function call loop. Check this preset for recursive function calls.");
+            }
+            return false;
+        }
+
+        int active = controller.activeExecutions.incrementAndGet();
+        if (active > MAX_CHAIN_EXECUTIONS_PER_START) {
+            controller.activeExecutions.decrementAndGet();
+            if (controller.branchBudgetWarnings.getAndIncrement() < 3) {
+                LOGGER.warn("Skipping branch from START node {} because active execution count exceeded {}",
+                    controller.startNode != null ? controller.startNode.getStartNodeNumber() : "unknown",
+                    MAX_CHAIN_EXECUTIONS_PER_START);
+                notifyExecutionBudgetWarning("Pathmind skipped extra forks to prevent lag. Check this preset for runaway branching.");
+            }
+            return false;
+        }
+
+        controller.executionFunctionDepths.put(executionId, depth);
+        return true;
+    }
+
+    private void notifyExecutionBudgetWarning(String message) {
+        if (message == null || message.isEmpty()) {
+            return;
+        }
+        try {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client == null) {
+                return;
+            }
+            client.execute(() -> NodeErrorNotificationOverlay.getInstance().show(message, UITheme.STATE_WARNING));
+        } catch (Throwable ignored) {
+            // Unit tests and headless environments may not have a Minecraft client.
         }
     }
 

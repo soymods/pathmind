@@ -248,7 +248,12 @@ public class VariablesOverlay {
                 result = formatSingle(values, "Duration", "duration");
                 break;
             case PARAM_AMOUNT:
+            case OPERATOR_MOD:
+            case OPERATOR_RANDOM:
                 result = formatSingle(values, "Amount", "amount");
+                if (result.isEmpty()) {
+                    result = formatSingle(values, "Value", "value");
+                }
                 break;
             case PARAM_BOOLEAN:
                 result = formatSingle(values, "Toggle", "toggle");

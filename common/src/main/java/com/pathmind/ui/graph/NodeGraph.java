@@ -180,6 +180,10 @@ public class NodeGraph {
     private Node startModeDropdownNode = null;
     private int startModeDropdownWorldX = 0;
     private int startModeDropdownWorldY = 0;
+    private static final int START_MODE_DROPDOWN_WIDTH = 124;
+    private static final int START_MODE_DROPDOWN_ROW_HEIGHT = 18;
+    private static final int START_MODE_DROPDOWN_PADDING = 2;
+    private static final int START_MODE_DROPDOWN_SCREEN_MARGIN = 10;
 
     private Node sensorDropTarget = null;
     private Node actionDropTarget = null;
@@ -2633,19 +2637,30 @@ public class NodeGraph {
         if (startModeDropdownNode == null) {
             return;
         }
-        int x = worldToScreenX(startModeDropdownWorldX);
-        int y = worldToScreenY(startModeDropdownWorldY);
-        int width = 124;
-        int rowHeight = 18;
-        int height = StartLaunchMode.values().length * rowHeight + 4;
+        StartDropdownLayout layout = getStartDropdownLayout();
+        int x = layout.x();
+        int y = layout.y();
+        int width = START_MODE_DROPDOWN_WIDTH;
+        int rowHeight = START_MODE_DROPDOWN_ROW_HEIGHT;
+        int height = getStartModeDropdownHeight();
+
+        var matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translate(matrices, x, y);
+        MatrixStackBridge.scale(matrices, layout.scale(), layout.scale());
+        MatrixStackBridge.translate(matrices, -x, -y);
+
+        int transformedMouseX = toStartDropdownSpaceX(mouseX, x, layout.scale());
+        int transformedMouseY = toStartDropdownSpaceY(mouseY, y, layout.scale());
+
         ContextMenuRenderer.renderMenuBackground(context, x, y, width, height);
         StartLaunchMode currentMode = startModeDropdownNode.getStartLaunchMode();
         StartLaunchMode[] modes = StartLaunchMode.values();
         for (int i = 0; i < modes.length; i++) {
             StartLaunchMode mode = modes[i];
             int rowY = y + 2 + i * rowHeight;
-            boolean hovered = mouseX >= x + 2 && mouseX <= x + width - 2
-                && mouseY >= rowY && mouseY <= rowY + rowHeight;
+            boolean hovered = transformedMouseX >= x + 2 && transformedMouseX <= x + width - 2
+                && transformedMouseY >= rowY && transformedMouseY <= rowY + rowHeight;
             if (hovered) {
                 context.fill(x + 2, rowY, x + width - 2, rowY + rowHeight, UITheme.CONTEXT_MENU_ITEM_HOVER);
             }
@@ -2659,16 +2674,19 @@ public class NodeGraph {
             }
         }
         if (shouldRenderStartScreenTargetSubmenu(mouseX, mouseY)) {
-            renderStartScreenTargetSubmenu(context, textRenderer, mouseX, mouseY);
+            renderStartScreenTargetSubmenu(context, textRenderer, transformedMouseX, transformedMouseY, layout);
         }
+
+        MatrixStackBridge.pop(matrices);
     }
 
-    private void renderStartScreenTargetSubmenu(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
-        int x = getStartScreenTargetSubmenuX();
-        int y = getStartScreenTargetSubmenuY();
-        int width = 124;
-        int rowHeight = 18;
-        int height = StartScreenTarget.values().length * rowHeight + 4;
+    private void renderStartScreenTargetSubmenu(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
+                                                StartDropdownLayout layout) {
+        int x = layout.submenuX();
+        int y = layout.submenuY();
+        int width = START_MODE_DROPDOWN_WIDTH;
+        int rowHeight = START_MODE_DROPDOWN_ROW_HEIGHT;
+        int height = getStartScreenTargetSubmenuHeight();
         ContextMenuRenderer.renderMenuBackground(context, x, y, width, height);
         StartScreenTarget currentTarget = startModeDropdownNode.getStartScreenTarget();
         StartScreenTarget[] targets = StartScreenTarget.values();
@@ -14993,16 +15011,17 @@ public class NodeGraph {
     }
 
     private StartLaunchMode getStartModeDropdownOptionAt(int mouseX, int mouseY) {
-        int x = worldToScreenX(startModeDropdownWorldX);
-        int y = worldToScreenY(startModeDropdownWorldY);
-        int width = 124;
-        int rowHeight = 18;
-        int localX = mouseX - x;
-        int localY = mouseY - y - 2;
-        if (localX < 2 || localX > width - 2 || localY < 0) {
+        StartDropdownLayout layout = getStartDropdownLayout();
+        int x = layout.x();
+        int y = layout.y();
+        int transformedMouseX = toStartDropdownSpaceX(mouseX, x, layout.scale());
+        int transformedMouseY = toStartDropdownSpaceY(mouseY, y, layout.scale());
+        int localX = transformedMouseX - x;
+        int localY = transformedMouseY - y - START_MODE_DROPDOWN_PADDING;
+        if (localX < START_MODE_DROPDOWN_PADDING || localX > START_MODE_DROPDOWN_WIDTH - START_MODE_DROPDOWN_PADDING || localY < 0) {
             return null;
         }
-        int index = localY / rowHeight;
+        int index = localY / START_MODE_DROPDOWN_ROW_HEIGHT;
         StartLaunchMode[] modes = StartLaunchMode.values();
         if (index < 0 || index >= modes.length) {
             return null;
@@ -15015,16 +15034,17 @@ public class NodeGraph {
             || !shouldRenderStartScreenTargetSubmenu(mouseX, mouseY)) {
             return null;
         }
-        int x = getStartScreenTargetSubmenuX();
-        int y = getStartScreenTargetSubmenuY();
-        int width = 124;
-        int rowHeight = 18;
-        int localX = mouseX - x;
-        int localY = mouseY - y - 2;
-        if (localX < 2 || localX > width - 2 || localY < 0) {
+        StartDropdownLayout layout = getStartDropdownLayout();
+        int x = layout.submenuX();
+        int y = layout.submenuY();
+        int transformedMouseX = toStartDropdownSpaceX(mouseX, layout.x(), layout.scale());
+        int transformedMouseY = toStartDropdownSpaceY(mouseY, layout.y(), layout.scale());
+        int localX = transformedMouseX - x;
+        int localY = transformedMouseY - y - START_MODE_DROPDOWN_PADDING;
+        if (localX < START_MODE_DROPDOWN_PADDING || localX > START_MODE_DROPDOWN_WIDTH - START_MODE_DROPDOWN_PADDING || localY < 0) {
             return null;
         }
-        int index = localY / rowHeight;
+        int index = localY / START_MODE_DROPDOWN_ROW_HEIGHT;
         StartScreenTarget[] targets = StartScreenTarget.values();
         if (index < 0 || index >= targets.length) {
             return null;
@@ -15040,32 +15060,115 @@ public class NodeGraph {
     }
 
     private boolean isMouseOverStartScreenOpenedModeRow(int mouseX, int mouseY) {
-        int x = worldToScreenX(startModeDropdownWorldX);
-        int y = worldToScreenY(startModeDropdownWorldY);
-        int width = 124;
-        int rowHeight = 18;
+        StartDropdownLayout layout = getStartDropdownLayout();
+        int x = layout.x();
+        int y = layout.y();
+        int transformedMouseX = toStartDropdownSpaceX(mouseX, x, layout.scale());
+        int transformedMouseY = toStartDropdownSpaceY(mouseY, y, layout.scale());
         int rowIndex = StartLaunchMode.SCREEN_OPENED.ordinal();
-        int rowY = y + 2 + rowIndex * rowHeight;
-        return mouseX >= x && mouseX <= x + width
-            && mouseY >= rowY && mouseY <= rowY + rowHeight;
+        int rowY = y + START_MODE_DROPDOWN_PADDING + rowIndex * START_MODE_DROPDOWN_ROW_HEIGHT;
+        return transformedMouseX >= x && transformedMouseX <= x + START_MODE_DROPDOWN_WIDTH
+            && transformedMouseY >= rowY && transformedMouseY <= rowY + START_MODE_DROPDOWN_ROW_HEIGHT;
     }
 
     private boolean isMouseOverStartScreenTargetSubmenu(int mouseX, int mouseY) {
-        int x = getStartScreenTargetSubmenuX();
-        int y = getStartScreenTargetSubmenuY();
-        int width = 124;
-        int height = StartScreenTarget.values().length * 18 + 4;
-        return mouseX >= x && mouseX <= x + width
-            && mouseY >= y && mouseY <= y + height;
+        StartDropdownLayout layout = getStartDropdownLayout();
+        int transformedMouseX = toStartDropdownSpaceX(mouseX, layout.x(), layout.scale());
+        int transformedMouseY = toStartDropdownSpaceY(mouseY, layout.y(), layout.scale());
+        int x = layout.submenuX();
+        int y = layout.submenuY();
+        return transformedMouseX >= x && transformedMouseX <= x + START_MODE_DROPDOWN_WIDTH
+            && transformedMouseY >= y && transformedMouseY <= y + getStartScreenTargetSubmenuHeight();
     }
 
     private int getStartScreenTargetSubmenuX() {
-        return worldToScreenX(startModeDropdownWorldX) + 123;
+        return getStartDropdownLayout().submenuX();
     }
 
     private int getStartScreenTargetSubmenuY() {
-        int baseY = worldToScreenY(startModeDropdownWorldY);
-        return baseY + 2 + StartLaunchMode.SCREEN_OPENED.ordinal() * 18;
+        return getStartDropdownLayout().submenuY();
+    }
+
+    private StartDropdownLayout getStartDropdownLayout() {
+        float scale = Math.max(0.05f, getZoomScale());
+        int screenWidth = getCurrentScaledScreenWidth();
+        int screenHeight = getCurrentScaledScreenHeight();
+
+        int x = worldToScreenX(startModeDropdownWorldX);
+        int y = worldToScreenY(startModeDropdownWorldY);
+        x = clampScaledDropdownPosition(x, START_MODE_DROPDOWN_WIDTH, scale, screenWidth);
+        y = clampScaledDropdownPosition(y, getStartModeDropdownHeight(), scale, screenHeight);
+
+        int submenuX = x + START_MODE_DROPDOWN_WIDTH - 1;
+        int submenuY = y + START_MODE_DROPDOWN_PADDING
+            + StartLaunchMode.SCREEN_OPENED.ordinal() * START_MODE_DROPDOWN_ROW_HEIGHT;
+
+        int submenuScreenLeft = toStartDropdownScreenX(submenuX, x, scale);
+        int submenuScreenRight = submenuScreenLeft + Math.round(START_MODE_DROPDOWN_WIDTH * scale);
+        if (screenWidth > 0 && submenuScreenRight > screenWidth - START_MODE_DROPDOWN_SCREEN_MARGIN) {
+            submenuX = x - START_MODE_DROPDOWN_WIDTH + 1;
+        }
+
+        int submenuScreenTop = toStartDropdownScreenY(submenuY, y, scale);
+        int submenuScreenHeight = Math.round(getStartScreenTargetSubmenuHeight() * scale);
+        if (screenHeight > 0) {
+            int overflow = submenuScreenTop + submenuScreenHeight - (screenHeight - START_MODE_DROPDOWN_SCREEN_MARGIN);
+            if (overflow > 0) {
+                submenuY -= Math.round(overflow / scale);
+                submenuY = Math.max(y, submenuY);
+            }
+        }
+
+        return new StartDropdownLayout(x, y, submenuX, submenuY, scale);
+    }
+
+    private int getStartModeDropdownHeight() {
+        return StartLaunchMode.values().length * START_MODE_DROPDOWN_ROW_HEIGHT
+            + START_MODE_DROPDOWN_PADDING * 2;
+    }
+
+    private int getStartScreenTargetSubmenuHeight() {
+        return StartScreenTarget.values().length * START_MODE_DROPDOWN_ROW_HEIGHT
+            + START_MODE_DROPDOWN_PADDING * 2;
+    }
+
+    private int clampScaledDropdownPosition(int position, int size, float scale, int screenSize) {
+        if (screenSize <= 0) {
+            return position;
+        }
+        int scaledSize = Math.round(size * scale);
+        int min = START_MODE_DROPDOWN_SCREEN_MARGIN;
+        int max = Math.max(min, screenSize - START_MODE_DROPDOWN_SCREEN_MARGIN - scaledSize);
+        return Math.max(min, Math.min(position, max));
+    }
+
+    private int toStartDropdownSpaceX(int mouseX, int dropdownX, float scale) {
+        return Math.round(dropdownX + (mouseX - dropdownX) / scale);
+    }
+
+    private int toStartDropdownSpaceY(int mouseY, int dropdownY, float scale) {
+        return Math.round(dropdownY + (mouseY - dropdownY) / scale);
+    }
+
+    private int toStartDropdownScreenX(int x, int dropdownX, float scale) {
+        return Math.round(dropdownX + (x - dropdownX) * scale);
+    }
+
+    private int toStartDropdownScreenY(int y, int dropdownY, float scale) {
+        return Math.round(dropdownY + (y - dropdownY) * scale);
+    }
+
+    private int getCurrentScaledScreenWidth() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client != null && client.getWindow() != null ? client.getWindow().getScaledWidth() : 0;
+    }
+
+    private int getCurrentScaledScreenHeight() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client != null && client.getWindow() != null ? client.getWindow().getScaledHeight() : 0;
+    }
+
+    private record StartDropdownLayout(int x, int y, int submenuX, int submenuY, float scale) {
     }
     
     public boolean isHoveringStartButton() {

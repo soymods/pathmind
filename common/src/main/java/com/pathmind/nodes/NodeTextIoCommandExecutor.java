@@ -928,6 +928,13 @@ final class NodeTextIoCommandExecutor {
             }
             case PARAM_AMOUNT:
                 return getRuntimeValue(values, "amount");
+            case OPERATOR_MOD: {
+                String value = getRuntimeValue(values, "value");
+                if (!value.isEmpty()) {
+                    return value;
+                }
+                return getRuntimeValue(values, "amount");
+            }
             case LIST_LENGTH: {
                 String length = getRuntimeValue(values, "count");
                 if (!length.isEmpty()) {

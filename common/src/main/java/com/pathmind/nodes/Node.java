@@ -1312,7 +1312,7 @@ public class Node {
             case SENSOR_TARGETED_ENTITY -> NodeType.PARAM_ENTITY;
             case SENSOR_LOOK_DIRECTION -> isSensorLookSingleAxisMode() ? NodeType.PARAM_AMOUNT : NodeType.PARAM_ROTATION;
             case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
-            case SENSOR_SLOT_ITEM_COUNT, SENSOR_FIND_TRADE, LIST_LENGTH -> NodeType.PARAM_AMOUNT;
+            case SENSOR_SLOT_ITEM_COUNT, SENSOR_FIND_TRADE, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
             case CHANGE_VARIABLE -> NodeType.PARAM_AMOUNT;
             default -> type;
         };

@@ -1043,6 +1043,33 @@ class ExecutionManagerValidationTest {
         assertEquals(1, secondActionCount.get());
     }
 
+    @Test
+    void chainExecutionBudgetRejectsRunawayForkFanOut() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        Object controller = newChainController(start, 1);
+        Method retain = retainChainExecutionMethod(controller.getClass());
+
+        for (int executionId = 2; executionId <= 128; executionId++) {
+            assertTrue((Boolean) retain.invoke(manager, controller, executionId, 1, false));
+        }
+        assertFalse((Boolean) retain.invoke(manager, controller, 129, 1, false));
+    }
+
+    @Test
+    void functionCallDepthBudgetRejectsRecursiveRunawayCalls() throws Exception {
+        Node start = new Node(NodeType.START, 0, 0);
+        Object controller = newChainController(start, 1);
+        Method retain = retainChainExecutionMethod(controller.getClass());
+
+        int parentExecutionId = 1;
+        for (int depth = 1; depth <= 32; depth++) {
+            int executionId = depth + 1;
+            assertTrue((Boolean) retain.invoke(manager, controller, executionId, parentExecutionId, true));
+            parentExecutionId = executionId;
+        }
+        assertFalse((Boolean) retain.invoke(manager, controller, 34, parentExecutionId, true));
+    }
+
     @SuppressWarnings("unchecked")
     private CompletableFuture<Void> invokeContinueFromNode(Node node) throws Exception {
         return invokeContinueFromNode(node, List.of(node), List.of());
@@ -1070,6 +1097,23 @@ class ExecutionManagerValidationTest {
             "continueFromNode", Node.class, controllerClass, int.class, Node.class, int.class);
         continueFromNode.setAccessible(true);
         return (CompletableFuture<Void>) continueFromNode.invoke(manager, node, controller, 1, null, -1);
+    }
+
+    private Object newChainController(Node startNode, int executionId) throws Exception {
+        Class<?> controllerClass = Arrays.stream(ExecutionManager.class.getDeclaredClasses())
+            .filter(candidate -> "ChainController".equals(candidate.getSimpleName()))
+            .findFirst()
+            .orElseThrow();
+        Constructor<?> constructor = controllerClass.getDeclaredConstructor(Node.class, int.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(startNode, executionId);
+    }
+
+    private Method retainChainExecutionMethod(Class<?> controllerClass) throws Exception {
+        Method retain = ExecutionManager.class.getDeclaredMethod(
+            "retainChainExecution", controllerClass, int.class, int.class, boolean.class);
+        retain.setAccessible(true);
+        return retain;
     }
 
     private static class CountingNode extends Node {

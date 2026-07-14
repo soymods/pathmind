@@ -112,6 +112,42 @@ class GraphValidatorTest {
     }
 
     @Test
+    void validateAllowsBlankStopChainTargetForOwningStart() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node stop = new Node(NodeType.STOP_CHAIN, 100, 0);
+        stop.getParameter("StartNumber").setStringValue("");
+        NodeConnection connection = new NodeConnection(start, stop, 0, 0);
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, stop),
+            List.of(connection),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertFalse(hasIssueCode(result, "missing_start_target"));
+    }
+
+    @Test
+    void validateStillRequiresStartChainTarget() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node startChain = new Node(NodeType.START_CHAIN, 100, 0);
+        startChain.getParameter("StartNumber").setStringValue("");
+        NodeConnection connection = new NodeConnection(start, startChain, 0, 0);
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, startChain),
+            List.of(connection),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertTrue(hasIssueCode(result, "missing_start_target"));
+    }
+
+    @Test
     void validateDoesNotWarnForUnconnectedStickyNotes() {
         Node start = new Node(NodeType.START, 0, 0);
         Node wait = new Node(NodeType.WAIT, 100, 0);

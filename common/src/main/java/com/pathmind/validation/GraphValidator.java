@@ -229,7 +229,7 @@ public final class GraphValidator {
             return;
         }
 
-        if (type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN) {
+        if (type == NodeType.START_CHAIN) {
             String target = normalize(getParameterValue(node, "StartNumber"));
             if (target.isEmpty()) {
                 issues.add(issue(GraphValidationSeverity.ERROR, "missing_start_target",

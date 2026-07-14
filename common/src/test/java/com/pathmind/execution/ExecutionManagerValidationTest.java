@@ -2,6 +2,7 @@ package com.pathmind.execution;
 
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
+import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeMode;
@@ -1070,6 +1071,23 @@ class ExecutionManagerValidationTest {
         assertFalse((Boolean) retain.invoke(manager, controller, 34, parentExecutionId, true));
     }
 
+    @Test
+    void keybindLaunchReplaysWorkspaceGraphInsteadOfLastStartBranch() throws Exception {
+        Node startOne = new Node(NodeType.START, 0, 0);
+        startOne.setStartNodeNumber(1);
+        Node startTwo = new Node(NodeType.START, 100, 0);
+        startTwo.setStartNodeNumber(2);
+        List<Node> nodes = List.of(startOne, startTwo);
+        List<NodeConnection> connections = List.of();
+
+        assertTrue(manager.executeBranch(startTwo, nodes, connections, PresetManager.getDefaultPresetName()));
+        assertEquals(1, countStartNodes(lastExecutedGraph()));
+
+        manager.playAllGraphs();
+
+        assertEquals(2, countStartNodes(lastExecutedGraph()));
+    }
+
     @SuppressWarnings("unchecked")
     private CompletableFuture<Void> invokeContinueFromNode(Node node) throws Exception {
         return invokeContinueFromNode(node, List.of(node), List.of());
@@ -1114,6 +1132,19 @@ class ExecutionManagerValidationTest {
             "retainChainExecution", controllerClass, int.class, int.class, boolean.class);
         retain.setAccessible(true);
         return retain;
+    }
+
+    private NodeGraphData lastExecutedGraph() throws Exception {
+        Field field = ExecutionManager.class.getDeclaredField("lastExecutedGraph");
+        field.setAccessible(true);
+        return (NodeGraphData) field.get(manager);
+    }
+
+    private int countStartNodes(NodeGraphData graphData) {
+        assertNotNull(graphData);
+        return (int) graphData.getNodes().stream()
+            .filter(node -> node.getType() == NodeType.START)
+            .count();
     }
 
     private static class CountingNode extends Node {

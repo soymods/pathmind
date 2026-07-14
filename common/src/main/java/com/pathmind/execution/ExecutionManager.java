@@ -700,26 +700,20 @@ public class ExecutionManager {
     }
 
     public void playAllGraphs() {
-        if (workspaceNodes == null || workspaceNodes.isEmpty() || workspaceConnections == null) {
-            LOGGER.debug("No workspace graph available to start a START node");
+        if (workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
+            executeGraphInternal(workspaceNodes, workspaceConnections, true);
             return;
         }
 
-        int startNodeNumber = resolvePlayableStartNumber();
-        if (startNodeNumber <= 0) {
-            LOGGER.debug("No playable START node available for keybind launch");
+        if (lastGlobalGraph != null && executeGraphSnapshot(lastGlobalGraph, true)) {
             return;
         }
 
-        Node startNode = findWorkspaceStartNode(startNodeNumber);
-        if (startNode == null) {
-            LOGGER.debug("START node {} no longer exists in the current workspace", startNodeNumber);
+        if (lastExecutedGraph != null && executeGraphSnapshot(lastExecutedGraph, lastSnapshotWasGlobal)) {
             return;
         }
 
-        if (!requestStartForStartNumber(startNodeNumber)) {
-            LOGGER.debug("Failed to start last START node {} from current workspace", startNodeNumber);
-        }
+        LOGGER.debug("No workspace graph available for keybind launch");
     }
 
     public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections) {

@@ -7,6 +7,7 @@ import com.pathmind.execution.ExecutionManager.RuntimeVariable;
 import com.pathmind.execution.ExecutionManager.RuntimeVariableEntry;
 import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.RuntimeValueScope;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
@@ -120,7 +121,7 @@ public class VariablesOverlay {
         }
 
         List<String> lines = new ArrayList<>();
-        lines.add("Runtime");
+        lines.add(Text.translatable("pathmind.runtimeScope.overlay.title").getString());
 
         for (RuntimeVariableEntry entry : entries) {
             RuntimeVariable variable = entry.getVariable();
@@ -137,7 +138,7 @@ public class VariablesOverlay {
                 continue;
             }
 
-            String label = name.trim();
+            String label = scopeLabel(entry.getScope()) + " · " + name.trim();
             if (nameCounts.getOrDefault(name, 0) > 1) {
                 String suffix = shortId(entry.getStartNodeId());
                 if (!suffix.isEmpty()) {
@@ -159,7 +160,7 @@ public class VariablesOverlay {
                 continue;
             }
 
-            String label = name.trim();
+            String label = scopeLabel(entry.getScope()) + " · " + name.trim();
             if (nameCounts.getOrDefault(name, 0) > 1) {
                 String suffix = shortId(entry.getStartNodeId());
                 if (!suffix.isEmpty()) {
@@ -177,6 +178,14 @@ public class VariablesOverlay {
             lines.clear();
         }
         return lines;
+    }
+
+    private String scopeLabel(RuntimeValueScope scope) {
+        String key = switch (RuntimeValueScope.orGlobal(scope)) {
+            case GLOBAL -> "pathmind.runtimeScope.global.short";
+            case CHAIN -> "pathmind.runtimeScope.local.short";
+        };
+        return Text.translatable(key).getString();
     }
 
     private String formatListValue(RuntimeList list) {

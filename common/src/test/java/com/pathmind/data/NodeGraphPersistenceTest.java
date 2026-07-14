@@ -3,6 +3,7 @@ package com.pathmind.data;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.RuntimeValueScope;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,6 +25,38 @@ class NodeGraphPersistenceTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void newlyCreatedRuntimeValuesDefaultToChainScope() {
+        assertEquals(RuntimeValueScope.CHAIN,
+            Node.createForEditor(NodeType.VARIABLE, 0, 0).getRuntimeValueScope());
+        assertEquals(RuntimeValueScope.CHAIN,
+            Node.createForEditor(NodeType.CREATE_LIST, 0, 0).getRuntimeValueScope());
+    }
+
+    @Test
+    void runtimeValueScopesRoundTripAndMissingScopeDefaultsToGlobal() {
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.setRuntimeValueScope(RuntimeValueScope.CHAIN);
+        Node list = new Node(NodeType.CREATE_LIST, 100, 0);
+        list.setRuntimeValueScope(RuntimeValueScope.GLOBAL);
+
+        Path savePath = tempDir.resolve("runtime-scopes.json");
+        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(List.of(variable, list), List.of(), savePath));
+        NodeGraphData saved = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
+        assertNotNull(saved);
+        List<Node> restored = NodeGraphPersistence.convertToNodes(saved);
+        Map<NodeType, Node> byType = restored.stream()
+            .collect(Collectors.toMap(Node::getType, Function.identity()));
+
+        assertEquals(RuntimeValueScope.CHAIN, byType.get(NodeType.VARIABLE).getRuntimeValueScope());
+        assertEquals(RuntimeValueScope.GLOBAL, byType.get(NodeType.CREATE_LIST).getRuntimeValueScope());
+
+        saved.getNodes().forEach(nodeData -> nodeData.setRuntimeValueScope(null));
+        List<Node> oldSaveRestored = NodeGraphPersistence.convertToNodes(saved);
+        assertTrue(oldSaveRestored.stream()
+            .allMatch(node -> node.getRuntimeValueScope() == RuntimeValueScope.GLOBAL));
+    }
 
     @Test
     void customNodeDefinitionDoesNotExposePureSetVariableTargetAsInput() {

@@ -12,6 +12,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeTraitRegistry;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.RuntimeValueScope;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -255,7 +256,7 @@ public final class GraphValidator {
         if (valueType == null) {
             return;
         }
-        inferredVariableTypes.computeIfAbsent(variableName, ignored -> new LinkedHashSet<>()).add(valueType);
+        inferredVariableTypes.computeIfAbsent(variableScopeKey(variableNode, variableName), ignored -> new LinkedHashSet<>()).add(valueType);
     }
 
     private static NodeType inferAssignedVariableType(Node valueNode) {
@@ -287,7 +288,7 @@ public final class GraphValidator {
             if (variableName.isEmpty()) {
                 continue;
             }
-            Set<NodeType> types = inferredVariableTypes.get(variableName);
+            Set<NodeType> types = inferredVariableTypes.get(variableScopeKey(attached, variableName));
             if (types == null || types.isEmpty()) {
                 continue;
             }
@@ -308,6 +309,13 @@ public final class GraphValidator {
                 : tr("pathmind.validation.variableOnlyTypesIncompatible", displayValue(variableName), node.getType().getDisplayName(), String.join(", ", incompatibleNames));
             issues.add(issue(GraphValidationSeverity.WARNING, "variable_type_mismatch", message, node));
         }
+    }
+
+    private static String variableScopeKey(Node variableNode, String variableName) {
+        RuntimeValueScope scope = variableNode == null
+            ? RuntimeValueScope.GLOBAL
+            : variableNode.getRuntimeValueScope();
+        return scope.name() + "\u0000" + variableName;
     }
 
     private static Set<String> collectReachableNodeIds(List<Node> startNodes, Map<String, List<NodeConnection>> outgoingById,

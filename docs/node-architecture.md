@@ -27,6 +27,7 @@ Preset graph data is stored as `NodeGraphData`:
 - `nodes`: serialized `NodeData` records.
 - `connections`: serialized `ConnectionData` records.
 - `customNodeDefinition`: generated metadata that lets a preset behave like a reusable custom/template node.
+- `routines`: preset-owned routine definitions with stable identities, input interfaces, independent versions, and embedded graphs.
 
 `NodeGraphPersistence.saveNodeGraphForPreset` writes live nodes and connections to the preset file returned by `PresetManager.getPresetPath`. During save it also rebuilds `customNodeDefinition`, including discovered custom-node inputs, outputs, signature, and version.
 
@@ -40,9 +41,13 @@ Preset graph data is stored as `NodeGraphData`:
 - layout: `x` and `y`;
 - inline parameters: `ParameterData` entries;
 - attachment links: sensor, action, and parameter host/child ids;
-- special per-node state such as start number, message lines, sticky note size/text, template graph, template version, custom node flag, goto flags, and key sensor GUI behavior.
+- special per-node state such as start number, message lines, sticky note size/text, template graph, template version, custom node flag, runtime value scope, goto flags, and key sensor GUI behavior.
 
 Connections are serialized separately as output node id/socket to input node id/socket.
+
+Routine definitions remain inside their owning preset. Each routine and input has a UUID, while bindings are expected to use input IDs instead of labels or positions. Inputs persist their label, value kind, accepted traits, required state, default value, and order. A routine stores an embedded `NodeGraphData` graph plus two counters: `interfaceVersion` for binding-affecting interface edits and `implementationRevision` for metadata or internal graph edits.
+
+`NodeGraphPersistence.sanitizeRoutineDefinitions` repairs missing or duplicate IDs, missing graphs, invalid versions, unknown value kinds, traits, and ordering. Its interface signature excludes editable labels but includes stable input IDs, kinds, traits, required/default state, and order. Its implementation signature includes names, labels, and graph structure, but deliberately excludes node coordinates. This means moving nodes does not version a routine; renaming only advances the implementation revision; and adding, removing, reordering, or changing an input advances the interface version while stable IDs preserve compatible bindings.
 
 Attachments are not normal flow connections. Sensors, child action nodes, and parameter nodes are restored after all nodes are created so id references can be resolved.
 
@@ -191,6 +196,14 @@ Execution starts in `ExecutionManager`.
 - branch graph nodes/connections;
 - parent scope for nested executions.
 
+Named runtime values use `RuntimeValueScope`:
+
+- `CHAIN` stores variables and lists at the root controller for one START execution tree. Nested preset executions inherit that root without seeing unrelated chains.
+- `GLOBAL` stores variables and lists in the execution-wide shared maps and never falls through to chain state.
+Explicit `CHAIN` and `GLOBAL` reads never fall through to one another. Nodes loaded without scope metadata default to `GLOBAL`, matching Pathmind's behavior before explicit scopes were added. Variables and runtime lists intentionally use the same scope rules.
+
+Editor-created variable and Create List nodes default to `CHAIN`. Their top-right button uses a contained-value icon for local scope and a globe for global scope. Other list operations inherit the scope of the matching Create List declaration, so they do not show redundant scope controls. Clicking a visible scope button records undo state and saves through normal graph persistence. The runtime overlay labels values as local or global, and validation keeps type inference separate for equal names in different scopes.
+
 This scope is why `RUN_PRESET`, `CUSTOM_NODE`, and `TEMPLATE` can start nested graphs without simply merging all state into the top-level editor graph.
 
 ## Command Dispatch
@@ -226,6 +239,8 @@ Saved presets can expose `customNodeDefinition`. `NodeGraphPersistence` discover
 `RUN_PRESET` loads another preset and starts its `START` nodes externally.
 
 `CUSTOM_NODE` and `TEMPLATE` also load preset graph data, but they wait for nested execution completion and use template/custom-node metadata to behave more like reusable subgraphs. Their node data can include `templateName`, `templateVersion`, `customNodeInstance`, and embedded `templateGraph`.
+
+The planned replacement for this overlapping preset/function/custom-node model is documented in [`routines-redesign-roadmap.md`](routines-redesign-roadmap.md). Implement that roadmap one reviewed pass at a time while retaining the compatibility behavior described here.
 
 ## Current Refactor Guidance
 

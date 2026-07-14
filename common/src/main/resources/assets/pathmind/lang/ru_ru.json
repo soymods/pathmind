@@ -688,5 +688,8 @@
   "pathmind.marketplace.publicPresetCount.one": "%s публичный пресет",
   "pathmind.marketplace.publicPresetCount.other": "%s публичных пресетов",
   "pathmind.status.loadedPresets.one": "Загружен %s пресет.",
-  "pathmind.status.loadedPresets.other": "Загружено %s пресетов."
+  "pathmind.status.loadedPresets.other": "Загружено %s пресетов.",
+  "pathmind.runtimeScope.local.short": "Локальная",
+  "pathmind.runtimeScope.global.short": "Глобальная",
+  "pathmind.runtimeScope.overlay.title": "Значения выполнения"
 }

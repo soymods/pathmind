@@ -100,4 +100,41 @@ public final class PathmindIconRenderer {
             context.fill(x + (span - 1 - i), y + i, x + (span - i), y + i + 1, color);
         }
     }
+
+    /** Draws a small globe for values shared by every execution chain. */
+    public static void drawGlobalScope(DrawContext context, int x, int y, int size, int color) {
+        if (context == null || size < 5) {
+            return;
+        }
+        int right = x + size - 1;
+        int bottom = y + size - 1;
+        int midX = x + size / 2;
+        int midY = y + size / 2;
+        context.drawHorizontalLine(x + 2, right - 2, y, color);
+        context.drawHorizontalLine(x + 1, right - 1, y + 1, color);
+        context.drawVerticalLine(x, y + 2, bottom - 2, color);
+        context.drawVerticalLine(right, y + 2, bottom - 2, color);
+        context.drawHorizontalLine(x, right, midY, color);
+        context.drawVerticalLine(midX, y, bottom, color);
+        context.drawHorizontalLine(x + 1, right - 1, bottom - 1, color);
+        context.drawHorizontalLine(x + 2, right - 2, bottom, color);
+    }
+
+    /** Draws a small home for values local to a single execution chain. */
+    public static void drawLocalScope(DrawContext context, int x, int y, int size, int color) {
+        if (context == null || size < 5) {
+            return;
+        }
+        int midX = x + size / 2;
+        int right = x + size - 1;
+        int bottom = y + size - 1;
+        context.fill(midX, y, midX + 1, y + 1, color);
+        context.drawHorizontalLine(midX - 1, midX + 1, y + 1, color);
+        context.drawHorizontalLine(midX - 2, midX + 2, y + 2, color);
+        context.drawVerticalLine(x + 1, y + 3, bottom, color);
+        context.drawVerticalLine(right - 1, y + 3, bottom, color);
+        context.drawHorizontalLine(x + 1, right - 1, y + 3, color);
+        context.drawHorizontalLine(x + 1, right - 1, bottom, color);
+        context.drawVerticalLine(midX, bottom - 2, bottom, color);
+    }
 }

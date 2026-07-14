@@ -1083,5 +1083,8 @@
   "pathmind.marketplace.publicPresetCount.one": "%s public preset",
   "pathmind.marketplace.publicPresetCount.other": "%s public presets",
   "pathmind.status.loadedPresets.one": "Loaded %s preset.",
-  "pathmind.status.loadedPresets.other": "Loaded %s presets."
+  "pathmind.status.loadedPresets.other": "Loaded %s presets.",
+  "pathmind.runtimeScope.local.short": "Local",
+  "pathmind.runtimeScope.global.short": "Global",
+  "pathmind.runtimeScope.overlay.title": "Runtime values"
 }

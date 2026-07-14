@@ -1692,6 +1692,10 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleRuntimeScopeButtonClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
+
                 if (nodeGraph.handleSchematicDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     return true;
                 }

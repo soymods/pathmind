@@ -115,6 +115,9 @@ final class NodeGraphClipboardSupport {
                 }
             }
             newNode.ensureVillagerTradeNumberParameter();
+            if (newNode.supportsRuntimeValueScope()) {
+                newNode.setRuntimeValueScope(nodeData.getRuntimeValueScope());
+            }
             if (newNode.hasMessageInputFields() && nodeData.getMessageLines() != null) {
                 newNode.setMessageLines(nodeData.getMessageLines());
                 if (newNode.hasMessageScopeToggle()) {
@@ -242,6 +245,7 @@ final class NodeGraphClipboardSupport {
             nodeData.setStartNodeNumber(node.getStartNodeNumber());
             nodeData.setStartLaunchMode(node.getStartLaunchMode());
             nodeData.setStartScreenTarget(node.getStartScreenTarget());
+            nodeData.setRuntimeValueScope(node.supportsRuntimeValueScope() ? node.getRuntimeValueScope() : null);
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
                 nodeData.setMessageClientSide(node.isMessageClientSide());

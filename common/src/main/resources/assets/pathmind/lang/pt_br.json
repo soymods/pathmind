@@ -706,5 +706,8 @@
   "pathmind.marketplace.publicPresetCount.one": "%s preset público",
   "pathmind.marketplace.publicPresetCount.other": "%s presets públicos",
   "pathmind.status.loadedPresets.one": "%s preset carregado.",
-  "pathmind.status.loadedPresets.other": "%s presets carregados."
+  "pathmind.status.loadedPresets.other": "%s presets carregados.",
+  "pathmind.runtimeScope.local.short": "Local",
+  "pathmind.runtimeScope.global.short": "Global",
+  "pathmind.runtimeScope.overlay.title": "Valores de execução"
 }

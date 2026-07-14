@@ -5,6 +5,7 @@ import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
+import com.pathmind.nodes.RuntimeValueScope;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
@@ -220,11 +221,17 @@ public class ExecutionManager {
         private final String startNodeId;
         private final String name;
         private final RuntimeVariable variable;
+        private final RuntimeValueScope scope;
 
         public RuntimeVariableEntry(String startNodeId, String name, RuntimeVariable variable) {
+            this(startNodeId, name, variable, RuntimeValueScope.CHAIN);
+        }
+
+        public RuntimeVariableEntry(String startNodeId, String name, RuntimeVariable variable, RuntimeValueScope scope) {
             this.startNodeId = startNodeId;
             this.name = name;
             this.variable = variable;
+            this.scope = RuntimeValueScope.orGlobal(scope);
         }
 
         public String getStartNodeId() {
@@ -238,17 +245,27 @@ public class ExecutionManager {
         public RuntimeVariable getVariable() {
             return variable;
         }
+
+        public RuntimeValueScope getScope() {
+            return scope;
+        }
     }
 
     public static final class RuntimeListEntry {
         private final String startNodeId;
         private final String name;
         private final RuntimeList list;
+        private final RuntimeValueScope scope;
 
         public RuntimeListEntry(String startNodeId, String name, RuntimeList list) {
+            this(startNodeId, name, list, RuntimeValueScope.CHAIN);
+        }
+
+        public RuntimeListEntry(String startNodeId, String name, RuntimeList list, RuntimeValueScope scope) {
             this.startNodeId = startNodeId;
             this.name = name;
             this.list = list;
+            this.scope = RuntimeValueScope.orGlobal(scope);
         }
 
         public String getStartNodeId() {
@@ -261,6 +278,10 @@ public class ExecutionManager {
 
         public RuntimeList getList() {
             return list;
+        }
+
+        public RuntimeValueScope getScope() {
+            return scope;
         }
     }
 
@@ -346,34 +367,47 @@ public class ExecutionManager {
     }
 
     public boolean setRuntimeVariable(Node startNode, String name, RuntimeVariable value) {
-        if (startNode == null || name == null || name.trim().isEmpty() || value == null) {
+        return setRuntimeVariable(startNode, name, value, RuntimeValueScope.GLOBAL);
+    }
+
+    public boolean setRuntimeVariable(Node startNode, String name, RuntimeVariable value, RuntimeValueScope scope) {
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (name == null || name.trim().isEmpty() || value == null
+            || (startNode == null && resolvedScope != RuntimeValueScope.GLOBAL)) {
             return false;
         }
-        ChainController controller = activeChains.get(startNode);
-        return storeRuntimeVariable(controller, name.trim(), value, true);
+        ChainController controller = startNode == null ? null : findChainControllerForStart(startNode);
+        return storeRuntimeVariable(controller, name.trim(), value, resolvedScope);
     }
 
     public RuntimeVariable getRuntimeVariable(Node startNode, String name) {
-        if (startNode == null || name == null || name.trim().isEmpty()) {
+        return getRuntimeVariable(startNode, name, RuntimeValueScope.GLOBAL);
+    }
+
+    public RuntimeVariable getRuntimeVariable(Node startNode, String name, RuntimeValueScope scope) {
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (name == null || name.trim().isEmpty()
+            || (startNode == null && resolvedScope != RuntimeValueScope.GLOBAL)) {
             return null;
         }
-        ChainController controller = activeChains.get(startNode);
-        return resolveRuntimeVariable(controller, name.trim());
+        ChainController controller = startNode == null ? null : findChainControllerForStart(startNode);
+        return resolveRuntimeVariable(controller, name.trim(), resolvedScope);
+    }
+
+    public boolean setGlobalRuntimeVariable(String name, RuntimeVariable value) {
+        return setRuntimeVariable(null, name, value, RuntimeValueScope.GLOBAL);
+    }
+
+    public RuntimeVariable getGlobalRuntimeVariable(String name) {
+        return getRuntimeVariable(null, name, RuntimeValueScope.GLOBAL);
     }
 
     public boolean setRuntimeVariableForAnyActiveChain(String name, RuntimeVariable value) {
         if (name == null || name.trim().isEmpty() || value == null) {
             return false;
         }
-        ChainController currentController = resolveCurrentChainController();
-        if (currentController != null) {
-            return storeRuntimeVariable(currentController, name.trim(), value, true);
-        }
-        for (ChainController controller : activeChains.values()) {
-            return storeRuntimeVariable(controller, name.trim(), value, true);
-        }
         globalRuntimeVariables.put(name.trim(), value);
-        return false;
+        return true;
     }
 
     public RuntimeVariable getRuntimeVariableFromAnyActiveChain(String name) {
@@ -382,13 +416,13 @@ public class ExecutionManager {
         }
         ChainController currentController = resolveCurrentChainController();
         if (currentController != null) {
-            RuntimeVariable currentValue = resolveRuntimeVariable(currentController, name.trim());
+            RuntimeVariable currentValue = resolveRuntimeVariable(currentController, name.trim(), RuntimeValueScope.CHAIN);
             if (currentValue != null) {
                 return currentValue;
             }
         }
         for (ChainController controller : activeChains.values()) {
-            RuntimeVariable value = resolveRuntimeVariable(controller, name.trim());
+            RuntimeVariable value = resolveRuntimeVariable(controller, name.trim(), RuntimeValueScope.CHAIN);
             if (value != null) {
                 return value;
             }
@@ -466,25 +500,81 @@ public class ExecutionManager {
     }
 
     public boolean setRuntimeList(Node startNode, String name, RuntimeList list) {
-        if (startNode == null || name == null || name.trim().isEmpty() || list == null) {
+        return setRuntimeList(startNode, name, list, RuntimeValueScope.GLOBAL);
+    }
+
+    public boolean setRuntimeList(Node startNode, String name, RuntimeList list, RuntimeValueScope scope) {
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (name == null || name.trim().isEmpty() || list == null
+            || (startNode == null && resolvedScope != RuntimeValueScope.GLOBAL)) {
             return false;
         }
-        ChainController controller = activeChains.get(startNode);
-        return storeRuntimeList(controller, name.trim(), list, true);
+        ChainController controller = startNode == null ? null : findChainControllerForStart(startNode);
+        return storeRuntimeList(controller, name.trim(), list, resolvedScope);
     }
 
     public RuntimeList getRuntimeList(Node startNode, String name) {
-        if (startNode == null || name == null || name.trim().isEmpty()) {
+        return getRuntimeList(startNode, name, RuntimeValueScope.GLOBAL);
+    }
+
+    public RuntimeList getRuntimeList(Node startNode, String name, RuntimeValueScope scope) {
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (name == null || name.trim().isEmpty()
+            || (startNode == null && resolvedScope != RuntimeValueScope.GLOBAL)) {
             return null;
         }
-        ChainController controller = activeChains.get(startNode);
-        return resolveRuntimeList(controller, name.trim());
+        ChainController controller = startNode == null ? null : findChainControllerForStart(startNode);
+        return resolveRuntimeList(controller, name.trim(), resolvedScope);
+    }
+
+    public boolean setGlobalRuntimeList(String name, RuntimeList list) {
+        return setRuntimeList(null, name, list, RuntimeValueScope.GLOBAL);
+    }
+
+    public RuntimeList getGlobalRuntimeList(String name) {
+        return getRuntimeList(null, name, RuntimeValueScope.GLOBAL);
+    }
+
+    /** Resolves a list operation's scope from the matching Create List declaration. */
+    public RuntimeValueScope resolveRuntimeListScope(Node startNode, String name, RuntimeValueScope fallback) {
+        RuntimeValueScope resolvedFallback = RuntimeValueScope.orGlobal(fallback);
+        if (name == null || name.trim().isEmpty()) {
+            return resolvedFallback;
+        }
+        String normalizedName = name.trim();
+        ChainController controller = startNode == null ? null : findChainControllerForStart(startNode);
+        for (ChainController current = controller; current != null; current = current.parentScope) {
+            RuntimeValueScope declared = findRuntimeListDeclarationScope(current.graphNodes, normalizedName);
+            if (declared != null) {
+                return declared;
+            }
+        }
+        RuntimeValueScope declared = findRuntimeListDeclarationScope(activeNodes, normalizedName);
+        if (declared != null) {
+            return declared;
+        }
+        declared = findRuntimeListDeclarationScope(workspaceNodes, normalizedName);
+        return declared != null ? declared : resolvedFallback;
+    }
+
+    private RuntimeValueScope findRuntimeListDeclarationScope(List<Node> sourceNodes, String name) {
+        if (sourceNodes == null || sourceNodes.isEmpty()) {
+            return null;
+        }
+        for (Node candidate : sourceNodes) {
+            if (candidate == null || candidate.getType() != NodeType.CREATE_LIST) {
+                continue;
+            }
+            NodeParameter parameter = candidate.getParameter("List");
+            String candidateName = parameter != null ? parameter.getStringValue() : null;
+            if (candidateName != null && name.equals(candidateName.trim())) {
+                return candidate.getRuntimeValueScope();
+            }
+        }
+        return null;
     }
 
     public List<RuntimeVariableEntry> getRuntimeVariableEntries() {
-        if (activeChains.isEmpty()) {
-            return Collections.emptyList();
-        }
         List<RuntimeVariableEntry> entries = new ArrayList<>();
         for (ChainController controller : activeChains.values()) {
             if (controller == null || controller.runtimeVariables.isEmpty()) {
@@ -495,16 +585,18 @@ public class ExecutionManager {
                 if (entry.getKey() == null || entry.getValue() == null) {
                     continue;
                 }
-                entries.add(new RuntimeVariableEntry(startId, entry.getKey(), entry.getValue()));
+                entries.add(new RuntimeVariableEntry(startId, entry.getKey(), entry.getValue(), RuntimeValueScope.CHAIN));
+            }
+        }
+        for (Map.Entry<String, RuntimeVariable> entry : globalRuntimeVariables.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                entries.add(new RuntimeVariableEntry("", entry.getKey(), entry.getValue(), RuntimeValueScope.GLOBAL));
             }
         }
         return entries;
     }
 
     public List<RuntimeListEntry> getRuntimeListEntries() {
-        if (activeChains.isEmpty()) {
-            return Collections.emptyList();
-        }
         List<RuntimeListEntry> entries = new ArrayList<>();
         for (ChainController controller : activeChains.values()) {
             if (controller == null || controller.runtimeLists.isEmpty()) {
@@ -515,11 +607,17 @@ public class ExecutionManager {
                 if (entry.getKey() == null || entry.getValue() == null) {
                     continue;
                 }
-                entries.add(new RuntimeListEntry(startId, entry.getKey(), entry.getValue()));
+                entries.add(new RuntimeListEntry(startId, entry.getKey(), entry.getValue(), RuntimeValueScope.CHAIN));
+            }
+        }
+        for (Map.Entry<String, RuntimeList> entry : globalRuntimeLists.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                entries.add(new RuntimeListEntry("", entry.getKey(), entry.getValue(), RuntimeValueScope.GLOBAL));
             }
         }
         return entries;
     }
+
 
     public Set<String> getKnownRuntimeVariableNames() {
         Set<String> names = new LinkedHashSet<>();
@@ -937,7 +1035,7 @@ public class ExecutionManager {
             String rawValue = configured != null ? configured : port.getDefaultValue();
             RuntimeVariable runtimeVariable = createPresetInputRuntimeVariable(port, rawValue);
             if (runtimeVariable != null) {
-                storeRuntimeVariable(controller, port.getName().trim(), runtimeVariable, false);
+                storeRuntimeVariable(controller, port.getName().trim(), runtimeVariable, RuntimeValueScope.GLOBAL);
             }
         }
     }
@@ -1110,6 +1208,8 @@ public class ExecutionManager {
         cancelAllNavigationCommands();
 
         if (!isExecuting && activeNode == null && activeChains.isEmpty()) {
+            globalRuntimeVariables.clear();
+            globalRuntimeLists.clear();
             return;
         }
 
@@ -1420,43 +1520,38 @@ public class ExecutionManager {
         return null;
     }
 
-    private boolean storeRuntimeVariable(ChainController controller, String name, RuntimeVariable value, boolean preferExistingScope) {
+    private boolean storeRuntimeVariable(ChainController controller, String name, RuntimeVariable value,
+                                         RuntimeValueScope scope) {
         if (name == null || name.isEmpty() || value == null) {
             return false;
         }
-        if (controller == null) {
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (resolvedScope == RuntimeValueScope.GLOBAL) {
             globalRuntimeVariables.put(name, value);
             return true;
         }
-        ChainController target = preferExistingScope ? findControllerDefiningRuntimeVariable(controller, name) : null;
-        if (target == null) {
-            target = controller;
+        if (controller == null) {
+            return false;
         }
-        target.runtimeVariables.put(name, value);
-        globalRuntimeVariables.put(name, value);
-        return true;
+        if (resolvedScope == RuntimeValueScope.CHAIN) {
+            rootScope(controller).runtimeVariables.put(name, value);
+            return true;
+        }
+        return false;
     }
 
-    private RuntimeVariable resolveRuntimeVariable(ChainController controller, String name) {
+    private RuntimeVariable resolveRuntimeVariable(ChainController controller, String name, RuntimeValueScope scope) {
         if (name == null || name.isEmpty()) {
             return null;
+        }
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (resolvedScope == RuntimeValueScope.GLOBAL) {
+            return globalRuntimeVariables.get(name);
         }
         for (ChainController current = controller; current != null; current = current.parentScope) {
             RuntimeVariable value = current.runtimeVariables.get(name);
             if (value != null) {
                 return value;
-            }
-        }
-        return globalRuntimeVariables.get(name);
-    }
-
-    private ChainController findControllerDefiningRuntimeVariable(ChainController controller, String name) {
-        if (controller == null || name == null || name.isEmpty()) {
-            return null;
-        }
-        for (ChainController current = controller; current != null; current = current.parentScope) {
-            if (current.runtimeVariables.containsKey(name)) {
-                return current;
             }
         }
         return null;
@@ -1520,26 +1615,33 @@ public class ExecutionManager {
         return "";
     }
 
-    private boolean storeRuntimeList(ChainController controller, String name, RuntimeList list, boolean preferExistingScope) {
+    private boolean storeRuntimeList(ChainController controller, String name, RuntimeList list,
+                                     RuntimeValueScope scope) {
         if (name == null || name.isEmpty() || list == null) {
             return false;
         }
-        if (controller == null) {
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (resolvedScope == RuntimeValueScope.GLOBAL) {
             globalRuntimeLists.put(name, list);
             return true;
         }
-        ChainController target = preferExistingScope ? findControllerDefiningRuntimeList(controller, name) : null;
-        if (target == null) {
-            target = controller;
+        if (controller == null) {
+            return false;
         }
-        target.runtimeLists.put(name, list);
-        globalRuntimeLists.put(name, list);
-        return true;
+        if (resolvedScope == RuntimeValueScope.CHAIN) {
+            rootScope(controller).runtimeLists.put(name, list);
+            return true;
+        }
+        return false;
     }
 
-    private RuntimeList resolveRuntimeList(ChainController controller, String name) {
+    private RuntimeList resolveRuntimeList(ChainController controller, String name, RuntimeValueScope scope) {
         if (name == null || name.isEmpty()) {
             return null;
+        }
+        RuntimeValueScope resolvedScope = RuntimeValueScope.orGlobal(scope);
+        if (resolvedScope == RuntimeValueScope.GLOBAL) {
+            return globalRuntimeLists.get(name);
         }
         for (ChainController current = controller; current != null; current = current.parentScope) {
             RuntimeList value = current.runtimeLists.get(name);
@@ -1547,19 +1649,15 @@ public class ExecutionManager {
                 return value;
             }
         }
-        return globalRuntimeLists.get(name);
+        return null;
     }
 
-    private ChainController findControllerDefiningRuntimeList(ChainController controller, String name) {
-        if (controller == null || name == null || name.isEmpty()) {
-            return null;
+    private ChainController rootScope(ChainController controller) {
+        ChainController root = controller;
+        while (root != null && root.parentScope != null) {
+            root = root.parentScope;
         }
-        for (ChainController current = controller; current != null; current = current.parentScope) {
-            if (current.runtimeLists.containsKey(name)) {
-                return current;
-            }
-        }
-        return null;
+        return root;
     }
 
     private boolean isStartNumberActive(int startNodeNumber) {
@@ -2406,6 +2504,9 @@ public class ExecutionManager {
             }
 
             NodeGraphPersistence.restoreParameters(node, nodeData.getParameters());
+            if (node.supportsRuntimeValueScope()) {
+                node.setRuntimeValueScope(nodeData.getRuntimeValueScope());
+            }
             node.recalculateDimensions();
 
             nodes.add(node);
@@ -3040,6 +3141,7 @@ public class ExecutionManager {
             if (node.getType() == NodeType.START) {
                 nodeData.setStartNodeNumber(node.getStartNodeNumber());
             }
+            nodeData.setRuntimeValueScope(node.supportsRuntimeValueScope() ? node.getRuntimeValueScope() : null);
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
                 nodeData.setMessageClientSide(node.hasMessageScopeToggle() ? node.isMessageClientSide() : null);

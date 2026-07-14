@@ -464,7 +464,7 @@ class NodeCompatibilityTest {
         listItem.getParameter("List").setStringValue("inventory");
         listItem.getParameter("Index").setStringValue("1");
 
-        registerRuntimeList(start);
+        registerRuntimeChain(start);
         manager.setRuntimeList(start, "inventory", new ExecutionManager.RuntimeList(NodeType.PARAM_GUI, List.of("player:9")));
 
         assertEquals(NodeType.PARAM_INVENTORY_SLOT, listItem.getResolvedValueType());
@@ -496,7 +496,7 @@ class NodeCompatibilityTest {
         listItem.setOwningStartNode(start);
         listItem.getParameter("List").setStringValue("inventory");
         listItem.getParameter("Index").setStringValue("1");
-        registerRuntimeList(start);
+        registerRuntimeChain(start);
         manager.setRuntimeList(start, "inventory", new ExecutionManager.RuntimeList(NodeType.PARAM_GUI, List.of("player:9")));
 
         slot.getParameter("Slot").setStringValue("9");
@@ -546,6 +546,7 @@ class NodeCompatibilityTest {
 
         moveItem.setOwningStartNode(start);
         variable.getParameter("Variable").setStringValue("slot");
+        registerRuntimeChain(start);
         manager.setRuntimeVariable(start, "slot", new ExecutionManager.RuntimeVariable(
             NodeType.PARAM_INVENTORY_SLOT,
             Map.of(
@@ -681,7 +682,7 @@ class NodeCompatibilityTest {
         calculate.setOwningStartNode(start);
         message.setOwningStartNode(start);
         calculate.setMessageLine(0, "standaloneExecutionResult = 2 + 3");
-        registerRuntimeList(start);
+        registerRuntimeChain(start);
 
         java.util.concurrent.CompletableFuture<Void> execution = calculate.execute();
 
@@ -715,7 +716,7 @@ class NodeCompatibilityTest {
         return coordinate;
     }
 
-    private void registerRuntimeList(Node start) {
+    private void registerRuntimeChain(Node start) {
         try {
             ExecutionManager manager = ExecutionManager.getInstance();
             Class<?> controllerClass = List.of(ExecutionManager.class.getDeclaredClasses()).stream()

@@ -656,5 +656,8 @@
   "pathmind.marketplace.publicPresetCount.one": "%s öffentliches Preset",
   "pathmind.marketplace.publicPresetCount.other": "%s öffentliche Presets",
   "pathmind.status.loadedPresets.one": "%s Preset geladen.",
-  "pathmind.status.loadedPresets.other": "%s Presets geladen."
+  "pathmind.status.loadedPresets.other": "%s Presets geladen.",
+  "pathmind.runtimeScope.local.short": "Lokal",
+  "pathmind.runtimeScope.global.short": "Global",
+  "pathmind.runtimeScope.overlay.title": "Laufzeitwerte"
 }

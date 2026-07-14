@@ -136,8 +136,10 @@ final class NodeComparisonEvaluator {
             if (leftName == null || leftName.trim().isEmpty() || rightName == null || rightName.trim().isEmpty()) {
                 return Optional.empty();
             }
-            ExecutionManager.RuntimeVariable leftVar = manager.getRuntimeVariable(startNode, leftName.trim());
-            ExecutionManager.RuntimeVariable rightVar = manager.getRuntimeVariable(startNode, rightName.trim());
+            ExecutionManager.RuntimeVariable leftVar = manager.getRuntimeVariable(
+                startNode, leftName.trim(), left.getRuntimeValueScope());
+            ExecutionManager.RuntimeVariable rightVar = manager.getRuntimeVariable(
+                startNode, rightName.trim(), right.getRuntimeValueScope());
             if (leftVar == null || rightVar == null) {
                 return Optional.empty();
             }
@@ -154,7 +156,8 @@ final class NodeComparisonEvaluator {
         if (variableName == null || variableName.trim().isEmpty()) {
             return Optional.empty();
         }
-        ExecutionManager.RuntimeVariable variable = manager.getRuntimeVariable(startNode, variableName.trim());
+        ExecutionManager.RuntimeVariable variable = manager.getRuntimeVariable(
+            startNode, variableName.trim(), variableNode.getRuntimeValueScope());
         if (variable == null) {
             return Optional.empty();
         }

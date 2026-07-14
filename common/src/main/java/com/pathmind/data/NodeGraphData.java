@@ -4,6 +4,7 @@ import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.StartLaunchMode;
 import com.pathmind.nodes.StartScreenTarget;
+import com.pathmind.nodes.RuntimeValueScope;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,15 +16,18 @@ public class NodeGraphData {
     private List<NodeData> nodes;
     private List<ConnectionData> connections;
     private CustomNodeDefinition customNodeDefinition;
+    private List<RoutineDefinitionData> routines;
     
     public NodeGraphData() {
         this.nodes = new ArrayList<>();
         this.connections = new ArrayList<>();
+        this.routines = new ArrayList<>();
     }
     
     public NodeGraphData(List<NodeData> nodes, List<ConnectionData> connections) {
         this.nodes = nodes;
         this.connections = connections;
+        this.routines = new ArrayList<>();
     }
     
     public List<NodeData> getNodes() {
@@ -48,6 +52,95 @@ public class NodeGraphData {
 
     public void setCustomNodeDefinition(CustomNodeDefinition customNodeDefinition) {
         this.customNodeDefinition = customNodeDefinition;
+    }
+
+    public List<RoutineDefinitionData> getRoutines() {
+        if (routines == null) {
+            routines = new ArrayList<>();
+        }
+        return routines;
+    }
+
+    public void setRoutines(List<RoutineDefinitionData> routines) {
+        this.routines = routines == null ? new ArrayList<>() : routines;
+    }
+
+    /** Serialized routine metadata owned by this preset. */
+    public static class RoutineDefinitionData {
+        private String id;
+        private String name;
+        private Integer interfaceVersion;
+        private Integer implementationRevision;
+        private String interfaceSignature;
+        private String implementationSignature;
+        private List<RoutineInputData> inputs;
+        private NodeGraphData graph;
+
+        public RoutineDefinitionData() {
+            this.inputs = new ArrayList<>();
+            this.graph = new NodeGraphData();
+        }
+
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public Integer getInterfaceVersion() { return interfaceVersion; }
+        public void setInterfaceVersion(Integer interfaceVersion) { this.interfaceVersion = interfaceVersion; }
+        public Integer getImplementationRevision() { return implementationRevision; }
+        public void setImplementationRevision(Integer implementationRevision) { this.implementationRevision = implementationRevision; }
+        public String getInterfaceSignature() { return interfaceSignature; }
+        public void setInterfaceSignature(String interfaceSignature) { this.interfaceSignature = interfaceSignature; }
+        public String getImplementationSignature() { return implementationSignature; }
+        public void setImplementationSignature(String implementationSignature) { this.implementationSignature = implementationSignature; }
+        public List<RoutineInputData> getInputs() {
+            if (inputs == null) {
+                inputs = new ArrayList<>();
+            }
+            return inputs;
+        }
+        public void setInputs(List<RoutineInputData> inputs) {
+            this.inputs = inputs == null ? new ArrayList<>() : inputs;
+        }
+        public NodeGraphData getGraph() { return graph; }
+        public void setGraph(NodeGraphData graph) { this.graph = graph; }
+    }
+
+    /** Serialized stable input identity and interface metadata for a routine. */
+    public static class RoutineInputData {
+        private String id;
+        private String label;
+        private String valueKind;
+        private List<String> acceptedTraits;
+        private Boolean required;
+        private String defaultValue;
+        private Integer order;
+
+        public RoutineInputData() {
+            this.acceptedTraits = new ArrayList<>();
+        }
+
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        public String getLabel() { return label; }
+        public void setLabel(String label) { this.label = label; }
+        public String getValueKind() { return valueKind; }
+        public void setValueKind(String valueKind) { this.valueKind = valueKind; }
+        public List<String> getAcceptedTraits() {
+            if (acceptedTraits == null) {
+                acceptedTraits = new ArrayList<>();
+            }
+            return acceptedTraits;
+        }
+        public void setAcceptedTraits(List<String> acceptedTraits) {
+            this.acceptedTraits = acceptedTraits == null ? new ArrayList<>() : acceptedTraits;
+        }
+        public Boolean getRequired() { return required; }
+        public void setRequired(Boolean required) { this.required = required; }
+        public String getDefaultValue() { return defaultValue; }
+        public void setDefaultValue(String defaultValue) { this.defaultValue = defaultValue; }
+        public Integer getOrder() { return order; }
+        public void setOrder(Integer order) { this.order = order; }
     }
 
     public static class CustomNodeDefinition {
@@ -128,6 +221,7 @@ public class NodeGraphData {
         private StartLaunchMode startLaunchMode;
         private StartScreenTarget startScreenTarget;
         private String runtimeSourceNodeId;
+        private RuntimeValueScope runtimeValueScope;
         private List<String> messageLines;
         private Boolean messageClientSide;
         private String bookText;
@@ -241,6 +335,14 @@ public class NodeGraphData {
 
         public void setStartScreenTarget(StartScreenTarget startScreenTarget) {
             this.startScreenTarget = startScreenTarget;
+        }
+
+        public RuntimeValueScope getRuntimeValueScope() {
+            return runtimeValueScope;
+        }
+
+        public void setRuntimeValueScope(RuntimeValueScope runtimeValueScope) {
+            this.runtimeValueScope = runtimeValueScope;
         }
 
         public String getRuntimeSourceNodeId() {

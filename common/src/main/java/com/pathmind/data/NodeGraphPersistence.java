@@ -9,6 +9,9 @@ import com.pathmind.nodes.NodeTraitRegistry;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.NodeValueTrait;
 import com.pathmind.nodes.ParameterType;
+import com.pathmind.routines.RoutineDefinition;
+import com.pathmind.routines.RoutineInputDefinition;
+import com.pathmind.routines.RoutineValueKind;
 
 import java.io.Reader;
 import java.io.Writer;
@@ -26,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -79,6 +83,7 @@ public class NodeGraphPersistence {
         if (data == null) {
             return "";
         }
+        sanitizeRoutineDefinitions(data);
         return GSON.toJson(data);
     }
 
@@ -86,7 +91,9 @@ public class NodeGraphPersistence {
         if (json == null || json.isBlank()) {
             return null;
         }
-        return GSON.fromJson(json, NodeGraphData.class);
+        NodeGraphData data = GSON.fromJson(json, NodeGraphData.class);
+        sanitizeRoutineDefinitions(data);
+        return data;
     }
 
     /**
@@ -109,7 +116,9 @@ public class NodeGraphPersistence {
             String cached = IN_MEMORY_JSON_CACHE.get(key);
             if (cached != null) {
                 try {
-                    return GSON.fromJson(cached, NodeGraphData.class);
+                    NodeGraphData cachedData = GSON.fromJson(cached, NodeGraphData.class);
+                    sanitizeRoutineDefinitions(cachedData);
+                    return cachedData;
                 } catch (Exception e) {
                     System.err.println("Failed to deserialize cached node graph: " + e.getMessage());
                 }
@@ -126,7 +135,9 @@ public class NodeGraphPersistence {
             }
 
             try (Reader reader = Files.newBufferedReader(savePath)) {
-                return GSON.fromJson(reader, NodeGraphData.class);
+                NodeGraphData data = GSON.fromJson(reader, NodeGraphData.class);
+                sanitizeRoutineDefinitions(data);
+                return data;
             }
 
         } catch (Exception e) {
@@ -284,6 +295,9 @@ public class NodeGraphPersistence {
             }
 
             restoreParameters(node, nodeData.getParameters());
+            if (node.supportsRuntimeValueScope()) {
+                node.setRuntimeValueScope(nodeData.getRuntimeValueScope());
+            }
             if (node.hasBooleanToggle()) {
                 Boolean storedToggle = nodeData.getBooleanToggleValue();
                 if (storedToggle != null) {
@@ -812,6 +826,7 @@ public class NodeGraphPersistence {
     private static void cachePresetGraph(String presetName, NodeGraphData data) {
         String key = cacheKeyForPreset(presetName);
         if (key != null && data != null) {
+            sanitizeRoutineDefinitions(data);
             IN_MEMORY_JSON_CACHE.put(key, GSON.toJson(data));
         }
     }
@@ -839,6 +854,10 @@ public class NodeGraphPersistence {
                                                     NodeGraphData existingData) {
         NodeGraphData data = new NodeGraphData();
         data.setCustomNodeDefinition(buildCustomNodeDefinition(presetName, nodes, connections, existingData));
+        if (existingData != null) {
+            sanitizeRoutineDefinitions(existingData);
+            data.setRoutines(new ArrayList<>(existingData.getRoutines()));
+        }
 
         for (Node node : nodes) {
             NodeGraphData.NodeData nodeData = new NodeGraphData.NodeData();
@@ -892,6 +911,7 @@ public class NodeGraphPersistence {
             nodeData.setStartNodeNumber(node.getStartNodeNumber());
             nodeData.setStartLaunchMode(node.getStartLaunchMode());
             nodeData.setStartScreenTarget(node.getStartScreenTarget());
+            nodeData.setRuntimeValueScope(node.supportsRuntimeValueScope() ? node.getRuntimeValueScope() : null);
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
                 nodeData.setMessageClientSide(node.hasMessageScopeToggle() ? node.isMessageClientSide() : null);
@@ -1036,6 +1056,281 @@ public class NodeGraphPersistence {
             nodeMap.put(node.getId(), node);
         }
         return convertToConnections(data, nodeMap);
+    }
+
+    /** Sanitizes the routine registry embedded in one preset and applies version rules. */
+    public static void sanitizeRoutineDefinitions(NodeGraphData data) {
+        if (data == null) {
+            return;
+        }
+        List<NodeGraphData.RoutineDefinitionData> source = data.getRoutines();
+        if (source == null || source.isEmpty()) {
+            data.setRoutines(new ArrayList<>());
+            return;
+        }
+
+        List<NodeGraphData.RoutineDefinitionData> sanitized = new ArrayList<>();
+        Set<String> routineIds = new HashSet<>();
+        for (NodeGraphData.RoutineDefinitionData routine : source) {
+            if (routine == null) {
+                continue;
+            }
+            routine.setId(sanitizeStableId(routine.getId(), routineIds));
+            routine.setName(isBlank(routine.getName()) ? "Routine" : routine.getName().trim());
+            routine.setInterfaceVersion(Math.max(1,
+                routine.getInterfaceVersion() == null ? 1 : routine.getInterfaceVersion()));
+            routine.setImplementationRevision(Math.max(1,
+                routine.getImplementationRevision() == null ? 1 : routine.getImplementationRevision()));
+
+            List<NodeGraphData.RoutineInputData> inputs = new ArrayList<>(routine.getInputs());
+            inputs.sort(Comparator.comparingInt(input -> input == null || input.getOrder() == null
+                ? Integer.MAX_VALUE : Math.max(0, input.getOrder())));
+            List<NodeGraphData.RoutineInputData> cleanInputs = new ArrayList<>();
+            Set<String> inputIds = new HashSet<>();
+            for (NodeGraphData.RoutineInputData input : inputs) {
+                if (input == null) {
+                    continue;
+                }
+                input.setId(sanitizeStableId(input.getId(), inputIds));
+                input.setLabel(isBlank(input.getLabel()) ? "Input" : input.getLabel().trim());
+                RoutineValueKind valueKind = RoutineValueKind.fromSerialized(input.getValueKind());
+                input.setValueKind(valueKind.name());
+                LinkedHashSet<String> traits = new LinkedHashSet<>();
+                for (String rawTrait : input.getAcceptedTraits()) {
+                    if (rawTrait == null || rawTrait.isBlank()) {
+                        continue;
+                    }
+                    try {
+                        traits.add(NodeValueTrait.valueOf(rawTrait.trim().toUpperCase(Locale.ROOT)).name());
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+                if (traits.isEmpty()) {
+                    valueKind.getDefaultTraits().stream()
+                        .map(Enum::name)
+                        .sorted()
+                        .forEach(traits::add);
+                }
+                input.setAcceptedTraits(new ArrayList<>(traits));
+                input.setRequired(Boolean.TRUE.equals(input.getRequired()));
+                input.setDefaultValue(input.getDefaultValue() == null ? "" : input.getDefaultValue());
+                input.setOrder(cleanInputs.size());
+                cleanInputs.add(input);
+            }
+            routine.setInputs(cleanInputs);
+
+            NodeGraphData graph = routine.getGraph();
+            if (graph == null) {
+                graph = new NodeGraphData();
+                routine.setGraph(graph);
+            }
+            if (graph.getNodes() == null) {
+                graph.setNodes(new ArrayList<>());
+            } else {
+                graph.setNodes(new ArrayList<>(graph.getNodes().stream().filter(Objects::nonNull).toList()));
+            }
+            if (graph.getConnections() == null) {
+                graph.setConnections(new ArrayList<>());
+            } else {
+                graph.setConnections(new ArrayList<>(graph.getConnections().stream().filter(Objects::nonNull).toList()));
+            }
+            // A routine graph belongs to its parent preset; it cannot introduce a second registry.
+            graph.setRoutines(new ArrayList<>());
+
+            String nextInterfaceSignature = buildRoutineInterfaceSignature(routine);
+            String nextImplementationSignature = buildRoutineImplementationSignature(routine, nextInterfaceSignature);
+            String previousInterfaceSignature = routine.getInterfaceSignature();
+            String previousImplementationSignature = routine.getImplementationSignature();
+            if (!isBlank(previousInterfaceSignature)
+                && !Objects.equals(previousInterfaceSignature, nextInterfaceSignature)) {
+                routine.setInterfaceVersion(routine.getInterfaceVersion() + 1);
+            }
+            if (!isBlank(previousImplementationSignature)
+                && !Objects.equals(previousImplementationSignature, nextImplementationSignature)) {
+                routine.setImplementationRevision(routine.getImplementationRevision() + 1);
+            }
+            routine.setInterfaceSignature(nextInterfaceSignature);
+            routine.setImplementationSignature(nextImplementationSignature);
+            sanitized.add(routine);
+        }
+        data.setRoutines(sanitized);
+    }
+
+    public static List<RoutineDefinition> convertToRoutineDefinitions(NodeGraphData data) {
+        if (data == null) {
+            return List.of();
+        }
+        sanitizeRoutineDefinitions(data);
+        List<RoutineDefinition> routines = new ArrayList<>();
+        for (NodeGraphData.RoutineDefinitionData routineData : data.getRoutines()) {
+            List<RoutineInputDefinition> inputs = new ArrayList<>();
+            for (NodeGraphData.RoutineInputData inputData : routineData.getInputs()) {
+                LinkedHashSet<NodeValueTrait> traits = new LinkedHashSet<>();
+                for (String rawTrait : inputData.getAcceptedTraits()) {
+                    try {
+                        traits.add(NodeValueTrait.valueOf(rawTrait));
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+                inputs.add(new RoutineInputDefinition(
+                    inputData.getId(), inputData.getLabel(), RoutineValueKind.fromSerialized(inputData.getValueKind()),
+                    traits, Boolean.TRUE.equals(inputData.getRequired()), inputData.getDefaultValue(),
+                    inputData.getOrder() == null ? inputs.size() : inputData.getOrder()
+                ));
+            }
+            NodeGraphData graph = routineData.getGraph();
+            List<Node> nodes = graph == null ? List.of() : convertToNodes(graph);
+            Map<String, Node> nodeMap = new HashMap<>();
+            for (Node node : nodes) {
+                nodeMap.put(node.getId(), node);
+            }
+            List<NodeConnection> connections = graph == null
+                ? List.of() : convertToConnections(graph, nodeMap);
+            routines.add(new RoutineDefinition(
+                routineData.getId(), routineData.getName(), routineData.getInterfaceVersion(),
+                routineData.getImplementationRevision(), routineData.getInterfaceSignature(),
+                routineData.getImplementationSignature(), inputs, nodes, connections
+            ));
+        }
+        return routines;
+    }
+
+    public static void setRoutineDefinitions(NodeGraphData data, List<RoutineDefinition> routines) {
+        if (data == null) {
+            return;
+        }
+        List<NodeGraphData.RoutineDefinitionData> serialized = new ArrayList<>();
+        if (routines != null) {
+            for (RoutineDefinition routine : routines) {
+                if (routine != null) {
+                    serialized.add(toRoutineDefinitionData(routine));
+                }
+            }
+        }
+        data.setRoutines(serialized);
+        sanitizeRoutineDefinitions(data);
+    }
+
+    public static NodeGraphData.RoutineDefinitionData toRoutineDefinitionData(RoutineDefinition routine) {
+        NodeGraphData.RoutineDefinitionData data = new NodeGraphData.RoutineDefinitionData();
+        data.setId(routine.getId());
+        data.setName(routine.getName());
+        data.setInterfaceVersion(routine.getInterfaceVersion());
+        data.setImplementationRevision(routine.getImplementationRevision());
+        data.setInterfaceSignature(routine.getInterfaceSignature());
+        data.setImplementationSignature(routine.getImplementationSignature());
+        List<NodeGraphData.RoutineInputData> inputs = new ArrayList<>();
+        for (RoutineInputDefinition input : routine.getInputs()) {
+            NodeGraphData.RoutineInputData inputData = new NodeGraphData.RoutineInputData();
+            inputData.setId(input.getId());
+            inputData.setLabel(input.getLabel());
+            inputData.setValueKind(input.getValueKind().name());
+            inputData.setAcceptedTraits(input.getAcceptedTraits().stream()
+                .map(Enum::name).sorted().toList());
+            inputData.setRequired(input.isRequired());
+            inputData.setDefaultValue(input.getDefaultValue());
+            inputData.setOrder(input.getOrder());
+            inputs.add(inputData);
+        }
+        data.setInputs(inputs);
+        NodeGraphData graph = buildNodeGraphData(null, routine.getNodes(), routine.getConnections(), null);
+        graph.setCustomNodeDefinition(null);
+        graph.setRoutines(new ArrayList<>());
+        data.setGraph(graph);
+        return data;
+    }
+
+    private static String sanitizeStableId(String candidate, Set<String> usedIds) {
+        String normalized = candidate == null ? "" : candidate.trim();
+        boolean valid = false;
+        if (!normalized.isEmpty()) {
+            try {
+                UUID.fromString(normalized);
+                valid = true;
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        if (valid && usedIds.add(normalized)) {
+            return normalized;
+        }
+        String generated;
+        do {
+            generated = UUID.randomUUID().toString();
+        } while (!usedIds.add(generated));
+        return generated;
+    }
+
+    private static String buildRoutineInterfaceSignature(NodeGraphData.RoutineDefinitionData routine) {
+        StringBuilder raw = new StringBuilder();
+        for (NodeGraphData.RoutineInputData input : routine.getInputs()) {
+            raw.append(input.getId()).append('|')
+                .append(input.getValueKind()).append('|')
+                .append(Boolean.TRUE.equals(input.getRequired())).append('|')
+                .append(input.getDefaultValue()).append('|')
+                .append(input.getOrder()).append('|');
+            List<String> traits = new ArrayList<>(input.getAcceptedTraits());
+            traits.sort(String::compareTo);
+            raw.append(String.join(",", traits)).append('\n');
+        }
+        return sha256(raw.toString());
+    }
+
+    private static String buildRoutineImplementationSignature(NodeGraphData.RoutineDefinitionData routine,
+                                                              String interfaceSignature) {
+        StringBuilder raw = new StringBuilder();
+        raw.append(routine.getName()).append('|').append(interfaceSignature).append('\n');
+        for (NodeGraphData.RoutineInputData input : routine.getInputs()) {
+            raw.append(input.getId()).append('=').append(input.getLabel()).append('\n');
+        }
+        raw.append(buildRoutineGraphSignature(routine.getGraph()));
+        return sha256(raw.toString());
+    }
+
+    private static String buildRoutineGraphSignature(NodeGraphData graph) {
+        if (graph == null) {
+            return sha256("");
+        }
+        StringBuilder raw = new StringBuilder();
+        List<NodeGraphData.NodeData> nodes = graph.getNodes() == null
+            ? List.of() : new ArrayList<>(graph.getNodes());
+        nodes.removeIf(Objects::isNull);
+        nodes.sort(Comparator.comparing(node -> node.getId() == null ? "" : node.getId()));
+        for (NodeGraphData.NodeData node : nodes) {
+            raw.append(node.getId()).append('|')
+                .append(node.getType()).append('|')
+                .append(node.getMode()).append('|')
+                .append(node.getAttachedSensorId()).append('|')
+                .append(node.getAttachedActionId()).append('|')
+                .append(node.getRuntimeValueScope()).append('|');
+            List<NodeGraphData.ParameterData> parameters = node.getParameters() == null
+                ? List.of() : new ArrayList<>(node.getParameters());
+            parameters.removeIf(Objects::isNull);
+            parameters.sort(Comparator
+                .comparing(NodeGraphData.ParameterData::getId, Comparator.nullsFirst(String::compareTo))
+                .thenComparing(NodeGraphData.ParameterData::getName, Comparator.nullsFirst(String::compareTo)));
+            for (NodeGraphData.ParameterData parameter : parameters) {
+                raw.append(parameter.getId()).append('=')
+                    .append(parameter.getName()).append(':')
+                    .append(parameter.getType()).append(':')
+                    .append(parameter.getValue()).append(';');
+            }
+            raw.append('\n');
+        }
+        List<NodeGraphData.ConnectionData> connections = graph.getConnections() == null
+            ? List.of() : new ArrayList<>(graph.getConnections());
+        connections.removeIf(Objects::isNull);
+        connections.sort(Comparator
+            .comparing(NodeGraphData.ConnectionData::getOutputNodeId, Comparator.nullsFirst(String::compareTo))
+            .thenComparing(NodeGraphData.ConnectionData::getInputNodeId, Comparator.nullsFirst(String::compareTo))
+            .thenComparingInt(NodeGraphData.ConnectionData::getOutputSocket)
+            .thenComparingInt(NodeGraphData.ConnectionData::getInputSocket));
+        for (NodeGraphData.ConnectionData connection : connections) {
+            raw.append(connection.getOutputNodeId()).append("->")
+                .append(connection.getInputNodeId()).append(':')
+                .append(connection.getOutputSocket()).append(':')
+                .append(connection.getInputSocket()).append('\n');
+        }
+        return sha256(raw.toString());
     }
 
     private static NodeGraphData.CustomNodeDefinition buildCustomNodeDefinition(String presetName, List<Node> nodes,
@@ -1452,6 +1747,7 @@ public class NodeGraphPersistence {
 
     private static boolean writeNodeGraphDataToPath(NodeGraphData data, Path savePath) {
         try {
+            sanitizeRoutineDefinitions(data);
             if (savePath.getParent() != null) {
                 Files.createDirectories(savePath.getParent());
             }

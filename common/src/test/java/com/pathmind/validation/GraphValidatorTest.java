@@ -5,6 +5,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.RuntimeValueScope;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -296,6 +297,39 @@ class GraphValidatorTest {
         GraphValidationResult result = GraphValidator.validate(
             List.of(start, setVariable, look, variableTarget, lookValue, variableConsumer),
             List.of(first, second),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertFalse(hasIssueCode(result, "variable_type_mismatch"));
+    }
+
+    @Test
+    void validateKeepsLocalAndGlobalVariableTypesSeparate() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
+        Node look = new Node(NodeType.LOOK, 220, 0);
+
+        Node globalTarget = new Node(NodeType.VARIABLE, 0, 0);
+        globalTarget.getParameter("Variable").setStringValue("target");
+        globalTarget.setRuntimeValueScope(RuntimeValueScope.GLOBAL);
+        Node messageValue = new Node(NodeType.PARAM_MESSAGE, 0, 0);
+        messageValue.getParameter("Text").setStringValue("hello");
+        Node localConsumer = new Node(NodeType.VARIABLE, 0, 0);
+        localConsumer.getParameter("Variable").setStringValue("target");
+        localConsumer.setRuntimeValueScope(RuntimeValueScope.CHAIN);
+
+        assertTrue(setVariable.attachParameter(globalTarget, 0));
+        assertTrue(setVariable.attachParameter(messageValue, 1));
+        assertTrue(look.attachParameter(localConsumer, 0));
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, setVariable, look, globalTarget, messageValue, localConsumer),
+            List.of(
+                new NodeConnection(start, setVariable, 0, 0),
+                new NodeConnection(setVariable, look, 0, 0)
+            ),
             PresetManager.getDefaultPresetName(),
             true,
             true

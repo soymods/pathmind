@@ -688,5 +688,8 @@
   "pathmind.marketplace.publicPresetCount.one": "%s publiczny preset",
   "pathmind.marketplace.publicPresetCount.other": "%s publicznych presetów",
   "pathmind.status.loadedPresets.one": "Załadowano %s preset.",
-  "pathmind.status.loadedPresets.other": "Załadowano %s presetów."
+  "pathmind.status.loadedPresets.other": "Załadowano %s presetów.",
+  "pathmind.runtimeScope.local.short": "Lokalna",
+  "pathmind.runtimeScope.global.short": "Globalna",
+  "pathmind.runtimeScope.overlay.title": "Wartości wykonania"
 }

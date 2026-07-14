@@ -128,9 +128,11 @@ final class NodeVariableListCommandExecutor {
             }
         }
         ExecutionManager.RuntimeVariable value = new ExecutionManager.RuntimeVariable(valueType, values);
-        boolean stored = startNode != null && manager.setRuntimeVariable(startNode, variableName.trim(), value);
+        RuntimeValueScope scope = variableNode.getRuntimeValueScope();
+        boolean stored = manager.setRuntimeVariable(startNode, variableName.trim(), value, scope);
         if (!stored) {
-            manager.setRuntimeVariableForAnyActiveChain(variableName.trim(), value);
+            NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.noActiveTreeVariableChange"));
+            return;
         }
         NodeExecutionCompletion.complete(future);
     }
@@ -157,7 +159,8 @@ final class NodeVariableListCommandExecutor {
             return;
         }
 
-        ExecutionManager.RuntimeVariable current = manager.getRuntimeVariable(startNode, variableName.trim());
+        RuntimeValueScope scope = variableNode.getRuntimeValueScope();
+        ExecutionManager.RuntimeVariable current = manager.getRuntimeVariable(startNode, variableName.trim(), scope);
         if (current == null) {
             NodeExecutionCompletion.fail(owner, client, future,
                 tr("pathmind.error.variableNotSet", variableName.trim()));
@@ -195,7 +198,7 @@ final class NodeVariableListCommandExecutor {
         Map<String, String> updatedValues = snapshot.exportParameterValues();
         preserveSingleAxisLookMetadata(values, updatedValues);
         ExecutionManager.RuntimeVariable updated = new ExecutionManager.RuntimeVariable(valueType, updatedValues);
-        manager.setRuntimeVariable(startNode, variableName.trim(), updated);
+        manager.setRuntimeVariable(startNode, variableName.trim(), updated, scope);
         NodeExecutionCompletion.complete(future);
     }
 
@@ -353,10 +356,13 @@ final class NodeVariableListCommandExecutor {
         }
 
         ExecutionManager manager = ExecutionManager.getInstance();
-        ExecutionManager.RuntimeList runtimeList = manager.getRuntimeList(startNode, listName.trim());
+        RuntimeValueScope scope = manager.resolveRuntimeListScope(
+            startNode, listName.trim(), owner.getRuntimeValueScope());
+        ExecutionManager.RuntimeList runtimeList = manager.getRuntimeList(
+            startNode, listName.trim(), scope);
         if (runtimeList == null) {
             runtimeList = new ExecutionManager.RuntimeList(listValue.elementType, Collections.singletonList(listValue.entry));
-            manager.setRuntimeList(startNode, listName.trim(), runtimeList);
+            manager.setRuntimeList(startNode, listName.trim(), runtimeList, scope);
             NodeExecutionCompletion.complete(future);
             return;
         }
@@ -494,7 +500,8 @@ final class NodeVariableListCommandExecutor {
                 return;
             }
             manager.setRuntimeList(startNode, listName.trim(),
-                new ExecutionManager.RuntimeList(singleValue.elementType, Collections.singletonList(singleValue.entry)));
+                new ExecutionManager.RuntimeList(singleValue.elementType, Collections.singletonList(singleValue.entry)),
+                owner.getRuntimeValueScope());
             NodeExecutionCompletion.complete(future);
             return;
         }
@@ -542,7 +549,7 @@ final class NodeVariableListCommandExecutor {
             }
 
             manager.setRuntimeList(startNode, listName.trim(),
-                new ExecutionManager.RuntimeList(NodeType.PARAM_COORDINATE, entries));
+                new ExecutionManager.RuntimeList(NodeType.PARAM_COORDINATE, entries), owner.getRuntimeValueScope());
             NodeExecutionCompletion.complete(future);
             return;
         } else if (parameterType == NodeType.PARAM_ENTITY) {
@@ -649,7 +656,7 @@ final class NodeVariableListCommandExecutor {
             }
 
             manager.setRuntimeList(startNode, listName.trim(),
-                new ExecutionManager.RuntimeList(parameterType, entries));
+                new ExecutionManager.RuntimeList(parameterType, entries), owner.getRuntimeValueScope());
             NodeExecutionCompletion.complete(future);
             return;
         }
@@ -664,7 +671,8 @@ final class NodeVariableListCommandExecutor {
                     Node startNode = owner.resolveExecutionStartNode();
                     if (startNode != null) {
                         manager.setRuntimeList(startNode, listName.trim(),
-                            new ExecutionManager.RuntimeList(parameterType, configuredEntityIds));
+                            new ExecutionManager.RuntimeList(parameterType, configuredEntityIds),
+                            owner.getRuntimeValueScope());
                         NodeExecutionCompletion.complete(future);
                         return;
                     }
@@ -693,7 +701,7 @@ final class NodeVariableListCommandExecutor {
         }
 
         manager.setRuntimeList(startNode, listName.trim(),
-            new ExecutionManager.RuntimeList(parameterType, entries));
+            new ExecutionManager.RuntimeList(parameterType, entries), owner.getRuntimeValueScope());
         NodeExecutionCompletion.complete(future);
     }
 

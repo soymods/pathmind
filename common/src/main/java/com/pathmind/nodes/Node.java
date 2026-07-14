@@ -339,6 +339,7 @@ public class Node {
     private int templateVersion;
     private boolean customNodeInstance;
     private NodeGraphData templateGraphData;
+    private RuntimeValueScope runtimeValueScope;
 
     private boolean usesTemplateBacking() {
         return type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE;
@@ -373,6 +374,7 @@ public class Node {
         this.templateVersion = 0;
         this.customNodeInstance = type == NodeType.CUSTOM_NODE;
         this.templateGraphData = null;
+        this.runtimeValueScope = RuntimeValueScope.GLOBAL;
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -3135,6 +3137,33 @@ public class Node {
         this.templateGraphData = templateGraphData;
     }
 
+    public RuntimeValueScope getRuntimeValueScope() {
+        return RuntimeValueScope.orGlobal(runtimeValueScope);
+    }
+
+    /** Creates a user-facing editor node, where named runtime values default to local scope. */
+    public static Node createForEditor(NodeType type, int x, int y) {
+        Node node = new Node(type, x, y);
+        if (node.supportsRuntimeValueScope()) {
+            node.setRuntimeValueScope(RuntimeValueScope.CHAIN);
+        }
+        return node;
+    }
+
+    public void setRuntimeValueScope(RuntimeValueScope runtimeValueScope) {
+        this.runtimeValueScope = RuntimeValueScope.orGlobal(runtimeValueScope);
+    }
+
+    public void toggleRuntimeValueScope() {
+        runtimeValueScope = getRuntimeValueScope() == RuntimeValueScope.GLOBAL
+            ? RuntimeValueScope.CHAIN
+            : RuntimeValueScope.GLOBAL;
+    }
+
+    public boolean supportsRuntimeValueScope() {
+        return RuntimeValueScope.appliesTo(type);
+    }
+
     public int getMessageFieldCount() {
         return Math.max(1, messageLines.size());
     }
@@ -4099,10 +4128,8 @@ public class Node {
 
         ExecutionManager manager = ExecutionManager.getInstance();
         Node startNode = resolveExecutionStartNode();
-        ExecutionManager.RuntimeVariable runtimeVariable = manager.getRuntimeVariable(startNode, variableName.trim());
-        if (runtimeVariable == null) {
-            runtimeVariable = manager.getRuntimeVariableFromAnyActiveChain(variableName.trim());
-        }
+        RuntimeValueScope scope = variableNode.getRuntimeValueScope();
+        ExecutionManager.RuntimeVariable runtimeVariable = manager.getRuntimeVariable(startNode, variableName.trim(), scope);
         if (runtimeVariable == null) {
             sendVariableError(tr("pathmind.error.variableNotSet", variableName.trim()), future);
             return null;
@@ -6877,7 +6904,9 @@ public class Node {
         }
         ExecutionManager manager = ExecutionManager.getInstance();
         Node startNode = resolveExecutionStartNode();
-        return manager.getRuntimeList(startNode, listName.trim());
+        RuntimeValueScope scope = manager.resolveRuntimeListScope(
+            startNode, listName.trim(), listNode.getRuntimeValueScope());
+        return manager.getRuntimeList(startNode, listName.trim(), scope);
     }
 
     private Optional<Integer> resolveListLengthValue(Node listNode) {

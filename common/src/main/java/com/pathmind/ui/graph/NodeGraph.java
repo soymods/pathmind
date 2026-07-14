@@ -14,6 +14,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.nodes.RelativeInputSupport;
+import com.pathmind.nodes.RuntimeValueScope;
 import com.pathmind.nodes.StartLaunchMode;
 import com.pathmind.nodes.StartScreenTarget;
 import com.pathmind.ui.menu.ContextMenuSelection;
@@ -22,6 +23,8 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.control.PathmindDropdownRenderer;
+import com.pathmind.ui.control.PathmindIconRenderer;
+import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -85,6 +88,7 @@ public class NodeGraph {
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
     private static final int GRID_SNAP_SIZE = 20;
     private static final int TEMPLATE_PREVIEW_MARGIN = 6;
+    private static final int RUNTIME_SCOPE_BUTTON_SIZE = 12;
 
     private static String tr(String key) {
         return Text.translatable(key).getString();
@@ -1806,7 +1810,7 @@ public class NodeGraph {
     }
 
     public void previewSidebarDrag(NodeType nodeType, int worldMouseX, int worldMouseY) {
-        previewSidebarDrag(nodeType != null ? new Node(nodeType, worldMouseX, worldMouseY) : null, worldMouseX, worldMouseY);
+        previewSidebarDrag(nodeType != null ? Node.createForEditor(nodeType, worldMouseX, worldMouseY) : null, worldMouseX, worldMouseY);
     }
 
     public void previewSidebarDrag(Node candidate, int worldMouseX, int worldMouseY) {
@@ -2011,7 +2015,7 @@ public class NodeGraph {
     }
 
     public Node handleSidebarDrop(NodeType nodeType, int worldMouseX, int worldMouseY) {
-        return handleSidebarDrop(nodeType != null ? new Node(nodeType, 0, 0) : null, worldMouseX, worldMouseY);
+        return handleSidebarDrop(nodeType != null ? Node.createForEditor(nodeType, 0, 0) : null, worldMouseX, worldMouseY);
     }
 
     public Node handleSidebarDrop(Node newNode, int worldMouseX, int worldMouseY) {
@@ -2724,7 +2728,7 @@ public class NodeGraph {
      * Adds a node of the specified type at the given world coordinates.
      */
     public Node addNodeAtPosition(NodeType type, int worldX, int worldY) {
-        Node node = new Node(type, 0, 0);
+        Node node = Node.createForEditor(type, 0, 0);
         positionNewNode(node, worldX, worldY);
         addNode(node);
         selectNode(node);
@@ -3295,6 +3299,10 @@ public class NodeGraph {
             profilerRenderMs = (System.nanoTime() - totalStartNanos) / 1_000_000.0;
         }
 
+        if (!onlyDragged) {
+            DrawContextBridge.startNewRootLayer(context);
+            renderRuntimeScopeTooltip(context, textRenderer, mouseX, mouseY);
+        }
         MatrixStackBridge.pop(matrices);
         compactViewportMode = false;
         denseViewportMode = false;
@@ -3659,7 +3667,9 @@ public class NodeGraph {
             } else if (!isOperator) {
                 int contentLeft = x + MINIMAL_NODE_TAB_WIDTH;
                 int contentWidth = Math.max(0, width - MINIMAL_NODE_TAB_WIDTH);
-                String displayLabel = trimTextToWidth(label, textRenderer, Math.max(0, contentWidth - 8));
+                int reservedWidth = node.supportsRuntimeValueScope() ? RUNTIME_SCOPE_BUTTON_SIZE + 4 : 0;
+                String displayLabel = trimTextToWidth(label, textRenderer,
+                    Math.max(0, contentWidth - 8 - reservedWidth));
                 int textWidth = textRenderer.getWidth(displayLabel);
                 textX = contentLeft + Math.max(4, (contentWidth - textWidth) / 2);
                 textY = y + (height - textRenderer.fontHeight) / 2;
@@ -3691,10 +3701,15 @@ public class NodeGraph {
             
             // Node title
             int titleColor = isOverSidebar ? UITheme.TEXT_TERTIARY : (lowDetail ? UITheme.TEXT_SECONDARY : UITheme.TEXT_PRIMARY);
+            Text displayName = node.getDisplayName();
+            if (node.supportsRuntimeValueScope()) {
+                displayName = Text.literal(trimTextToWidth(displayName.getString(), textRenderer,
+                    Math.max(0, width - RUNTIME_SCOPE_BUTTON_SIZE - 10)));
+            }
             drawNodeText(
                 context,
                 textRenderer,
-                node.getDisplayName(),
+                displayName,
                 x + 4,
                 y + 4,
                 titleColor
@@ -4577,6 +4592,84 @@ public class NodeGraph {
                 renderActionSlot(context, textRenderer, node, isOverSidebar);
             }
         }
+        if (node.supportsRuntimeValueScope()) {
+            renderRuntimeScopeButton(context, node, isOverSidebar, mouseX, mouseY);
+        }
+    }
+
+    private int getRuntimeScopeButtonWorldX(Node node) {
+        return node.getX() + node.getWidth() - RUNTIME_SCOPE_BUTTON_SIZE - 2;
+    }
+
+    private int getRuntimeScopeButtonWorldY(Node node) {
+        return node.getY() + 2;
+    }
+
+    public boolean isPointInsideRuntimeScopeButton(Node node, int screenX, int screenY) {
+        if (node == null || !node.supportsRuntimeValueScope()) {
+            return false;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int left = getRuntimeScopeButtonWorldX(node);
+        int top = getRuntimeScopeButtonWorldY(node);
+        return worldX >= left && worldX < left + RUNTIME_SCOPE_BUTTON_SIZE
+            && worldY >= top && worldY < top + RUNTIME_SCOPE_BUTTON_SIZE;
+    }
+
+    private void renderRuntimeScopeButton(DrawContext context, Node node, boolean dimmed, int mouseX, int mouseY) {
+        // Node bodies are batched on modern versions, so move the control to a later root layer.
+        DrawContextBridge.startNewRootLayer(context);
+        int left = getRuntimeScopeButtonWorldX(node) - cameraX;
+        int top = getRuntimeScopeButtonWorldY(node) - cameraY;
+        boolean hovered = isPointInsideRuntimeScopeButton(node, mouseX, mouseY);
+        int baseFill = dimmed ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
+        int fill = hovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
+        int border = hovered ? getSelectedNodeAccentColor()
+            : dimmed ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int iconColor = dimmed ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        context.fill(left, top, left + RUNTIME_SCOPE_BUTTON_SIZE, top + RUNTIME_SCOPE_BUTTON_SIZE, fill);
+        DrawContextBridge.drawBorderInLayer(context, left, top, RUNTIME_SCOPE_BUTTON_SIZE,
+            RUNTIME_SCOPE_BUTTON_SIZE, border);
+        int iconX = left + 3;
+        int iconY = top + 3;
+        if (node.getRuntimeValueScope() == RuntimeValueScope.GLOBAL) {
+            PathmindIconRenderer.drawGlobalScope(context, iconX, iconY, 7, iconColor);
+        } else {
+            PathmindIconRenderer.drawLocalScope(context, iconX, iconY, 7, iconColor);
+        }
+    }
+
+    private void renderRuntimeScopeTooltip(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+        Node node = getNodeAt(mouseX, mouseY);
+        if (!isPointInsideRuntimeScopeButton(node, mouseX, mouseY)) {
+            return;
+        }
+        String key = switch (node.getRuntimeValueScope()) {
+            case GLOBAL -> "pathmind.runtimeScope.global.short";
+            case CHAIN -> "pathmind.runtimeScope.local.short";
+        };
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) {
+            return;
+        }
+        float scale = Math.max(0.01f, getZoomScale());
+        int scaledMouseX = Math.round(mouseX / scale);
+        int scaledMouseY = Math.round(mouseY / scale);
+        int scaledWidth = Math.round(client.getWindow().getScaledWidth() / scale);
+        int scaledHeight = Math.round(client.getWindow().getScaledHeight() / scale);
+        TooltipRenderer.render(context, textRenderer, tr(key), scaledMouseX, scaledMouseY,
+            scaledWidth, scaledHeight);
+    }
+
+    public boolean handleRuntimeScopeButtonClick(Node node, int mouseX, int mouseY) {
+        if (!isPointInsideRuntimeScopeButton(node, mouseX, mouseY)) {
+            return false;
+        }
+        pushUndoState();
+        node.toggleRuntimeValueScope();
+        notifyNodeParametersChanged(node);
+        return true;
     }
 
     private int getParameterFieldLeft(Node node) {
@@ -6665,7 +6758,8 @@ public class NodeGraph {
                 if (entry == null) {
                     continue;
                 }
-                if (effectiveStartId != null && !effectiveStartId.equals(entry.getStartNodeId())) {
+                if (entry.getScope() != RuntimeValueScope.GLOBAL
+                    && effectiveStartId != null && !effectiveStartId.equals(entry.getStartNodeId())) {
                     continue;
                 }
                 String name = entry.getName();
@@ -15687,6 +15781,9 @@ public class NodeGraph {
                 node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
             }
             node.ensureVillagerTradeNumberParameter();
+            if (node.supportsRuntimeValueScope()) {
+                node.setRuntimeValueScope(nodeData.getRuntimeValueScope());
+            }
             Integer startNodeNumber = nodeData.getStartNodeNumber();
             if (startNodeNumber != null) {
                 node.setStartNodeNumber(startNodeNumber);

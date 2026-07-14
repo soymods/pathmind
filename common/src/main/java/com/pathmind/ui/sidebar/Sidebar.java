@@ -645,7 +645,7 @@ public class Sidebar {
             return hoveredCustomNode.createNode(x, y);
         }
         if (hoveredNodeType != null) {
-            return new Node(hoveredNodeType, x, y);
+            return Node.createForEditor(hoveredNodeType, x, y);
         }
         return null;
     }

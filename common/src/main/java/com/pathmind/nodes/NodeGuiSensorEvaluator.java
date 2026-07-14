@@ -1,6 +1,7 @@
 package com.pathmind.nodes;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.AnvilScreenHandler;
@@ -24,6 +25,9 @@ import net.minecraft.screen.SmokerScreenHandler;
 import net.minecraft.screen.StonecutterScreenHandler;
 
 import com.pathmind.util.GuiSelectionMode;
+
+import java.util.Map;
+import java.util.Optional;
 
 final class NodeGuiSensorEvaluator {
     private final Node owner;
@@ -80,6 +84,31 @@ final class NodeGuiSensorEvaluator {
         return foundRelevantSlots;
     }
 
+    Optional<CurrentGui> getCurrentGui() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.currentScreen == null) {
+            return Optional.empty();
+        }
+        GuiSelectionMode mode = resolveGuiMode(client.player.currentScreenHandler, client.currentScreen);
+        String id = mode != null ? mode.getId() : screenId(client.currentScreen);
+        String title = client.currentScreen.getTitle() != null ? client.currentScreen.getTitle().getString() : "";
+        if (id == null || id.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(new CurrentGui(id, title));
+    }
+
+    Map<String, String> exportCurrentGuiValues(Map<String, String> values) {
+        getCurrentGui().ifPresent(currentGui -> {
+            put(values, "GUI", currentGui.id());
+            put(values, "Mode", currentGui.id());
+            put(values, "GuiMode", currentGui.id());
+            put(values, "Selection", currentGui.id());
+            put(values, "Title", currentGui.title());
+        });
+        return values;
+    }
+
     private boolean isPlayerInventoryFilled(PlayerInventory inventory) {
         if (inventory == null) {
             return false;
@@ -134,5 +163,95 @@ final class NodeGuiSensorEvaluator {
             case DISPENSER -> handler instanceof Generic3x3ContainerScreenHandler;
             case BEACON -> handler instanceof BeaconScreenHandler;
         };
+    }
+
+    private GuiSelectionMode resolveGuiMode(ScreenHandler handler, Screen screen) {
+        if (handler == null) {
+            return null;
+        }
+        String title = screen != null && screen.getTitle() != null
+            ? screen.getTitle().getString().toLowerCase(java.util.Locale.ROOT)
+            : "";
+        if (handler instanceof PlayerScreenHandler) {
+            return GuiSelectionMode.PLAYER_INVENTORY;
+        }
+        if (handler instanceof CraftingScreenHandler) {
+            return GuiSelectionMode.CRAFTING_TABLE;
+        }
+        if (handler instanceof FurnaceScreenHandler) {
+            return GuiSelectionMode.FURNACE;
+        }
+        if (handler instanceof BlastFurnaceScreenHandler) {
+            return GuiSelectionMode.BLAST_FURNACE;
+        }
+        if (handler instanceof SmokerScreenHandler) {
+            return GuiSelectionMode.SMOKER;
+        }
+        if (handler instanceof EnchantmentScreenHandler) {
+            return GuiSelectionMode.ENCHANTING_TABLE;
+        }
+        if (handler instanceof BrewingStandScreenHandler) {
+            return GuiSelectionMode.BREWING_STAND;
+        }
+        if (handler instanceof AnvilScreenHandler) {
+            return GuiSelectionMode.ANVIL;
+        }
+        if (handler instanceof GrindstoneScreenHandler) {
+            return GuiSelectionMode.GRINDSTONE;
+        }
+        if (handler instanceof StonecutterScreenHandler) {
+            return GuiSelectionMode.STONECUTTER;
+        }
+        if (handler instanceof SmithingScreenHandler) {
+            return GuiSelectionMode.SMITHING_TABLE;
+        }
+        if (handler instanceof LoomScreenHandler) {
+            return GuiSelectionMode.LOOM;
+        }
+        if (handler instanceof CartographyTableScreenHandler) {
+            return GuiSelectionMode.CARTOGRAPHY_TABLE;
+        }
+        if (handler instanceof HopperScreenHandler) {
+            return GuiSelectionMode.HOPPER;
+        }
+        if (handler instanceof Generic3x3ContainerScreenHandler) {
+            return GuiSelectionMode.DISPENSER;
+        }
+        if (handler instanceof BeaconScreenHandler) {
+            return GuiSelectionMode.BEACON;
+        }
+        if (handler instanceof GenericContainerScreenHandler generic) {
+            if (generic.getRows() >= 6) {
+                return GuiSelectionMode.CHEST_DOUBLE;
+            }
+            if (title.contains("shulker")) {
+                return GuiSelectionMode.SHULKER_BOX;
+            }
+            if (title.contains("barrel")) {
+                return GuiSelectionMode.BARREL;
+            }
+            return generic.getRows() == 3 ? GuiSelectionMode.BARREL : null;
+        }
+        return null;
+    }
+
+    private String screenId(Screen screen) {
+        String simpleName = screen.getClass().getSimpleName();
+        if (simpleName == null || simpleName.isBlank()) {
+            return "";
+        }
+        return simpleName.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private void put(Map<String, String> values, String key, String value) {
+        if (values == null || key == null) {
+            return;
+        }
+        String safeValue = value == null ? "" : value;
+        values.put(key, safeValue);
+        values.put(key.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", ""), safeValue);
+    }
+
+    record CurrentGui(String id, String title) {
     }
 }

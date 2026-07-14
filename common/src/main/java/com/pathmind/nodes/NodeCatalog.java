@@ -68,6 +68,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_CURRENT_HAND,
             NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_GUI_FILLED,
+            NodeType.SENSOR_CURRENT_GUI,
             NodeType.SENSOR_IS_DAYTIME,
             NodeType.SENSOR_IS_RAINING,
             NodeType.SENSOR_HEALTH_BELOW,
@@ -638,7 +639,8 @@ public final class NodeCatalog {
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
-            NodeType.SENSOR_GUI_FILLED);
+            NodeType.SENSOR_GUI_FILLED,
+            NodeType.SENSOR_CURRENT_GUI);
         sidebar(NodeCategory.SENSORS, "pathmind.sidebar.group.trading",
             NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
@@ -678,6 +680,7 @@ public final class NodeCatalog {
         provided(NodeType.SENSOR_TARGETED_BLOCK_FACE, NodeValueTrait.DIRECTION);
         provided(NodeType.SENSOR_LOOK_DIRECTION, NodeValueTrait.ROTATION);
         provided(NodeType.SENSOR_CURRENT_HAND, NodeValueTrait.INVENTORY_SLOT);
+        provided(NodeType.SENSOR_CURRENT_GUI, NodeValueTrait.GUI);
         provided(NodeType.SENSOR_IS_ON_GROUND, NodeValueTrait.DISTANCE);
         provided(NodeType.OPERATOR_RANDOM, NodeValueTrait.NUMBER);
         provided(NodeType.OPERATOR_MOD, NodeValueTrait.NUMBER);
@@ -1183,6 +1186,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_FABRIC_EVENT,
             NodeType.SENSOR_ATTRIBUTE_DETECTION,
             NodeType.SENSOR_GUI_FILLED,
+            NodeType.SENSOR_CURRENT_GUI,
             NodeType.SENSOR_TARGETED_BLOCK,
             NodeType.SENSOR_TARGETED_ENTITY,
             NodeType.SENSOR_LOOK_DIRECTION,
@@ -1517,6 +1521,7 @@ public final class NodeCatalog {
             case SENSOR_CURRENT_HAND -> "pathmind.node.type.sensorCurrentHand";
             case SENSOR_TARGETED_BLOCK_FACE -> "pathmind.node.type.sensorTargetedBlockFace";
             case SENSOR_GUI_FILLED -> "pathmind.node.type.sensorGuiFilled";
+            case SENSOR_CURRENT_GUI -> "pathmind.node.type.sensorCurrentGui";
             case SENSOR_IS_DAYTIME -> "pathmind.node.type.sensorIsDaytime";
             case SENSOR_IS_RAINING -> "pathmind.node.type.sensorIsRaining";
             case SENSOR_HEALTH_BELOW -> "pathmind.node.type.sensorHealthBelow";
@@ -1664,6 +1669,7 @@ public final class NodeCatalog {
             case SENSOR_CURRENT_HAND -> "pathmind.node.type.sensorCurrentHand.desc";
             case SENSOR_TARGETED_BLOCK_FACE -> "pathmind.node.type.sensorTargetedBlockFace.desc";
             case SENSOR_GUI_FILLED -> "pathmind.node.type.sensorGuiFilled.desc";
+            case SENSOR_CURRENT_GUI -> "pathmind.node.type.sensorCurrentGui.desc";
             case SENSOR_IS_DAYTIME -> "pathmind.node.type.sensorIsDaytime.desc";
             case SENSOR_IS_RAINING -> "pathmind.node.type.sensorIsRaining.desc";
             case SENSOR_HEALTH_BELOW -> "pathmind.node.type.sensorHealthBelow.desc";
@@ -1811,6 +1817,7 @@ public final class NodeCatalog {
             case SENSOR_CURRENT_HAND -> 0xFF64B5F6;
             case SENSOR_TARGETED_BLOCK_FACE -> 0xFF64B5F6;
             case SENSOR_GUI_FILLED -> 0xFF64B5F6;
+            case SENSOR_CURRENT_GUI -> 0xFF64B5F6;
             case SENSOR_IS_DAYTIME -> 0xFF64B5F6;
             case SENSOR_IS_RAINING -> 0xFF64B5F6;
             case SENSOR_HEALTH_BELOW -> 0xFF64B5F6;

@@ -958,6 +958,9 @@ final class NodeTextIoCommandExecutor {
                 return getRuntimeValue(values, "toggle");
             case PARAM_HAND:
                 return getRuntimeValue(values, "hand");
+            case SENSOR_CURRENT_GUI:
+            case PARAM_GUI:
+                return getRuntimeValue(values, "gui");
             case PARAM_COORDINATE:
                 return formatCoordinateValues(values);
             case PARAM_ROTATION:

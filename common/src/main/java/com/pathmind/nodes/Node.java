@@ -1312,6 +1312,7 @@ public class Node {
             case SENSOR_TARGETED_ENTITY -> NodeType.PARAM_ENTITY;
             case SENSOR_LOOK_DIRECTION -> isSensorLookSingleAxisMode() ? NodeType.PARAM_AMOUNT : NodeType.PARAM_ROTATION;
             case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
+            case SENSOR_CURRENT_GUI -> NodeType.PARAM_GUI;
             case SENSOR_SLOT_ITEM_COUNT, SENSOR_FIND_TRADE, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
             case CHANGE_VARIABLE -> NodeType.PARAM_AMOUNT;
             default -> type;
@@ -2818,6 +2819,9 @@ public class Node {
                 String stateValue = EntityStateOptions.describe(entity);
                 values.put("State", stateValue);
                 values.put(normalizeParameterKey("State"), stateValue);
+            }
+            case SENSOR_CURRENT_GUI -> {
+                guiSensorEvaluator().exportCurrentGuiValues(values);
             }
             case SENSOR_LOOK_DIRECTION -> {
                 MinecraftClient client = MinecraftClient.getInstance();
@@ -5847,6 +5851,10 @@ public class Node {
         return guiSensorEvaluator().isOpenGuiFilled();
     }
 
+    private boolean isCurrentGuiAvailable() {
+        return guiSensorEvaluator().getCurrentGui().isPresent();
+    }
+
     private NodeTextIoCommandExecutor textIoCommandExecutor() {
         return new NodeTextIoCommandExecutor(this);
     }
@@ -7114,6 +7122,7 @@ public class Node {
             case SENSOR_IS_DAYTIME -> isDaytime();
             case SENSOR_IS_RAINING -> isRaining();
             case SENSOR_GUI_FILLED -> isOpenGuiFilled();
+            case SENSOR_CURRENT_GUI -> isCurrentGuiAvailable();
             case SENSOR_HEALTH_BELOW -> basicSensorEvaluator().evaluateHealthBelow();
             case SENSOR_HUNGER_BELOW -> basicSensorEvaluator().evaluateHungerBelow();
             case SENSOR_ITEM_IN_INVENTORY -> inventorySensorEvaluator().evaluateItemInInventory();

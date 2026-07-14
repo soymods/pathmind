@@ -673,6 +673,8 @@
   "pathmind.node.type.sensorDistanceBetween.desc": "Returns the distance between two targets",
   "pathmind.node.type.sensorGuiFilled": "Slots Filled",
   "pathmind.node.type.sensorGuiFilled.desc": "Returns true when every selected inventory or container slot is filled",
+  "pathmind.node.type.sensorCurrentGui": "Current GUI",
+  "pathmind.node.type.sensorCurrentGui.desc": "Returns the currently open screen or container type",
   "pathmind.node.type.sensorHealthBelow": "Health Below",
   "pathmind.node.type.sensorHealthBelow.desc": "Returns true when player health is below a threshold",
   "pathmind.node.type.sensorHungerBelow": "Hunger Below",

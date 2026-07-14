@@ -27,12 +27,20 @@ public final class FirstRunTutorialOverlay {
         void complete();
     }
 
+    public interface StepChangeHandler {
+        void stepChanged(Target target);
+    }
+
     public enum Target {
         NONE,
         PRESETS,
         SIDEBAR,
         WORKSPACE,
-        EDIT_NODE,
+        EXAMPLE_START,
+        EXAMPLE_INTRO,
+        EXAMPLE_LOOK,
+        EXAMPLE_WALK,
+        EXAMPLE_ACTIONS,
         RUN_CONTROLS,
         VALIDATION,
         MARKETPLACE
@@ -58,12 +66,17 @@ public final class FirstRunTutorialOverlay {
         new Step(Target.PRESETS, "pathmind.tutorial.presets.title", "pathmind.tutorial.presets.body"),
         new Step(Target.SIDEBAR, "pathmind.tutorial.sidebar.title", "pathmind.tutorial.sidebar.body"),
         new Step(Target.WORKSPACE, "pathmind.tutorial.workspace.title", "pathmind.tutorial.workspace.body"),
-        new Step(Target.EDIT_NODE, "pathmind.tutorial.edit.title", "pathmind.tutorial.edit.body"),
+        new Step(Target.EXAMPLE_START, "pathmind.tutorial.exampleStart.title", "pathmind.tutorial.exampleStart.body"),
+        new Step(Target.EXAMPLE_INTRO, "pathmind.tutorial.exampleIntro.title", "pathmind.tutorial.exampleIntro.body"),
+        new Step(Target.EXAMPLE_LOOK, "pathmind.tutorial.exampleLook.title", "pathmind.tutorial.exampleLook.body"),
+        new Step(Target.EXAMPLE_WALK, "pathmind.tutorial.exampleWalk.title", "pathmind.tutorial.exampleWalk.body"),
+        new Step(Target.EXAMPLE_ACTIONS, "pathmind.tutorial.exampleActions.title", "pathmind.tutorial.exampleActions.body"),
         new Step(Target.RUN_CONTROLS, "pathmind.tutorial.run.title", "pathmind.tutorial.run.body"),
         new Step(Target.VALIDATION, "pathmind.tutorial.validation.title", "pathmind.tutorial.validation.body"),
         new Step(Target.MARKETPLACE, "pathmind.tutorial.marketplace.title", "pathmind.tutorial.marketplace.body")
     );
     private List<Step> activeSteps = steps;
+    private StepChangeHandler stepChangeHandler;
 
     private boolean visible;
     private int stepIndex;
@@ -79,11 +92,18 @@ public final class FirstRunTutorialOverlay {
     private int nextY;
 
     public void show() {
+        show(null);
+    }
+
+    public void show(StepChangeHandler stepChangeHandler) {
+        this.stepChangeHandler = stepChangeHandler;
         visible = true;
         stepIndex = 0;
+        activeSteps = steps;
         entranceAnimation.setValue(0f);
         entranceAnimation.animateTo(1f, 240, AnimationHelper::easeOutCubic);
         stepAnimation.setValue(1f);
+        notifyStepChanged();
     }
 
     public boolean isVisible() {
@@ -112,8 +132,13 @@ public final class FirstRunTutorialOverlay {
             renderSpotlight(context, spotlight, accentColor, entrance);
         }
 
-        List<String> bodyLines = wrapText(textRenderer, Text.translatable(step.bodyKey()).getString(), PANEL_WIDTH - PANEL_PADDING * 2);
-        panelWidth = Math.min(PANEL_WIDTH, Math.max(220, screenWidth - 24));
+        panelWidth = Math.min(PANEL_WIDTH, Math.max(1, screenWidth - 24));
+        int textWidth = Math.max(1, panelWidth - PANEL_PADDING * 2);
+        List<String> bodyLines = TextRenderUtil.wrapWords(
+            textRenderer,
+            Text.translatable(step.bodyKey()).getString(),
+            textWidth
+        );
         int bodyHeight = bodyLines.size() * (textRenderer.fontHeight + 3);
         panelHeight = Math.max(PANEL_MIN_HEIGHT, PANEL_PADDING * 2 + 12 + textRenderer.fontHeight + bodyHeight + BUTTON_HEIGHT + 16);
         int[] panelPos = hasSpotlight
@@ -136,7 +161,13 @@ public final class FirstRunTutorialOverlay {
         int titleColor = AnimationHelper.withAlpha(UITheme.TEXT_HEADER, contentAlpha);
         int bodyColor = AnimationHelper.withAlpha(UITheme.TEXT_SECONDARY, contentAlpha);
         String count = (stepIndex + 1) + "/" + activeSteps.size();
-        context.drawTextWithShadow(textRenderer, Text.translatable(step.titleKey()), panelX + PANEL_PADDING, panelY + PANEL_PADDING, titleColor);
+        int titleWidth = Math.max(1, textWidth - textRenderer.getWidth(count) - 8);
+        String title = TextRenderUtil.trimWithEllipsis(
+            textRenderer,
+            Text.translatable(step.titleKey()).getString(),
+            titleWidth
+        );
+        context.drawTextWithShadow(textRenderer, Text.literal(title), panelX + PANEL_PADDING, panelY + PANEL_PADDING, titleColor);
         context.drawTextWithShadow(textRenderer, Text.literal(count),
             panelX + panelWidth - PANEL_PADDING - textRenderer.getWidth(count),
             panelY + PANEL_PADDING,
@@ -202,6 +233,7 @@ public final class FirstRunTutorialOverlay {
 
     private void complete(CompletionHandler completionHandler) {
         visible = false;
+        stepChangeHandler = null;
         if (completionHandler != null) {
             completionHandler.complete();
         }
@@ -211,6 +243,17 @@ public final class FirstRunTutorialOverlay {
         stepIndex = MathHelper.clamp(index, 0, activeSteps.size() - 1);
         stepAnimation.setValue(0f);
         stepAnimation.animateTo(1f, 180, AnimationHelper::easeOutCubic);
+        notifyStepChanged();
+    }
+
+    private void notifyStepChanged() {
+        if (stepChangeHandler != null && !activeSteps.isEmpty()) {
+            stepChangeHandler.stepChanged(activeSteps.get(stepIndex).target());
+        }
+    }
+
+    List<Target> getStepTargets() {
+        return steps.stream().map(Step::target).toList();
     }
 
     private List<Step> getAvailableSteps(TargetBoundsProvider boundsProvider) {
@@ -381,25 +424,6 @@ public final class FirstRunTutorialOverlay {
         int textX = x + (width - textRenderer.getWidth(trimmed)) / 2;
         int textY = y + (height - textRenderer.fontHeight) / 2 + 1;
         context.drawTextWithShadow(textRenderer, Text.literal(trimmed), textX, textY, AnimationHelper.withAlpha(palette.textColor(), alpha));
-    }
-
-    private List<String> wrapText(TextRenderer textRenderer, String text, int maxWidth) {
-        List<String> lines = new ArrayList<>();
-        if (textRenderer == null || text == null || text.isBlank()) {
-            return lines;
-        }
-        for (String paragraph : text.split("\\n")) {
-            String remaining = paragraph.trim();
-            while (!remaining.isEmpty()) {
-                String line = textRenderer.trimToWidth(remaining, maxWidth);
-                if (line.isEmpty()) {
-                    line = remaining.substring(0, 1);
-                }
-                lines.add(line);
-                remaining = remaining.substring(line.length()).trim();
-            }
-        }
-        return lines;
     }
 
     private record Step(Target target, String titleKey, String bodyKey) {

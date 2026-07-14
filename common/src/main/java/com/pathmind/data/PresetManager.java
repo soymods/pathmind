@@ -45,6 +45,7 @@ public final class PresetManager {
             boolean firstRunWorkspace = !Files.exists(baseDirectory);
             ensureDirectoryExists(baseDirectory);
             ensureDirectoryExists(getPresetsDirectory());
+            OnboardingPresetManager.migrateLegacyExamplePresetNames(baseDirectory);
             ensureActivePresetFile();
             OnboardingPresetManager.ensureExamplePresetsInstalled(baseDirectory, firstRunWorkspace);
         } catch (IOException e) {

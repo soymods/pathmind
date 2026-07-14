@@ -842,7 +842,6 @@ public final class NodeCatalog {
         parameterHost(NodeType.EQUIP_ARMOR, NodeValueTrait.INVENTORY_SLOT);
         parameterHost(NodeType.EQUIP_HAND, NodeValueTrait.INVENTORY_SLOT);
         parameterHost(NodeType.SET_VARIABLE, slot("Variable", true, NodeValueTrait.VARIABLE), slot("Value", true, NodeValueTrait.ANY));
-        parameterHost(NodeType.CHANGE_VARIABLE, "Variable", NodeValueTrait.VARIABLE);
         parameterHost(NodeType.ADD_TO_LIST, "Target", NodeValueTrait.ANY);
         parameterHost(NodeType.REMOVE_FROM_LIST, "Target", NodeValueTrait.ANY);
         parameterHost(NodeType.CREATE_LIST, "Target", NodeValueTrait.ANY);

@@ -138,10 +138,8 @@ class NodeCatalogTest {
         assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.SENSOR_FIND_TRADE));
         assertEquals(EnumSet.of(NodeValueTrait.DIRECTION), NodeCatalog.providedTraits(NodeType.PARAM_BLOCK_FACE));
 
-        assertTrue(NodeCatalog.canHostParameter(NodeType.CHANGE_VARIABLE));
-        assertEquals(1, NodeCatalog.parameterSlotCount(NodeType.CHANGE_VARIABLE));
-        assertEquals("Variable", NodeCatalog.parameterSlotLabel(NodeType.CHANGE_VARIABLE, 0));
-        assertEquals(EnumSet.of(NodeValueTrait.VARIABLE), NodeCatalog.acceptedTraits(NodeType.CHANGE_VARIABLE, 0));
+        assertFalse(NodeCatalog.canHostParameter(NodeType.CHANGE_VARIABLE));
+        assertEquals(0, NodeCatalog.parameterSlotCount(NodeType.CHANGE_VARIABLE));
 
         assertEquals(2, NodeCatalog.parameterSlotCount(NodeType.WALK));
         assertEquals("Direction", NodeCatalog.parameterSlotLabel(NodeType.WALK, 0));

@@ -3,6 +3,7 @@ package com.pathmind.screen;
 import com.pathmind.PathmindCommon;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.data.OnboardingPresetManager;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
@@ -849,7 +850,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
         firstRunTutorialPending = false;
-        firstRunTutorialOverlay.show();
+        showFirstRunTutorialWithExamplePreset();
     }
 
     private void completeFirstRunTutorial() {
@@ -865,7 +866,28 @@ public class PathmindVisualEditorScreen extends Screen {
         firstRunTutorialPending = false;
         closeSettingsPopup();
         settingsPopupAnimation.hideInstant();
-        firstRunTutorialOverlay.show();
+        showFirstRunTutorialWithExamplePreset();
+    }
+
+    private void showFirstRunTutorialWithExamplePreset() {
+        if (OnboardingPresetManager.ensureTutorialPresetInstalled()) {
+            switchPreset(OnboardingPresetManager.TUTORIAL_PRESET_NAME);
+        }
+        firstRunTutorialOverlay.show(this::handleFirstRunTutorialStepChanged);
+    }
+
+    private void handleFirstRunTutorialStepChanged(FirstRunTutorialOverlay.Target target) {
+        String nodeId = switch (target) {
+            case WORKSPACE, EXAMPLE_START -> "tutorial-1-start";
+            case EXAMPLE_INTRO -> "tutorial-1-intro";
+            case EXAMPLE_LOOK -> "tutorial-1-look";
+            case EXAMPLE_WALK -> "tutorial-1-walk";
+            case EXAMPLE_ACTIONS -> "tutorial-1-jump";
+            default -> null;
+        };
+        if (nodeId != null) {
+            nodeGraph.focusNodeById(nodeId, this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+        }
     }
 
     private int[] getFirstRunTutorialTargetBounds(FirstRunTutorialOverlay.Target target) {
@@ -888,7 +910,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 Math.min(300, Math.max(120, this.width - sidebar.getWidth() - 48)),
                 Math.min(190, Math.max(90, this.height - TITLE_BAR_HEIGHT - 72))
             };
-            case EDIT_NODE -> getFirstRunTutorialNodeBounds();
+            case EXAMPLE_START -> getFirstRunTutorialNodeBounds("tutorial-1-start");
+            case EXAMPLE_INTRO -> getFirstRunTutorialNodeBounds("tutorial-1-intro");
+            case EXAMPLE_LOOK -> getFirstRunTutorialNodeBounds("tutorial-1-look");
+            case EXAMPLE_WALK -> getFirstRunTutorialNodeBounds("tutorial-1-walk");
+            case EXAMPLE_ACTIONS -> getFirstRunTutorialNodeBounds("tutorial-1-jump", "tutorial-1-wait");
             case RUN_CONTROLS -> new int[]{
                 getStopButtonX() - 4,
                 getStopButtonY() - 4,
@@ -911,28 +937,37 @@ public class PathmindVisualEditorScreen extends Screen {
         };
     }
 
-    private int[] getFirstRunTutorialNodeBounds() {
-        Node fallback = null;
-        for (Node node : nodeGraph.getNodes()) {
-            if (node == null) {
-                continue;
-            }
-            if (node.getType() != NodeType.STICKY_NOTE && node.getType() != NodeType.START) {
-                fallback = node;
+    private int[] getFirstRunTutorialNodeBounds(String... nodeIds) {
+        if (nodeIds == null || nodeIds.length == 0) {
+            return null;
+        }
+        float scale = Math.max(0.1f, nodeGraph.getZoomScale());
+        int left = Integer.MAX_VALUE;
+        int top = Integer.MAX_VALUE;
+        int right = Integer.MIN_VALUE;
+        int bottom = Integer.MIN_VALUE;
+        for (String nodeId : nodeIds) {
+            for (Node node : nodeGraph.getNodes()) {
+                if (node == null || !nodeId.equals(node.getId())) {
+                    continue;
+                }
+                int nodeLeft = nodeGraph.worldToScreenX(node.getX());
+                int nodeTop = nodeGraph.worldToScreenY(node.getY());
+                left = Math.min(left, nodeLeft);
+                top = Math.min(top, nodeTop);
+                right = Math.max(right, nodeLeft + Math.max(32, Math.round(node.getWidth() * scale)));
+                bottom = Math.max(bottom, nodeTop + Math.max(24, Math.round(node.getHeight() * scale)));
                 break;
             }
         }
-        if (fallback == null) {
+        if (left == Integer.MAX_VALUE) {
             return null;
         }
-        int x = nodeGraph.worldToScreenX(fallback.getX());
-        int y = nodeGraph.worldToScreenY(fallback.getY());
-        float scale = Math.max(0.1f, nodeGraph.getZoomScale());
         return new int[]{
-            x,
-            y,
-            Math.max(32, Math.round(fallback.getWidth() * scale)),
-            Math.max(24, Math.round(fallback.getHeight() * scale))
+            left,
+            top,
+            Math.max(32, right - left),
+            Math.max(24, bottom - top)
         };
     }
 

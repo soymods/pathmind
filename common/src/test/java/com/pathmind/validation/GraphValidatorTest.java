@@ -76,6 +76,24 @@ class GraphValidatorTest {
     }
 
     @Test
+    void validateAcceptsStandaloneCalculateWithoutVariableAttachment() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 100, 0);
+        calculate.setMessageLine(0, "result = 2 * 3");
+        NodeConnection connection = new NodeConnection(start, calculate, 0, 0);
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, calculate),
+            List.of(connection),
+            PresetManager.getDefaultPresetName(),
+            true,
+            true
+        );
+
+        assertFalse(hasIssueCode(result, "missing_parameter_slot"));
+    }
+
+    @Test
     void validateReportsMissingPresetTargetForRunPreset() {
         Node start = new Node(NodeType.START, 0, 0);
         Node runPreset = new Node(NodeType.RUN_PRESET, 100, 0);

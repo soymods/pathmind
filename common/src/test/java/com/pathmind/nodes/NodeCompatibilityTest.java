@@ -609,6 +609,28 @@ class NodeCompatibilityTest {
         assertFalse(calculated.isCompletedExceptionally());
 
         assertEquals("4", message.resolveRuntimeVariablesInText("$A"));
+        assertEquals("Value: 4.", message.resolveRuntimeVariablesInText("Value: $A."));
+        assertEquals("(4), [4]; \"4\"!", message.resolveRuntimeVariablesInText("($A), [$A]; \"$A\"!"));
+        assertEquals("$ASuffix", message.resolveRuntimeVariablesInText("$ASuffix"));
+        assertEquals("8", message.resolveRuntimeVariablesInText("$A*2"));
+    }
+
+    @Test
+    void standaloneCalculateExecutesWithoutVariableAttachment() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
+        Node message = new Node(NodeType.MESSAGE, 0, 0);
+        assertFalse(calculate.hasParameterSlot());
+        calculate.setOwningStartNode(start);
+        message.setOwningStartNode(start);
+        calculate.setMessageLine(0, "standaloneExecutionResult = 2 + 3");
+        registerRuntimeList(start);
+
+        java.util.concurrent.CompletableFuture<Void> execution = calculate.execute();
+
+        assertTrue(execution.isDone());
+        assertFalse(execution.isCompletedExceptionally());
+        assertEquals("5", message.resolveRuntimeVariablesInText("$standaloneExecutionResult"));
     }
 
     @Test

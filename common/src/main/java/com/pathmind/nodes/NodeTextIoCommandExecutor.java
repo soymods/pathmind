@@ -782,7 +782,7 @@ final class NodeTextIoCommandExecutor {
             int endIndex = nameStart + candidateName.length();
             if (endIndex < raw.length()) {
                 char boundary = raw.charAt(endIndex);
-                if (!Character.isWhitespace(boundary) && !Node.isInlineMathOperator(boundary)) {
+                if (isInlineRuntimeVariableNameCharacter(boundary)) {
                     continue;
                 }
             }
@@ -795,6 +795,10 @@ final class NodeTextIoCommandExecutor {
             }
         }
         return bestMatch;
+    }
+
+    private static boolean isInlineRuntimeVariableNameCharacter(char value) {
+        return Character.isLetterOrDigit(value) || value == '_';
     }
 
     private Set<String> collectRuntimeVariableNamesForParsing(ExecutionManager manager, Node startNode) {

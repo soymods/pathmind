@@ -57,6 +57,7 @@ class NodeCatalogTest {
         assertEquals(NodeCategory.NAVIGATION.getColor(), NodeType.TRAVEL.getColor());
         assertEquals(NodeCategory.PLAYER.getColor(), NodeType.WALK.getColor());
         assertEquals(NodeCatalog.definition(NodeType.START).baseColor(), NodeType.START.getColor());
+        assertEquals(NodeCatalog.definition(NodeType.START_CHAIN).baseColor(), NodeType.START_CHAIN.getColor());
         assertEquals(NodeCatalog.definition(NodeType.CUSTOM_NODE).baseColor(), NodeType.CUSTOM_NODE.getColor());
     }
 
@@ -65,6 +66,7 @@ class NodeCatalogTest {
         assertEquals(NodeCategory.PLAYER.getColor(), NodeCatalog.graphColor(NodeType.TRAVEL, false, true));
         assertEquals(NodeCategory.NAVIGATION.getColor(), NodeCatalog.graphColor(NodeType.TRAVEL, true, true));
         assertEquals(NodeCatalog.definition(NodeType.START).baseColor(), NodeCatalog.graphColor(NodeType.START, false, true));
+        assertEquals(NodeCatalog.definition(NodeType.START_CHAIN).baseColor(), NodeCatalog.graphColor(NodeType.START_CHAIN, false, true));
     }
 
     @Test

@@ -1966,7 +1966,7 @@ public final class NodeCatalog {
         return schema.slots().get(slotIndex);
     }
 
-    private static boolean usesExplicitGraphColor(NodeType type) {
+    public static boolean usesExplicitGraphColor(NodeType type) {
         return type == NodeType.START || type == NodeType.START_CHAIN
             || type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE
             || type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL;

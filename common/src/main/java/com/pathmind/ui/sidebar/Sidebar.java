@@ -775,6 +775,9 @@ public class Sidebar {
         if (nodeType == null) {
             return getSidebarCategoryAccent(category);
         }
+        if (NodeCatalog.usesExplicitGraphColor(nodeType) && NodeCatalog.category(nodeType) == category) {
+            return NodeCatalog.graphColor(nodeType, baritoneAvailable, uiUtilsAvailable);
+        }
         if (indexInGroup == 0) {
             return NodeCatalog.category(nodeType) == category
                 ? NodeCatalog.graphColor(nodeType, baritoneAvailable, uiUtilsAvailable)

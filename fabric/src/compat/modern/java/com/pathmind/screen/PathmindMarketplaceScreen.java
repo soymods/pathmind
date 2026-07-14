@@ -312,10 +312,11 @@ public class PathmindMarketplaceScreen extends Screen {
             renderGallerySection(context, mouseX, mouseY, layout);
             renderSortDropdown(context, mouseX, mouseY, layout);
         }
-        if (popupPreset != null || presetPopupAnimation.isVisible()
+        boolean basePopupVisible = popupPreset != null || presetPopupAnimation.isVisible()
             || accountPopupOpen || accountPopupAnimation.isVisible()
-            || publishPopupOpen || publishPopupAnimation.isVisible()
-            || pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
+            || publishPopupOpen || publishPopupAnimation.isVisible();
+        boolean confirmPopupVisible = pendingConfirmAction != null || confirmPopupAnimation.isVisible();
+        if (basePopupVisible) {
             DrawContextBridge.startNewRootLayer(context);
         }
         if (popupPreset != null || presetPopupAnimation.isVisible()) {
@@ -327,7 +328,8 @@ public class PathmindMarketplaceScreen extends Screen {
         if (publishPopupOpen || publishPopupAnimation.isVisible()) {
             popupController.renderPublishPopup(context, popupMouseX, popupMouseY, layout);
         }
-        if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
+        if (confirmPopupVisible) {
+            DrawContextBridge.startNewRootLayer(context);
             popupController.renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
         }
         if (!editorPopupMode) {

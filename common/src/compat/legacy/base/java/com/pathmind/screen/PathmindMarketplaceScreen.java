@@ -309,18 +309,15 @@ public class PathmindMarketplaceScreen extends Screen {
             renderGallerySection(context, mouseX, mouseY, layout);
             renderSortDropdown(context, mouseX, mouseY, layout);
         }
-        if (popupPreset != null || presetPopupAnimation.isVisible()
+        boolean basePopupVisible = popupPreset != null || presetPopupAnimation.isVisible()
             || accountPopupOpen || accountPopupAnimation.isVisible()
-            || publishPopupOpen || publishPopupAnimation.isVisible()
-            || pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
+            || publishPopupOpen || publishPopupAnimation.isVisible();
+        boolean confirmPopupVisible = pendingConfirmAction != null || confirmPopupAnimation.isVisible();
+        if (basePopupVisible) {
             DrawContextBridge.startNewRootLayer(context);
         }
-        boolean popupLayerVisible = popupPreset != null || presetPopupAnimation.isVisible()
-            || accountPopupOpen || accountPopupAnimation.isVisible()
-            || publishPopupOpen || publishPopupAnimation.isVisible()
-            || pendingConfirmAction != null || confirmPopupAnimation.isVisible();
         Object popupMatrices = context.getMatrices();
-        if (popupLayerVisible) {
+        if (basePopupVisible) {
             MatrixStackBridge.push(popupMatrices);
             MatrixStackBridge.translateZ(popupMatrices, 450.0f);
         }
@@ -334,11 +331,19 @@ public class PathmindMarketplaceScreen extends Screen {
             if (publishPopupOpen || publishPopupAnimation.isVisible()) {
                 popupController.renderPublishPopup(context, popupMouseX, popupMouseY, layout);
             }
-            if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
-                popupController.renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
-            }
         } finally {
-            if (popupLayerVisible) {
+            if (basePopupVisible) {
+                DrawContextBridge.flush(context);
+                MatrixStackBridge.pop(popupMatrices);
+            }
+        }
+        if (confirmPopupVisible) {
+            DrawContextBridge.startNewRootLayer(context);
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 900.0f);
+            try {
+                popupController.renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
+            } finally {
                 DrawContextBridge.flush(context);
                 MatrixStackBridge.pop(popupMatrices);
             }

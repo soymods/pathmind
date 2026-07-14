@@ -169,6 +169,9 @@ public class PopupAnimationHandler {
 
         int originalAlpha = (baseColor >>> 24) & 0xFF;
         int animatedAlpha = (int) (originalAlpha * animationProgress);
+        if (originalAlpha > 0 && animatedAlpha == 0 && animationProgress < 1f) {
+            animatedAlpha = 1;
+        }
         return (animatedAlpha << 24) | (baseColor & 0x00FFFFFF);
     }
 

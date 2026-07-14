@@ -774,11 +774,16 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         // Render context menu on top of everything
-        nodeGraph.updateNodeContextMenuHover(mouseX, mouseY);
-        nodeGraph.renderNodeContextMenu(context, this.textRenderer);
-        nodeGraph.renderStartModeDropdown(context, this.textRenderer, mouseX, mouseY);
-        nodeGraph.updateContextMenuHover(mouseX, mouseY);
-        nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
+        if (presetContextMenuOpen) {
+            nodeGraph.closeNodeContextMenu();
+            nodeGraph.closeContextMenu();
+        } else {
+            nodeGraph.updateNodeContextMenuHover(mouseX, mouseY);
+            nodeGraph.renderNodeContextMenu(context, this.textRenderer);
+            nodeGraph.renderStartModeDropdown(context, this.textRenderer, mouseX, mouseY);
+            nodeGraph.updateContextMenuHover(mouseX, mouseY);
+            nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
+        }
         renderPresetContextMenu(context, mouseX, mouseY);
         renderNodeSearchField(context, mouseX, mouseY, delta);
         DrawContextBridge.startNewRootLayer(context);
@@ -3171,27 +3176,34 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!presetContextMenuOpen) {
             return;
         }
-        int height = getPresetContextMenuHeight();
-        context.fill(presetContextMenuX, presetContextMenuY, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH, presetContextMenuY + height, UITheme.BACKGROUND_SECONDARY);
-        DrawContextBridge.drawBorderInLayer(context, presetContextMenuX, presetContextMenuY, PRESET_CONTEXT_MENU_WIDTH, height, UITheme.BORDER_DEFAULT);
-        int y = presetContextMenuY;
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.createPreset").getString(), 0, false);
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.createGroup").getString(), 0, getNextPresetGroupColorKey().isEmpty());
-        if (presetContextMenuGroupKey != null && !presetContextMenuGroupKey.isEmpty()) {
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.deleteGroup").getString(), 0, false);
-            y = drawPresetContextSeparator(context, y);
-            for (int i = 0; i < PRESET_GROUP_COLOR_KEYS.length; i++) {
-                y = drawPresetContextMenuItem(context, mouseX, mouseY, y, getPresetGroupColorLabel(PRESET_GROUP_COLOR_KEYS[i]), PRESET_GROUP_COLORS[i], PRESET_GROUP_COLOR_KEYS[i].equals(presetContextMenuGroupKey));
+        Object matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        try {
+            MatrixStackBridge.translateZ(matrices, 600.0f);
+            int height = getPresetContextMenuHeight();
+            context.fill(presetContextMenuX, presetContextMenuY, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH, presetContextMenuY + height, UITheme.BACKGROUND_SECONDARY);
+            DrawContextBridge.drawBorderInLayer(context, presetContextMenuX, presetContextMenuY, PRESET_CONTEXT_MENU_WIDTH, height, UITheme.BORDER_DEFAULT);
+            int y = presetContextMenuY;
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.createPreset").getString(), 0, false);
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.createGroup").getString(), 0, getNextPresetGroupColorKey().isEmpty());
+            if (presetContextMenuGroupKey != null && !presetContextMenuGroupKey.isEmpty()) {
+                y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.deleteGroup").getString(), 0, false);
+                y = drawPresetContextSeparator(context, y);
+                for (int i = 0; i < PRESET_GROUP_COLOR_KEYS.length; i++) {
+                    y = drawPresetContextMenuItem(context, mouseX, mouseY, y, getPresetGroupColorLabel(PRESET_GROUP_COLOR_KEYS[i]), PRESET_GROUP_COLORS[i], PRESET_GROUP_COLOR_KEYS[i].equals(presetContextMenuGroupKey));
+                }
+                return;
             }
-            return;
-        }
-        if (presetContextMenuPresetName == null) {
-            return;
-        }
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.renamePreset").getString(), 0, isPresetRenameDisabled(presetContextMenuPresetName));
-        y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.deletePreset").getString(), 0, isPresetDeleteDisabled(presetContextMenuPresetName));
-        if (!getPresetGroupKey(presetContextMenuPresetName).isEmpty()) {
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.ungroup").getString(), getPresetGroupColor(presetContextMenuPresetName), false);
+            if (presetContextMenuPresetName == null) {
+                return;
+            }
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.renamePreset").getString(), 0, isPresetRenameDisabled(presetContextMenuPresetName));
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.deletePreset").getString(), 0, isPresetDeleteDisabled(presetContextMenuPresetName));
+            if (!getPresetGroupKey(presetContextMenuPresetName).isEmpty()) {
+                drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.ungroup").getString(), getPresetGroupColor(presetContextMenuPresetName), false);
+            }
+        } finally {
+            MatrixStackBridge.pop(matrices);
         }
     }
 

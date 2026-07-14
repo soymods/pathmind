@@ -12,7 +12,7 @@ logoFile = "assets/pathmind/logo.png"
 [[dependencies.pathmind]]
 modId = "neoforge"
 type = "required"
-versionRange = "[21.0,)"
+versionRange = "[${neoforge_version},)"
 ordering = "NONE"
 side = "CLIENT"
 

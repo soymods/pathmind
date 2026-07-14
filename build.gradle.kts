@@ -282,12 +282,10 @@ supportedMinecraftVersions.keys.forEach { version ->
             project.copy {
                 from(project(":fabric").layout.buildDirectory.dir("libs")) {
                     include("*mc$version.jar")
-                    include("*mc$version-sources.jar")
                 }
                 if (neoforgeSupported) {
                     from(project(":neoforge").layout.buildDirectory.dir("libs")) {
                         include("*mc$version.jar")
-                        include("*mc$version-sources.jar")
                     }
                 }
                 into(versionOutputDir)

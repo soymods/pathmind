@@ -86,6 +86,7 @@ tasks.shadowJar {
     exclude("architectury.common.json")
     configurations = listOf(project.configurations["shadowCommon"])
     archiveClassifier.set("dev-shadow")
+    from(rootProject.file("LICENSE.txt")) { rename { "${it}_${base.archivesName.get()}" } }
 }
 
 tasks.remapJar {
@@ -96,7 +97,7 @@ tasks.remapJar {
 
 tasks.jar {
     archiveClassifier.set("dev")
-    from("LICENSE") { rename { "${it}_${base.archivesName.get()}" } }
+    from(rootProject.file("LICENSE.txt")) { rename { "${it}_${base.archivesName.get()}" } }
 }
 
 tasks.sourcesJar {

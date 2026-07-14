@@ -182,7 +182,7 @@ Unqualified `runClient` and `runServer` default to Fabric because Fabric is the 
 Convenience tasks:
 
 - `./gradlew buildMc1_21_11` - builds both platforms for 1.21.11
-- `./gradlew buildAllTargets` - builds all 11 MC versions
+- `./gradlew buildAllTargets` - builds all 12 MC versions
 
 ### Check Architectury API Versions
 
@@ -205,10 +205,6 @@ Queries Modrinth for the latest Architectury API version for each configured MC 
 | Fabric Loader | `0.17.3+` |
 | NeoForge | `21.0.166+` |
 | Java | `21+` |
-
-## Release Readiness
-
-Use [`RELEASE_GATE.md`](RELEASE_GATE.md) before promoting a build.
 
 ## License
 

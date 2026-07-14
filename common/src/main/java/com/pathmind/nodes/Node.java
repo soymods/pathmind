@@ -2502,6 +2502,9 @@ public class Node {
                 if (parameterNode == null || !parameterNode.isParameterNode()) {
                     continue;
                 }
+                if (isListIdentityParameter(this, name) && isListIdentityParameter(parameterNode, name)) {
+                    continue;
+                }
                 NodeParameter attachedParam = parameterNode.getParameter(name);
                 if (attachedParam != null) {
                     attachedParam.setStringValue(value);
@@ -2509,6 +2512,17 @@ public class Node {
                 }
             }
         }
+    }
+
+    private static boolean isListIdentityParameter(Node node, String name) {
+        if (node == null || !"List".equals(name)) {
+            return false;
+        }
+        return switch (node.getType()) {
+            case CREATE_LIST, ADD_TO_LIST, REMOVE_FIRST_FROM_LIST, REMOVE_LAST_FROM_LIST,
+                REMOVE_LIST_ITEM, REMOVE_FROM_LIST, LIST_ITEM, LIST_LENGTH -> true;
+            default -> false;
+        };
     }
 
     boolean shouldShowStateParameter() {

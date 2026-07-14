@@ -458,6 +458,20 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void nestedListNodesKeepIndependentListNames() {
+        Node addToList = new Node(NodeType.ADD_TO_LIST, 0, 0);
+        Node listItem = new Node(NodeType.LIST_ITEM, 0, 0);
+
+        assertTrue(addToList.attachParameter(listItem, 0));
+
+        addToList.setParameterValueAndPropagate("List", "outer");
+        listItem.setParameterValueAndPropagate("List", "inner");
+
+        assertEquals("outer", addToList.getParameter("List").getStringValue());
+        assertEquals("inner", listItem.getParameter("List").getStringValue());
+    }
+
+    @Test
     void equalsTreatsInventorySlotsWithSameContextAsEqualAcrossModes() {
         ExecutionManager manager = ExecutionManager.getInstance();
         Node start = new Node(NodeType.START, 0, 0);

@@ -1488,6 +1488,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (selection != null && selection.shouldOpenSearch()) {
                     nodeGraph.closeContextMenu();
                     openNodeSearch((int) mouseX, (int) mouseY);
+                } else if (selection != null && selection.shouldCreateStickyNote()) {
+                    nodeGraph.addNodeFromContextMenu(NodeType.STICKY_NOTE);
+                    nodeGraph.closeContextMenu();
                 } else if (selection != null && selection.getNodeType() != null) {
                     // Create node at the stored right-click position
                     nodeGraph.addNodeFromContextMenu(selection.getNodeType());

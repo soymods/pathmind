@@ -41,6 +41,7 @@ public class ContextMenu {
     private boolean searchHovered;
     private boolean stickyNoteHovered;
     private NodeCategory hoveredCategory;
+    private int hoveredCategoryY;
     private ContextMenuSubmenu activeSubmenu;
 
     public ContextMenu(Sidebar sidebar) {
@@ -51,6 +52,7 @@ public class ContextMenu {
         this.searchHovered = false;
         this.stickyNoteHovered = false;
         this.hoveredCategory = null;
+        this.hoveredCategoryY = 0;
         this.activeSubmenu = null;
         this.scale = 1.0f;
         this.baseMenuX = 0;
@@ -88,6 +90,7 @@ public class ContextMenu {
         this.searchHovered = false;
         this.stickyNoteHovered = false;
         this.hoveredCategory = null;
+        this.hoveredCategoryY = 0;
         this.activeSubmenu = null;
         this.popupAnimation.hide();
     }
@@ -144,6 +147,7 @@ public class ContextMenu {
             searchHovered = false;
             stickyNoteHovered = false;
             hoveredCategory = null;
+            hoveredCategoryY = 0;
             activeSubmenu = null;
             return;
         }
@@ -175,14 +179,18 @@ public class ContextMenu {
         stickyNoteHovered = ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT);
         itemY += ITEM_HEIGHT;
         NodeCategory newHovered = null;
+        int newHoveredY = 0;
 
         for (NodeCategory category : categories) {
             if (ContextMenuRenderer.isPointInRect(transformedMouseX, transformedMouseY, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT)) {
                 newHovered = category;
+                newHoveredY = itemY;
                 break;
             }
             itemY += ITEM_HEIGHT;
         }
+
+        hoveredCategoryY = newHovered != null ? newHoveredY : 0;
 
         if (newHovered != hoveredCategory) {
             hoveredCategory = newHovered;
@@ -214,9 +222,9 @@ public class ContextMenu {
 
         // Check if submenu handled the click
         if (activeSubmenu != null) {
-            NodeType clicked = activeSubmenu.handleClick(transformedMouseX, transformedMouseY);
-            if (clicked != null) {
-                return ContextMenuSelection.forNode(clicked);
+            ContextMenuSelection selection = activeSubmenu.handleClick(transformedMouseX, transformedMouseY);
+            if (selection != null) {
+                return selection;
             }
         }
 
@@ -323,7 +331,7 @@ public class ContextMenu {
 
         int submenuWidth = MENU_WIDTH;
         int submenuX = menuX + MENU_WIDTH - 1; // Overlap by 1px to merge borders
-        int submenuY = menuY; // Align top with main menu top
+        int submenuY = hoveredCategoryY > 0 ? hoveredCategoryY : menuY;
         boolean positionedLeft = false;
 
         int submenuScreenLeft = toScreenX(submenuX);
@@ -333,6 +341,14 @@ public class ContextMenu {
         if (submenuScreenRight > screenWidth - 10) {
             submenuX = menuX - submenuWidth + 1; // Overlap by 1px on left side
             positionedLeft = true;
+        }
+
+        int submenuScreenTop = toScreenY(submenuY);
+        int submenuScreenHeight = Math.round(activeSubmenu.getHeight() * scale);
+        int overflow = submenuScreenTop + submenuScreenHeight - (screenHeight - 10);
+        if (overflow > 0) {
+            submenuY -= Math.round(overflow / scale);
+            submenuY = Math.max(menuY, submenuY);
         }
 
         activeSubmenu.setPosition(submenuX, submenuY, screenWidth, screenHeight, positionedLeft, menuX, menuY, scale);
@@ -354,6 +370,10 @@ public class ContextMenu {
 
     private int toScreenX(int x) {
         return Math.round(menuX + (x - menuX) * scale);
+    }
+
+    private int toScreenY(int y) {
+        return Math.round(menuY + (y - menuY) * scale);
     }
 
     private int getMenuHeight() {

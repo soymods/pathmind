@@ -693,6 +693,17 @@ public class Sidebar {
     }
 
     /**
+     * Returns preset names that can be placed as custom node instances.
+     */
+    public List<String> getCustomNodePresetNames() {
+        List<String> names = new ArrayList<>();
+        for (CustomNodeEntry customNode : customNodes) {
+            names.add(customNode.getLabel());
+        }
+        return names;
+    }
+
+    /**
      * Returns the grouped nodes for the specified category (SENSORS, PARAMETERS).
      * Returns null if the category doesn't have groups.
      */

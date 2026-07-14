@@ -1496,6 +1496,9 @@ public class PathmindVisualEditorScreen extends Screen {
                 } else if (selection != null && selection.shouldCreateStickyNote()) {
                     nodeGraph.addNodeFromContextMenu(NodeType.STICKY_NOTE);
                     nodeGraph.closeContextMenu();
+                } else if (selection != null && selection.getCustomNodePresetName() != null) {
+                    nodeGraph.addCustomNodeFromContextMenu(selection.getCustomNodePresetName());
+                    nodeGraph.closeContextMenu();
                 } else if (selection != null && selection.getNodeType() != null) {
                     // Create node at the stored right-click position
                     nodeGraph.addNodeFromContextMenu(selection.getNodeType());

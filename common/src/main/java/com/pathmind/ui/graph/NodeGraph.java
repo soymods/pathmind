@@ -2715,6 +2715,24 @@ public class NodeGraph {
         return addNodeAtPosition(type, contextMenuWorldX, contextMenuWorldY);
     }
 
+    public Node addCustomNodeFromContextMenu(String presetName) {
+        String normalizedPreset = presetName != null ? presetName.trim() : "";
+        Node node = new Node(NodeType.CUSTOM_NODE, 0, 0);
+        if (node.getParameter("Preset") != null) {
+            node.getParameter("Preset").setStringValue(normalizedPreset);
+        }
+        NodeGraphData data = NodeGraphPersistence.loadNodeGraphForPreset(normalizedPreset);
+        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(normalizedPreset, data);
+        node.setTemplateName(definition != null ? definition.getName() : normalizedPreset);
+        node.setTemplateVersion(definition != null && definition.getVersion() != null ? definition.getVersion() : 0);
+        node.setTemplateGraphData(data);
+        node.recalculateDimensions();
+        positionNewNode(node, contextMenuWorldX, contextMenuWorldY);
+        addNode(node);
+        selectNode(node);
+        return node;
+    }
+
     private void positionNewNode(Node node, int worldMouseX, int worldMouseY) {
         if (node == null) {
             return;

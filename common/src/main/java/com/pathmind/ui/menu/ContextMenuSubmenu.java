@@ -34,13 +34,13 @@ public class ContextMenuSubmenu {
     private int anchorX = 0;
     private int anchorY = 0;
 
-    private NodeType hoveredNode;
+    private SubmenuItem hoveredItem;
 
     public ContextMenuSubmenu(Sidebar sidebar, NodeCategory category) {
         this.category = category;
         this.items = new ArrayList<>();
         this.scrollOffset = 0;
-        this.hoveredNode = null;
+        this.hoveredItem = null;
 
         // Build item list from sidebar data
         buildItems(sidebar);
@@ -62,23 +62,27 @@ public class ContextMenuSubmenu {
         this.scale = Math.max(0.05f, scale);
     }
 
+    public int getHeight() {
+        return submenuHeight;
+    }
+
     /**
      * Updates hover state based on mouse position.
      */
     public void updateHover(int mouseX, int mouseY) {
         if (!isHovered(mouseX, mouseY)) {
-            hoveredNode = null;
+            hoveredItem = null;
             return;
         }
 
         // Find hovered item
         int itemY = submenuY + PADDING - scrollOffset;
-        hoveredNode = null;
+        hoveredItem = null;
 
         for (SubmenuItem item : items) {
-            if (item.nodeType != null) {
+            if (item.isSelectable()) {
                 if (ContextMenuRenderer.isPointInRect(mouseX, mouseY, submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT)) {
-                    hoveredNode = item.nodeType;
+                    hoveredItem = item;
                     break;
                 }
             }
@@ -96,13 +100,18 @@ public class ContextMenuSubmenu {
     /**
      * Handles a click event. Returns the selected NodeType, or null if nothing was clicked.
      */
-    public NodeType handleClick(int mouseX, int mouseY) {
+    public ContextMenuSelection handleClick(int mouseX, int mouseY) {
         if (!isHovered(mouseX, mouseY)) {
             return null;
         }
 
-        // Return hovered node if any
-        return hoveredNode;
+        if (hoveredItem == null) {
+            return null;
+        }
+        if (hoveredItem.customNodePresetName != null) {
+            return ContextMenuSelection.forCustomNode(hoveredItem.customNodePresetName);
+        }
+        return hoveredItem.nodeType != null ? ContextMenuSelection.forNode(hoveredItem.nodeType) : null;
     }
 
     /**
@@ -151,12 +160,20 @@ public class ContextMenuSubmenu {
                     );
                 } else if (item.nodeType != null) {
                     // Render node item
-                    boolean hovered = (item.nodeType == hoveredNode);
+                    boolean hovered = (item == hoveredItem);
                     int color = category != null ? category.getColor() : NodeCatalog.category(item.nodeType).getColor();
                     ContextMenuRenderer.renderNodeItem(
                         context, textRenderer,
                         submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,
                         item.nodeType.getDisplayName(), color,
+                        hovered, item.indented
+                    );
+                } else if (item.customNodePresetName != null) {
+                    boolean hovered = (item == hoveredItem);
+                    ContextMenuRenderer.renderNodeItem(
+                        context, textRenderer,
+                        submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,
+                        item.customNodePresetName, NodeType.CUSTOM_NODE.getColor(),
                         hovered, item.indented
                     );
                 }
@@ -179,6 +196,13 @@ public class ContextMenuSubmenu {
      * Builds the list of submenu items from sidebar data.
      */
     private void buildItems(Sidebar sidebar) {
+        if (category == NodeCategory.CUSTOM) {
+            for (String presetName : sidebar.getCustomNodePresetNames()) {
+                items.add(new SubmenuItem(presetName, false));
+            }
+            return;
+        }
+
         List<Sidebar.NodeGroup> groups = sidebar.getGroupedNodesForCategory(category);
 
         if (groups != null && !groups.isEmpty()) {
@@ -270,6 +294,7 @@ public class ContextMenuSubmenu {
         final boolean isGroupHeader;
         final String groupName;
         final NodeType nodeType;
+        final String customNodePresetName;
         final boolean indented;
 
         // Group header constructor
@@ -277,6 +302,7 @@ public class ContextMenuSubmenu {
             this.isGroupHeader = true;
             this.groupName = groupName;
             this.nodeType = null;
+            this.customNodePresetName = null;
             this.indented = false;
         }
 
@@ -285,7 +311,21 @@ public class ContextMenuSubmenu {
             this.isGroupHeader = false;
             this.groupName = null;
             this.nodeType = nodeType;
+            this.customNodePresetName = null;
             this.indented = indented;
+        }
+
+        // Custom node preset constructor
+        SubmenuItem(String customNodePresetName, boolean indented) {
+            this.isGroupHeader = false;
+            this.groupName = null;
+            this.nodeType = null;
+            this.customNodePresetName = customNodePresetName;
+            this.indented = indented;
+        }
+
+        boolean isSelectable() {
+            return nodeType != null || customNodePresetName != null;
         }
     }
 }

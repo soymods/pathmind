@@ -1967,6 +1967,9 @@ public final class NodeCatalog {
 
     private static ParameterSlot parameterSlot(NodeType type, int slotIndex) {
         ParameterSchema schema = parameterSchema(type);
+        if ((type == NodeType.OPERATOR_BOOLEAN_OR || type == NodeType.OPERATOR_BOOLEAN_AND) && slotIndex >= 0) {
+            return slot("Input " + (slotIndex + 1), true, NodeValueTrait.ANY);
+        }
         if (schema == null || slotIndex < 0 || slotIndex >= schema.slots().size()) {
             return null;
         }

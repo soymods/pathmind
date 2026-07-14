@@ -171,6 +171,10 @@ final class NodeDimensionCalculator {
             }
         }
         if (node.isComparisonOperator()) {
+            if (node.isExpandableBooleanOperator()) {
+                int requiredWidth = parameterContentWidth + 2 * (Node.PARAMETER_SLOT_INNER_PADDING + Node.PARAMETER_SLOT_MARGIN_HORIZONTAL);
+                return Math.max(computedWidth, requiredWidth);
+            }
             int slotWidth = parameterContentWidth + 2 * Node.PARAMETER_SLOT_INNER_PADDING;
             int requiredWidth = (slotWidth * 2) + Node.OPERATOR_SLOT_GAP + 2 * Node.PARAMETER_SLOT_MARGIN_HORIZONTAL;
             return Math.max(computedWidth, requiredWidth);
@@ -344,6 +348,13 @@ final class NodeDimensionCalculator {
 
     private static int applyParameterSlotHeight(Node node, int contentHeight, boolean hasSlots) {
         if (node.isComparisonOperator()) {
+            if (node.isExpandableBooleanOperator()) {
+                contentHeight += parameterSlotsHeightWithLabels(node);
+                if (hasSlots) {
+                    contentHeight += Node.SLOT_AREA_PADDING_TOP;
+                }
+                return contentHeight;
+            }
             int leftHeight = node.getParameterSlotHeight(0);
             int rightHeight = node.getParameterSlotHeight(1);
             int maxHeight = Math.max(leftHeight, rightHeight);

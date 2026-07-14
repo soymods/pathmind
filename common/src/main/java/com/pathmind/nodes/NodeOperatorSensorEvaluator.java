@@ -28,31 +28,34 @@ final class NodeOperatorSensorEvaluator {
     }
 
     boolean evaluateOperatorBooleanOr() {
-        Node left = owner.getAttachedParameter(0);
-        Node right = owner.getAttachedParameter(1);
-        if (left == null || right == null) {
-            return false;
+        for (int slotIndex = 0; slotIndex < owner.getParameterSlotCount(); slotIndex++) {
+            Node operand = owner.getAttachedParameter(slotIndex);
+            if (operand == null) {
+                return false;
+            }
+            Optional<Boolean> value = resolveBooleanOperandWithVariables(operand, slotIndex);
+            if (value.isEmpty()) {
+                return false;
+            }
+            if (value.get()) {
+                return true;
+            }
         }
-        Optional<Boolean> leftValue = resolveBooleanOperandWithVariables(left, 0);
-        Optional<Boolean> rightValue = resolveBooleanOperandWithVariables(right, 1);
-        if (leftValue.isEmpty() || rightValue.isEmpty()) {
-            return false;
-        }
-        return leftValue.get() || rightValue.get();
+        return false;
     }
 
     boolean evaluateOperatorBooleanAnd() {
-        Node left = owner.getAttachedParameter(0);
-        Node right = owner.getAttachedParameter(1);
-        if (left == null || right == null) {
-            return false;
+        for (int slotIndex = 0; slotIndex < owner.getParameterSlotCount(); slotIndex++) {
+            Node operand = owner.getAttachedParameter(slotIndex);
+            if (operand == null) {
+                return false;
+            }
+            Optional<Boolean> value = resolveBooleanOperandWithVariables(operand, slotIndex);
+            if (value.isEmpty() || !value.get()) {
+                return false;
+            }
         }
-        Optional<Boolean> leftValue = resolveBooleanOperandWithVariables(left, 0);
-        Optional<Boolean> rightValue = resolveBooleanOperandWithVariables(right, 1);
-        if (leftValue.isEmpty() || rightValue.isEmpty()) {
-            return false;
-        }
-        return leftValue.get() && rightValue.get();
+        return owner.getParameterSlotCount() > 0;
     }
 
     boolean evaluateOperatorBooleanXor() {

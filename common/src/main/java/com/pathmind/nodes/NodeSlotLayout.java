@@ -50,6 +50,9 @@ final class NodeSlotLayout {
     }
 
     static int parameterSlotLeft(Node node, int slotIndex) {
+        if (node.isExpandableBooleanOperator()) {
+            return parameterSlotLeft(node);
+        }
         if (node.isComparisonOperator()) {
             int slotWidth = parameterSlotWidth(node, slotIndex);
             int baseLeft = node.getX() + Node.PARAMETER_SLOT_MARGIN_HORIZONTAL;
@@ -96,6 +99,12 @@ final class NodeSlotLayout {
             top += node.getModeFieldDisplayHeight();
         }
         if (node.isComparisonOperator()) {
+            if (node.isExpandableBooleanOperator()) {
+                for (int i = 0; i < slotIndex; i++) {
+                    top += parameterSlotHeight(node, i) + Node.PARAMETER_SLOT_BOTTOM_PADDING + Node.PARAMETER_SLOT_LABEL_HEIGHT;
+                }
+                return top;
+            }
             if (node.usesMinimalNodePresentation()) {
                 int slotHeight = parameterSlotHeight(node, slotIndex);
                 return node.getY() + Math.max(0, (node.getHeight() - slotHeight) / 2);
@@ -114,6 +123,9 @@ final class NodeSlotLayout {
     }
 
     static int parameterSlotWidth(Node node, int slotIndex) {
+        if (node.isExpandableBooleanOperator()) {
+            return parameterSlotWidth(node);
+        }
         if (node.isComparisonOperator()) {
             int widthWithMargins = node.getWidth() - 2 * Node.PARAMETER_SLOT_MARGIN_HORIZONTAL;
             if (node.usesMinimalNodePresentation()) {
@@ -138,7 +150,7 @@ final class NodeSlotLayout {
         if (slotCount <= 0) {
             return node.getY() + Node.HEADER_HEIGHT;
         }
-        if (node.isComparisonOperator()) {
+        if (node.isComparisonOperator() && !node.isExpandableBooleanOperator()) {
             int leftHeight = parameterSlotHeight(node, 0);
             int rightHeight = parameterSlotHeight(node, 1);
             int maxHeight = Math.max(leftHeight, rightHeight);

@@ -334,6 +334,7 @@ public class NodeGraphPersistence {
                 node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
             }
             node.ensureVillagerTradeNumberParameter();
+            node.setBooleanOperatorSlotCount(nodeData.getParameterSlotCount());
             Integer startNodeNumber = nodeData.getStartNodeNumber();
             if (startNodeNumber != null) {
                 node.setStartNodeNumber(startNodeNumber);
@@ -882,6 +883,7 @@ public class NodeGraphPersistence {
             }
             nodeData.setParameterAttachments(attachmentData);
             nodeData.setParentParameterHostId(node.getParentParameterHostId());
+            nodeData.setParameterSlotCount(node.isExpandableBooleanOperator() ? node.getParameterSlotCount() : null);
             if (node.hasBooleanToggle()) {
                 nodeData.setBooleanToggleValue(node.getBooleanToggleValue());
             } else {

@@ -1699,6 +1699,10 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleBooleanOperatorButtonClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
+
                 if (nodeGraph.handleMessageButtonClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     return true;
                 }

@@ -123,6 +123,7 @@ public class NodeGraphData {
         private String parentParameterHostId;
         private List<ParameterAttachmentData> parameterAttachments;
         private Boolean booleanToggleValue;
+        private Integer parameterSlotCount;
         private Integer startNodeNumber;
         private StartLaunchMode startLaunchMode;
         private StartScreenTarget startScreenTarget;
@@ -208,6 +209,14 @@ public class NodeGraphData {
 
         public void setBooleanToggleValue(Boolean booleanToggleValue) {
             this.booleanToggleValue = booleanToggleValue;
+        }
+
+        public Integer getParameterSlotCount() {
+            return parameterSlotCount;
+        }
+
+        public void setParameterSlotCount(Integer parameterSlotCount) {
+            this.parameterSlotCount = parameterSlotCount;
         }
 
         public Integer getStartNodeNumber() {

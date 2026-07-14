@@ -3972,7 +3972,7 @@ public class NodeGraph {
                 int caretBaseline = Math.min(textY + textRenderer.fontHeight - 1, boxBottom - 2);
                 UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
             }
-        } else if (!simpleStyle && isComparisonOperator(node)) {
+        } else if (!simpleStyle && isComparisonOperator(node) && !node.isExpandableBooleanOperator()) {
             int accentColor = node.getColor();
             int baseColor = lowDetail
                 ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
@@ -4546,6 +4546,9 @@ public class NodeGraph {
                         renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     }
                     renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.isExpandableBooleanOperator()) {
+                    renderBooleanOperatorButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasBookTextInput()) {
                     renderBookTextInput(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -5491,6 +5494,37 @@ public class NodeGraph {
         return handled;
     }
 
+    public boolean handleBooleanOperatorButtonClick(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.isExpandableBooleanOperator()) {
+            return false;
+        }
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int size = node.getBooleanOperatorButtonSize();
+        int top = node.getBooleanOperatorButtonTop();
+        int addLeft = node.getBooleanOperatorAddButtonLeft();
+        int removeLeft = node.getBooleanOperatorRemoveButtonLeft();
+
+        boolean overAdd = worldMouseX >= addLeft && worldMouseX <= addLeft + size
+            && worldMouseY >= top && worldMouseY <= top + size;
+        boolean overRemove = worldMouseX >= removeLeft && worldMouseX <= removeLeft + size
+            && worldMouseY >= top && worldMouseY <= top + size;
+
+        if (overAdd) {
+            if (node.addBooleanOperatorSlot()) {
+                notifyNodeParametersChanged(node);
+            }
+            return true;
+        }
+        if (overRemove && node.getParameterSlotCount() > 2) {
+            if (node.removeBooleanOperatorSlot()) {
+                notifyNodeParametersChanged(node);
+            }
+            return true;
+        }
+        return false;
+    }
+
     private boolean isPointInsideMessageScopeToggle(Node node, int mouseX, int mouseY) {
         if (node == null || !node.hasMessageScopeToggle()) {
             return false;
@@ -5621,6 +5655,7 @@ public class NodeGraph {
 
         if (node.usesMinimalNodePresentation()
             && isComparisonOperator(node)
+            && !node.isExpandableBooleanOperator()
             && slotIndex == 0) {
             int leftSlotX = node.getParameterSlotLeft(0) - cameraX;
             int rightSlotX = node.getParameterSlotLeft(1) - cameraX;
@@ -7086,6 +7121,48 @@ public class NodeGraph {
         drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, UITheme.TEXT_PRIMARY);
 
         // Remove button
+        int removeFill = canRemove
+            ? (removeHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill)
+            : UITheme.BACKGROUND_PRIMARY;
+        int removeBorder = canRemove
+            ? (removeHovered ? UITheme.BORDER_DANGER : baseBorder)
+            : UITheme.BORDER_DEFAULT;
+        context.fill(removeLeft, top, removeLeft + size, top + size, removeFill);
+        DrawContextBridge.drawBorderInLayer(context, removeLeft, top, size, size, removeBorder);
+        int removeTextX = removeLeft + (size - textRenderer.getWidth("-")) / 2;
+        int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
+        int removeTextColor = canRemove ? UITheme.TEXT_PRIMARY : UITheme.NODE_LABEL_DIMMED;
+        drawNodeText(context, textRenderer, Text.literal("-"), removeTextX, removeTextY, removeTextColor);
+    }
+
+    private void renderBooleanOperatorButtons(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
+        int size = node.getBooleanOperatorButtonSize();
+        int worldMouseX = screenToWorldX(mouseX);
+        int worldMouseY = screenToWorldY(mouseY);
+        int worldTop = node.getBooleanOperatorButtonTop();
+        int worldAddLeft = node.getBooleanOperatorAddButtonLeft();
+        int worldRemoveLeft = node.getBooleanOperatorRemoveButtonLeft();
+        int top = worldTop - cameraY;
+        int addLeft = worldAddLeft - cameraX;
+        int removeLeft = worldRemoveLeft - cameraX;
+
+        boolean canRemove = node.getParameterSlotCount() > 2;
+        boolean addHovered = worldMouseX >= worldAddLeft && worldMouseX <= worldAddLeft + size
+            && worldMouseY >= worldTop && worldMouseY <= worldTop + size;
+        boolean removeHovered = worldMouseX >= worldRemoveLeft && worldMouseX <= worldRemoveLeft + size
+            && worldMouseY >= worldTop && worldMouseY <= worldTop + size && canRemove;
+
+        int baseFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
+        int baseBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+
+        int addFill = addHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
+        int addBorder = addHovered ? getSelectedNodeAccentColor() : baseBorder;
+        context.fill(addLeft, top, addLeft + size, top + size, addFill);
+        DrawContextBridge.drawBorderInLayer(context, addLeft, top, size, size, addBorder);
+        int addTextX = addLeft + (size - textRenderer.getWidth("+")) / 2;
+        int addTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, UITheme.TEXT_PRIMARY);
+
         int removeFill = canRemove
             ? (removeHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill)
             : UITheme.BACKGROUND_PRIMARY;
@@ -15213,6 +15290,20 @@ public class NodeGraph {
             return true;
         }
 
+        if (node.isExpandableBooleanOperator()) {
+            int buttonTop = node.getBooleanOperatorButtonTop();
+            int buttonBottom = buttonTop + node.getBooleanOperatorButtonSize();
+            int addLeft = node.getBooleanOperatorAddButtonLeft();
+            int removeLeft = node.getBooleanOperatorRemoveButtonLeft();
+            int buttonSize = node.getBooleanOperatorButtonSize();
+            if ((worldX >= addLeft && worldX <= addLeft + buttonSize
+                && worldY >= buttonTop && worldY <= buttonBottom)
+                || (worldX >= removeLeft && worldX <= removeLeft + buttonSize
+                && worldY >= buttonTop && worldY <= buttonBottom)) {
+                return true;
+            }
+        }
+
         if (node.hasMessageInputFields()) {
             int buttonTop = node.getMessageButtonTop();
             int buttonBottom = buttonTop + node.getMessageButtonSize();
@@ -15604,6 +15695,7 @@ public class NodeGraph {
                 Boolean storedToggle = nodeData.getBooleanToggleValue();
                 node.setBooleanToggleValue(storedToggle == null || storedToggle);
             }
+            node.setBooleanOperatorSlotCount(nodeData.getParameterSlotCount());
             node.recalculateDimensions();
 
             nodes.add(node);

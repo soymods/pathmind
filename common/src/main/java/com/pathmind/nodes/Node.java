@@ -326,6 +326,7 @@ public class Node {
     });
     private final List<NodeParameter> parameters;
     private boolean booleanToggleValue = true;
+    private int dynamicBooleanOperatorSlotCount;
     private final List<String> messageLines;
     private boolean messageClientSide;
     private String bookText;
@@ -356,6 +357,7 @@ public class Node {
         this.attachments = new NodeAttachments();
         this.runtimeState = new NodeRuntimeState();
         this.parameters = new ArrayList<>();
+        this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.messageLines = new ArrayList<>();
         if (type == NodeType.MESSAGE || type == NodeType.CHANGE_VARIABLE) {
             this.messageLines.add(getDefaultMessageLineValue());
@@ -693,6 +695,14 @@ public class Node {
 
     boolean isComparisonOperator() {
         return NodeCatalog.isBooleanSensor(type) && NodeCatalog.category(type) == NodeCategory.DATA;
+    }
+
+    private static boolean isExpandableBooleanOperatorType(NodeType type) {
+        return type == NodeType.OPERATOR_BOOLEAN_OR || type == NodeType.OPERATOR_BOOLEAN_AND;
+    }
+
+    public boolean isExpandableBooleanOperator() {
+        return isExpandableBooleanOperatorType(type);
     }
 
     public boolean isParameterNode() {
@@ -1136,6 +1146,9 @@ public class Node {
         if (!hasParameterSlot()) {
             return 0;
         }
+        if (isExpandableBooleanOperator()) {
+            return Math.max(2, dynamicBooleanOperatorSlotCount);
+        }
         return NodeTraitRegistry.getParameterSlotCount(type);
     }
 
@@ -1157,7 +1170,7 @@ public class Node {
     }
 
     public String getParameterSlotLabel(int slotIndex) {
-        if (isComparisonOperator()) {
+        if (isComparisonOperator() && !isExpandableBooleanOperator()) {
             return "";
         }
         return NodeTraitRegistry.getParameterSlotLabel(type, slotIndex);
@@ -2113,6 +2126,39 @@ public class Node {
         recalculateDimensions();
         updateAttachedParameterPositions();
         updateParentControlLayout();
+    }
+
+    public boolean addBooleanOperatorSlot() {
+        if (!isExpandableBooleanOperator()) {
+            return false;
+        }
+        dynamicBooleanOperatorSlotCount = Math.min(32, getParameterSlotCount() + 1);
+        recalculateDimensions();
+        updateAttachedParameterPositions();
+        updateParentControlLayout();
+        return true;
+    }
+
+    public boolean removeBooleanOperatorSlot() {
+        if (!isExpandableBooleanOperator() || getParameterSlotCount() <= 2) {
+            return false;
+        }
+        int removedSlot = getParameterSlotCount() - 1;
+        detachParameter(removedSlot);
+        dynamicBooleanOperatorSlotCount = Math.max(2, removedSlot);
+        recalculateDimensions();
+        updateAttachedParameterPositions();
+        updateParentControlLayout();
+        return true;
+    }
+
+    public void setBooleanOperatorSlotCount(Integer slotCount) {
+        if (!isExpandableBooleanOperator()) {
+            return;
+        }
+        dynamicBooleanOperatorSlotCount = Math.max(2, Math.min(32, slotCount == null ? 2 : slotCount));
+        recalculateDimensions();
+        updateAttachedParameterPositions();
     }
 
     private void updateParentControlLayout() {
@@ -3336,6 +3382,22 @@ public class Node {
 
     public int getMessageButtonsWidth() {
         return (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
+    }
+
+    public int getBooleanOperatorAddButtonLeft() {
+        return getX() + getWidth() - MESSAGE_BUTTON_PADDING - MESSAGE_BUTTON_SIZE;
+    }
+
+    public int getBooleanOperatorRemoveButtonLeft() {
+        return getBooleanOperatorAddButtonLeft() - MESSAGE_BUTTON_SPACING - MESSAGE_BUTTON_SIZE;
+    }
+
+    public int getBooleanOperatorButtonTop() {
+        return getY() + 3;
+    }
+
+    public int getBooleanOperatorButtonSize() {
+        return MESSAGE_BUTTON_SIZE;
     }
 
     public int getMessageScopeToggleDisplayHeight() {

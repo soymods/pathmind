@@ -1088,6 +1088,19 @@ class ExecutionManagerValidationTest {
         assertEquals(2, countStartNodes(lastExecutedGraph()));
     }
 
+    @Test
+    void stopChainWithMissingExplicitTargetDoesNotStopCaller() throws Exception {
+        Node runningStart = new Node(NodeType.START, 0, 0);
+        runningStart.setStartNodeNumber(2);
+        setActiveChain(runningStart, newChainController(runningStart, 1));
+
+        Node stopOtherStart = new Node(NodeType.STOP_CHAIN, 100, 0);
+        stopOtherStart.getParameter("StartNumber").setStringValue("1");
+        stopOtherStart.execute(1).get(1, TimeUnit.SECONDS);
+
+        assertTrue(manager.requestStopForStartNumber(2));
+    }
+
     @SuppressWarnings("unchecked")
     private CompletableFuture<Void> invokeContinueFromNode(Node node) throws Exception {
         return invokeContinueFromNode(node, List.of(node), List.of());
@@ -1145,6 +1158,14 @@ class ExecutionManagerValidationTest {
         return (int) graphData.getNodes().stream()
             .filter(node -> node.getType() == NodeType.START)
             .count();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void setActiveChain(Node startNode, Object controller) throws Exception {
+        Field field = ExecutionManager.class.getDeclaredField("activeChains");
+        field.setAccessible(true);
+        Map<Node, Object> activeChains = (Map<Node, Object>) field.get(manager);
+        activeChains.put(startNode, controller);
     }
 
     private static class CountingNode extends Node {

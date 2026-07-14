@@ -27,10 +27,7 @@ final class NodeFlowCommandExecutor {
         int targetNumber = owner.getIntParameter("StartNumber", 0);
 
         if (targetNumber > 0) {
-            boolean stopped = manager.requestStopForStartNumber(targetNumber);
-            if (!stopped) {
-                manager.requestStopAll();
-            }
+            manager.requestStopForStartNumber(targetNumber);
             future.complete(null);
             return;
         }

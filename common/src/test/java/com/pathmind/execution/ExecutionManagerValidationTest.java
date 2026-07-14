@@ -547,9 +547,9 @@ class ExecutionManagerValidationTest {
         ExecutionManager.RuntimeVariable stored = manager.getRuntimeVariable(start, "stored_position");
         assertNotNull(stored);
         assertEquals(NodeType.PARAM_COORDINATE, stored.getType());
-        assertEquals("10", stored.getValues().get("X"));
-        assertEquals("64", stored.getValues().get("Y"));
-        assertEquals("-3", stored.getValues().get("Z"));
+        assertEquals("10.0", stored.getValues().get("X"));
+        assertEquals("64.0", stored.getValues().get("Y"));
+        assertEquals("-3.0", stored.getValues().get("Z"));
     }
 
     @Test

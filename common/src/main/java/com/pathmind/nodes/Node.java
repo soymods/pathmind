@@ -2783,15 +2783,12 @@ public class Node {
                     break;
                 }
                 Vec3d position = resolved.get();
-                int x = MathHelper.floor(position.x);
-                int y = MathHelper.floor(position.y);
-                int z = MathHelper.floor(position.z);
                 if (isSensorPositionSingleAxisMode()) {
                     String componentKey = getSensorPositionComponentKey();
                     String componentValue = switch (componentKey) {
-                        case "X" -> Integer.toString(x);
-                        case "Y" -> Integer.toString(y);
-                        case "Z" -> Integer.toString(z);
+                        case "X" -> Double.toString(position.x);
+                        case "Y" -> Double.toString(position.y);
+                        case "Z" -> Double.toString(position.z);
                         default -> "";
                     };
                     if (!componentValue.isEmpty()) {
@@ -2805,9 +2802,9 @@ public class Node {
                         values.put(normalizeParameterKey("Value"), componentValue);
                     }
                 } else {
-                    String xValue = Integer.toString(x);
-                    String yValue = Integer.toString(y);
-                    String zValue = Integer.toString(z);
+                    String xValue = Double.toString(position.x);
+                    String yValue = Double.toString(position.y);
+                    String zValue = Double.toString(position.z);
                     values.put("X", xValue);
                     values.put(normalizeParameterKey("X"), xValue);
                     values.put("Y", yValue);
@@ -4296,14 +4293,18 @@ public class Node {
         String yValue = getParameterString(parameterNode, "Y");
         String zValue = getParameterString(parameterNode, "Z");
         if (xValue != null && yValue != null && zValue != null) {
-            int x = parseNodeInt(parameterNode, "X", 0);
-            int y = parseNodeInt(parameterNode, "Y", 0);
-            int z = parseNodeInt(parameterNode, "Z", 0);
-            BlockPos pos = new BlockPos(x, y, z);
+            double x = parseNodeDouble(parameterNode, "X", 0.0);
+            double y = parseNodeDouble(parameterNode, "Y", 0.0);
+            double z = parseNodeDouble(parameterNode, "Z", 0.0);
+            BlockPos pos = new BlockPos(MathHelper.floor(x), MathHelper.floor(y), MathHelper.floor(z));
             if (data != null) {
                 data.targetBlockPos = pos;
             }
-            return Optional.of(Vec3d.ofCenter(pos));
+            Vec3d vector = new Vec3d(x, y, z);
+            if (data != null) {
+                data.targetVector = vector;
+            }
+            return Optional.of(vector);
         }
 
         return Optional.empty();

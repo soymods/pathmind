@@ -1064,12 +1064,12 @@ final class NodeVariableListCommandExecutor {
                 String x = values.get("X");
                 String y = values.get("Y");
                 String z = values.get("Z");
-                Integer xi = Node.parseIntOrNull(x);
-                Integer yi = Node.parseIntOrNull(y);
-                Integer zi = Node.parseIntOrNull(z);
-                if (xi != null && yi != null && zi != null) {
-                    data.targetBlockPos = new BlockPos(xi, yi, zi);
-                    data.targetVector = Vec3d.ofCenter(data.targetBlockPos);
+                Double xd = Node.parseDoubleOrNull(x);
+                Double yd = Node.parseDoubleOrNull(y);
+                Double zd = Node.parseDoubleOrNull(z);
+                if (xd != null && yd != null && zd != null) {
+                    data.targetBlockPos = new BlockPos((int) Math.floor(xd), (int) Math.floor(yd), (int) Math.floor(zd));
+                    data.targetVector = new Vec3d(xd, yd, zd);
                 }
             }
             return snapshot;

@@ -8,6 +8,8 @@ final class SensorComparableDefinitions {
         return switch (type) {
             case SENSOR_TARGETED_BLOCK_FACE -> Optional.of(NodeBehaviorDefinitionSupport.stringComparable(
                 SensorComparableDefinitions::resolveTargetedBlockFaceString));
+            case SENSOR_CURRENT_GUI -> Optional.of(NodeBehaviorDefinitionSupport.stringComparable(
+                SensorComparableDefinitions::resolveGuiString));
             case SENSOR_LOOK_DIRECTION -> Optional.of(NodeBehaviorDefinitionSupport.combinedComparable(
                 SensorComparableDefinitions::resolveLookDirectionString,
                 SensorComparableDefinitions::resolveSingleAxisAmount));
@@ -29,6 +31,21 @@ final class SensorComparableDefinitions {
             face = owner.getRuntimeValue(values, "side");
         }
         return face.isEmpty() ? Optional.empty() : Optional.of(face.trim());
+    }
+
+    private static Optional<String> resolveGuiString(Node owner, Node node) {
+        Map<String, String> values = node.exportParameterValues();
+        String gui = owner.getRuntimeValue(values, "gui");
+        if (gui.isEmpty()) {
+            gui = owner.getRuntimeValue(values, "mode");
+        }
+        if (gui.isEmpty()) {
+            gui = owner.getRuntimeValue(values, "guimode");
+        }
+        if (gui.isEmpty()) {
+            gui = owner.getRuntimeValue(values, "selection");
+        }
+        return gui.isEmpty() ? Optional.empty() : Optional.of(gui.trim());
     }
 
     private static Optional<String> resolveLookDirectionString(Node owner, Node node) {

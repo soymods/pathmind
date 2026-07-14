@@ -96,6 +96,20 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void equalsAcceptsCurrentGuiSensorAsParameterValue() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node currentGui = new Node(NodeType.SENSOR_CURRENT_GUI, 0, 0);
+        Node gui = new Node(NodeType.PARAM_GUI, 0, 0);
+
+        assertTrue(currentGui.isParameterNode());
+        assertTrue(currentGui.usesMinimalNodePresentation());
+        assertTrue(equals.canAcceptParameterNode(currentGui, 0));
+        assertTrue(equals.canAcceptParameterNode(gui, 1));
+        assertTrue(equals.attachParameter(currentGui, 0));
+        assertTrue(equals.attachParameter(gui, 1));
+    }
+
+    @Test
     void fabricEventSensorDoesNotExposeParameterSlot() {
         Node sensor = new Node(NodeType.SENSOR_FABRIC_EVENT, 0, 0);
         Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);

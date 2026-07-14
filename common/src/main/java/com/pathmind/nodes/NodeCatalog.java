@@ -367,6 +367,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_LOOK_DIRECTION,
             NodeType.SENSOR_CURRENT_HAND,
+            NodeType.SENSOR_CURRENT_GUI,
             NodeType.SENSOR_IS_ON_GROUND,
             NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
@@ -391,7 +392,8 @@ public final class NodeCatalog {
             NodeType.SENSOR_TARGETED_ENTITY,
             NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_LOOK_DIRECTION,
-            NodeType.SENSOR_CURRENT_HAND);
+            NodeType.SENSOR_CURRENT_HAND,
+            NodeType.SENSOR_CURRENT_GUI);
 
         tag(NodeFlag.SENSOR_REQUIRES_PARAMETER,
             NodeType.SENSOR_TOUCHING_BLOCK,
@@ -425,6 +427,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_TARGETED_ENTITY,
             NodeType.SENSOR_LOOK_DIRECTION,
             NodeType.SENSOR_CURRENT_HAND,
+            NodeType.SENSOR_CURRENT_GUI,
             NodeType.SENSOR_IS_ON_GROUND,
             NodeType.OPERATOR_EQUALS,
             NodeType.OPERATOR_NOT,
@@ -1302,6 +1305,7 @@ public final class NodeCatalog {
             && type != NodeType.SENSOR_POSITION_OF
             && type != NodeType.SENSOR_DISTANCE_BETWEEN
             && type != NodeType.SENSOR_LOOK_DIRECTION
+            && type != NodeType.SENSOR_CURRENT_GUI
             && type != NodeType.SENSOR_FIND_TRADE
             && type != NodeType.SENSOR_SLOT_ITEM_COUNT;
     }

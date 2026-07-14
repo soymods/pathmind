@@ -26,11 +26,21 @@ final class CoordinateParameterDefinition {
 
     private static Optional<Vec3d> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
                                                          CompletableFuture<Void> future) {
-        BlockPos pos = resolveBlockPosition(owner, parameterNode);
+        Vec3d vector = resolvePositionVector(owner, parameterNode);
+        BlockPos pos = new BlockPos((int) Math.floor(vector.x), (int) Math.floor(vector.y), (int) Math.floor(vector.z));
         if (data != null) {
             data.targetBlockPos = pos;
+            data.targetVector = vector;
         }
-        return Optional.of(Vec3d.ofCenter(pos));
+        return Optional.of(vector);
+    }
+
+    private static Vec3d resolvePositionVector(Node owner, Node parameterNode) {
+        return new Vec3d(
+            Node.parseNodeDouble(parameterNode, "X", 0.0),
+            Node.parseNodeDouble(parameterNode, "Y", 0.0),
+            Node.parseNodeDouble(parameterNode, "Z", 0.0)
+        );
     }
 
     private static BlockPos resolveBlockPosition(Node owner, Node parameterNode) {

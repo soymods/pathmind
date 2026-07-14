@@ -104,7 +104,7 @@ class NodeBehaviorDefinitionRegistryTest {
 
         Optional<Vec3d> resolved = definition.resolvePositionTarget(owner, coordinate, data, null);
 
-        assertEquals(Optional.of(Vec3d.ofCenter(new BlockPos(10, 64, -3))), resolved);
+        assertEquals(Optional.of(new Vec3d(10.0, 64.0, -3.0)), resolved);
         assertEquals(new BlockPos(10, 64, -3), data.targetBlockPos);
         assertEquals(Optional.of("10 64 -3"), definition.resolveComparableString(owner, coordinate));
     }

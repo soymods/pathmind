@@ -11,5 +11,10 @@ class NodeComparableBehaviorRegistryTest {
     void comparableBehaviorsAreRegisteredForInitialFamilies() {
         assertNotNull(NodeComparableBehaviorRegistry.get(NodeType.SENSOR_LOOK_DIRECTION));
         assertTrue(NodeComparableBehaviorRegistry.snapshot().containsKey(NodeType.SENSOR_POSITION_OF));
+        assertNotNull(NodeComparableBehaviorRegistry.get(NodeType.SENSOR_CURRENT_GUI));
+        assertTrue(NodeComparableBehaviorRegistry.get(NodeType.PARAM_GUI).resolveComparableString(
+            new Node(NodeType.CONTROL_IF, 0, 0),
+            new Node(NodeType.PARAM_GUI, 0, 0)
+        ).isPresent());
     }
 }

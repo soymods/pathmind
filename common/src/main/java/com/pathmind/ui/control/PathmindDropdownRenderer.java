@@ -2,6 +2,7 @@ package com.pathmind.ui.control;
 
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.TextRenderUtil;
 import java.util.function.IntFunction;
 import net.minecraft.client.font.TextRenderer;
@@ -39,6 +40,9 @@ public final class PathmindDropdownRenderer {
             }
         }
 
+        Object matrices = context.getMatrices();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translateZ(matrices, 400.0f);
         context.enableScissor(spec.x, spec.y, spec.x + Math.max(1, spec.width), spec.y + animatedHeight);
         UIStyleHelper.drawScrollContainer(context, spec.x, spec.y, spec.width, listHeight, spec.containerPalette);
 
@@ -89,6 +93,7 @@ public final class PathmindDropdownRenderer {
         );
         DropdownLayoutHelper.drawOutline(context, spec.x, spec.y, spec.width, listHeight, spec.outlineColor);
         context.disableScissor();
+        MatrixStackBridge.pop(matrices);
         return hoverIndex;
     }
 

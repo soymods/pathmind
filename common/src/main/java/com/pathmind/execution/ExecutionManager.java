@@ -6,6 +6,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.nodes.RuntimeValueScope;
+import com.pathmind.routines.RoutineValueKind;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
@@ -53,6 +54,7 @@ public class ExecutionManager {
     private static final Executor CHAIN_COMPLETION_BOUNDARY_EXECUTOR = ForkJoinPool.commonPool();
     private static final int MAX_CHAIN_EXECUTIONS_PER_START = 128;
     private static final int MAX_FUNCTION_CALL_DEPTH = 32;
+    private static final int MAX_ROUTINE_CALL_DEPTH = 32;
     public static final String CHAT_MESSAGE_EVENT_NAME = "chat_message";
     public static final String CHAT_SENDER_VARIABLE_NAME = "chat_sender";
     public static final String CHAT_MESSAGE_VARIABLE_NAME = "chat_message";
@@ -68,10 +70,12 @@ public class ExecutionManager {
     private List<NodeConnection> activeConnections;
     private List<Node> workspaceNodes;
     private List<NodeConnection> workspaceConnections;
+    private volatile List<NodeGraphData.RoutineDefinitionData> workspaceRoutines;
     private final Set<ConnectionKey> activeConnectionLookup;
     private final Map<String, Node> outputNodeLookup;
     private volatile boolean cancelRequested;
     private final Map<Node, ChainController> activeChains;
+    private final Map<ChainController, List<NodeGraphData.RoutineDefinitionData>> controllerRoutines;
     private final Map<String, RuntimeVariable> globalRuntimeVariables;
     private final Map<String, RuntimeList> globalRuntimeLists;
     private final Map<ConnectionKey, Node> eventConnectionOwners;
@@ -80,6 +84,7 @@ public class ExecutionManager {
     private final Map<Integer, Long> executionNodeStartTimes;
     private final Map<Integer, Long> executionNodePausedDurations;
     private final Map<Integer, Long> executionNodePauseStartTimes;
+    private final Map<Integer, RoutineCallFrame> routineCallFrames;
     private final AtomicInteger nextExecutionId;
     private Integer primaryExecutionId;
     private boolean globalExecutionActive;
@@ -328,8 +333,10 @@ public class ExecutionManager {
         this.activeConnections = new ArrayList<>();
         this.workspaceNodes = new ArrayList<>();
         this.workspaceConnections = new ArrayList<>();
+        this.workspaceRoutines = new ArrayList<>();
         this.cancelRequested = false;
         this.activeChains = new ConcurrentHashMap<>();
+        this.controllerRoutines = new ConcurrentHashMap<>();
         this.globalRuntimeVariables = new ConcurrentHashMap<>();
         this.globalRuntimeLists = new ConcurrentHashMap<>();
         this.globalExecutionActive = false;
@@ -342,6 +349,7 @@ public class ExecutionManager {
         this.executionNodeStartTimes = new ConcurrentHashMap<>();
         this.executionNodePausedDurations = new ConcurrentHashMap<>();
         this.executionNodePauseStartTimes = new ConcurrentHashMap<>();
+        this.routineCallFrames = new ConcurrentHashMap<>();
         this.nextExecutionId = new AtomicInteger(1);
         this.primaryExecutionId = null;
         this.activeNodeStartTime = 0;
@@ -478,6 +486,7 @@ public class ExecutionManager {
             int executionId = allocateExecutionId();
             ChainController controller = new ChainController(handler.rootNode, executionId,
                 handler.branchNodes, handler.branchConnections);
+            registerControllerRoutines(controller, workspaceRoutines);
             activeChains.put(handler.rootNode, controller);
             seedRuntimeVariables(handler.rootNode, runtimeVariables);
             setEventFunctionActive(handler.rootNode, true);
@@ -748,6 +757,7 @@ public class ExecutionManager {
         this.cancelRequested = false;
 
         activeChains.clear();
+        controllerRoutines.clear();
 
         List<BranchLaunchData> launchDatas = new ArrayList<>();
         List<Node> isolatedStartNodes = new ArrayList<>();
@@ -775,6 +785,7 @@ public class ExecutionManager {
             int executionId = allocateExecutionId();
             ChainController controller = new ChainController(isolatedStartNode, executionId,
                 launchData.branchData.nodes, launchData.branchData.connections);
+            registerControllerRoutines(controller, workspaceRoutines);
             activeChains.put(isolatedStartNode, controller);
             CompletableFuture<Void> chainFuture = runChain(isolatedStartNode, controller, controller.rootExecutionId);
             chainFuture.whenComplete((ignored, throwable) ->
@@ -884,8 +895,8 @@ public class ExecutionManager {
         int executionId = allocateExecutionId();
         ChainController controller = new ChainController(launchData.rootNode, executionId,
             launchData.branchData.nodes, launchData.branchData.connections);
+        registerControllerRoutines(controller, workspaceRoutines);
         activeChains.put(launchData.rootNode, controller);
-        seedPresetInputRuntimeVariables(controller, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -941,8 +952,8 @@ public class ExecutionManager {
         int executionId = allocateExecutionId();
         ChainController controller = new ChainController(launchData.rootNode, executionId,
             launchData.branchData.nodes, launchData.branchData.connections);
+        registerControllerRoutines(controller, workspaceRoutines);
         activeChains.put(launchData.rootNode, controller);
-        seedPresetInputRuntimeVariables(controller, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -954,16 +965,28 @@ public class ExecutionManager {
      * replacing the currently active graph state for other running chains.
      */
     public boolean executeExternalBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections, String presetName) {
-        return startExternalBranch(startNode, nodes, connections, presetName) != null;
+        return startExternalBranch(startNode, nodes, connections, presetName, workspaceRoutines) != null;
+    }
+
+    public boolean executeExternalBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections,
+                                         String presetName, List<NodeGraphData.RoutineDefinitionData> routines) {
+        return startExternalBranch(startNode, nodes, connections, presetName, routines) != null;
     }
 
     public CompletableFuture<Void> executeExternalBranchAndWait(Node startNode, List<Node> nodes,
                                                                 List<NodeConnection> connections, String presetName) {
-        return startExternalBranch(startNode, nodes, connections, presetName);
+        return startExternalBranch(startNode, nodes, connections, presetName, workspaceRoutines);
+    }
+
+    public CompletableFuture<Void> executeExternalBranchAndWait(Node startNode, List<Node> nodes,
+                                                                List<NodeConnection> connections, String presetName,
+                                                                List<NodeGraphData.RoutineDefinitionData> routines) {
+        return startExternalBranch(startNode, nodes, connections, presetName, routines);
     }
 
     private CompletableFuture<Void> startExternalBranch(Node startNode, List<Node> nodes,
-                                                        List<NodeConnection> connections, String presetName) {
+                                                        List<NodeConnection> connections, String presetName,
+                                                        List<NodeGraphData.RoutineDefinitionData> routines) {
         if (startNode == null || startNode.getType() != NodeType.START) {
             LOGGER.warn("Cannot execute external branch - invalid START node");
             return null;
@@ -1005,8 +1028,8 @@ public class ExecutionManager {
         ChainController parentController = resolveCurrentChainController();
         ChainController controller = new ChainController(launchData.rootNode, executionId, parentController,
             launchData.branchData.nodes, launchData.branchData.connections);
+        registerControllerRoutines(controller, routines);
         activeChains.put(launchData.rootNode, controller);
-        seedPresetInputRuntimeVariables(controller, presetName, nodes, connections);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
             handleChainCompletion(controller, throwable, controller.rootExecutionId));
@@ -1014,52 +1037,7 @@ public class ExecutionManager {
         return chainFuture;
     }
 
-    private void seedPresetInputRuntimeVariables(ChainController controller, String presetName, List<Node> nodes,
-                                                 List<NodeConnection> connections) {
-        if (controller == null || controller.startNode == null || presetName == null || presetName.isBlank()
-            || nodes == null || connections == null) {
-            return;
-        }
-        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(presetName, nodes, connections);
-        if (definition == null || definition.getInputs() == null || definition.getInputs().isEmpty()) {
-            return;
-        }
-        SettingsManager.Settings settings = SettingsManager.getCurrent();
-        Map<String, Map<String, String>> allPresetValues = settings.presetInputValues;
-        Map<String, String> configuredValues = allPresetValues == null ? null : allPresetValues.get(presetName.trim());
-        for (NodeGraphData.CustomNodePort port : definition.getInputs()) {
-            if (port == null || port.getName() == null || port.getName().isBlank()) {
-                continue;
-            }
-            String configured = configuredValues == null ? null : configuredValues.get(port.getName());
-            String rawValue = configured != null ? configured : port.getDefaultValue();
-            RuntimeVariable runtimeVariable = createPresetInputRuntimeVariable(port, rawValue);
-            if (runtimeVariable != null) {
-                storeRuntimeVariable(controller, port.getName().trim(), runtimeVariable, RuntimeValueScope.GLOBAL);
-            }
-        }
-    }
-
-    private RuntimeVariable createPresetInputRuntimeVariable(NodeGraphData.CustomNodePort port, String rawValue) {
-        if (port == null) {
-            return null;
-        }
-        NodeType nodeType = parsePresetInputNodeType(port.getType());
-        Map<String, String> values = buildPresetInputValueMap(nodeType, rawValue == null ? "" : rawValue);
-        return new RuntimeVariable(nodeType, values);
-    }
-
-    private NodeType parsePresetInputNodeType(String rawType) {
-        if (rawType != null && !rawType.isBlank()) {
-            try {
-                return NodeType.valueOf(rawType.trim());
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-        return NodeType.PARAM_MESSAGE;
-    }
-
-    private Map<String, String> buildPresetInputValueMap(NodeType nodeType, String rawValue) {
+    private Map<String, String> buildRoutineDefaultValueMap(NodeType nodeType, String rawValue) {
         Map<String, String> values = new HashMap<>();
         String safeValue = rawValue == null ? "" : rawValue.trim();
         switch (nodeType) {
@@ -1129,6 +1107,7 @@ public class ExecutionManager {
         this.executionNodeStartTimes.clear();
         this.executionNodePausedDurations.clear();
         this.executionNodePauseStartTimes.clear();
+        this.routineCallFrames.clear();
         this.primaryExecutionId = null;
         this.activeNode = startNodes.isEmpty() ? null : startNodes.get(0);
         if (this.activeNode != null) {
@@ -1210,6 +1189,7 @@ public class ExecutionManager {
         if (!isExecuting && activeNode == null && activeChains.isEmpty()) {
             globalRuntimeVariables.clear();
             globalRuntimeLists.clear();
+            routineCallFrames.clear();
             return;
         }
 
@@ -1236,8 +1216,10 @@ public class ExecutionManager {
         this.executionNodePauseStartTimes.clear();
         this.primaryExecutionId = null;
         this.activeChains.clear();
+        this.controllerRoutines.clear();
         this.globalRuntimeVariables.clear();
         this.globalRuntimeLists.clear();
+        this.routineCallFrames.clear();
     }
 
     private void cancelAllBaritoneCommands() {
@@ -1458,6 +1440,7 @@ public class ExecutionManager {
         int executionId = allocateExecutionId();
         ChainController controller = new ChainController(launchData.rootNode, executionId,
             launchData.branchData.nodes, launchData.branchData.connections);
+        registerControllerRoutines(controller, workspaceRoutines);
         activeChains.put(launchData.rootNode, controller);
         CompletableFuture<Void> chainFuture = runChain(launchData.rootNode, controller, controller.rootExecutionId);
         chainFuture.whenComplete((ignored, throwable) ->
@@ -1466,11 +1449,17 @@ public class ExecutionManager {
     }
 
     public void setWorkspaceGraph(List<Node> nodes, List<NodeConnection> connections) {
+        setWorkspaceGraph(nodes, connections, workspaceRoutines);
+    }
+
+    public void setWorkspaceGraph(List<Node> nodes, List<NodeConnection> connections,
+                                  List<NodeGraphData.RoutineDefinitionData> routines) {
         if (nodes == null || connections == null) {
             return;
         }
         this.workspaceNodes = new ArrayList<>(nodes);
         this.workspaceConnections = new ArrayList<>(connections);
+        this.workspaceRoutines = new ArrayList<>(routines == null ? List.of() : routines);
     }
 
     public boolean isChainActive(Node startNode) {
@@ -1901,6 +1890,7 @@ public class ExecutionManager {
                         return CompletableFuture.completedFuture(null);
                     })
                     .thenCompose(pausedIgnored -> currentNode.execute(executionId))
+                    .thenCompose(ignoredFuture -> handleRoutineCallIfNeeded(currentNode, controller, executionId, repeatUntilGuard))
                     .thenCompose(ignoredFuture -> {
                         if (cancelRequested || controller.cancelRequested) {
                             return CompletableFuture.completedFuture(null);
@@ -1910,6 +1900,149 @@ public class ExecutionManager {
                     .thenCompose(ignoredFuture -> waitForExecutionResume())
                     .thenCompose(ignoredFuture -> continueFromNode(currentNode, controller, executionId, repeatUntilGuard, arrivalInputSocket));
             });
+    }
+
+    private CompletableFuture<Void> handleRoutineCallIfNeeded(Node invocation, ChainController controller,
+                                                               int parentExecutionId, Node repeatUntilGuard) {
+        if (cancelRequested || controller == null || controller.cancelRequested
+            || invocation == null || invocation.getType() != NodeType.ROUTINE_CALL) {
+            return CompletableFuture.completedFuture(null);
+        }
+        NodeGraphData.RoutineDefinitionData definition = findRoutineDefinition(controller, invocation.getRoutineId());
+        if (definition == null || definition.getGraph() == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "Routine definition is missing for " + invocation.getDisplayName().getString()));
+        }
+
+        Map<String, RuntimeVariable> inputs = captureRoutineInputs(invocation, definition, parentExecutionId);
+        if (inputs == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "Routine " + definition.getName() + " has missing or invalid inputs."));
+        }
+
+        int routineExecutionId = allocateExecutionId();
+        if (!retainChainExecution(controller, routineExecutionId, parentExecutionId, true)) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "Routine call depth exceeded " + MAX_ROUTINE_CALL_DEPTH + ". Check for runaway recursion."));
+        }
+
+        RoutineCallFrame frame = new RoutineCallFrame(
+            routineExecutionId, parentExecutionId, definition.getId(), inputs);
+        routineCallFrames.put(routineExecutionId, frame);
+        BranchData routineBranch = createRoutineBranch(controller, definition, frame);
+        if (routineBranch == null || routineBranch.nodes.isEmpty()) {
+            routineCallFrames.remove(routineExecutionId);
+            handleChainCompletion(controller, null, routineExecutionId);
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "Routine " + definition.getName() + " has no definition entry."));
+        }
+        Node entry = routineBranch.nodes.stream()
+            .filter(node -> node != null && node.getType() == NodeType.ROUTINE_ENTRY)
+            .findFirst().orElse(null);
+        if (entry == null) {
+            routineCallFrames.remove(routineExecutionId);
+            handleChainCompletion(controller, null, routineExecutionId);
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "Routine " + definition.getName() + " has no definition entry."));
+        }
+
+        mergeControllerGraph(controller, routineBranch.nodes, routineBranch.connections);
+        mergeActiveGraph(routineBranch.nodes, routineBranch.connections);
+        CompletableFuture<Void> routineFuture = runChain(entry, controller, routineExecutionId, repeatUntilGuard);
+        routineFuture.whenComplete((ignored, throwable) -> {
+            routineCallFrames.remove(routineExecutionId);
+            removeControllerGraph(controller, routineBranch.nodes, routineBranch.connections);
+            handleChainCompletion(controller, throwable, routineExecutionId);
+        });
+        return deferCompletion(routineFuture);
+    }
+
+    private NodeGraphData.RoutineDefinitionData findRoutineDefinition(ChainController controller, String routineId) {
+        if (routineId == null || routineId.isBlank()) return null;
+        List<NodeGraphData.RoutineDefinitionData> routines = controllerRoutines.getOrDefault(
+            controller, workspaceRoutines == null ? List.of() : workspaceRoutines);
+        for (NodeGraphData.RoutineDefinitionData routine : routines) {
+            if (routine != null && routineId.equals(routine.getId())) return routine;
+        }
+        return null;
+    }
+
+    private void registerControllerRoutines(ChainController controller,
+                                            List<NodeGraphData.RoutineDefinitionData> routines) {
+        if (controller == null) return;
+        controllerRoutines.put(controller, List.copyOf(routines == null ? List.of() : routines));
+    }
+
+    Map<String, RuntimeVariable> captureRoutineInputs(Node invocation,
+                                                      NodeGraphData.RoutineDefinitionData definition,
+                                                      int executionId) {
+        Map<String, RuntimeVariable> inputs = new HashMap<>();
+        for (NodeGraphData.RoutineInputData input : definition.getInputs()) {
+            if (input == null || input.getId() == null || input.getId().isBlank()) continue;
+            int slot = invocation.getRoutineSlotForInputId(input.getId());
+            RuntimeVariable value = slot >= 0 ? invocation.captureAttachedRuntimeValue(slot, executionId) : null;
+            if (value == null && input.getDefaultValue() != null && !input.getDefaultValue().isBlank()) {
+                value = createRoutineDefaultValue(input);
+            }
+            if (value == null && Boolean.TRUE.equals(input.getRequired())) return null;
+            if (value != null) inputs.put(input.getId(), value);
+        }
+        return inputs;
+    }
+
+    private RuntimeVariable createRoutineDefaultValue(NodeGraphData.RoutineInputData input) {
+        RoutineValueKind kind = RoutineValueKind.fromSerialized(input.getValueKind());
+        String raw = input.getDefaultValue() == null ? "" : input.getDefaultValue();
+        NodeType type = switch (kind) {
+            case NUMBER -> NodeType.PARAM_AMOUNT;
+            case BOOLEAN -> NodeType.PARAM_BOOLEAN;
+            case BLOCK -> NodeType.PARAM_BLOCK;
+            case ITEM -> NodeType.PARAM_ITEM;
+            case COORDINATE -> NodeType.PARAM_COORDINATE;
+            case PLAYER -> NodeType.PARAM_PLAYER;
+            case ENTITY -> NodeType.PARAM_ENTITY;
+            case ROTATION -> NodeType.PARAM_ROTATION;
+            case DIRECTION -> NodeType.PARAM_DIRECTION;
+            case DURATION -> NodeType.PARAM_DURATION;
+            case INVENTORY_SLOT -> NodeType.PARAM_INVENTORY_SLOT;
+            case GUI -> NodeType.PARAM_GUI;
+            default -> NodeType.PARAM_MESSAGE;
+        };
+        return new RuntimeVariable(type, buildRoutineDefaultValueMap(type, raw));
+    }
+
+    private BranchData createRoutineBranch(ChainController controller,
+                                           NodeGraphData.RoutineDefinitionData definition, RoutineCallFrame frame) {
+        List<Node> nodes = NodeGraphPersistence.convertToNodes(definition.getGraph());
+        Map<String, Node> nodeMap = new HashMap<>();
+        for (Node node : nodes) if (node != null) nodeMap.put(node.getId(), node);
+        List<NodeConnection> connections = NodeGraphPersistence.convertToConnections(definition.getGraph(), nodeMap);
+
+        for (Node node : nodes) {
+            if (node == null || node.getType() != NodeType.ROUTINE_CALL) continue;
+            NodeGraphData.RoutineDefinitionData nested = findRoutineDefinition(controller, node.getRoutineId());
+            if (nested != null) node.syncRoutineCallDefinition(nested);
+        }
+
+        List<Node> reporters = nodes.stream()
+            .filter(node -> node != null && node.getType() == NodeType.ROUTINE_INPUT).toList();
+        for (Node reporter : reporters) {
+            RuntimeVariable value = frame.inputs().get(reporter.getRoutineInputId());
+            if (value == null) continue;
+            Node snapshot = reporter.createRuntimeVariableSnapshot(value);
+            if (snapshot == null) continue;
+            Node host = reporter.getParentParameterHost();
+            int slot = reporter.getParentParameterSlotIndex();
+            if (host != null && slot >= 0) host.attachParameter(snapshot, slot);
+            snapshot.setOwningStartNode(reporter.getOwningStartNode());
+            nodes.add(snapshot);
+            nodes.remove(reporter);
+        }
+        return new BranchData(nodes, connections);
+    }
+
+    public RuntimeVariable getRoutineInputValue(int executionId, String inputId) {
+        return RoutineCallFrame.resolve(routineCallFrames, executionId, inputId);
     }
 
     private CompletableFuture<Void> scheduleNodeStartDelay() {
@@ -2325,6 +2458,7 @@ public class ExecutionManager {
 
         if (executionId >= 0) {
             activeExecutionNodes.remove(executionId);
+            routineCallFrames.remove(executionId);
             controller.executionFunctionDepths.remove(executionId);
             clearExecutionTiming(executionId);
             if (primaryExecutionId != null && primaryExecutionId == executionId) {
@@ -2337,6 +2471,7 @@ public class ExecutionManager {
         }
 
         activeChains.remove(controller.startNode, controller);
+        controllerRoutines.remove(controller);
 
         if (activeChains.isEmpty() && isExecuting) {
             stopExecution();
@@ -2406,7 +2541,7 @@ public class ExecutionManager {
                 LOGGER.warn("Skipping function call from START node {} because function call depth exceeded {}",
                     controller.startNode != null ? controller.startNode.getStartNodeNumber() : "unknown",
                     MAX_FUNCTION_CALL_DEPTH);
-                notifyExecutionBudgetWarning("Pathmind stopped a runaway function call loop. Check this preset for recursive function calls.");
+                notifyExecutionBudgetWarning("Pathmind stopped a runaway function or routine call loop. Check this preset for recursion.");
             }
             return false;
         }
@@ -2424,6 +2559,11 @@ public class ExecutionManager {
         }
 
         controller.executionFunctionDepths.put(executionId, depth);
+        RoutineCallFrame parentFrame = routineCallFrames.get(parentExecutionId);
+        if (!functionCall && parentFrame != null) {
+            routineCallFrames.put(executionId, new RoutineCallFrame(
+                executionId, parentFrame.parentExecutionId(), parentFrame.routineId(), parentFrame.inputs()));
+        }
         return true;
     }
 
@@ -3161,10 +3301,9 @@ public class ExecutionManager {
             if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {
                 nodeData.setKeyPressedActivatesInGuis(node.isKeyPressedActivatesInGuis());
             }
-            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+            if (node.getType() == NodeType.TEMPLATE) {
                 nodeData.setTemplateName(node.getTemplateName());
                 nodeData.setTemplateVersion(node.getTemplateVersion());
-                nodeData.setCustomNodeInstance(node.isCustomNodeInstance());
                 nodeData.setTemplateGraph(node.getTemplateGraphData());
             }
 

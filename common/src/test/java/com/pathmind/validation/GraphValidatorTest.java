@@ -6,6 +6,10 @@ import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeMode;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.RuntimeValueScope;
+import com.pathmind.data.NodeGraphData;
+import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.routines.RoutineBuilderModel;
+import com.pathmind.routines.RoutineValueKind;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,11 +21,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GraphValidatorTest {
 
+    @Test
+    void validateReportsMissingRoutineDefinition() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node call = Node.createRoutineCall("missing", "Gone", 100, 0);
+        GraphValidationResult result = GraphValidator.validate(List.of(start, call),
+            List.of(new NodeConnection(start, call, 0, 0)), PresetManager.getDefaultPresetName(), true, true, List.of(), "");
+        assertTrue(hasIssueCode(result, "missing_routine_definition"));
+    }
+
+    @Test
+    void routineWorkspaceUsesItsEntryAndRejectsForeignReporter() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Own");
+        new RoutineBuilderModel(routine).addInput("value", RoutineValueKind.TEXT);
+        Node entry = Node.createRoutineEntry(routine.getId(), routine.getName(), 0, 0);
+        Node foreign = Node.createRoutineInput("other", com.pathmind.routines.RoutineInputDefinition.create(
+            "foreign", RoutineValueKind.TEXT, 0), 100, 0);
+        GraphValidationResult result = GraphValidator.validate(List.of(entry, foreign), List.of(),
+            PresetManager.getDefaultPresetName(), true, true, List.of(routine), routine.getId());
+        assertFalse(hasIssueCode(result, "missing_start"));
+        assertTrue(hasIssueCode(result, "invalid_routine_reporter"));
+    }
+
+    @Test
+    void validateWarnsAboutRecursiveRoutine() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Loop");
+        routine.setGraph(NodeGraphPersistence.createGraphData(List.of(
+            Node.createRoutineEntry(routine.getId(), routine.getName(), 0, 0),
+            Node.createRoutineCall(routine, 100, 0)), List.of()));
+        GraphValidationResult result = GraphValidator.validate(List.of(new Node(NodeType.START, 0, 0)), List.of(),
+            PresetManager.getDefaultPresetName(), true, true, List.of(routine), "");
+        assertTrue(hasIssueCode(result, "recursive_routine"));
+    }
+
     private static final String PRESET_NAME = "GraphValidatorTestPreset";
+    private static final String NESTED_PRESET_NAME = "GraphValidatorNestedPreset";
 
     @AfterEach
     void cleanupPreset() throws Exception {
         Files.deleteIfExists(PresetManager.getPresetPath(PRESET_NAME));
+        Files.deleteIfExists(PresetManager.getPresetPath(NESTED_PRESET_NAME));
     }
 
     @Test
@@ -113,6 +152,32 @@ class GraphValidatorTest {
     }
 
     @Test
+    void validateRejectsDirectRunPresetLaunchLoop() throws Exception {
+        Files.writeString(PresetManager.getPresetPath(PRESET_NAME), "{}");
+        Node start = new Node(NodeType.START, 0, 0);
+        Node runPreset = new Node(NodeType.RUN_PRESET, 100, 0);
+        runPreset.getParameter("Preset").setStringValue(PRESET_NAME);
+        GraphValidationResult result = GraphValidator.validate(List.of(start, runPreset),
+            List.of(new NodeConnection(start, runPreset, 0, 0)), PRESET_NAME, true, true);
+        assertTrue(hasIssueCode(result, "recursive_preset"));
+    }
+
+    @Test
+    void validateRejectsIndirectRunPresetLaunchLoop() throws Exception {
+        Files.writeString(PresetManager.getPresetPath(PRESET_NAME), "{}");
+        Files.writeString(PresetManager.getPresetPath(NESTED_PRESET_NAME), """
+            {"nodes":[{"id":"nested-start","type":"START","x":0,"y":0,"parameters":[],"parameterAttachments":[],"startNodeNumber":1},
+            {"id":"back","type":"RUN_PRESET","x":100,"y":0,"parameters":[{"id":"preset","name":"Preset","value":"%s","type":"STRING"}],"parameterAttachments":[]}],"connections":[]}
+            """.formatted(PRESET_NAME));
+        Node start = new Node(NodeType.START, 0, 0);
+        Node runPreset = new Node(NodeType.RUN_PRESET, 100, 0);
+        runPreset.getParameter("Preset").setStringValue(NESTED_PRESET_NAME);
+        GraphValidationResult result = GraphValidator.validate(List.of(start, runPreset),
+            List.of(new NodeConnection(start, runPreset, 0, 0)), PRESET_NAME, true, true);
+        assertTrue(hasIssueCode(result, "recursive_preset"));
+    }
+
+    @Test
     void validateAllowsBlankStopChainTargetForOwningStart() {
         Node start = new Node(NodeType.START, 0, 0);
         Node stop = new Node(NodeType.STOP_CHAIN, 100, 0);
@@ -187,7 +252,7 @@ class GraphValidatorTest {
     }
 
     @Test
-    void validateDoesNotWarnWhenCustomNodePresetExistsButInternalGraphCacheIsEmpty() throws Exception {
+    void validateDoesNotWarnWhenTemplatePresetExistsButInternalGraphCacheIsEmpty() throws Exception {
         Files.writeString(PresetManager.getPresetPath(PRESET_NAME), """
             {
               "nodes": [
@@ -206,13 +271,13 @@ class GraphValidatorTest {
             """);
 
         Node start = new Node(NodeType.START, 0, 0);
-        Node customNode = new Node(NodeType.CUSTOM_NODE, 100, 0);
-        customNode.getParameter("Preset").setStringValue(PRESET_NAME);
-        customNode.setTemplateGraphData(null);
-        NodeConnection connection = new NodeConnection(start, customNode, 0, 0);
+        Node template = new Node(NodeType.TEMPLATE, 100, 0);
+        template.getParameter("Preset").setStringValue(PRESET_NAME);
+        template.setTemplateGraphData(null);
+        NodeConnection connection = new NodeConnection(start, template, 0, 0);
 
         GraphValidationResult result = GraphValidator.validate(
-            List.of(start, customNode),
+            List.of(start, template),
             List.of(connection),
             PresetManager.getDefaultPresetName(),
             true,

@@ -105,20 +105,21 @@ final class NodeFlowCommandExecutor {
         int started = 0;
         List<CompletableFuture<Void>> nestedFutures = new ArrayList<>();
         for (Node startNode : presetStarts) {
-            if (type == NodeType.CUSTOM_NODE || type == NodeType.TEMPLATE) {
-                CompletableFuture<Void> nestedFuture = manager.executeExternalBranchAndWait(startNode, nodes, connections, presetName);
+            if (type == NodeType.TEMPLATE) {
+                CompletableFuture<Void> nestedFuture = manager.executeExternalBranchAndWait(
+                    startNode, nodes, connections, presetName, graphData.getRoutines());
                 if (nestedFuture != null) {
                     started++;
                     nestedFutures.add(nestedFuture);
                 }
-            } else if (manager.executeExternalBranch(startNode, nodes, connections, presetName)) {
+            } else if (manager.executeExternalBranch(startNode, nodes, connections, presetName, graphData.getRoutines())) {
                 started++;
             }
         }
 
         if (started == 0) {
             future.complete(null);
-        } else if (type == NodeType.CUSTOM_NODE || type == NodeType.TEMPLATE) {
+        } else if (type == NodeType.TEMPLATE) {
             manager.deferCompletion(CompletableFuture.allOf(nestedFutures.toArray(new CompletableFuture[0])))
                 .whenComplete((ignored, throwable) -> {
                     if (throwable != null) {

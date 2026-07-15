@@ -171,7 +171,6 @@ public final class NodeCatalog {
             NodeType.OPERATOR_RANDOM);
 
         define(NodeCategory.ROUTINES, NodeType.ROUTINE_INPUT, NodeType.ROUTINE_CALL);
-        define(NodeCategory.CUSTOM, NodeType.CUSTOM_NODE);
 
         define(NodeCategory.PARAMETERS,
             NodeType.PARAM_COORDINATE,
@@ -303,9 +302,7 @@ public final class NodeCatalog {
             NodeType.ROUTINE_CALL,
             NodeType.STOP,
             NodeType.PLACE_HAND,
-            NodeType.RUN_PRESET,
             NodeType.TEMPLATE,
-            NodeType.CUSTOM_NODE,
             NodeType.STICKY_NOTE,
             NodeType.PARAM_VILLAGER_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
@@ -938,7 +935,6 @@ public final class NodeCatalog {
         typeParameters(NodeType.WAIT, of("Duration", ParameterType.DOUBLE, "0.0"));
         typeParameters(NodeType.START_CHAIN, of("StartNumber", ParameterType.INTEGER, ""));
         typeParameters(NodeType.RUN_PRESET, of("Preset", ParameterType.STRING, ""));
-        typeParameters(NodeType.CUSTOM_NODE, of("Preset", ParameterType.STRING, ""));
         typeParameters(NodeType.TEMPLATE, of("Preset", ParameterType.STRING, ""));
         typeParameters(NodeType.STOP_CHAIN, of("StartNumber", ParameterType.INTEGER, ""));
         typeParameters(NodeType.HOTBAR,
@@ -1149,7 +1145,7 @@ public final class NodeCatalog {
         route(ExecutionRoute.FARM, NodeType.FARM);
         route(ExecutionRoute.STOP, NodeType.STOP);
         route(ExecutionRoute.START_CHAIN, NodeType.START_CHAIN);
-        route(ExecutionRoute.RUN_PRESET, NodeType.RUN_PRESET, NodeType.CUSTOM_NODE, NodeType.TEMPLATE);
+        route(ExecutionRoute.RUN_PRESET, NodeType.RUN_PRESET, NodeType.TEMPLATE);
         route(ExecutionRoute.STOP_CHAIN, NodeType.STOP_CHAIN);
         route(ExecutionRoute.STOP_ALL, NodeType.STOP_ALL);
         route(ExecutionRoute.PLACE, NodeType.PLACE);
@@ -1411,7 +1407,7 @@ public final class NodeCatalog {
     }
 
     public static List<SidebarGroup> sidebarGroups(NodeCategory category, boolean baritoneAvailable, boolean uiUtilsAvailable) {
-        if (category == null || category == NodeCategory.CUSTOM) {
+        if (category == null) {
             return Collections.emptyList();
         }
         List<SidebarGroup> groups = new ArrayList<>();
@@ -1570,7 +1566,6 @@ public final class NodeCatalog {
             case SENSOR_FABRIC_EVENT -> "pathmind.node.type.sensorFabricEvent";
             case SENSOR_ATTRIBUTE_DETECTION -> "pathmind.node.type.sensorAttributeDetection";
             case RUN_PRESET -> "pathmind.node.type.runPreset";
-            case CUSTOM_NODE -> "pathmind.node.type.customNode";
             case WAIT -> "pathmind.node.type.wait";
             case STICKY_NOTE -> "pathmind.node.type.stickyNote";
             case MESSAGE -> "pathmind.node.type.message";
@@ -1721,7 +1716,6 @@ public final class NodeCatalog {
             case SENSOR_FABRIC_EVENT -> "pathmind.node.type.sensorFabricEvent.desc";
             case SENSOR_ATTRIBUTE_DETECTION -> "pathmind.node.type.sensorAttributeDetection.desc";
             case RUN_PRESET -> "pathmind.node.type.runPreset.desc";
-            case CUSTOM_NODE -> "pathmind.node.type.customNode.desc";
             case WAIT -> "pathmind.node.type.wait.desc";
             case STICKY_NOTE -> "pathmind.node.type.stickyNote.desc";
             case MESSAGE -> "pathmind.node.type.message.desc";
@@ -1870,7 +1864,6 @@ public final class NodeCatalog {
             case SENSOR_FABRIC_EVENT -> 0xFF64B5F6;
             case SENSOR_ATTRIBUTE_DETECTION -> 0xFF64B5F6;
             case RUN_PRESET -> 0xFF607D8B;
-            case CUSTOM_NODE -> 0xFF26A69A;
             case WAIT -> 0xFF607D8B;
             case STICKY_NOTE -> 0xFFEBCB5B;
             case MESSAGE -> 0xFF9E9E9E;
@@ -2007,7 +2000,7 @@ public final class NodeCatalog {
 
     public static boolean usesExplicitGraphColor(NodeType type) {
         return type == NodeType.START || type == NodeType.START_CHAIN
-            || type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE
+            || type == NodeType.TEMPLATE
             || type == NodeType.STOP_CHAIN || type == NodeType.STOP_ALL;
     }
 

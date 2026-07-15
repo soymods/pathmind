@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RoutineBuilderModelTest {
@@ -35,6 +36,8 @@ class RoutineBuilderModelTest {
         assertEquals("routine-id", call.getRoutineId());
         assertEquals("Break nearby", call.getDisplayName().getString());
         assertFalse(call.isProtectedRoutineEntry());
+        assertNull(call.getParameter("Preset"));
+        assertNull(call.getTemplateGraphData());
     }
 
     @Test

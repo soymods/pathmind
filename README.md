@@ -47,7 +47,19 @@ The current mod includes:
 
 - Node categories for flow control, world interaction, player actions, data handling, sensing, parameters, and reusable logic.
 - Support for combining simple actions into larger automation workflows.
-- Reusable graph structures for building modular systems.
+- Scratch-style **Routines**: create a named flow block, add typed inputs, define it once, and call it anywhere in that preset.
+- A separate Routine Library for explicitly linking or copying routines between presets.
+- **Run Preset** for launching another complete automation without confusing it with an in-preset routine.
+
+### Your First Routine
+
+1. Open **Routines** and choose **Create Routine**.
+2. Give it a useful label and add typed inputs, such as `break [block] within [range]`.
+3. Build the behavior under the Routine entry node.
+4. Exit the routine workspace, then drag the generated routine from the sidebar into your main workspace.
+5. Attach different values to each call. Every call gets its own input values and waits for the routine to finish.
+
+Variables are separate from routine inputs: local variables belong to one running chain, while global variables are shared by all running chains.
 
 ### Execution And Runtime
 
@@ -120,6 +132,7 @@ Pathmind also adds main-menu integration so the editor is reachable before joini
 Pathmind stores data inside your Minecraft directory under `pathmind/`.
 
 - `pathmind/presets/`: saved workspace graphs
+- `pathmind/routine-library.json`: routines explicitly added to the shared local library
 - `pathmind/active_preset.txt`: current preset selection
 - `pathmind/settings.json`: user settings
 - `pathmind/marketplace_auth.json`: marketplace session data

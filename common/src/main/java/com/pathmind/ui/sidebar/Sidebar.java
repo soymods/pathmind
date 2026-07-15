@@ -1,15 +1,17 @@
 package com.pathmind.ui.sidebar;
 
 import com.pathmind.data.NodeGraphData;
-import com.pathmind.data.NodeGraphPersistence;
-import com.pathmind.data.PresetManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.routines.RoutineBuilderModel;
+import com.pathmind.routines.RoutineLibraryManager;
+import com.pathmind.routines.RoutineLifecycle;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.control.PathmindIconRenderer;
+import com.pathmind.ui.control.PathmindRoutineUi;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.ui.tooltip.TooltipRenderer;
@@ -17,6 +19,7 @@ import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.ScrollbarHelper;
+import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
@@ -44,6 +47,7 @@ public class Sidebar {
     
     // Node display dimensions
     private static final int NODE_HEIGHT = 18;
+    private static final int ROUTINE_DROP_TARGET_HEIGHT = 26;
     private static final int PADDING = 4;
     private static final int CATEGORY_HEADER_HEIGHT = 20;
     private static final int CATEGORY_HEADER_LINE_SPACING = 2;
@@ -59,21 +63,35 @@ public class Sidebar {
     private final boolean baritoneAvailable;
     private final boolean uiUtilsAvailable;
     private NodeType hoveredNodeType = null;
-    private CustomNodeEntry hoveredCustomNode = null;
     private NodeCategory hoveredCategory = null;
     private NodeCategory selectedCategory = null;
-    private final List<CustomNodeEntry> customNodes = new ArrayList<>();
     private List<NodeGraphData.RoutineDefinitionData> routines = List.of();
+    private List<NodeGraphData.RoutineDefinitionData> libraryRoutines = List.of();
     private String activeRoutineId = "";
     private NodeGraphData.RoutineDefinitionData hoveredRoutine = null;
+    private NodeGraphData.RoutineDefinitionData hoveredLibraryRoutine = null;
     private NodeGraphData.RoutineInputData hoveredRoutineInput = null;
     private boolean hoveredCreateRoutine = false;
     private boolean createRoutineRequested = false;
     private boolean addRoutineInputRequested = false;
     private boolean hoveredAddRoutineInput = false;
-    private String openRoutineRequested = null;
     private String routineInputActionId = null;
     private int routineInputAction = 0;
+    private int hoveredRoutineInputAction = 0;
+    private String routineActionId = null;
+    private int routineAction = 0;
+    private boolean hoveredRoutineRename = false;
+    private boolean hoveredRoutineDelete = false;
+    private String libraryActionId = null;
+    private int libraryAction = 0;
+    private boolean hoveredLibraryDelete = false;
+    private boolean routineDragActive = false;
+    private boolean routineDragFromLibrary = false;
+    private int routineListDropTop = -1;
+    private int routineListDropBottom = -1;
+    private int routineLibraryDropTop = -1;
+    private int routineLibraryDropBottom = -1;
+    private Map<String, Integer> routineUsageCounts = Map.of();
     private int scrollOffset = 0;
     private int maxScroll = 0;
     private boolean scrollDragging = false;
@@ -119,17 +137,6 @@ public class Sidebar {
             groupedCategoryNodes.put(category, groups);
             categoryNodes.put(category, nodes);
         }
-        refreshCustomNodes();
-    }
-
-    private void refreshCustomNodes() {
-        customNodes.clear();
-        for (String presetName : PresetManager.getAvailablePresets()) {
-            if (presetName == null || presetName.isBlank()) {
-                continue;
-            }
-            customNodes.add(new CustomNodeEntry(presetName.trim()));
-        }
     }
 
     public boolean isNodeAvailable(NodeType nodeType) {
@@ -158,7 +165,7 @@ public class Sidebar {
         calculateMaxScroll(sidebarHeight, 0, null, null);
     }
 
-    private void calculateMaxScroll(int sidebarHeight, int headerHeight, List<GroupHeaderInfo> groupHeaders, List<NodeRowInfo> customNodeRows) {
+    private void calculateMaxScroll(int sidebarHeight, int headerHeight, List<GroupHeaderInfo> groupHeaders, List<NodeRowInfo> nodeRows) {
         int totalHeight = 0;
         
         // Add space for category header and nodes (content starts at top)
@@ -168,12 +175,12 @@ public class Sidebar {
             if (selectedCategory == NodeCategory.ROUTINES) {
                 totalHeight += NODE_HEIGHT;
                 totalHeight += routines.size() * NODE_HEIGHT;
+                if (routineDragActive && routineDragFromLibrary) totalHeight += ROUTINE_DROP_TARGET_HEIGHT;
+                totalHeight += NODE_HEIGHT;
+                if (routineDragActive && !routineDragFromLibrary) totalHeight += ROUTINE_DROP_TARGET_HEIGHT;
+                totalHeight += Math.max(1, libraryRoutines.size()) * NODE_HEIGHT;
                 NodeGraphData.RoutineDefinitionData active = findRoutine(activeRoutineId);
                 if (active != null) totalHeight += (active.getInputs().size() + 1) * NODE_HEIGHT;
-            } else if (selectedCategory == NodeCategory.CUSTOM && customNodeRows != null) {
-                for (NodeRowInfo info : customNodeRows) {
-                    totalHeight += info.height();
-                }
             } else if (groupHeaders != null && !groupHeaders.isEmpty()) {
                 for (GroupHeaderInfo info : groupHeaders) {
                     totalHeight += info.getHeight();
@@ -205,7 +212,6 @@ public class Sidebar {
     
     public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
                        int sidebarStartY, int sidebarHeight, boolean interactionsEnabled, boolean showTooltips) {
-        refreshCustomNodes();
         int effectiveMouseX = interactionsEnabled ? mouseX : Integer.MIN_VALUE;
         int effectiveMouseY = interactionsEnabled ? mouseY : Integer.MIN_VALUE;
         // Store current sidebar height so scroll can be recalculated
@@ -269,7 +275,6 @@ public class Sidebar {
         }
 
         List<GroupHeaderInfo> groupHeaders = null;
-        List<NodeRowInfo> customNodeRows = null;
         if (selectedCategory != null && hasGroupedContent(selectedCategory)) {
             groupHeaders = new ArrayList<>();
             for (NodeGroup group : getGroupsForCategory(selectedCategory)) {
@@ -280,11 +285,9 @@ public class Sidebar {
                 int height = Math.max(GROUP_HEADER_HEIGHT, lines.size() * groupLineHeight);
                 groupHeaders.add(new GroupHeaderInfo(group, lines, height, buildNodeRows(group.getNodes(), textRenderer, nodeTextWidth, nodeLineHeight)));
             }
-        } else if (selectedCategory == NodeCategory.CUSTOM) {
-            customNodeRows = buildCustomNodeRows(textRenderer, nodeTextWidth, nodeLineHeight);
         }
 
-        calculateMaxScroll(sidebarHeight, headerHeight, groupHeaders, customNodeRows);
+        calculateMaxScroll(sidebarHeight, headerHeight, groupHeaders, null);
         
         // Outer sidebar background
         int outerColor = totalWidth > currentInnerSidebarWidth ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
@@ -299,11 +302,19 @@ public class Sidebar {
 
         // Render colored tabs
         hoveredCategory = null;
-        hoveredCustomNode = null;
         hoveredRoutine = null;
+        hoveredLibraryRoutine = null;
         hoveredRoutineInput = null;
+        hoveredRoutineInputAction = 0;
         hoveredCreateRoutine = false;
         hoveredAddRoutineInput = false;
+        hoveredRoutineRename = false;
+        hoveredRoutineDelete = false;
+        hoveredLibraryDelete = false;
+        routineListDropTop = -1;
+        routineListDropBottom = -1;
+        routineLibraryDropTop = -1;
+        routineLibraryDropBottom = -1;
         int tabX = Math.max(0, (currentInnerSidebarWidth - tabSize) / 2);
         int visibleTabIndex = 0;
         for (int i = 0; i < categories.length; i++) {
@@ -362,14 +373,12 @@ public class Sidebar {
             int sidebarBottom = sidebarStartY + sidebarHeight;
             int nodeBackgroundLeft = currentInnerSidebarWidth + 1; // Keep divider line visible by offsetting fills
             ScrollbarHelper.Metrics scrollMetrics = getCategoryScrollMetrics();
-            int nodeBackgroundRight = scrollMetrics != null && scrollMetrics.maxScroll() > 0
-                ? scrollMetrics.trackLeft() - 2
-                : totalWidth;
             int contentClipLeft = nodeBackgroundLeft;
             int contentClipRight = Math.min(totalWidth, contentTextRight + 2);
             if (contentClipRight <= contentClipLeft) {
                 contentClipRight = contentClipLeft + 1;
             }
+            int nodeBackgroundRight = contentClipRight;
 
             context.enableScissor(contentClipLeft, contentTop, contentClipRight, contentBottom);
             
@@ -398,80 +407,140 @@ public class Sidebar {
                 int labelX = indicatorX + 16;
                 hoveredCreateRoutine = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight
                     && effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
-                if (hoveredCreateRoutine) context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
-                context.drawTextWithShadow(textRenderer, Text.literal("+"), indicatorX + 3, contentY + 5, NodeCategory.ROUTINES.getColor());
-                context.drawTextWithShadow(textRenderer, Text.translatable("pathmind.routine.create"), labelX, contentY + 5, UITheme.TEXT_PRIMARY);
+                PathmindSidebarEntryUi.renderRowBackground(context, nodeBackgroundLeft, contentY,
+                    nodeBackgroundRight, NODE_HEIGHT, "routine-sidebar:create", hoveredCreateRoutine);
+                int createColor = PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:create-text", hoveredCreateRoutine,
+                    NodeCategory.ROUTINES.getColor(), UITheme.TEXT_HEADER);
+                context.drawTextWithShadow(textRenderer, Text.literal("+"), indicatorX + 3, contentY + 5, createColor);
+                context.drawTextWithShadow(textRenderer, Text.translatable("pathmind.routine.create"), labelX, contentY + 5,
+                    PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:create-label", hoveredCreateRoutine,
+                        UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER));
                 contentY += NODE_HEIGHT;
-                for (NodeGraphData.RoutineDefinitionData routine : routines) {
+                if (routineDragActive && routineDragFromLibrary) {
+                    routineListDropTop = contentY + 2;
+                    renderRoutineDropTarget(context, textRenderer, effectiveMouseX, effectiveMouseY,
+                        indicatorX, nodeBackgroundRight, contentY);
+                    contentY += ROUTINE_DROP_TARGET_HEIGHT;
+                    routineListDropBottom = contentY - 2;
+                }
+                for (NodeGraphData.RoutineDefinitionData routine : RoutineLifecycle.sorted(routines)) {
                     boolean hovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight
                         && effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
                     if (hovered) {
                         hoveredRoutine = routine;
-                        context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
                     }
+                    PathmindSidebarEntryUi.renderRowBackground(context, nodeBackgroundLeft, contentY,
+                        nodeBackgroundRight, NODE_HEIGHT, "routine-sidebar:row:" + routine.getId(), hovered);
                     int routineSquareSize = 12;
                     int routineSquareY = contentY + (NODE_HEIGHT - routineSquareSize) / 2;
-                    UIStyleHelper.drawBeveledPanel(context, indicatorX, routineSquareY, routineSquareSize, routineSquareSize,
-                        NodeCategory.ROUTINES.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
-                    context.drawTextWithShadow(textRenderer, Text.literal(routine.getName()), indicatorX + routineSquareSize + 5, contentY + 5,
-                        routine.getId().equals(activeRoutineId) ? NodeCategory.ROUTINES.getColor() : UITheme.TEXT_PRIMARY);
-                    context.drawTextWithShadow(textRenderer, Text.literal("›"), nodeBackgroundRight - 10, contentY + 5,
-                        hovered ? UITheme.TEXT_HEADER : UITheme.TEXT_TERTIARY);
+                    boolean activeRoutine = routine.getId().equals(activeRoutineId);
+                    PathmindRoutineUi.renderRoutineMarker(context, indicatorX, routineSquareY, routineSquareSize,
+                        "routine-sidebar:marker:" + routine.getId(), activeRoutine || hovered, NodeCategory.ROUTINES.getColor());
+                    String routineLabel = routine.getName();
+                    int actionButtonSize = 12;
+                    int deleteButtonX = nodeBackgroundRight - actionButtonSize - 2;
+                    int renameButtonX = deleteButtonX - actionButtonSize - 3;
+                    int actionButtonY = contentY + (NODE_HEIGHT - actionButtonSize) / 2;
+                    int routineLabelX = indicatorX + routineSquareSize + 5;
+                    routineLabel = TextRenderUtil.trimWithEllipsis(textRenderer, routineLabel,
+                        Math.max(20, renameButtonX - routineLabelX - 3));
+                    context.drawTextWithShadow(textRenderer, Text.literal(routineLabel), routineLabelX, contentY + 5,
+                        activeRoutine ? NodeCategory.ROUTINES.getColor()
+                            : PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:label:" + routine.getId(), hovered,
+                                UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER));
+                    boolean renameHovered = hovered && effectiveMouseX >= renameButtonX && effectiveMouseX < renameButtonX + actionButtonSize;
+                    boolean deleteHovered = hovered
+                        && effectiveMouseX >= deleteButtonX && effectiveMouseX < deleteButtonX + actionButtonSize;
+                    if (renameHovered) hoveredRoutineRename = true;
+                    if (deleteHovered) hoveredRoutineDelete = true;
+                    PathmindRoutineUi.renderSidebarActionButton(context, renameButtonX, actionButtonY, actionButtonSize,
+                        "routine-sidebar:rename:" + routine.getId(), renameHovered, false,
+                        NodeCategory.ROUTINES.getColor(), PathmindIconRenderer::drawPencil);
+                    PathmindRoutineUi.renderSidebarActionButton(context, deleteButtonX, actionButtonY, actionButtonSize,
+                        "routine-sidebar:delete:" + routine.getId(), deleteHovered, true,
+                        NodeCategory.ROUTINES.getColor(), PathmindIconRenderer::drawTrash);
                     contentY += NODE_HEIGHT;
                     if (routine.getId().equals(activeRoutineId)) {
                         hoveredAddRoutineInput = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight
                             && effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
-                        if (hoveredAddRoutineInput) context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
+                        PathmindSidebarEntryUi.renderRowBackground(context, nodeBackgroundLeft, contentY,
+                            nodeBackgroundRight, NODE_HEIGHT, "routine-sidebar:add-input:" + routine.getId(), hoveredAddRoutineInput);
                         context.drawTextWithShadow(textRenderer, Text.literal("    + Add input"), indicatorX, contentY + 5,
-                            hoveredAddRoutineInput ? UITheme.TEXT_HEADER : UITheme.TEXT_SECONDARY);
+                            PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:add-input-text:" + routine.getId(),
+                                hoveredAddRoutineInput, UITheme.TEXT_SECONDARY, UITheme.TEXT_HEADER));
                         contentY += NODE_HEIGHT;
                         for (NodeGraphData.RoutineInputData input : routine.getInputs()) {
                             boolean inputHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight
                                 && effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
                             if (inputHovered) {
                                 hoveredRoutineInput = input;
-                                context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + NODE_HEIGHT, UITheme.BACKGROUND_TERTIARY);
                             }
+                            PathmindSidebarEntryUi.renderRowBackground(context, nodeBackgroundLeft, contentY,
+                                nodeBackgroundRight, NODE_HEIGHT, "routine-sidebar:input-row:" + input.getId(), inputHovered);
                             context.drawTextWithShadow(textRenderer, Text.literal("    [" + input.getLabel() + "]"), indicatorX, contentY + 5,
-                                inputHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_SECONDARY);
-                            context.drawTextWithShadow(textRenderer, Text.literal("↑ ↓ ×"), Math.max(labelX, nodeBackgroundRight - 42), contentY + 5,
-                                inputHovered ? NodeCategory.ROUTINES.getColor() : UITheme.TEXT_TERTIARY);
+                                PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:input-label:" + input.getId(), inputHovered,
+                                    UITheme.TEXT_SECONDARY, UITheme.TEXT_HEADER));
+                            int inputActionsX = Math.max(labelX, nodeBackgroundRight - 42);
+                            if (inputHovered && effectiveMouseX >= inputActionsX && effectiveMouseX < nodeBackgroundRight) {
+                                int actionOffset = effectiveMouseX - inputActionsX;
+                                hoveredRoutineInputAction = actionOffset < 14 ? 1 : actionOffset < 28 ? 2 : 3;
+                            }
+                            PathmindRoutineUi.renderInputAction(context, textRenderer, "↑", inputActionsX, contentY + 5,
+                                "routine-sidebar:input-up:" + input.getId(), inputHovered && hoveredRoutineInputAction == 1,
+                                NodeCategory.ROUTINES.getColor());
+                            PathmindRoutineUi.renderInputAction(context, textRenderer, "↓", inputActionsX + 14, contentY + 5,
+                                "routine-sidebar:input-down:" + input.getId(), inputHovered && hoveredRoutineInputAction == 2,
+                                NodeCategory.ROUTINES.getColor());
+                            PathmindRoutineUi.renderInputAction(context, textRenderer, "×", inputActionsX + 28, contentY + 5,
+                                "routine-sidebar:input-delete:" + input.getId(), inputHovered && hoveredRoutineInputAction == 3,
+                                UITheme.STATE_ERROR);
                             contentY += NODE_HEIGHT;
                         }
                     }
                 }
-            } else if (selectedCategory == NodeCategory.CUSTOM) {
-                if (customNodeRows != null) {
-                    for (NodeRowInfo customNode : customNodeRows) {
-                        int rowHeight = customNode.height();
-                    if (contentY >= sidebarBottom) {
-                        break;
-                    }
-                    boolean nodeHovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight
-                        && effectiveMouseY >= contentY && effectiveMouseY < contentY + rowHeight;
-                    if (nodeHovered) {
-                        hoveredCustomNode = customNode.customNode();
-                        context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
-                    }
-
-                    int indicatorSize = 12;
-                    int indicatorX = currentInnerSidebarWidth + 8;
-                    int indicatorY = contentY + Math.max(3, (rowHeight - indicatorSize) / 2);
-                    UIStyleHelper.drawBeveledPanel(context, indicatorX, indicatorY, indicatorSize, indicatorSize,
-                        NodeType.TEMPLATE.getColor(), UITheme.BORDER_SUBTLE, UITheme.PANEL_INNER_BORDER);
-
-                        int lineY = contentY + 4;
-                        for (String line : customNode.lines()) {
-                            context.drawTextWithShadow(
-                                textRenderer,
-                                Text.literal(line),
-                                indicatorX + indicatorSize + 4,
-                                lineY,
-                                UITheme.TEXT_PRIMARY
-                            );
-                            lineY += nodeLineHeight;
+                context.drawTextWithShadow(textRenderer, Text.translatable("pathmind.routine.library"), indicatorX,
+                    contentY + 5, NodeCategory.ROUTINES.getColor());
+                contentY += NODE_HEIGHT;
+                if (routineDragActive && !routineDragFromLibrary) {
+                    routineLibraryDropTop = contentY + 2;
+                    renderRoutineDropTarget(context, textRenderer, effectiveMouseX, effectiveMouseY,
+                        indicatorX, nodeBackgroundRight, contentY);
+                    contentY += ROUTINE_DROP_TARGET_HEIGHT;
+                    routineLibraryDropBottom = contentY - 2;
+                }
+                if (libraryRoutines.isEmpty()) {
+                    context.drawTextWithShadow(textRenderer, Text.translatable("pathmind.routine.library.empty"), labelX,
+                        contentY + 5, UITheme.TEXT_TERTIARY);
+                    contentY += NODE_HEIGHT;
+                } else {
+                    for (NodeGraphData.RoutineDefinitionData libraryRoutine : RoutineLifecycle.sorted(libraryRoutines)) {
+                        boolean hovered = effectiveMouseX >= nodeBackgroundLeft && effectiveMouseX <= nodeBackgroundRight
+                            && effectiveMouseY >= contentY && effectiveMouseY < contentY + NODE_HEIGHT;
+                        if (hovered) {
+                            hoveredLibraryRoutine = libraryRoutine;
                         }
-                        contentY += rowHeight;
+                        PathmindSidebarEntryUi.renderRowBackground(context, nodeBackgroundLeft, contentY,
+                            nodeBackgroundRight, NODE_HEIGHT, "routine-sidebar:library-row:" + libraryRoutine.getId(), hovered);
+                        int routineSquareSize = 12;
+                        int routineSquareY = contentY + (NODE_HEIGHT - routineSquareSize) / 2;
+                        PathmindRoutineUi.renderRoutineMarker(context, indicatorX, routineSquareY, routineSquareSize,
+                            "routine-sidebar:library-marker:" + libraryRoutine.getId(), hovered, NodeCategory.ROUTINES.getColor());
+                        int deleteButtonSize = 12;
+                        int deleteButtonX = nodeBackgroundRight - deleteButtonSize - 2;
+                        int deleteButtonY = contentY + (NODE_HEIGHT - deleteButtonSize) / 2;
+                        String libraryLabel = TextRenderUtil.trimWithEllipsis(textRenderer, libraryRoutine.getName(),
+                            Math.max(20, deleteButtonX - labelX - 3));
+                        context.drawTextWithShadow(textRenderer, Text.literal(libraryLabel), labelX,
+                            contentY + 5, PathmindSidebarEntryUi.animatedTextColor(
+                                "routine-sidebar:library-label:" + libraryRoutine.getId(), hovered,
+                                UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER));
+                        boolean deleteHovered = hovered && effectiveMouseX >= deleteButtonX
+                            && effectiveMouseX < deleteButtonX + deleteButtonSize;
+                        if (deleteHovered) hoveredLibraryDelete = true;
+                        PathmindRoutineUi.renderSidebarActionButton(context, deleteButtonX, deleteButtonY, deleteButtonSize,
+                            "routine-sidebar:library-delete:" + libraryRoutine.getId(), deleteHovered, true,
+                            NodeCategory.ROUTINES.getColor(), PathmindIconRenderer::drawTrash);
+                        contentY += NODE_HEIGHT;
                     }
                 }
             } else if (hasGroupedContent(selectedCategory)) {
@@ -512,34 +581,22 @@ public class Sidebar {
 
                             if (nodeHovered) {
                                 hoveredNodeType = nodeType;
-                                context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                             }
 
                             int indicatorSize = 12;
                             int indicatorX = currentInnerSidebarWidth + 8;
                             int indicatorY = contentY + Math.max(3, (rowHeight - indicatorSize) / 2);
-                            UIStyleHelper.drawBeveledPanel(
-                                context,
-                                indicatorX,
-                                indicatorY,
-                                indicatorSize,
-                                indicatorSize,
-                                getSidebarNodeIndicatorColor(group.getDisplayCategory(), nodeType, nodeIndex),
-                                UITheme.BORDER_SUBTLE,
-                                UITheme.PANEL_INNER_BORDER
+                            NodeCategory displayCategory = group.getDisplayCategory();
+                            PathmindSidebarEntryUi.renderNodeEntry(
+                                context, textRenderer,
+                                nodeBackgroundLeft, contentY, nodeBackgroundRight, rowHeight,
+                                indicatorX, indicatorY, indicatorSize,
+                                getSidebarNodeIndicatorColor(displayCategory, nodeType, nodeIndex),
+                                indicatorX + indicatorSize + 4, contentY + 4, row.lines(), nodeLineHeight,
+                                getSidebarNodeTextColor(displayCategory), getSidebarCategoryAccent(displayCategory),
+                                "sidebar-node:group:" + group.getTitle() + ":" + nodeType.name() + ":" + nodeIndex,
+                                nodeHovered
                             );
-
-                            int lineY = contentY + 4;
-                            for (String line : row.lines()) {
-                                context.drawTextWithShadow(
-                                    textRenderer,
-                                    Text.literal(line),
-                                    indicatorX + indicatorSize + 4,
-                                    lineY,
-                                    getSidebarNodeTextColor(group.getDisplayCategory(), nodeHovered)
-                                );
-                                lineY += nodeLineHeight;
-                            }
 
                             contentY += rowHeight;
                         }
@@ -560,34 +617,21 @@ public class Sidebar {
 
                         if (nodeHovered) {
                             hoveredNodeType = nodeType;
-                            context.fill(nodeBackgroundLeft, contentY, nodeBackgroundRight, contentY + rowHeight, UITheme.BACKGROUND_TERTIARY);
                         }
 
                         int indicatorSize = 12;
                         int indicatorX = currentInnerSidebarWidth + 8; // Align with category title
                         int indicatorY = contentY + Math.max(3, (rowHeight - indicatorSize) / 2);
-                        UIStyleHelper.drawBeveledPanel(
-                            context,
-                            indicatorX,
-                            indicatorY,
-                            indicatorSize,
-                            indicatorSize,
+                        PathmindSidebarEntryUi.renderNodeEntry(
+                            context, textRenderer,
+                            nodeBackgroundLeft, contentY, nodeBackgroundRight, rowHeight,
+                            indicatorX, indicatorY, indicatorSize,
                             getSidebarNodeIndicatorColor(selectedCategory, nodeType, nodeIndex),
-                            UITheme.BORDER_SUBTLE,
-                            UITheme.PANEL_INNER_BORDER
+                            indicatorX + indicatorSize + 4, contentY + 4, row.lines(), nodeLineHeight,
+                            getSidebarNodeTextColor(selectedCategory), getSidebarCategoryAccent(selectedCategory),
+                            "sidebar-node:" + selectedCategory.name() + ":" + nodeType.name() + ":" + nodeIndex,
+                            nodeHovered
                         );
-
-                        int lineY = contentY + 4;
-                        for (String line : row.lines()) {
-                            context.drawTextWithShadow(
-                                textRenderer,
-                                Text.literal(line),
-                                indicatorX + indicatorSize + 4, // Position after the indicator with some spacing
-                                lineY,
-                                getSidebarNodeTextColor(selectedCategory, nodeHovered)
-                            );
-                            lineY += nodeLineHeight;
-                        }
                         
                         contentY += rowHeight;
                     }
@@ -608,16 +652,21 @@ public class Sidebar {
             DrawContextBridge.flush(context);
         }
 
-        if (interactionsEnabled && showTooltips && hoveredCustomNode != null) {
-            TooltipRenderer.render(
-                context,
-                textRenderer,
-                hoveredCustomNode.getDescription(),
-                mouseX,
-                mouseY,
+        if (interactionsEnabled && showTooltips && hoveredRoutine != null) {
+            int inputCount = hoveredRoutine.getInputs().size();
+            int usageCount = routineUsageCounts.getOrDefault(hoveredRoutine.getId(), 0);
+            boolean broken = hoveredRoutine.getGraph() == null || hoveredRoutine.getGraph().getNodes().stream()
+                .noneMatch(node -> node != null && node.getType() == NodeType.ROUTINE_ENTRY);
+            String summary = Text.translatable("pathmind.routine.inspector", inputCount, usageCount).getString();
+            if (broken) summary += " • " + Text.translatable("pathmind.routine.broken").getString();
+            TooltipRenderer.render(context, textRenderer, summary, mouseX, mouseY,
                 MinecraftClient.getInstance().getWindow().getScaledWidth(),
-                MinecraftClient.getInstance().getWindow().getScaledHeight()
-            );
+                MinecraftClient.getInstance().getWindow().getScaledHeight());
+        } else if (interactionsEnabled && showTooltips && hoveredLibraryRoutine != null) {
+            TooltipRenderer.render(context, textRenderer,
+                Text.translatable("pathmind.routine.library.inspector", hoveredLibraryRoutine.getInputs().size()).getString(),
+                mouseX, mouseY, MinecraftClient.getInstance().getWindow().getScaledWidth(),
+                MinecraftClient.getInstance().getWindow().getScaledHeight());
         } else if (interactionsEnabled && showTooltips && hoveredNodeType != null) {
             TooltipRenderer.render(
                 context,
@@ -633,7 +682,6 @@ public class Sidebar {
         // Reset hover states if mouse is not in sidebar
         if (effectiveMouseX < 0 || effectiveMouseX > currentRenderedWidth) {
             hoveredNodeType = null;
-            hoveredCustomNode = null;
             hoveredCategory = null;
         }
     }
@@ -673,8 +721,19 @@ public class Sidebar {
                 return true;
             }
             if (hoveredRoutine != null) {
-                if (!activeRoutineId.isBlank() || mouseX >= currentRenderedWidth - 22) {
-                    openRoutineRequested = hoveredRoutine.getId();
+                if (hoveredRoutineRename) {
+                    routineActionId = hoveredRoutine.getId();
+                    routineAction = 7;
+                } else if (hoveredRoutineDelete) {
+                    routineActionId = hoveredRoutine.getId();
+                    routineAction = 4;
+                }
+                return true;
+            }
+            if (hoveredLibraryRoutine != null) {
+                if (hoveredLibraryDelete) {
+                    libraryActionId = hoveredLibraryRoutine.getId();
+                    libraryAction = 3;
                 }
                 return true;
             }
@@ -683,17 +742,13 @@ public class Sidebar {
                 return true;
             }
             if (hoveredRoutineInput != null && button == 0) {
-                int distanceFromRight = currentRenderedWidth - (int) mouseX;
-                if (distanceFromRight >= 8 && distanceFromRight <= 22) routineInputAction = 3;
-                else if (distanceFromRight > 22 && distanceFromRight <= 34) routineInputAction = 2;
-                else if (distanceFromRight > 34 && distanceFromRight <= 46) routineInputAction = 1;
+                routineInputAction = hoveredRoutineInputAction;
                 if (routineInputAction != 0) {
                     routineInputActionId = hoveredRoutineInput.getId();
                     return true;
                 }
             }
-            if (hoveredNodeType != null || hoveredCustomNode != null || hoveredRoutineInput != null
-                || (hoveredRoutine != null && activeRoutineId.isBlank() && openRoutineRequested == null)) {
+            if (hoveredNodeType != null || hoveredRoutineInput != null) {
                 return true; // Signal that dragging should start
             }
         }
@@ -730,20 +785,21 @@ public class Sidebar {
     }
     
     public boolean isHoveringNode() {
-        return hoveredNodeType != null || hoveredCustomNode != null || hoveredRoutineInput != null
-            || (hoveredRoutine != null && activeRoutineId.isBlank() && openRoutineRequested == null);
+        return hoveredNodeType != null || hoveredRoutineInput != null
+            || (hoveredLibraryRoutine != null && !hoveredLibraryDelete)
+            || (hoveredRoutine != null && !hoveredRoutineRename && !hoveredRoutineDelete);
     }
     
     public Node createNodeFromSidebar(int x, int y) {
-        if (hoveredRoutine != null && activeRoutineId.isBlank() && openRoutineRequested == null) {
+        if (hoveredLibraryRoutine != null && !hoveredLibraryDelete) {
+            return Node.createRoutineCall(hoveredLibraryRoutine, x, y);
+        }
+        if (hoveredRoutine != null && !hoveredRoutineRename && !hoveredRoutineDelete) {
             return Node.createRoutineCall(hoveredRoutine, x, y);
         }
         if (hoveredRoutineInput != null) {
             NodeGraphData.RoutineDefinitionData routine = findRoutine(activeRoutineId);
             return routine == null ? null : new RoutineBuilderModel(routine).createInputReporter(hoveredRoutineInput.getId(), x, y);
-        }
-        if (hoveredCustomNode != null) {
-            return hoveredCustomNode.createNode(x, y);
         }
         if (hoveredNodeType != null) {
             return Node.createForEditor(hoveredNodeType, x, y);
@@ -778,9 +834,6 @@ public class Sidebar {
         if (category == NodeCategory.ROUTINES) {
             return true;
         }
-        if (category == NodeCategory.CUSTOM) {
-            return !customNodes.isEmpty();
-        }
         List<NodeType> nodes = categoryNodes.get(category);
         return nodes != null && !nodes.isEmpty();
     }
@@ -789,22 +842,8 @@ public class Sidebar {
      * Returns the list of nodes for the specified category (non-grouped).
      */
     public List<NodeType> getNodesForCategory(NodeCategory category) {
-        if (category == NodeCategory.CUSTOM) {
-            return java.util.Collections.emptyList();
-        }
         List<NodeType> nodes = categoryNodes.get(category);
         return nodes != null ? nodes : java.util.Collections.emptyList();
-    }
-
-    /**
-     * Returns preset names that can be placed as custom node instances.
-     */
-    public List<String> getCustomNodePresetNames() {
-        List<String> names = new ArrayList<>();
-        for (CustomNodeEntry customNode : customNodes) {
-            names.add(customNode.getLabel());
-        }
-        return names;
     }
 
     /**
@@ -815,24 +854,26 @@ public class Sidebar {
         return groupedCategoryNodes.get(category);
     }
 
-    public boolean isHoveringCustomNode() {
-        return hoveredCustomNode != null;
+    public void setRoutineContext(List<NodeGraphData.RoutineDefinitionData> routines, String activeRoutineId) {
+        setRoutineContext(routines, activeRoutineId, Map.of());
     }
 
-    public void setRoutineContext(List<NodeGraphData.RoutineDefinitionData> routines, String activeRoutineId) {
+    public void setRoutineContext(List<NodeGraphData.RoutineDefinitionData> routines, String activeRoutineId,
+                                  Map<String, Integer> routineUsageCounts) {
         this.routines = routines == null ? List.of() : routines;
+        this.libraryRoutines = RoutineLibraryManager.list();
         this.activeRoutineId = activeRoutineId == null ? "" : activeRoutineId;
+        this.routineUsageCounts = routineUsageCounts == null ? Map.of() : routineUsageCounts;
+    }
+
+    public void setRoutineDragState(boolean active, boolean fromLibrary) {
+        routineDragActive = active;
+        routineDragFromLibrary = active && fromLibrary;
     }
 
     public boolean consumeCreateRoutineRequested() {
         boolean requested = createRoutineRequested;
         createRoutineRequested = false;
-        return requested;
-    }
-
-    public String consumeOpenRoutineRequested() {
-        String requested = openRoutineRequested;
-        openRoutineRequested = null;
         return requested;
     }
 
@@ -855,6 +896,32 @@ public class Sidebar {
         return result;
     }
 
+    /** Returns 4 delete, 7 rename, or 0. */
+    public int consumeRoutineAction() {
+        int result = routineAction;
+        routineAction = 0;
+        return result;
+    }
+
+    public String consumeRoutineActionId() {
+        String result = routineActionId;
+        routineActionId = null;
+        return result;
+    }
+
+    /** Returns 3 delete, or 0. */
+    public int consumeLibraryAction() {
+        int result = libraryAction;
+        libraryAction = 0;
+        return result;
+    }
+
+    public String consumeLibraryActionId() {
+        String result = libraryActionId;
+        libraryActionId = null;
+        return result;
+    }
+
     private NodeGraphData.RoutineDefinitionData findRoutine(String id) {
         if (id == null) return null;
         for (NodeGraphData.RoutineDefinitionData routine : routines) {
@@ -864,42 +931,46 @@ public class Sidebar {
     }
 
     public NodeType getHoveredNodeType() {
-        if (hoveredCustomNode != null) return NodeType.CUSTOM_NODE;
         if (hoveredRoutineInput != null) return NodeType.ROUTINE_INPUT;
-        if (hoveredRoutine != null && activeRoutineId.isBlank()) return NodeType.ROUTINE_CALL;
+        if (hoveredLibraryRoutine != null && !hoveredLibraryDelete) return NodeType.ROUTINE_CALL;
+        if (hoveredRoutine != null && !hoveredRoutineRename && !hoveredRoutineDelete) return NodeType.ROUTINE_CALL;
         return hoveredNodeType;
     }
 
-    private static final class CustomNodeEntry {
-        private final String presetName;
-
-        private CustomNodeEntry(String presetName) {
-            this.presetName = presetName;
-        }
-
-        private String getLabel() {
-            return presetName;
-        }
-
-        private String getDescription() {
-            return "Reusable custom node from preset \"" + presetName + "\".";
-        }
-
-        private Node createNode(int x, int y) {
-            Node node = new Node(NodeType.CUSTOM_NODE, x, y);
-            if (node.getParameter("Preset") != null) {
-                node.getParameter("Preset").setStringValue(presetName);
-            }
-            NodeGraphData data = NodeGraphPersistence.loadNodeGraphForPreset(presetName);
-            NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(presetName, data);
-            node.setTemplateName(definition != null ? definition.getName() : presetName);
-            node.setTemplateVersion(definition != null && definition.getVersion() != null ? definition.getVersion() : 0);
-            node.setTemplateGraphData(data);
-            node.recalculateDimensions();
-            return node;
-        }
+    public boolean isHoveringLibraryRoutine() {
+        return hoveredLibraryRoutine != null && !hoveredLibraryDelete;
     }
-    
+
+    public boolean isRoutineLibraryDropTarget(double mouseX, double mouseY) {
+        return selectedCategory == NodeCategory.ROUTINES
+            && routineLibraryDropTop >= 0
+            && mouseX >= currentInnerSidebarWidth + 1
+            && mouseX <= currentRenderedWidth
+            && mouseY >= routineLibraryDropTop
+            && mouseY < routineLibraryDropBottom;
+    }
+
+    public boolean isRoutineListDropTarget(double mouseX, double mouseY) {
+        return selectedCategory == NodeCategory.ROUTINES
+            && routineListDropTop >= 0
+            && mouseX >= currentInnerSidebarWidth + 1
+            && mouseX <= currentRenderedWidth
+            && mouseY >= routineListDropTop
+            && mouseY < routineListDropBottom;
+    }
+
+    private void renderRoutineDropTarget(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
+                                         int left, int right, int top) {
+        int x = left;
+        int y = top + 2;
+        int width = Math.max(1, right - left - 2);
+        int height = ROUTINE_DROP_TARGET_HEIGHT - 4;
+        String label = Text.translatable("pathmind.routine.dropHere").getString();
+        String target = routineDragFromLibrary ? "routine-list" : "routine-library";
+        PathmindRoutineUi.renderDropTarget(context, textRenderer, x, y, width, height, mouseX, mouseY,
+            "routine-sidebar:drop:" + target, label, NodeCategory.ROUTINES.getColor());
+    }
+
     /**
      * Darkens a color by the specified factor
      */
@@ -937,9 +1008,8 @@ public class Sidebar {
         return getSidebarCategoryAccent(category);
     }
 
-    private int getSidebarNodeTextColor(NodeCategory category, boolean hovered) {
-        int baseColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getSidebarCategoryAccent(category), 0.14f);
-        return hovered ? AnimationHelper.lerpColor(baseColor, UITheme.TEXT_HEADER, 0.18f) : baseColor;
+    private int getSidebarNodeTextColor(NodeCategory category) {
+        return AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getSidebarCategoryAccent(category), 0.14f);
     }
 
     private List<String> wrapText(String text, TextRenderer textRenderer, int maxWidth) {
@@ -1027,23 +1097,11 @@ public class Sidebar {
         return buildNodeRows(nodes, textRenderer, maxWidth, lineHeight);
     }
 
-    private List<NodeRowInfo> buildCustomNodeRows(TextRenderer textRenderer, int maxWidth, int lineHeight) {
-        if (textRenderer == null) {
-            return java.util.Collections.emptyList();
-        }
-        List<NodeRowInfo> rows = new ArrayList<>();
-        for (CustomNodeEntry customNode : customNodes) {
-            List<String> lines = wrapText(customNode.getLabel(), textRenderer, maxWidth);
-            rows.add(new NodeRowInfo(null, customNode, lines, getWrappedNodeRowHeight(lines.size(), lineHeight)));
-        }
-        return rows;
-    }
-
     private List<NodeRowInfo> buildNodeRows(List<NodeType> nodes, TextRenderer textRenderer, int maxWidth, int lineHeight) {
         List<NodeRowInfo> rows = new ArrayList<>();
         for (NodeType nodeType : nodes) {
             List<String> lines = wrapText(nodeType.getDisplayName(), textRenderer, maxWidth);
-            rows.add(new NodeRowInfo(nodeType, null, lines, getWrappedNodeRowHeight(lines.size(), lineHeight)));
+            rows.add(new NodeRowInfo(nodeType, lines, getWrappedNodeRowHeight(lines.size(), lineHeight)));
         }
         return rows;
     }
@@ -1107,7 +1165,7 @@ public class Sidebar {
         }
     }
 
-    private record NodeRowInfo(NodeType nodeType, CustomNodeEntry customNode, List<String> lines, int height) {}
+    private record NodeRowInfo(NodeType nodeType, List<String> lines, int height) {}
 
     public static class NodeGroup {
         private final NodeCategory displayCategory;

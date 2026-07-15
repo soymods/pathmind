@@ -3,9 +3,30 @@ package com.pathmind.nodes;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeDimensionCalculatorTest {
+    @Test
+    void zeroInputRoutineCallUsesCompactPresentation() {
+        com.pathmind.data.NodeGraphData.RoutineDefinitionData routine =
+            com.pathmind.routines.RoutineBuilderModel.createRoutine("Compact");
+        Node call = Node.createRoutineCall(routine, 0, 0);
+
+        assertTrue(call.usesMinimalNodePresentation());
+        assertEquals(32, call.getHeight());
+    }
+
+    @Test
+    void routineCallWithInputsUsesStandardPresentation() {
+        com.pathmind.data.NodeGraphData.RoutineDefinitionData routine =
+            com.pathmind.routines.RoutineBuilderModel.createRoutine("Configured");
+        new com.pathmind.routines.RoutineBuilderModel(routine)
+            .addInput("value", com.pathmind.routines.RoutineValueKind.TEXT);
+        Node call = Node.createRoutineCall(routine, 0, 0);
+
+        assertFalse(call.usesMinimalNodePresentation());
+    }
 
     @Test
     void startNodeUsesFixedCompactSize() {

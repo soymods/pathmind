@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.nio.file.Files;
@@ -43,6 +44,13 @@ class NodeCatalogTest {
     }
 
     @Test
+    void runPresetIsVisibleWhileLegacyTemplateNodesStayHidden() {
+        assertTrue(NodeCatalog.shouldDisplayInSidebar(NodeType.RUN_PRESET, true, true));
+        assertFalse(NodeCatalog.shouldDisplayInSidebar(NodeType.TEMPLATE, true, true));
+        assertEquals(NodeCategory.FLOW, NodeCatalog.sidebarPlacement(NodeType.RUN_PRESET, true, true).displayCategory());
+    }
+
+    @Test
     void displayMetadataKeysExistInEnglishTranslations() throws IOException {
         Map<String, String> translations = loadEnglishTranslations();
         for (NodeType type : NodeType.values()) {
@@ -53,12 +61,35 @@ class NodeCatalogTest {
     }
 
     @Test
+    void routineTranslationsExistInEveryLocale() throws IOException {
+        Path langDirectory = Path.of("src/main/resources/assets/pathmind/lang");
+        Map<String, String> english = loadTranslations(langDirectory.resolve("en_us.json"));
+        Set<String> routineKeys = new HashSet<>();
+        for (String key : english.keySet()) {
+            if (key.startsWith("pathmind.routine.")
+                || key.startsWith("pathmind.node.type.routine")
+                || key.equals("pathmind.node.category.routines")
+                || key.equals("pathmind.node.category.routines.desc")) {
+                routineKeys.add(key);
+            }
+        }
+
+        try (Stream<Path> locales = Files.list(langDirectory)) {
+            for (Path locale : locales.filter(path -> path.toString().endsWith(".json")).toList()) {
+                Map<String, String> translations = loadTranslations(locale);
+                assertTrue(translations.keySet().containsAll(routineKeys),
+                    () -> locale.getFileName() + " is missing routine translations: "
+                        + routineKeys.stream().filter(key -> !translations.containsKey(key)).toList());
+            }
+        }
+    }
+
+    @Test
     void graphColorDefaultsToIntrinsicCategoryUnlessExplicitlyPreserved() {
         assertEquals(NodeCategory.NAVIGATION.getColor(), NodeType.TRAVEL.getColor());
         assertEquals(NodeCategory.PLAYER.getColor(), NodeType.WALK.getColor());
         assertEquals(NodeCatalog.definition(NodeType.START).baseColor(), NodeType.START.getColor());
         assertEquals(NodeCatalog.definition(NodeType.START_CHAIN).baseColor(), NodeType.START_CHAIN.getColor());
-        assertEquals(NodeCatalog.definition(NodeType.CUSTOM_NODE).baseColor(), NodeType.CUSTOM_NODE.getColor());
     }
 
     @Test
@@ -172,7 +203,6 @@ class NodeCatalogTest {
         assertEquals(NodeCatalog.ExecutionRoute.SENSOR_EVALUATION, NodeCatalog.executionRoute(NodeType.SENSOR_GUI_FILLED));
         assertEquals(NodeCatalog.ExecutionRoute.SENSOR_EVALUATION, NodeCatalog.executionRoute(NodeType.SENSOR_FIND_TRADE));
         assertEquals(NodeCatalog.ExecutionRoute.RUN_PRESET, NodeCatalog.executionRoute(NodeType.RUN_PRESET));
-        assertEquals(NodeCatalog.ExecutionRoute.RUN_PRESET, NodeCatalog.executionRoute(NodeType.CUSTOM_NODE));
         assertEquals(NodeCatalog.ExecutionRoute.REMOVE_LIST_ITEM, NodeCatalog.executionRoute(NodeType.REMOVE_LIST_ITEM));
 
         assertTrue(NodeCommandDispatcher.hasExplicitRoute(NodeType.SENSOR_FIND_TRADE));
@@ -209,7 +239,10 @@ class NodeCatalogTest {
     }
 
     private static Map<String, String> loadEnglishTranslations() throws IOException {
-        Path langPath = Path.of("src/main/resources/assets/pathmind/lang/en_us.json");
+        return loadTranslations(Path.of("src/main/resources/assets/pathmind/lang/en_us.json"));
+    }
+
+    private static Map<String, String> loadTranslations(Path langPath) throws IOException {
         String json = Files.readString(langPath);
         Map<String, String> translations = new HashMap<>();
         Matcher matcher = LANG_ENTRY_PATTERN.matcher(json);

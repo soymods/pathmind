@@ -59,60 +59,14 @@ class NodeGraphPersistenceTest {
     }
 
     @Test
-    void customNodeDefinitionDoesNotExposePureSetVariableTargetAsInput() {
-        Node start = new Node(NodeType.START, 0, 0);
-        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
-        Node variable = new Node(NodeType.VARIABLE, 0, 0);
-        variable.getParameter("Variable").setStringValue("variable");
-        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        amount.getParameter("Amount").setStringValue("1.0");
+    void newPresetDoesNotGenerateLegacyCustomNodeMetadata() throws Exception {
+        Path savePath = tempDir.resolve("routine-era-preset.json");
+        assertTrue(NodeGraphPersistence.saveNodeGraphToPath(
+            List.of(new Node(NodeType.START, 0, 0)), List.of(), savePath));
 
-        assertTrue(setVariable.attachParameter(variable, 0));
-        assertTrue(setVariable.attachParameter(amount, 1));
-
-        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(
-            "variable",
-            List.of(start, setVariable, variable, amount),
-            List.of(new NodeConnection(start, setVariable, 0, 0))
-        );
-
-        assertNotNull(definition);
-        assertTrue(definition.getInputs().isEmpty());
-    }
-
-    @Test
-    void customNodeDefinitionKeepsInitializedVariableAsInputWhenItIsAlsoRead() {
-        Node start = new Node(NodeType.START, 0, 0);
-        Node setVariable = new Node(NodeType.SET_VARIABLE, 100, 0);
-        Node targetVariable = new Node(NodeType.VARIABLE, 0, 0);
-        targetVariable.getParameter("Variable").setStringValue("distance");
-        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        amount.getParameter("Amount").setStringValue("1.0");
-        Node equals = new Node(NodeType.OPERATOR_EQUALS, 200, 0);
-        Node readVariable = new Node(NodeType.VARIABLE, 0, 0);
-        readVariable.getParameter("Variable").setStringValue("distance");
-        Node comparison = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        comparison.getParameter("Amount").setStringValue("1.0");
-
-        assertTrue(setVariable.attachParameter(targetVariable, 0));
-        assertTrue(setVariable.attachParameter(amount, 1));
-        assertTrue(equals.attachParameter(readVariable, 0));
-        assertTrue(equals.attachParameter(comparison, 1));
-
-        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(
-            "distance",
-            List.of(start, setVariable, targetVariable, amount, equals, readVariable, comparison),
-            List.of(
-                new NodeConnection(start, setVariable, 0, 0),
-                new NodeConnection(setVariable, equals, 0, 0)
-            )
-        );
-
-        assertNotNull(definition);
-        assertEquals(1, definition.getInputs().size());
-        assertEquals("distance", definition.getInputs().get(0).getName());
-        assertEquals(NodeType.PARAM_AMOUNT.name(), definition.getInputs().get(0).getType());
-        assertEquals("1.0", definition.getInputs().get(0).getDefaultValue());
+        NodeGraphData saved = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
+        assertNotNull(saved);
+        assertNull(saved.getCustomNodeDefinition());
     }
 
     @Test
@@ -140,7 +94,6 @@ class NodeGraphPersistenceTest {
         Node template = new Node(NodeType.TEMPLATE, 200, 70);
         template.setTemplateName("Reusable");
         template.setTemplateVersion(3);
-        template.setCustomNodeInstance(true);
         template.setTemplateGraphData(new NodeGraphData(
             List.of(new NodeGraphData.NodeData("inner-start", NodeType.START, null, 0, 0, List.of())),
             List.of()
@@ -185,10 +138,31 @@ class NodeGraphPersistenceTest {
         assertEquals(com.pathmind.nodes.NodeMode.WAIT_MINUTES, restoredWaitWithParameter.getMode());
         assertEquals("Reusable", restoredTemplate.getTemplateName());
         assertEquals(3, restoredTemplate.getTemplateVersion());
-        assertTrue(restoredTemplate.isCustomNodeInstance());
         assertNotNull(restoredTemplate.getTemplateGraphData());
         assertEquals(1, restoredTemplate.getTemplateGraphData().getNodes().size());
         assertEquals(connections.size(), restoredConnections.size());
+    }
+
+    @Test
+    void legacyCustomNodesLoadAsRunPresetNodes() throws Exception {
+        Path savePath = tempDir.resolve("legacy-custom-node.json");
+        Files.writeString(savePath, """
+            {
+              "nodes": [{
+                "id": "legacy",
+                "type": "CUSTOM_NODE",
+                "x": 10,
+                "y": 20,
+                "parameters": [{"id":"preset","name":"Preset","value":"Example"}],
+                "parameterAttachments": []
+              }],
+              "connections": []
+            }
+            """);
+
+        NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
+        assertNotNull(loaded);
+        assertEquals(NodeType.RUN_PRESET, loaded.getNodes().get(0).getType());
     }
 
     @Test

@@ -259,6 +259,7 @@ public class Node {
     private static final int STOP_TARGET_FIELD_TEXT_PADDING = 3;
     private static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
     static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
+    static final int RUN_PRESET_FIELD_MIN_WIDTH = 120;
     static final int VARIABLE_FIELD_MARGIN_HORIZONTAL = 8;
     private static final int VARIABLE_FIELD_TOP_MARGIN = 6;
     private static final int VARIABLE_FIELD_LABEL_HEIGHT = 0;
@@ -339,7 +340,6 @@ public class Node {
     private boolean keyPressedActivatesInGuis;
     private String templateName;
     private int templateVersion;
-    private boolean customNodeInstance;
     private NodeGraphData templateGraphData;
     private RuntimeValueScope runtimeValueScope;
     private String routineId;
@@ -347,7 +347,7 @@ public class Node {
     private final List<NodeGraphData.RoutineArgumentData> routineArguments;
 
     private boolean usesTemplateBacking() {
-        return type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE;
+        return type == NodeType.TEMPLATE;
     }
 
     public Node(NodeType type, int x, int y) {
@@ -377,7 +377,6 @@ public class Node {
         this.keyPressedActivatesInGuis = true;
         this.templateName = usesTemplateBacking() ? "Template" : "";
         this.templateVersion = 0;
-        this.customNodeInstance = type == NodeType.CUSTOM_NODE;
         this.templateGraphData = null;
         this.runtimeValueScope = RuntimeValueScope.GLOBAL;
         this.routineId = "";
@@ -938,7 +937,8 @@ public class Node {
     }
 
     public boolean usesMinimalNodePresentation() {
-        return NodeCatalog.usesMinimalNodePresentation(type);
+        return NodeCatalog.usesMinimalNodePresentation(type)
+            || type == NodeType.ROUTINE_CALL && routineArguments.isEmpty();
     }
 
     public boolean canAcceptParameterAt(int slotIndex) {
@@ -1617,7 +1617,7 @@ public class Node {
 
     public boolean hasStopTargetInputField() {
         return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN || type == NodeType.RUN_PRESET
-            || type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE;
+            || type == NodeType.TEMPLATE;
     }
 
     public boolean hasVariableInputField() {
@@ -1631,7 +1631,7 @@ public class Node {
     }
 
     public String getStopTargetFieldParameterKey() {
-        if (type == NodeType.RUN_PRESET || type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
+        if (type == NodeType.RUN_PRESET || type == NodeType.TEMPLATE) {
             return "Preset";
         }
         return "StartNumber";
@@ -2030,14 +2030,14 @@ public class Node {
         if (!hasStopTargetInputField()) {
             return 0;
         }
-        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
+        if (type == NodeType.TEMPLATE) {
             return 24;
         }
         return STOP_TARGET_FIELD_TOP_MARGIN + STOP_TARGET_FIELD_HEIGHT + STOP_TARGET_FIELD_BOTTOM_MARGIN;
     }
 
     public int getStopTargetFieldLabelTop() {
-        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
+        if (type == NodeType.TEMPLATE) {
             return getY() + HEADER_HEIGHT + 4;
         }
         return getParameterSlotsBottom() + STOP_TARGET_FIELD_TOP_MARGIN;
@@ -2052,21 +2052,22 @@ public class Node {
     }
 
     public int getStopTargetFieldHeight() {
-        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
+        if (type == NodeType.TEMPLATE) {
             return 16;
         }
         return STOP_TARGET_FIELD_HEIGHT;
     }
 
     public int getStopTargetFieldWidth() {
-        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
+        if (type == NodeType.TEMPLATE) {
             return Math.max(72, getWidth() - 12);
         }
-        return Math.max(STOP_TARGET_FIELD_MIN_WIDTH, layoutState.getStopTargetFieldWidthOverride());
+        int minimum = type == NodeType.RUN_PRESET ? RUN_PRESET_FIELD_MIN_WIDTH : STOP_TARGET_FIELD_MIN_WIDTH;
+        return Math.max(minimum, layoutState.getStopTargetFieldWidthOverride());
     }
 
     public int getStopTargetFieldLeft() {
-        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
+        if (type == NodeType.TEMPLATE) {
             return getX() + 6;
         }
         return getX() + Math.max(STOP_TARGET_FIELD_MARGIN_HORIZONTAL, (getWidth() - getStopTargetFieldWidth()) / 2);
@@ -3307,17 +3308,6 @@ public class Node {
         this.templateVersion = Math.max(0, templateVersion);
     }
 
-    public boolean isCustomNodeInstance() {
-        return type == NodeType.CUSTOM_NODE || (type == NodeType.TEMPLATE && customNodeInstance);
-    }
-
-    public void setCustomNodeInstance(boolean customNodeInstance) {
-        if (!usesTemplateBacking()) {
-            return;
-        }
-        this.customNodeInstance = customNodeInstance;
-    }
-
     public NodeGraphData getTemplateGraphData() {
         return usesTemplateBacking() ? templateGraphData : null;
     }
@@ -4066,13 +4056,16 @@ public class Node {
         return switch (type) {
             case EVENT_CALL,
                 EVENT_FUNCTION,
+                START,
+                ROUTINE_ENTRY,
+                ROUTINE_CALL,
+                ROUTINE_INPUT,
                 SET_VARIABLE,
                 CHANGE_VARIABLE,
                 CONTROL_REPEAT,
                 CONTROL_FOREVER,
                 START_CHAIN,
                 RUN_PRESET,
-                CUSTOM_NODE,
                 TEMPLATE,
                 STOP_CHAIN,
                 STOP_ALL -> false;
@@ -7563,8 +7556,32 @@ public class Node {
         return operatorSensorEvaluator().resolveBooleanFromNode(node);
     }
 
-    Node createRuntimeVariableSnapshot(ExecutionManager.RuntimeVariable runtimeVariable) {
+    public Node createRuntimeVariableSnapshot(ExecutionManager.RuntimeVariable runtimeVariable) {
         return operatorSensorEvaluator().createRuntimeVariableSnapshot(runtimeVariable);
+    }
+
+    /** Evaluates one attached argument into an immutable value snapshot for a routine call frame. */
+    public ExecutionManager.RuntimeVariable captureAttachedRuntimeValue(int slotIndex, int executionId) {
+        Node valueNode = getAttachedParameter(slotIndex);
+        if (valueNode == null) return null;
+        if (valueNode.getType() == NodeType.VARIABLE) {
+            valueNode = resolveVariableValueNode(valueNode, slotIndex, null);
+            if (valueNode == null) return null;
+        } else if (valueNode.getType() == NodeType.ROUTINE_INPUT) {
+            ExecutionManager.RuntimeVariable framed = ExecutionManager.getInstance()
+                .getRoutineInputValue(executionId, valueNode.getRoutineInputId());
+            if (framed != null) return framed;
+        }
+        if (valueNode.isSensorNode() && NodeCatalog.isBooleanSensor(valueNode.getType())) {
+            String value = Boolean.toString(valueNode.evaluateSensor());
+            Map<String, String> values = new HashMap<>();
+            values.put("Toggle", value);
+            values.put(normalizeParameterKey("Toggle"), value);
+            return new ExecutionManager.RuntimeVariable(NodeType.PARAM_BOOLEAN, values);
+        }
+        NodeType valueType = valueNode.getResolvedValueType();
+        if (valueType == null || valueType == NodeType.ROUTINE_INPUT) valueType = valueNode.getType();
+        return new ExecutionManager.RuntimeVariable(valueType, valueNode.exportParameterValues());
     }
 
     Optional<Boolean> compareParameterNodes(Node left, Node right) {

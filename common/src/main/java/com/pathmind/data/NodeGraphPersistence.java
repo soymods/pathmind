@@ -344,10 +344,9 @@ public class NodeGraphPersistence {
                     );
                 }
             }
-            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+            if (node.getType() == NodeType.TEMPLATE) {
                 node.setTemplateName(nodeData.getTemplateName());
                 node.setTemplateVersion(nodeData.getTemplateVersion() != null ? nodeData.getTemplateVersion() : 0);
-                node.setCustomNodeInstance(Boolean.TRUE.equals(nodeData.getCustomNodeInstance()));
                 node.setTemplateGraphData(nodeData.getTemplateGraph());
             }
             if (node.getType() == NodeType.GOTO || node.getType() == NodeType.TRAVEL) {
@@ -879,7 +878,9 @@ public class NodeGraphPersistence {
     private static NodeGraphData buildNodeGraphData(String presetName, List<Node> nodes, List<NodeConnection> connections,
                                                     NodeGraphData existingData) {
         NodeGraphData data = new NodeGraphData();
-        data.setCustomNodeDefinition(buildCustomNodeDefinition(presetName, nodes, connections, existingData));
+        // Preserve metadata used by legacy Template nodes, but do not expose every
+        // newly saved preset as an implicit custom node.
+        data.setCustomNodeDefinition(existingData == null ? null : existingData.getCustomNodeDefinition());
         if (existingData != null) {
             sanitizeRoutineDefinitions(existingData);
             data.setRoutines(new ArrayList<>(existingData.getRoutines()));
@@ -964,15 +965,13 @@ public class NodeGraphPersistence {
                 nodeData.setStickyNoteWidth(null);
                 nodeData.setStickyNoteHeight(null);
             }
-            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+            if (node.getType() == NodeType.TEMPLATE) {
                 nodeData.setTemplateName(node.getTemplateName());
                 nodeData.setTemplateVersion(node.getTemplateVersion());
-                nodeData.setCustomNodeInstance(node.isCustomNodeInstance());
                 nodeData.setTemplateGraph(node.getTemplateGraphData());
             } else {
                 nodeData.setTemplateName(null);
                 nodeData.setTemplateVersion(null);
-                nodeData.setCustomNodeInstance(null);
                 nodeData.setTemplateGraph(null);
             }
             if (node.getType() == NodeType.GOTO || node.getType() == NodeType.TRAVEL) {
@@ -1062,12 +1061,6 @@ public class NodeGraphPersistence {
             return stored;
         }
         return buildCustomNodeDefinition(presetName, convertToNodesOrEmpty(data), convertToConnectionsOrEmpty(data), null);
-    }
-
-    public static NodeGraphData.CustomNodeDefinition resolveCustomNodeDefinition(String presetName, List<Node> nodes,
-                                                                                 List<NodeConnection> connections) {
-        return buildCustomNodeDefinition(presetName, nodes == null ? List.of() : nodes,
-            connections == null ? List.of() : connections, null);
     }
 
     private static List<Node> convertToNodesOrEmpty(NodeGraphData data) {
@@ -1811,6 +1804,9 @@ class NodeTypeAdapter extends com.google.gson.TypeAdapter<NodeType> {
             }
             if ("CLOSE_INVENTORY".equals(name)) {
                 return NodeType.CLOSE_GUI;
+            }
+            if ("CUSTOM_NODE".equals(name)) {
+                return NodeType.RUN_PRESET;
             }
             return NodeType.valueOf(name);
         } catch (IllegalArgumentException e) {

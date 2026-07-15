@@ -22,7 +22,7 @@ final class NodeDimensionCalculator {
                 Math.max(Node.STICKY_NOTE_MIN_HEIGHT, layoutState.getStickyNoteHeightOverride()));
             return false;
         }
-        if (type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE) {
+        if (type == NodeType.TEMPLATE) {
             layoutState.setSize(Node.TEMPLATE_NODE_WIDTH, Node.TEMPLATE_NODE_HEIGHT);
             return false;
         }
@@ -106,7 +106,8 @@ final class NodeDimensionCalculator {
             computedWidth = Math.max(computedWidth, requiredWidth);
         }
         if (node.hasStopTargetInputField()) {
-            int requiredWidth = Math.max(Node.STOP_TARGET_FIELD_MIN_WIDTH, layoutState.getStopTargetFieldWidthOverride())
+            int fieldMinimum = type == NodeType.RUN_PRESET ? Node.RUN_PRESET_FIELD_MIN_WIDTH : Node.STOP_TARGET_FIELD_MIN_WIDTH;
+            int requiredWidth = Math.max(fieldMinimum, layoutState.getStopTargetFieldWidthOverride())
                 + 2 * Node.STOP_TARGET_FIELD_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, requiredWidth);
         }

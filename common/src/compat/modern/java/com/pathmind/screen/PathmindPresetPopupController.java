@@ -20,16 +20,17 @@ final class PathmindPresetPopupController {
     }
 
     boolean handleCreatePresetPopupClick(double mouseX, double mouseY, int button) {
+        int popupHeight = screen.getCreateNamingPopupHeight();
         if (button != 0) {
             return false;
         }
 
-        int[] bounds = screen.getBoundedScaledPopupBounds(screen.createPresetPopupAnimation, CREATE_PRESET_POPUP_WIDTH, CREATE_PRESET_POPUP_HEIGHT);
+        int[] bounds = screen.getBoundedScaledPopupBounds(screen.createPresetPopupAnimation, CREATE_PRESET_POPUP_WIDTH, popupHeight);
         int popupX = bounds[0];
         int popupY = bounds[1];
         int popupWidth = bounds[2];
-        int contentY = screen.getBoundedPopupContentY(popupY, screen.createPresetPopupAnimation, CREATE_PRESET_POPUP_HEIGHT);
-        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, popupWidth, contentY, CREATE_PRESET_POPUP_HEIGHT, 90, 20, 16);
+        int contentY = screen.getBoundedPopupContentY(popupY, screen.createPresetPopupAnimation, popupHeight);
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, popupWidth, contentY, popupHeight, 90, 20, 16);
 
         if (buttonRow.left().contains((int) mouseX, (int) mouseY)) {
             screen.closeCreatePresetPopup();
@@ -169,14 +170,15 @@ final class PathmindPresetPopupController {
     }
 
     void renderCreatePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
+        int popupHeight = screen.getCreateNamingPopupHeight();
         RenderStateBridge.setShaderColor(1f, 1f, 1f, screen.createPresetPopupAnimation.getPopupAlpha());
 
-        int[] bounds = screen.getBoundedScaledPopupBounds(screen.createPresetPopupAnimation, CREATE_PRESET_POPUP_WIDTH, CREATE_PRESET_POPUP_HEIGHT);
+        int[] bounds = screen.getBoundedScaledPopupBounds(screen.createPresetPopupAnimation, CREATE_PRESET_POPUP_WIDTH, popupHeight);
         int popupX = bounds[0];
         int popupY = bounds[1];
         int scaledWidth = bounds[2];
         int scaledHeight = bounds[3];
-        int contentY = screen.getBoundedPopupContentY(popupY, screen.createPresetPopupAnimation, CREATE_PRESET_POPUP_HEIGHT);
+        int contentY = screen.getBoundedPopupContentY(popupY, screen.createPresetPopupAnimation, popupHeight);
         screen.setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
 
         boolean popupScissor = PathmindPopupRenderer.beginPopup(context, popupX, popupY, scaledWidth, scaledHeight, screen.createPresetPopupAnimation);
@@ -184,7 +186,7 @@ final class PathmindPresetPopupController {
         PathmindPopupRenderer.drawTitle(
             context,
             screen.textRenderer(),
-            Text.translatable("pathmind.popup.createPreset.title"),
+            Text.translatable(screen.createRoutineNaming ? (screen.pendingRoutineRenameId.isBlank() ? "pathmind.popup.createRoutine.title" : "pathmind.popup.renameRoutine.title") : "pathmind.popup.createPreset.title"),
             popupX,
             contentY,
             scaledWidth,
@@ -193,7 +195,7 @@ final class PathmindPresetPopupController {
 
         screen.drawPopupTextWithEllipsis(
             context,
-            Text.translatable("pathmind.popup.createPreset.message").getString(),
+            Text.translatable(screen.createRoutineNaming ? (screen.pendingRoutineRenameId.isBlank() ? "pathmind.popup.createRoutine.message" : "pathmind.popup.renameRoutine.message") : "pathmind.popup.createPreset.message").getString(),
             popupX + 20,
             contentY + 44,
             scaledWidth - 40,
@@ -217,10 +219,10 @@ final class PathmindPresetPopupController {
             );
         }
 
-        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, CREATE_PRESET_POPUP_HEIGHT, 90, 20, 16);
+        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, popupHeight, 90, 20, 16);
         renderButtonRow(context, mouseX, mouseY, buttonRow,
             Text.translatable("pathmind.button.cancel"),
-            Text.translatable("pathmind.button.create"),
+            Text.translatable(screen.createRoutineNaming && !screen.pendingRoutineRenameId.isBlank() ? "pathmind.button.rename" : "pathmind.button.create"),
             screen.createPresetPopupAnimation);
         PathmindPopupRenderer.disableScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);

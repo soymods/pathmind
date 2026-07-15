@@ -24,6 +24,7 @@ import com.pathmind.ui.control.PathmindPopupLayout;
 import com.pathmind.ui.control.PathmindSettingsRowRenderer;
 import com.pathmind.ui.control.PathmindValidationPanelRenderer;
 import com.pathmind.ui.control.PathmindIconRenderer;
+import com.pathmind.ui.control.PathmindRoutineUi;
 import com.pathmind.ui.control.PathmindWorkspaceChrome;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.graph.NodeGraph;
@@ -140,12 +141,9 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int VALIDATION_PANEL_MAX_VISIBLE_ROWS = 8;
     private static final int VALIDATION_PANEL_ROW_HEIGHT = 22;
     private static final int VALIDATION_PANEL_PADDING = 8;
-    private static final int VALIDATION_PANEL_SECTION_GAP = 4;
     private static final int VALIDATION_PANEL_BOTTOM_PADDING = 2;
     private static final int VALIDATION_PANEL_HEADER_HEIGHT = 34;
     private static final int VALIDATION_PANEL_FOOTER_HEIGHT = 18;
-    private static final int VALIDATION_INPUT_FIELD_WIDTH = 128;
-    private static final int VALIDATION_INPUT_FIELD_HEIGHT = 16;
     private static final int ZOOM_BUTTON_SIZE = 14;
     private static final int ZOOM_BUTTON_MARGIN = 6;
     private static final int ZOOM_BUTTON_SPACING = 4;
@@ -220,6 +218,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int sidebarDragStartY = -1;
     private NodeType draggingNodeType = null;
     private Node draggingSidebarNode = null;
+    private boolean draggingFromRoutineLibrary = false;
 
     // Right-click context menu state
     private static final int CLICK_THRESHOLD = 5;  // pixels
@@ -251,6 +250,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int presetDropdownScrollOffset = 0;
     private final DropdownLayoutHelper.SmoothScrollState presetDropdownSmoothScroll = new DropdownLayoutHelper.SmoothScrollState();
     private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
+    private final AnimatedValue routineWorkspaceAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
     private List<String> availablePresets = new ArrayList<>();
     private final List<String> presetTabOrder = new ArrayList<>();
     private final Map<String, AnimatedValue> presetTabXAnimations = new HashMap<>();
@@ -283,6 +283,8 @@ public class PathmindVisualEditorScreen extends Screen {
     TextFieldWidget createPresetField;
     String createPresetStatus = "";
     int createPresetStatusColor = UITheme.TEXT_SECONDARY;
+    boolean createRoutineNaming = false;
+    String pendingRoutineRenameId = "";
     final PopupAnimationHandler renamePresetPopupAnimation = new PopupAnimationHandler();
     TextFieldWidget renamePresetField;
     private TextFieldWidget inlinePresetRenameField;
@@ -325,7 +327,6 @@ public class PathmindVisualEditorScreen extends Screen {
     TextFieldWidget nodeDelayField;
     TextFieldWidget createListRadiusField;
     TextFieldWidget settingsNodeSearchField;
-    private final Map<String, TextFieldWidget> presetInputFields = new LinkedHashMap<>();
     boolean settingsNodeListView = true;
     NodeType settingsNodeTargetType = null;
     Node settingsNodeTarget = null;
@@ -368,12 +369,19 @@ public class PathmindVisualEditorScreen extends Screen {
         final String label;
         private final String categoryLabel;
         private final int score;
+        private final NodeGraphData.RoutineDefinitionData routine;
 
         private NodeSearchResult(NodeType nodeType, String label, String categoryLabel, int score) {
+            this(nodeType, label, categoryLabel, score, null);
+        }
+
+        private NodeSearchResult(NodeType nodeType, String label, String categoryLabel, int score,
+                                 NodeGraphData.RoutineDefinitionData routine) {
             this.nodeType = nodeType;
             this.label = label;
             this.categoryLabel = categoryLabel;
             this.score = score;
+            this.routine = routine;
         }
     }
 
@@ -568,7 +576,8 @@ public class PathmindVisualEditorScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
-        ExecutionManager.getInstance().setWorkspaceGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
+        ExecutionManager.getInstance().setWorkspaceGraph(
+            nodeGraph.getNodes(), nodeGraph.getConnections(), nodeGraph.getRoutineDefinitions());
     }
 
     @Override
@@ -604,6 +613,9 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
         boolean allowSidebarTooltips = showWorkspaceTooltips && !nodeGraph.isAnyNodeBeingDragged();
         refreshRoutineSidebarContext();
+        sidebar.setRoutineDragState(isDraggingFromSidebar && sidebarDragActivated
+            && draggingSidebarNode != null && draggingSidebarNode.getType() == NodeType.ROUTINE_CALL,
+            draggingFromRoutineLibrary);
         sidebar.render(
             context,
             this.textRenderer,
@@ -647,7 +659,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int chromeMouseY = controlsDisabled ? Integer.MIN_VALUE : mouseY;
         if (controlsDisabled && validationPanelOpen) {
             validationPanelOpen = false;
-            clearPresetInputFieldFocus();
         }
         renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
@@ -922,12 +933,12 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (isDraggingFromSidebar) {
-            if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-                int worldMouseX = nodeGraph.screenToWorldX(mouseX);
-                int worldMouseY = nodeGraph.screenToWorldY(mouseY);
-                Node newNode = draggingSidebarNode != null
-                    ? nodeGraph.handleSidebarDrop(draggingSidebarNode, worldMouseX, worldMouseY)
-                    : nodeGraph.handleSidebarDrop(draggingNodeType, worldMouseX, worldMouseY);
+            if (sidebarDragActivated && saveDraggedRoutineToLibrary(mouseX, mouseY)) {
+                // Saved to the reusable routine catalogue.
+            } else if (sidebarDragActivated && importDraggedLibraryRoutineToList(mouseX, mouseY)) {
+                // Imported into this preset's routine list.
+            } else if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
+                Node newNode = dropDraggedSidebarNodeIntoWorkspace(mouseX, mouseY);
                 if (newNode != null) {
                     nodeGraph.selectNode(newNode);
                 }
@@ -936,6 +947,7 @@ public class PathmindVisualEditorScreen extends Screen {
             sidebarDragActivated = false;
             draggingNodeType = null;
             draggingSidebarNode = null;
+            draggingFromRoutineLibrary = false;
             nodeGraph.resetDropTargets();
             return;
         }
@@ -1161,9 +1173,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private void renderNodeGraph(DrawContext context, int mouseX, int mouseY, float delta, boolean onlyDragged) {
         if (!onlyDragged) {
             // Node graph background
-            int workspaceBackground = getActiveRoutineWorkspace() == null
-                ? UITheme.BACKGROUND_PRIMARY
-                : AnimationHelper.lerpColor(UITheme.BACKGROUND_PRIMARY, NodeCategory.ROUTINES.getColor(), 0.04f);
+            routineWorkspaceAnimation.animateTo(getActiveRoutineWorkspace() == null ? 0f : 1f, UITheme.TRANSITION_ANIM_MS);
+            routineWorkspaceAnimation.tick();
+            int workspaceBackground = PathmindRoutineUi.workspaceBackground(
+                UITheme.BACKGROUND_PRIMARY, NodeCategory.ROUTINES.getColor(), routineWorkspaceAnimation.getValue());
             context.fill(Sidebar.getCollapsedWidth(), TITLE_BAR_HEIGHT, this.width, this.height, workspaceBackground);
             
             // Render grid pattern for better visual organization
@@ -1334,7 +1347,6 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         } else if (button == 0) {
             validationPanelOpen = false;
-            clearPresetInputFieldFocus();
         }
 
         if (!isPopupObscuringWorkspace() && button == 0
@@ -1370,7 +1382,6 @@ public class PathmindVisualEditorScreen extends Screen {
             if (isValidationButtonClicked((int) mouseX, (int) mouseY, button)) {
                 validationPanelOpen = !validationPanelOpen;
                 if (!validationPanelOpen) {
-                    clearPresetInputFieldFocus();
                 }
                 return true;
             }
@@ -1379,7 +1390,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
             if (isMarketplaceButtonClicked((int) mouseX, (int) mouseY, button)) {
-                nodeGraph.save();
+                saveRootPresetWorkspace();
                 PresetManager.setActivePreset(activePresetName);
                 if (this.client != null) {
                     this.client.setScreen(new PathmindMarketplaceScreen(this));
@@ -1487,17 +1498,24 @@ public class PathmindVisualEditorScreen extends Screen {
                     editActiveRoutineInput(routineInputActionId, routineInputAction);
                     return true;
                 }
+                int routineAction = sidebar.consumeRoutineAction();
+                String routineActionId = sidebar.consumeRoutineActionId();
+                if (routineAction != 0 && routineActionId != null) {
+                    handleRoutineAction(routineActionId, routineAction);
+                    return true;
+                }
+                int libraryAction = sidebar.consumeLibraryAction();
+                String libraryActionId = sidebar.consumeLibraryActionId();
+                if (libraryAction != 0 && libraryActionId != null) {
+                    handleRoutineLibraryAction(libraryActionId, libraryAction);
+                    return true;
+                }
                 if (sidebar.consumeCreateRoutineRequested()) {
-                    createRoutineFromSidebar();
+                    openCreateRoutinePopup();
                     return true;
                 }
                 if (sidebar.consumeAddRoutineInputRequested()) {
                     addInputToActiveRoutine();
-                    return true;
-                }
-                String requestedRoutineId = sidebar.consumeOpenRoutineRequested();
-                if (requestedRoutineId != null) {
-                    openRoutineWorkspaceTab(requestedRoutineId);
                     return true;
                 }
                 // Check if we should start dragging a node from sidebar
@@ -1515,6 +1533,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     sidebarDragStartY = (int) mouseY;
                     draggingNodeType = hoveredType;
                     draggingSidebarNode = sidebar.createNodeFromSidebar(0, 0);
+                    draggingFromRoutineLibrary = sidebar.isHoveringLibraryRoutine();
                     nodeGraph.resetDropTargets();
                     nodeGraph.closeContextMenu();
                 }
@@ -1662,6 +1681,16 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 if (nodeGraph.handleSchematicDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
+                    return true;
+                }
+                if (clickedNode.getType() == NodeType.RUN_PRESET
+                    && nodeGraph.isPointInsideRunPresetOpenButton(clickedNode, (int) mouseX, (int) mouseY)) {
+                    String targetPreset = nodeGraph.getSelectedPresetNameForNode(clickedNode);
+                    if (targetPreset != null && !targetPreset.isBlank()
+                        && PresetManager.getAvailablePresets().stream().anyMatch(name -> name.equalsIgnoreCase(targetPreset))) {
+                        switchPreset(PresetManager.getAvailablePresets().stream()
+                            .filter(name -> name.equalsIgnoreCase(targetPreset)).findFirst().orElse(targetPreset));
+                    }
                     return true;
                 }
                 if (nodeGraph.handleRunPresetDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
@@ -2083,16 +2112,16 @@ public class PathmindVisualEditorScreen extends Screen {
         if (button == 0) {
             // Handle dropping node from sidebar
             if (isDraggingFromSidebar) {
-                if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-                    int worldMouseX = nodeGraph.screenToWorldX((int) mouseX);
-                    int worldMouseY = nodeGraph.screenToWorldY((int) mouseY);
-                    Node newNode = draggingSidebarNode != null
-                        ? nodeGraph.handleSidebarDrop(draggingSidebarNode, worldMouseX, worldMouseY)
-                        : nodeGraph.handleSidebarDrop(draggingNodeType, worldMouseX, worldMouseY);
+                if (sidebarDragActivated && saveDraggedRoutineToLibrary(mouseX, mouseY)) {
+                    // Saved to the reusable routine catalogue.
+                } else if (sidebarDragActivated && importDraggedLibraryRoutineToList(mouseX, mouseY)) {
+                    // Imported into this preset's routine list.
+                } else if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
+                    Node newNode = dropDraggedSidebarNodeIntoWorkspace((int) mouseX, (int) mouseY);
                     if (newNode != null) {
                         nodeGraph.selectNode(newNode);
                     }
-                } else if (!sidebarDragActivated && draggingSidebarNode != null
+                } else if (!sidebarDragActivated && !draggingFromRoutineLibrary && draggingSidebarNode != null
                     && draggingSidebarNode.getType() == NodeType.ROUTINE_CALL
                     && !draggingSidebarNode.getRoutineId().isBlank()) {
                     openRoutineWorkspaceTab(draggingSidebarNode.getRoutineId());
@@ -2102,6 +2131,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 sidebarDragActivated = false;
                 draggingNodeType = null;
                 draggingSidebarNode = null;
+                draggingFromRoutineLibrary = false;
                 nodeGraph.resetDropTargets();
             } else {
                 // Check if dragging node into sidebar for deletion (only if actually dragging)
@@ -2248,13 +2278,6 @@ public class PathmindVisualEditorScreen extends Screen {
         if (settingsPopupAnimation.isVisible() && createListRadiusField != null && createListRadiusField.isFocused()) {
             if (createListRadiusField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
-            }
-        }
-        if (validationPanelOpen) {
-            for (TextFieldWidget field : presetInputFields.values()) {
-                if (field != null && field.isFocused() && field.keyPressed(keyCode, scanCode, modifiers)) {
-                    return true;
-                }
             }
         }
         if (settingsPopupAnimation.isVisible()) {
@@ -2464,11 +2487,6 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (validationPanelOpen) {
-            for (TextFieldWidget field : presetInputFields.values()) {
-                if (field != null && field.isFocused() && field.charTyped(chr, modifiers)) {
-                    return true;
-                }
-            }
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -3695,7 +3713,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         boolean renamingActive = currentName.equalsIgnoreCase(activePresetName);
         if (renamingActive) {
-            nodeGraph.save();
+            saveRootPresetWorkspace();
         }
 
         Optional<String> renamedPreset = PresetManager.renamePreset(currentName, desiredName);
@@ -3963,7 +3981,10 @@ public class PathmindVisualEditorScreen extends Screen {
                 .filter(routine -> routineId.equals(routine.getId())).findFirst()
                 .ifPresent(nodeGraph::syncRoutineDefinitionMetadata);
         }
-        sidebar.setRoutineContext(workspaceTabs.get(0).graphData.getRoutines(), activeId);
+        NodeGraphData rootData = workspaceTabs.get(0).graphData;
+        nodeGraph.setRoutineValidationContext(rootData.getRoutines());
+        sidebar.setRoutineContext(rootData.getRoutines(), activeId,
+            com.pathmind.routines.RoutineLifecycle.usageCounts(rootData));
     }
 
     private NodeGraphData.RoutineDefinitionData getActiveRoutineWorkspace() {
@@ -3979,24 +4000,19 @@ public class PathmindVisualEditorScreen extends Screen {
         if (getActiveRoutineWorkspace() == null || isPopupObscuringWorkspace()) return;
         int x = getPlayButtonX();
         int y = getPlayButtonY();
-        boolean hovered = isPointInRect(mouseX, mouseY, x, y, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
-        UIStyleHelper.drawBeveledPanel(context, x, y, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE,
-            hovered ? NodeCategory.ROUTINES.getColor() : UITheme.BACKGROUND_SECONDARY,
-            NodeCategory.ROUTINES.getColor(), UITheme.PANEL_INNER_BORDER);
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("×"),
-            x + PLAY_BUTTON_SIZE / 2, y + (PLAY_BUTTON_SIZE - this.textRenderer.fontHeight) / 2 + 1, 0xFFFFFFFF);
+        boolean hovered = PathmindWorkspaceChrome.contains(mouseX, mouseY, x, y, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
+        PathmindRoutineUi.renderReturnButton(context, x, y, PLAY_BUTTON_SIZE, mouseX, mouseY,
+            getHoverProgress("routine-return-button", hovered), NodeCategory.ROUTINES.getColor());
     }
 
     private boolean isRoutineReturnButtonClicked(int mouseX, int mouseY) {
         if (getActiveRoutineWorkspace() == null) return false;
-        return isPointInRect(mouseX, mouseY, getPlayButtonX(), getPlayButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
+        return PathmindWorkspaceChrome.contains(mouseX, mouseY, getPlayButtonX(), getPlayButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
     }
 
-    private void createRoutineFromSidebar() {
+    private void createRoutineFromSidebar(String name) {
         persistActiveWorkspaceToTabs();
         WorkspaceTab root = workspaceTabs.get(0);
-        int suffix = root.graphData.getRoutines().size() + 1;
-        String name = suffix == 1 ? "Routine" : "Routine " + suffix;
         NodeGraphData.RoutineDefinitionData routine = com.pathmind.routines.RoutineBuilderModel.createRoutine(name);
         root.graphData.getRoutines().add(routine);
         if (activeWorkspaceTabIndex == 0) {
@@ -4043,6 +4059,89 @@ public class PathmindVisualEditorScreen extends Screen {
         } else {
             builder.moveInput(inputId, action);
         }
+        nodeGraph.markWorkspaceDirty();
+    }
+
+    private void handleRoutineAction(String routineId, int action) {
+        if (workspaceTabs.isEmpty()) return;
+        persistActiveWorkspaceToTabs();
+        NodeGraphData root = workspaceTabs.get(0).graphData;
+        NodeGraphData.RoutineDefinitionData routine = root.getRoutines().stream()
+            .filter(candidate -> candidate != null && routineId.equals(candidate.getId())).findFirst().orElse(null);
+        if (routine == null) return;
+        if (action == 7) {
+            openRenameRoutinePopup(routine);
+            return;
+        }
+        if (action != 4 || !com.pathmind.routines.RoutineLifecycle.delete(root, routineId)) return;
+        String hostId = ROUTINE_WORKSPACE_PREFIX + routineId;
+        workspaceTabs.removeIf(tab -> hostId.equals(tab.hostTemplateNodeId));
+        switchToRootAfterRoutineChange(root);
+    }
+
+    private void handleRoutineLibraryAction(String libraryRoutineId, int action) {
+        if (action != 3) return;
+        com.pathmind.routines.RoutineLibraryManager.delete(libraryRoutineId);
+        refreshRoutineSidebarContext();
+    }
+
+    private boolean saveDraggedRoutineToLibrary(double mouseX, double mouseY) {
+        if (draggingFromRoutineLibrary || draggingSidebarNode == null
+            || draggingSidebarNode.getType() != NodeType.ROUTINE_CALL
+            || !sidebar.isRoutineLibraryDropTarget(mouseX, mouseY)) return false;
+        persistActiveWorkspaceToTabs();
+        NodeGraphData root = workspaceTabs.get(0).graphData;
+        root.getRoutines().stream()
+            .filter(routine -> routine != null && draggingSidebarNode.getRoutineId().equals(routine.getId()))
+            .findFirst().ifPresent(routine -> com.pathmind.routines.RoutineLibraryManager.share(routine, root.getRoutines()));
+        refreshRoutineSidebarContext();
+        return true;
+    }
+
+    private Node dropDraggedSidebarNodeIntoWorkspace(int mouseX, int mouseY) {
+        int worldMouseX = nodeGraph.screenToWorldX(mouseX);
+        int worldMouseY = nodeGraph.screenToWorldY(mouseY);
+        if (!draggingFromRoutineLibrary) {
+            return draggingSidebarNode != null
+                ? nodeGraph.handleSidebarDrop(draggingSidebarNode, worldMouseX, worldMouseY)
+                : nodeGraph.handleSidebarDrop(draggingNodeType, worldMouseX, worldMouseY);
+        }
+        NodeGraphData.RoutineDefinitionData imported = ensureDraggedLibraryRoutineImported();
+        if (imported == null) return null;
+        return nodeGraph.handleSidebarDrop(Node.createRoutineCall(imported, 0, 0), worldMouseX, worldMouseY);
+    }
+
+    private boolean importDraggedLibraryRoutineToList(double mouseX, double mouseY) {
+        if (!draggingFromRoutineLibrary || !sidebar.isRoutineListDropTarget(mouseX, mouseY)) return false;
+        ensureDraggedLibraryRoutineImported();
+        return true;
+    }
+
+    private NodeGraphData.RoutineDefinitionData ensureDraggedLibraryRoutineImported() {
+        if (draggingSidebarNode == null || draggingSidebarNode.getRoutineId().isBlank() || workspaceTabs.isEmpty()) return null;
+        persistActiveWorkspaceToTabs();
+        NodeGraphData root = workspaceTabs.get(0).graphData;
+        String libraryRoutineId = draggingSidebarNode.getRoutineId();
+        NodeGraphData.RoutineDefinitionData imported = root.getRoutines().stream()
+            .filter(routine -> routine != null && (libraryRoutineId.equals(routine.getId())
+                || libraryRoutineId.equals(routine.getLibraryRoutineId())))
+            .findFirst().orElse(null);
+        if (imported == null) {
+            com.pathmind.routines.RoutineLibraryManager.ImportResult result =
+                com.pathmind.routines.RoutineLibraryManager.importInto(root, libraryRoutineId);
+            if (!result.added() || result.routine() == null) return null;
+            imported = result.routine();
+            if (activeWorkspaceTabIndex == 0) nodeGraph.applyGraphDataSnapshot(root, false);
+            else nodeGraph.setRoutineValidationContext(root.getRoutines());
+        }
+        refreshRoutineSidebarContext();
+        return imported;
+    }
+
+    private void switchToRootAfterRoutineChange(NodeGraphData root) {
+        nodeGraph.setActiveRoutineWorkspaceId("");
+        nodeGraph.applyGraphDataSnapshot(root, false);
+        activeWorkspaceTabIndex = 0;
         nodeGraph.markWorkspaceDirty();
     }
 
@@ -4139,6 +4238,19 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private NodeGraphData snapshotRootPresetWorkspace() {
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+        if (!workspaceTabs.isEmpty() && workspaceTabs.get(0).graphData != null) {
+            return workspaceTabs.get(0).graphData;
+        }
+        return nodeGraph.exportGraphDataSnapshot();
+    }
+
+    private boolean saveRootPresetWorkspace() {
+        return NodeGraphPersistence.saveNodeGraphDataForPreset(activePresetName, snapshotRootPresetWorkspace());
+    }
+
     private void syncAllTemplateTabsIntoParents() {
         if (workspaceTabs.isEmpty()) {
             return;
@@ -4214,7 +4326,7 @@ public class PathmindVisualEditorScreen extends Screen {
         syncAllTemplateTabsIntoParents();
         restoreRootWorkspaceIfNeeded();
 
-        nodeGraph.save();
+        saveRootPresetWorkspace();
 
         PresetManager.setActivePreset(activePresetName);
     }
@@ -4855,7 +4967,7 @@ public class PathmindVisualEditorScreen extends Screen {
             Path fileName = path.getFileName();
             String fileLabel = fileName != null ? fileName.toString() : path.toString();
             String currentPresetName = activePresetName;
-            NodeGraphData currentPresetSnapshot = nodeGraph.exportGraphDataSnapshot();
+            NodeGraphData currentPresetSnapshot = snapshotRootPresetWorkspace();
             setImportExportStatus(Text.translatable("pathmind.status.importingWorkspace").getString(), UITheme.TEXT_SECONDARY);
             WorkspaceFileAccess.supplyAsync(() -> {
                 if (currentPresetSnapshot != null && currentPresetName != null && !currentPresetName.isBlank()) {
@@ -4914,7 +5026,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void beginExportToPath(Path path) {
         try {
-            NodeGraphData snapshot = nodeGraph.exportGraphDataSnapshot();
+            NodeGraphData snapshot = snapshotRootPresetWorkspace();
             setImportExportStatus(Text.translatable("pathmind.status.exportingWorkspace").getString(), UITheme.TEXT_SECONDARY);
             WorkspaceFileAccess.supplyExportAsync(() -> NodeGraphPersistence.saveNodeGraphDataToPath(snapshot, path))
                 .whenComplete((success, throwable) -> runOnClientThread(() -> {
@@ -5461,6 +5573,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void openCreatePresetPopup() {
+        createRoutineNaming = false;
         presetDropdownOpen = false;
         clearCreatePresetStatus();
         closeInfoPopup();
@@ -5475,7 +5588,30 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private void openCreateRoutinePopup() {
+        openCreatePresetPopup();
+        createRoutineNaming = true;
+        pendingRoutineRenameId = "";
+    }
+
+    int getCreateNamingPopupHeight() {
+        return createRoutineNaming ? 148 : CREATE_PRESET_POPUP_HEIGHT;
+    }
+
+    private void openRenameRoutinePopup(NodeGraphData.RoutineDefinitionData routine) {
+        if (routine == null) return;
+        openCreatePresetPopup();
+        createRoutineNaming = true;
+        pendingRoutineRenameId = routine.getId();
+        if (createPresetField != null) {
+            createPresetField.setText(routine.getName() == null ? "" : routine.getName());
+            createPresetField.setFocused(true);
+        }
+    }
+
     void closeCreatePresetPopup() {
+        createRoutineNaming = false;
+        pendingRoutineRenameId = "";
         createPresetPopupAnimation.hide();
         clearCreatePresetStatus();
         if (createPresetField != null) {
@@ -5614,6 +5750,14 @@ public class PathmindVisualEditorScreen extends Screen {
                 getNodeSearchCategoryLabel(nodeType),
                 score
             ));
+        }
+        if (!workspaceTabs.isEmpty() && workspaceTabs.get(0).graphData != null) {
+            for (NodeGraphData.RoutineDefinitionData routine : workspaceTabs.get(0).graphData.getRoutines()) {
+                if (routine == null) continue;
+                int score = scoreSearchCandidate(routine.getName(), normalizedQuery);
+                if (score > 0) nodeSearchResults.add(new NodeSearchResult(NodeType.ROUTINE_CALL, routine.getName(),
+                    NodeCategory.ROUTINES.getDisplayName(), score + 20, routine));
+            }
         }
 
         nodeSearchResults.sort((left, right) -> {
@@ -5819,7 +5963,8 @@ public class PathmindVisualEditorScreen extends Screen {
         if (shouldBlockBaritoneNode(result.nodeType) || shouldBlockUiUtilsNode(result.nodeType)) {
             return;
         }
-        nodeGraph.addNodeFromContextMenu(result.nodeType);
+        if (result.routine != null) nodeGraph.addRoutineFromContextMenu(result.routine);
+        else nodeGraph.addNodeFromContextMenu(result.nodeType);
         closeNodeSearch();
     }
 
@@ -5833,6 +5978,35 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         String desiredName = createPresetField.getText();
+        if (createRoutineNaming) {
+            String routineName = desiredName == null ? "" : desiredName.trim();
+            if (routineName.isEmpty()) {
+                setCreatePresetStatus(Text.translatable("pathmind.status.enterRoutineName").getString(), UITheme.STATE_ERROR);
+                return;
+            }
+            boolean duplicate = !workspaceTabs.isEmpty() && workspaceTabs.get(0).graphData.getRoutines().stream()
+                .anyMatch(routine -> routine != null && routine.getName() != null
+                    && !routine.getId().equals(pendingRoutineRenameId)
+                    && routineName.equalsIgnoreCase(routine.getName().trim()));
+            if (duplicate) {
+                setCreatePresetStatus(Text.translatable("pathmind.status.routineNameExists").getString(), UITheme.STATE_ERROR);
+                return;
+            }
+            if (!pendingRoutineRenameId.isBlank()) {
+                NodeGraphData root = workspaceTabs.get(0).graphData;
+                NodeGraphData.RoutineDefinitionData routine = root.getRoutines().stream()
+                    .filter(candidate -> candidate != null && pendingRoutineRenameId.equals(candidate.getId()))
+                    .findFirst().orElse(null);
+                if (routine != null) {
+                    new com.pathmind.routines.RoutineBuilderModel(routine).renameRoutine(routineName);
+                    switchToRootAfterRoutineChange(root);
+                }
+            } else {
+                createRoutineFromSidebar(routineName);
+            }
+            closeCreatePresetPopup();
+            return;
+        }
         if (desiredName == null || desiredName.trim().isEmpty()) {
             setCreatePresetStatus(Text.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
             return;
@@ -6080,7 +6254,7 @@ public class PathmindVisualEditorScreen extends Screen {
         persistActiveWorkspaceToTabs();
         syncAllTemplateTabsIntoParents();
         restoreRootWorkspaceIfNeeded();
-        nodeGraph.save();
+        saveRootPresetWorkspace();
         PresetManager.setActivePreset(presetName);
         refreshAvailablePresets();
         nodeGraph.setActivePreset(activePresetName);
@@ -6116,7 +6290,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (this.client == null) {
             return;
         }
-        nodeGraph.save();
+        saveRootPresetWorkspace();
         PresetManager.setActivePreset(activePresetName);
         Optional<String> linkedPresetId = PresetManager.getMarketplaceLinkedPresetId(activePresetName);
         MarketplaceAuthManager.AuthSession cachedSession = MarketplaceAuthManager.getCachedSession().orElse(null);
@@ -6137,7 +6311,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (this.client == null) {
             return;
         }
-        nodeGraph.save();
+        saveRootPresetWorkspace();
         PresetManager.setActivePreset(activePresetName);
         this.client.setScreen(new PathmindMarketplaceScreen(this, true, presetName));
     }
@@ -6257,7 +6431,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
         float progress = validationPanelAnimation.getValue();
         if (progress <= 0.001f || validationResult == null) {
-            hidePresetInputFields();
             return;
         }
 
@@ -6287,7 +6460,6 @@ public class PathmindVisualEditorScreen extends Screen {
             VALIDATION_PANEL_ROW_HEIGHT,
             this::getValidationIssueHoverProgress
         );
-        renderValidationPresetInputs(context, mouseX, mouseY, panelX, panelWidth, issueTop);
         PathmindValidationPanelRenderer.renderFooter(
             context,
             this.textRenderer,
@@ -6314,7 +6486,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int[] bounds = getValidationPanelBounds(validationResult, 1f);
         if (!isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3])) {
             validationPanelOpen = false;
-            clearPresetInputFieldFocus();
             return false;
         }
 
@@ -6332,12 +6503,13 @@ public class PathmindVisualEditorScreen extends Screen {
         );
         if (clickedIssue.clicked()) {
             GraphValidationIssue issue = clickedIssue.issue();
+            if (issue != null && issue.hasRoutineTarget()
+                && !issue.getRoutineId().equals(nodeGraph.getActiveRoutineWorkspaceId())) {
+                openRoutineWorkspaceTab(issue.getRoutineId());
+            }
             if (issue != null && issue.hasNodeTarget()) {
                 nodeGraph.focusNodeById(issue.getNodeId(), this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
             }
-            return true;
-        }
-        if (handleValidationPresetInputClick(mouseX, mouseY, bounds[0], bounds[2], clickedIssue.nextTop())) {
             return true;
         }
         return true;
@@ -6353,478 +6525,16 @@ public class PathmindVisualEditorScreen extends Screen {
             VALIDATION_PANEL_WIDTH,
             VALIDATION_PANEL_MAX_VISIBLE_ROWS,
             VALIDATION_PANEL_HEADER_HEIGHT,
-            getValidationPresetInputSectionHeight(),
+            0,
             VALIDATION_PANEL_FOOTER_HEIGHT,
             VALIDATION_PANEL_BOTTOM_PADDING,
             VALIDATION_PANEL_ROW_HEIGHT
         );
     }
 
-    private int renderValidationPresetInputs(DrawContext context, int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
-        hidePresetInputFields();
-        List<NodeGraphData.CustomNodePort> ports = getActivePresetInputPorts();
-        if (ports.isEmpty()) {
-            return topY;
-        }
-        int sectionTop = topY + VALIDATION_PANEL_SECTION_GAP;
-        context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, sectionTop, UITheme.BORDER_SUBTLE);
-        int labelY = sectionTop + 5;
-        context.drawTextWithShadow(this.textRenderer, Text.translatable("pathmind.validation.presetInputs"), panelX + VALIDATION_PANEL_PADDING, labelY, UITheme.TEXT_SECONDARY);
-        int currentTop = sectionTop + 18;
-        for (NodeGraphData.CustomNodePort port : ports) {
-            int rowY = currentTop;
-            context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + VALIDATION_PANEL_ROW_HEIGHT, UITheme.BACKGROUND_SECONDARY);
-            context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
-            int labelMaxWidth = Math.max(40, panelWidth - VALIDATION_PANEL_PADDING * 2 - VALIDATION_INPUT_FIELD_WIDTH - 10);
-            String trimmed = TextRenderUtil.trimWithEllipsis(this.textRenderer, port.getName(), labelMaxWidth);
-            Node targetNode = findPresetInputVariableNode(port);
-            int labelX = panelX + VALIDATION_PANEL_PADDING;
-            int labelWidth = Math.min(labelMaxWidth, this.textRenderer.getWidth(trimmed));
-            boolean labelHovered = targetNode != null && isPointInRect(mouseX, mouseY, labelX - 2, rowY + 4, labelWidth + 4, this.textRenderer.fontHeight + 4);
-            float hoverProgress = getPresetInputLabelHoverProgress(port, labelHovered);
-            int labelColor = AnimationHelper.lerpColor(UITheme.TEXT_HEADER, getAccentColor(), hoverProgress * 0.8f);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), labelX, rowY + 7, labelColor);
-            if (hoverProgress > 0.001f) {
-                int glowColor = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, getAccentColor(), hoverProgress * 0.18f);
-                context.fill(labelX - 2, rowY + 5, labelX + labelWidth + 2, rowY + 5 + this.textRenderer.fontHeight + 2, glowColor);
-                context.drawTextWithShadow(this.textRenderer, Text.literal(trimmed), labelX, rowY + 7, labelColor);
-            }
-            if (isPresetBooleanPort(port)) {
-                PathmindPopupLayout.Rect toggleBounds = PathmindPopupLayout.validationToggle(
-                    panelX,
-                    panelWidth,
-                    rowY,
-                    VALIDATION_PANEL_PADDING,
-                    VALIDATION_PANEL_ROW_HEIGHT,
-                    SETTINGS_TOGGLE_WIDTH,
-                    SETTINGS_TOGGLE_HEIGHT
-                );
-                boolean hovered = toggleBounds.contains(mouseX, mouseY);
-                PathmindPopupRenderer.ButtonStyle style = getPresetBooleanValue(port) ? PathmindPopupRenderer.ButtonStyle.PRIMARY : PathmindPopupRenderer.ButtonStyle.DEFAULT;
-                String toggleLabel = getPresetBooleanValue(port) ? Text.translatable("pathmind.settings.on").getString() : Text.translatable("pathmind.settings.off").getString();
-                drawPopupButton(context, toggleBounds.x(), toggleBounds.y(), toggleBounds.width(), toggleBounds.height(), hovered,
-                    Text.literal(toggleLabel), style, settingsPopupAnimation);
-            } else {
-                renderValidationPresetInputField(context, mouseX, mouseY, panelX, panelWidth, rowY, port);
-            }
-            currentTop += VALIDATION_PANEL_ROW_HEIGHT;
-        }
-        return currentTop;
-    }
-
-    private void renderValidationPresetInputField(DrawContext context, int mouseX, int mouseY, int panelX, int panelWidth,
-                                                  int rowY, NodeGraphData.CustomNodePort port) {
-        PathmindPopupLayout.Rect fieldBounds = PathmindPopupLayout.validationInput(
-            panelX,
-            panelWidth,
-            rowY,
-            VALIDATION_PANEL_PADDING,
-            VALIDATION_PANEL_ROW_HEIGHT,
-            VALIDATION_INPUT_FIELD_WIDTH,
-            VALIDATION_INPUT_FIELD_HEIGHT
-        );
-        int fieldX = fieldBounds.x();
-        int fieldY = fieldBounds.y();
-        TextFieldWidget field = getOrCreatePresetInputField(port);
-        String valueText = getPresetInputValue(port);
-        boolean hovered = fieldBounds.contains(mouseX, mouseY);
-        boolean focused = field.isFocused();
-        float hoverProgress = getValidationInputFieldHoverProgress(port, hovered);
-        UIStyleHelper.FieldPalette palette = UIStyleHelper.getSearchFieldPalette(getAccentColor(), hoverProgress, focused, false);
-        if (!focused && !valueText.equals(field.getText())) {
-            field.setText(valueText);
-        }
-        PathmindPopupRenderer.drawPaletteTextField(
-            context,
-            field,
-            mouseX,
-            mouseY,
-            0f,
-            fieldX,
-            fieldY,
-            VALIDATION_INPUT_FIELD_WIDTH,
-            VALIDATION_INPUT_FIELD_HEIGHT,
-            palette,
-            UITheme.TEXT_HEADER,
-            UITheme.TEXT_HEADER,
-            TEXT_FIELD_VERTICAL_PADDING
-        );
-    }
-
-    private boolean handleValidationPresetInputClick(int mouseX, int mouseY, int panelX, int panelWidth, int topY) {
-        List<NodeGraphData.CustomNodePort> ports = getActivePresetInputPorts();
-        if (ports.isEmpty()) {
-            clearPresetInputFieldFocus();
-            return false;
-        }
-        int currentTop = topY + VALIDATION_PANEL_SECTION_GAP + 18;
-        for (NodeGraphData.CustomNodePort port : ports) {
-            int rowY = currentTop;
-            Node targetNode = findPresetInputVariableNode(port);
-            if (isPresetInputLabelHovered(mouseX, mouseY, panelX, panelWidth, rowY, port, targetNode)) {
-                clearPresetInputFieldFocus();
-                nodeGraph.focusNode(targetNode, this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
-                return true;
-            }
-            if (isPresetBooleanPort(port)) {
-                PathmindPopupLayout.Rect toggleBounds = PathmindPopupLayout.validationToggle(
-                    panelX,
-                    panelWidth,
-                    rowY,
-                    VALIDATION_PANEL_PADDING,
-                    VALIDATION_PANEL_ROW_HEIGHT,
-                    SETTINGS_TOGGLE_WIDTH,
-                    SETTINGS_TOGGLE_HEIGHT
-                );
-                if (toggleBounds.contains(mouseX, mouseY)) {
-                    clearPresetInputFieldFocus();
-                    setPresetInputValue(port, Boolean.toString(!getPresetBooleanValue(port)));
-                    return true;
-                }
-            } else {
-                PathmindPopupLayout.Rect fieldBounds = PathmindPopupLayout.validationInput(
-                    panelX,
-                    panelWidth,
-                    rowY,
-                    VALIDATION_PANEL_PADDING,
-                    VALIDATION_PANEL_ROW_HEIGHT,
-                    VALIDATION_INPUT_FIELD_WIDTH,
-                    VALIDATION_INPUT_FIELD_HEIGHT
-                );
-                TextFieldWidget field = getOrCreatePresetInputField(port);
-                if (fieldBounds.contains(mouseX, mouseY)) {
-                    focusPresetInputField(field);
-                    return true;
-                }
-            }
-            currentTop += VALIDATION_PANEL_ROW_HEIGHT;
-        }
-        clearPresetInputFieldFocus();
-        return false;
-    }
-
-    private int getValidationPresetInputSectionHeight() {
-        List<NodeGraphData.CustomNodePort> ports = getActivePresetInputPorts();
-        if (ports.isEmpty()) {
-            return 0;
-        }
-        return VALIDATION_PANEL_SECTION_GAP + 18 + (ports.size() * VALIDATION_PANEL_ROW_HEIGHT);
-    }
-
-    private List<NodeGraphData.CustomNodePort> getActivePresetInputPorts() {
-        NodeGraphData.CustomNodeDefinition definition = getActivePresetInputDefinition();
-        if (definition == null || definition.getInputs() == null || definition.getInputs().isEmpty()) {
-            return List.of();
-        }
-        List<NodeGraphData.CustomNodePort> ports = new ArrayList<>();
-        for (NodeGraphData.CustomNodePort port : definition.getInputs()) {
-            if (port != null && port.getName() != null && !port.getName().isBlank()) {
-                ports.add(port);
-            }
-        }
-        return ports;
-    }
-
-    private Node findPresetInputVariableNode(NodeGraphData.CustomNodePort port) {
-        if (nodeGraph == null || port == null || port.getName() == null || port.getName().isBlank()) {
-            return null;
-        }
-        String targetName = port.getName().trim();
-        for (Node node : nodeGraph.getNodes()) {
-            if (node == null || node.getType() != NodeType.VARIABLE) {
-                continue;
-            }
-            NodeParameter variableParam = node.getParameter("Variable");
-            String variableName = variableParam != null ? variableParam.getStringValue() : null;
-            if (variableName != null && targetName.equalsIgnoreCase(variableName.trim())) {
-                return node;
-            }
-        }
-        return null;
-    }
-
-    private Node findPresetInputAssignmentNode(NodeGraphData.CustomNodePort port) {
-        if (nodeGraph == null || port == null || port.getName() == null || port.getName().isBlank()) {
-            return null;
-        }
-        String targetName = port.getName().trim();
-        for (Node node : nodeGraph.getNodes()) {
-            if (node == null || node.getType() != NodeType.SET_VARIABLE) {
-                continue;
-            }
-            Node variableNode = node.getAttachedParameter(0);
-            Node valueNode = node.getAttachedParameter(1);
-            if (variableNode == null || variableNode.getType() != NodeType.VARIABLE || valueNode == null || valueNode.getType() == NodeType.VARIABLE) {
-                continue;
-            }
-            NodeParameter variableParam = variableNode.getParameter("Variable");
-            String variableName = variableParam != null ? variableParam.getStringValue() : null;
-            if (variableName != null && targetName.equalsIgnoreCase(variableName.trim())) {
-                return node;
-            }
-        }
-        return null;
-    }
-
-    private void syncPresetInputValueToWorkspace(NodeGraphData.CustomNodePort port, String rawValue) {
-        Node assignmentNode = findPresetInputAssignmentNode(port);
-        if (assignmentNode == null) {
-            return;
-        }
-        Node valueNode = assignmentNode.getAttachedParameter(1);
-        if (valueNode == null || valueNode.getType() == null || valueNode.getType() == NodeType.VARIABLE) {
-            return;
-        }
-        applyPresetInputValueToNode(valueNode, rawValue == null ? "" : rawValue);
-        valueNode.recalculateDimensions();
-        assignmentNode.recalculateDimensions();
-        nodeGraph.notifyNodeParametersChanged(valueNode);
-        nodeGraph.notifyNodeParametersChanged(assignmentNode);
-    }
-
-    private void applyPresetInputValueToNode(Node valueNode, String rawValue) {
-        if (valueNode == null || valueNode.getType() == null) {
-            return;
-        }
-        String safeValue = rawValue == null ? "" : rawValue.trim();
-        switch (valueNode.getType()) {
-            case PARAM_COORDINATE -> applyCoordinatePresetInputValue(valueNode, safeValue);
-            case PARAM_BLOCK -> valueNode.setParameterValueAndPropagate("Block", safeValue);
-            case PARAM_ITEM -> valueNode.setParameterValueAndPropagate("Item", safeValue);
-            case PARAM_VILLAGER_TRADE -> valueNode.setParameterValueAndPropagate("Item", safeValue);
-            case PARAM_ENTITY -> valueNode.setParameterValueAndPropagate("Entity", safeValue);
-            case PARAM_PLAYER -> valueNode.setParameterValueAndPropagate("Player", safeValue);
-            case PARAM_MESSAGE -> valueNode.setParameterValueAndPropagate("Text", safeValue);
-            case PARAM_WAYPOINT -> valueNode.setParameterValueAndPropagate("Waypoint", safeValue);
-            case PARAM_SCHEMATIC -> valueNode.setParameterValueAndPropagate("Schematic", safeValue);
-            case PARAM_INVENTORY_SLOT -> valueNode.setParameterValueAndPropagate("Slot", safeValue);
-            case PARAM_DURATION -> valueNode.setParameterValueAndPropagate("Duration", safeValue);
-            case PARAM_AMOUNT -> valueNode.setParameterValueAndPropagate("Amount", safeValue);
-            case PARAM_BOOLEAN -> {
-                valueNode.setParameterValueAndPropagate("Mode", "literal");
-                valueNode.setParameterValueAndPropagate("Variable", "");
-                valueNode.setParameterValueAndPropagate("Toggle", Boolean.toString(Boolean.parseBoolean(safeValue)));
-            }
-            case PARAM_HAND -> valueNode.setParameterValueAndPropagate("Hand", safeValue);
-            case PARAM_GUI -> valueNode.setParameterValueAndPropagate("GUI", safeValue);
-            case PARAM_KEY -> valueNode.setParameterValueAndPropagate("Key", safeValue);
-            case PARAM_MOUSE_BUTTON -> valueNode.setParameterValueAndPropagate("MouseButton", safeValue);
-            case PARAM_RANGE -> valueNode.setParameterValueAndPropagate("Range", safeValue);
-            case PARAM_DISTANCE -> valueNode.setParameterValueAndPropagate("Distance", safeValue);
-            case PARAM_DIRECTION -> valueNode.setParameterValueAndPropagate("Direction", safeValue);
-            case PARAM_BLOCK_FACE -> valueNode.setParameterValueAndPropagate("Face", safeValue);
-            case PARAM_ROTATION -> applyRotationPresetInputValue(valueNode, safeValue);
-            default -> {
-            }
-        }
-    }
-
-    private void applyCoordinatePresetInputValue(Node valueNode, String rawValue) {
-        String[] parts = rawValue.isEmpty() ? new String[0] : rawValue.split("\\s*,\\s*|\\s+");
-        String x = parts.length > 0 ? parts[0] : getNodeParameterValue(valueNode, "X");
-        String y = parts.length > 1 ? parts[1] : getNodeParameterValue(valueNode, "Y");
-        String z = parts.length > 2 ? parts[2] : getNodeParameterValue(valueNode, "Z");
-        valueNode.setParameterValueAndPropagate("X", x);
-        valueNode.setParameterValueAndPropagate("Y", y);
-        valueNode.setParameterValueAndPropagate("Z", z);
-    }
-
-    private void applyRotationPresetInputValue(Node valueNode, String rawValue) {
-        String[] parts = rawValue.isEmpty() ? new String[0] : rawValue.split("\\s*,\\s*|\\s+");
-        String yaw = parts.length > 0 ? parts[0] : getNodeParameterValue(valueNode, "Yaw");
-        String pitch = parts.length > 1 ? parts[1] : getNodeParameterValue(valueNode, "Pitch");
-        valueNode.setParameterValueAndPropagate("Yaw", yaw);
-        valueNode.setParameterValueAndPropagate("Pitch", pitch);
-    }
-
-    private String getNodeParameterValue(Node node, String parameterName) {
-        NodeParameter parameter = node == null ? null : node.getParameter(parameterName);
-        return parameter == null || parameter.getStringValue() == null ? "" : parameter.getStringValue();
-    }
-
-    private boolean isPresetInputLabelHovered(int mouseX, int mouseY, int panelX, int panelWidth, int rowY,
-                                              NodeGraphData.CustomNodePort port, Node targetNode) {
-        if (targetNode == null) {
-            return false;
-        }
-        int labelMaxWidth = Math.max(40, panelWidth - VALIDATION_PANEL_PADDING * 2 - VALIDATION_INPUT_FIELD_WIDTH - 10);
-        String trimmed = TextRenderUtil.trimWithEllipsis(this.textRenderer, port.getName(), labelMaxWidth);
-        int labelX = panelX + VALIDATION_PANEL_PADDING;
-        int labelWidth = Math.min(labelMaxWidth, this.textRenderer.getWidth(trimmed));
-        return isPointInRect(mouseX, mouseY, labelX - 2, rowY + 4, labelWidth + 4, this.textRenderer.fontHeight + 4);
-    }
-
-    private float getPresetInputLabelHoverProgress(NodeGraphData.CustomNodePort port, boolean hovered) {
-        if (port == null || port.getName() == null) {
-            return 0f;
-        }
-        return HoverAnimator.getProgress("validation-preset-input-label:" + getPresetInputScopeKey() + ":" + port.getName(), hovered);
-    }
-
     private float getValidationIssueHoverProgress(GraphValidationIssue issue, int index, boolean hovered) {
         String issueKey = issue == null ? "unknown-" + index : issue.getCode() + ":" + issue.getNodeId() + ":" + index;
         return getHoverProgress("validation-issue-row:" + issueKey, hovered);
-    }
-
-    private float getValidationInputFieldHoverProgress(NodeGraphData.CustomNodePort port, boolean hovered) {
-        if (port == null || port.getName() == null) {
-            return 0f;
-        }
-        return getHoverProgress("validation-input-field:" + getPresetInputScopeKey() + ":" + port.getName(), hovered);
-    }
-
-    private NodeGraphData.CustomNodeDefinition getActivePresetInputDefinition() {
-        if (nodeGraph == null) {
-            return null;
-        }
-        String presetName = getPresetInputScopeKey();
-        if (presetName == null || presetName.isBlank()) {
-            return null;
-        }
-        NodeGraphData snapshot = nodeGraph.exportGraphDataSnapshot();
-        return NodeGraphPersistence.resolveCustomNodeDefinition(presetName, snapshot);
-    }
-
-    private String getPresetInputScopeKey() {
-        String presetName = activePresetName;
-        if ((presetName == null || presetName.isBlank()) && nodeGraph != null) {
-            presetName = nodeGraph.getActivePreset();
-        }
-        return presetName == null ? "" : presetName.trim();
-    }
-
-    private Map<String, String> getPresetInputValues(boolean create) {
-        if (currentSettings == null) {
-            return null;
-        }
-        if (currentSettings.presetInputValues == null) {
-            if (!create) {
-                return null;
-            }
-            currentSettings.presetInputValues = new LinkedHashMap<>();
-        }
-        String scopeKey = getPresetInputScopeKey();
-        if (scopeKey == null || scopeKey.isBlank()) {
-            return null;
-        }
-        Map<String, String> values = currentSettings.presetInputValues.get(scopeKey);
-        if (values == null && create) {
-            values = new LinkedHashMap<>();
-            currentSettings.presetInputValues.put(scopeKey, values);
-        }
-        return values;
-    }
-
-    private String getPresetInputValue(NodeGraphData.CustomNodePort port) {
-        if (port == null || port.getName() == null) {
-            return "";
-        }
-        Map<String, String> values = getPresetInputValues(false);
-        if (values != null) {
-            String configured = values.get(port.getName());
-            if (configured != null && !configured.isBlank()) {
-                return configured;
-            }
-        }
-        return port.getDefaultValue() == null ? "" : port.getDefaultValue();
-    }
-
-    private boolean getPresetBooleanValue(NodeGraphData.CustomNodePort port) {
-        return Boolean.parseBoolean(getPresetInputValue(port));
-    }
-
-    private void setPresetInputValue(NodeGraphData.CustomNodePort port, String value) {
-        if (port == null || port.getName() == null || currentSettings == null) {
-            return;
-        }
-        String normalizedValue = value == null ? "" : value;
-        Map<String, String> values = getPresetInputValues(true);
-        if (values == null) {
-            return;
-        }
-        if (normalizedValue.isBlank()) {
-            values.remove(port.getName());
-        } else {
-            values.put(port.getName(), normalizedValue);
-        }
-        syncPresetInputValueToWorkspace(port, normalizedValue);
-        SettingsManager.save(currentSettings);
-    }
-
-    private TextFieldWidget getOrCreatePresetInputField(NodeGraphData.CustomNodePort port) {
-        String fieldKey = getPresetInputScopeKey() + "::" + port.getName();
-        TextFieldWidget existing = presetInputFields.get(fieldKey);
-        if (existing != null) {
-            return existing;
-        }
-        TextFieldWidget field = new PathmindTextField(this.textRenderer, 0, 0, VALIDATION_INPUT_FIELD_WIDTH, 20, Text.literal(port.getName()));
-        field.setMaxLength(96);
-        field.setDrawsBackground(false);
-        field.setVisible(false);
-        field.setEditable(false);
-        field.setEditableColor(UITheme.TEXT_HEADER);
-        field.setUneditableColor(UITheme.TEXT_HEADER);
-        if (isPresetIntegerPort(port)) {
-            field.setTextPredicate(value -> value == null || value.isEmpty() || value.matches("-?\\d*"));
-        } else if (isPresetDecimalPort(port)) {
-            field.setTextPredicate(value -> value == null || value.isEmpty() || value.matches("-?\\d*(\\.\\d*)?"));
-        }
-        field.setChangedListener(value -> setPresetInputValue(port, value));
-        this.addSelectableChild(field);
-        presetInputFields.put(fieldKey, field);
-        return field;
-    }
-
-    private void hidePresetInputFields() {
-        for (TextFieldWidget field : presetInputFields.values()) {
-            if (field != null) {
-                field.setVisible(false);
-                field.setEditable(false);
-            }
-        }
-    }
-
-    private void clearPresetInputFieldFocus() {
-        for (TextFieldWidget field : presetInputFields.values()) {
-            if (field != null) {
-                field.setFocused(false);
-                field.setVisible(false);
-                field.setEditable(false);
-            }
-        }
-    }
-
-    private void focusPresetInputField(TextFieldWidget targetField) {
-        for (TextFieldWidget field : presetInputFields.values()) {
-            if (field == null) {
-                continue;
-            }
-            boolean focused = field == targetField;
-            field.setFocused(focused);
-            field.setVisible(focused);
-            field.setEditable(focused);
-        }
-    }
-
-    private boolean isPresetBooleanPort(NodeGraphData.CustomNodePort port) {
-        return port != null && NodeType.PARAM_BOOLEAN.name().equals(port.getType());
-    }
-
-    private boolean isPresetIntegerPort(NodeGraphData.CustomNodePort port) {
-        if (port == null || port.getType() == null) {
-            return false;
-        }
-        return NodeType.PARAM_RANGE.name().equals(port.getType())
-            || NodeType.PARAM_INVENTORY_SLOT.name().equals(port.getType());
-    }
-
-    private boolean isPresetDecimalPort(NodeGraphData.CustomNodePort port) {
-        if (port == null || port.getType() == null) {
-            return false;
-        }
-        return NodeType.PARAM_AMOUNT.name().equals(port.getType())
-            || NodeType.PARAM_DURATION.name().equals(port.getType())
-            || NodeType.PARAM_DISTANCE.name().equals(port.getType());
     }
 
     float getHoverProgress(Object key, boolean hovered) {
@@ -7474,7 +7184,7 @@ public class PathmindVisualEditorScreen extends Screen {
         isDraggingFromSidebar = false;
         draggingNodeType = null;
         draggingSidebarNode = null;
-        nodeGraph.save();
+        saveRootPresetWorkspace();
         ExecutionManager.getInstance().executeGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
         if (this.client != null && this.client.player != null) {
             this.client.setScreen(null);

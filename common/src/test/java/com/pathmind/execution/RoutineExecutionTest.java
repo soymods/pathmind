@@ -1,0 +1,225 @@
+package com.pathmind.execution;
+
+import com.pathmind.data.NodeGraphData;
+import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.data.SettingsManager;
+import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeConnection;
+import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.RuntimeValueScope;
+import com.pathmind.routines.RoutineBuilderModel;
+import com.pathmind.routines.RoutineValueKind;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class RoutineExecutionTest {
+    private final ExecutionManager manager = ExecutionManager.getInstance();
+    private Integer originalNodeDelay;
+
+    @BeforeEach
+    void speedUpExecution() {
+        originalNodeDelay = SettingsManager.getCurrent().nodeDelayMs;
+        SettingsManager.getCurrent().nodeDelayMs = 0;
+    }
+
+    @AfterEach
+    void cleanUp() {
+        manager.requestStopAll();
+        manager.setWorkspaceGraph(List.of(), List.of(), List.of());
+        SettingsManager.getCurrent().nodeDelayMs = originalNodeDelay;
+    }
+
+    @Test
+    void sequentialInvocationsSnapshotDifferentInputsAndUseDefaults() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Travel");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData destination = builder.addInput("destination", RoutineValueKind.NUMBER);
+        NodeGraphData.RoutineInputData range = builder.addInput("range", RoutineValueKind.NUMBER);
+        builder.updateInput(range.getId(), "range", RoutineValueKind.NUMBER, true, "5");
+        Node first = Node.createRoutineCall(routine, 0, 0);
+        Node second = Node.createRoutineCall(routine, 0, 0);
+        Node firstValue = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        firstValue.getParameter("Amount").setStringValue("10");
+        Node secondValue = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        secondValue.getParameter("Amount").setStringValue("20");
+        first.attachParameter(firstValue, first.getRoutineSlotForInputId(destination.getId()));
+        second.attachParameter(secondValue, second.getRoutineSlotForInputId(destination.getId()));
+
+        var firstInputs = manager.captureRoutineInputs(first, routine, 1);
+        var secondInputs = manager.captureRoutineInputs(second, routine, 2);
+
+        assertEquals("10", firstInputs.get(destination.getId()).getValues().get("Amount"));
+        assertEquals("20", secondInputs.get(destination.getId()).getValues().get("Amount"));
+        assertEquals("5", firstInputs.get(range.getId()).getValues().get("Amount"));
+    }
+
+    @Test
+    void callerFutureWaitsForRoutineAndNestedRoutineCompletion() {
+        NodeGraphData.RoutineDefinitionData inner = RoutineBuilderModel.createRoutine("Inner");
+        NodeGraphData.RoutineDefinitionData outer = RoutineBuilderModel.createRoutine("Outer");
+        List<Node> outerNodes = NodeGraphPersistence.convertToNodes(outer.getGraph());
+        Node outerEntry = outerNodes.stream().filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+        Node nestedCall = Node.createRoutineCall(inner, 200, 200);
+        outerNodes.add(nestedCall);
+        outer.setGraph(NodeGraphPersistence.createGraphData(outerNodes,
+            List.of(new NodeConnection(outerEntry, nestedCall, 0, 0))));
+
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node invocation = Node.createRoutineCall(outer, 100, 0);
+        List<Node> rootNodes = List.of(start, invocation);
+        List<NodeConnection> rootConnections = List.of(new NodeConnection(start, invocation, 0, 0));
+        manager.setWorkspaceGraph(rootNodes, rootConnections, List.of(outer, inner));
+
+        var future = manager.executeExternalBranchAndWait(start, rootNodes, rootConnections, "RoutineTest");
+
+        assertNotNull(future);
+        assertDoesNotThrow(() -> future.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void routineReporterFeedsChainAndGlobalVariablesAndCancellationUnwindsCall() throws Exception {
+        NodeGraphData.RoutineDefinitionData helper = RoutineBuilderModel.createRoutine("Yield");
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Store");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData input = builder.addInput("value", RoutineValueKind.NUMBER);
+        List<Node> definitionNodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(routine.getGraph()));
+        Node entry = definitionNodes.stream().filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+        Node chainSet = new Node(NodeType.SET_VARIABLE, 150, 0);
+        Node chainName = new Node(NodeType.VARIABLE, 0, 0);
+        chainName.getParameter("Variable").setStringValue("value");
+        chainName.setRuntimeValueScope(RuntimeValueScope.CHAIN);
+        Node chainReporter = builder.createInputReporter(input.getId(), 0, 0);
+        assertTrue(chainSet.attachParameter(chainName, 0));
+        assertTrue(chainSet.attachParameter(chainReporter, 1));
+        Node globalSet = new Node(NodeType.SET_VARIABLE, 300, 0);
+        Node globalName = new Node(NodeType.VARIABLE, 0, 0);
+        globalName.getParameter("Variable").setStringValue("shared");
+        globalName.setRuntimeValueScope(RuntimeValueScope.GLOBAL);
+        Node globalReporter = builder.createInputReporter(input.getId(), 0, 0);
+        assertTrue(globalSet.attachParameter(globalName, 0));
+        assertTrue(globalSet.attachParameter(globalReporter, 1));
+        Node forever = new Node(NodeType.CONTROL_FOREVER, 450, 0);
+        Node helperCall = Node.createRoutineCall(helper, 0, 0);
+        assertTrue(forever.attachActionNode(helperCall));
+        definitionNodes.addAll(List.of(chainSet, chainName, chainReporter, globalSet, globalName, globalReporter, forever, helperCall));
+        routine.setGraph(NodeGraphPersistence.createGraphData(definitionNodes, List.of(
+            new NodeConnection(entry, chainSet, 0, 0),
+            new NodeConnection(chainSet, globalSet, 0, 0),
+            new NodeConnection(globalSet, forever, 0, 0)
+        )));
+
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node invocation = Node.createRoutineCall(routine, 100, 0);
+        Node supplied = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        supplied.getParameter("Amount").setStringValue("42");
+        assertTrue(invocation.attachParameter(supplied, invocation.getRoutineSlotForInputId(input.getId())));
+        List<Node> rootNodes = List.of(start, invocation, supplied);
+        List<NodeConnection> rootConnections = List.of(new NodeConnection(start, invocation, 0, 0));
+        manager.setWorkspaceGraph(rootNodes, rootConnections, List.of(routine, helper));
+
+        var future = manager.executeExternalBranchAndWait(start, rootNodes, rootConnections, "RoutineScopeTest");
+        assertNotNull(future);
+        long deadline = System.currentTimeMillis() + 5000L;
+        while ((manager.getRuntimeVariable(start, "value", RuntimeValueScope.CHAIN) == null
+            || manager.getRuntimeVariable(start, "shared", RuntimeValueScope.GLOBAL) == null)
+            && System.currentTimeMillis() < deadline) Thread.onSpinWait();
+
+        assertEquals("42", manager.getRuntimeVariable(start, "value", RuntimeValueScope.CHAIN).getValues().get("Amount"));
+        assertEquals("42", manager.getRuntimeVariable(start, "shared", RuntimeValueScope.GLOBAL).getValues().get("Amount"));
+        manager.requestStopAll();
+        assertDoesNotThrow(() -> future.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void runawayRecursionFailsAtDepthLimit() {
+        NodeGraphData.RoutineDefinitionData recursive = RoutineBuilderModel.createRoutine("Recursive");
+        List<Node> definitionNodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(recursive.getGraph()));
+        Node entry = definitionNodes.stream().filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+        Node recursiveCall = Node.createRoutineCall(recursive, 200, 200);
+        definitionNodes.add(recursiveCall);
+        recursive.setGraph(NodeGraphPersistence.createGraphData(definitionNodes,
+            List.of(new NodeConnection(entry, recursiveCall, 0, 0))));
+
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node invocation = Node.createRoutineCall(recursive, 100, 0);
+        List<Node> rootNodes = List.of(start, invocation);
+        List<NodeConnection> rootConnections = List.of(new NodeConnection(start, invocation, 0, 0));
+        manager.setWorkspaceGraph(rootNodes, rootConnections, List.of(recursive));
+
+        var future = manager.executeExternalBranchAndWait(start, rootNodes, rootConnections, "RoutineTest");
+
+        assertNotNull(future);
+        assertThrows(Exception.class, () -> future.get(10, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void manyDefinitionsAndSequentialInvocationsCompleteWithoutLeakingState() {
+        List<NodeGraphData.RoutineDefinitionData> routines = new ArrayList<>();
+        List<Node> rootNodes = new ArrayList<>();
+        List<NodeConnection> rootConnections = new ArrayList<>();
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        rootNodes.add(start);
+        Node previous = start;
+
+        for (int index = 0; index < 64; index++) {
+            NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Routine " + index);
+            routines.add(routine);
+            Node invocation = Node.createRoutineCall(routine, 100 + index * 20, 0);
+            rootNodes.add(invocation);
+            rootConnections.add(new NodeConnection(previous, invocation, 0, 0));
+            previous = invocation;
+        }
+
+        manager.setWorkspaceGraph(rootNodes, rootConnections, routines);
+        var future = manager.executeExternalBranchAndWait(start, rootNodes, rootConnections, "RoutineStressTest");
+
+        assertNotNull(future);
+        assertDoesNotThrow(() -> future.get(10, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void deeplyNestedCallsCompleteBelowTheSafetyLimit() {
+        List<NodeGraphData.RoutineDefinitionData> routines = new ArrayList<>();
+        NodeGraphData.RoutineDefinitionData child = null;
+        for (int depth = 0; depth < 16; depth++) {
+            NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Depth " + depth);
+            if (child != null) {
+                List<Node> nodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(routine.getGraph()));
+                Node entry = nodes.stream().filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+                Node call = Node.createRoutineCall(child, 200, 0);
+                nodes.add(call);
+                routine.setGraph(NodeGraphPersistence.createGraphData(nodes,
+                    List.of(new NodeConnection(entry, call, 0, 0))));
+            }
+            routines.add(routine);
+            child = routine;
+        }
+
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node invocation = Node.createRoutineCall(child, 100, 0);
+        List<Node> rootNodes = List.of(start, invocation);
+        List<NodeConnection> rootConnections = List.of(new NodeConnection(start, invocation, 0, 0));
+        manager.setWorkspaceGraph(rootNodes, rootConnections, routines);
+        var future = manager.executeExternalBranchAndWait(start, rootNodes, rootConnections, "NestedRoutineStressTest");
+
+        assertNotNull(future);
+        assertDoesNotThrow(() -> future.get(10, TimeUnit.SECONDS));
+    }
+}

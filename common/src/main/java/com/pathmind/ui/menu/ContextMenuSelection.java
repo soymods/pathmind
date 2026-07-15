@@ -6,29 +6,23 @@ public final class ContextMenuSelection {
     private final NodeType nodeType;
     private final boolean openSearch;
     private final boolean createStickyNote;
-    private final String customNodePresetName;
 
-    private ContextMenuSelection(NodeType nodeType, boolean openSearch, boolean createStickyNote, String customNodePresetName) {
+    private ContextMenuSelection(NodeType nodeType, boolean openSearch, boolean createStickyNote) {
         this.nodeType = nodeType;
         this.openSearch = openSearch;
         this.createStickyNote = createStickyNote;
-        this.customNodePresetName = customNodePresetName;
     }
 
     public static ContextMenuSelection forNode(NodeType nodeType) {
-        return new ContextMenuSelection(nodeType, false, false, null);
-    }
-
-    public static ContextMenuSelection forCustomNode(String presetName) {
-        return new ContextMenuSelection(NodeType.CUSTOM_NODE, false, false, presetName);
+        return new ContextMenuSelection(nodeType, false, false);
     }
 
     public static ContextMenuSelection openSearch() {
-        return new ContextMenuSelection(null, true, false, null);
+        return new ContextMenuSelection(null, true, false);
     }
 
     public static ContextMenuSelection createStickyNote() {
-        return new ContextMenuSelection(null, false, true, null);
+        return new ContextMenuSelection(null, false, true);
     }
 
     public NodeType getNodeType() {
@@ -43,7 +37,4 @@ public final class ContextMenuSelection {
         return createStickyNote;
     }
 
-    public String getCustomNodePresetName() {
-        return customNodePresetName;
-    }
 }

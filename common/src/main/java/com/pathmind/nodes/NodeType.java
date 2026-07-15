@@ -146,7 +146,6 @@ public enum NodeType {
 
     // Utility Commands
     RUN_PRESET,
-    CUSTOM_NODE,
     WAIT,
     STICKY_NOTE,
     MESSAGE,

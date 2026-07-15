@@ -26,10 +26,10 @@ Preset graph data is stored as `NodeGraphData`:
 
 - `nodes`: serialized `NodeData` records.
 - `connections`: serialized `ConnectionData` records.
-- `customNodeDefinition`: generated metadata that lets a preset behave like a reusable custom/template node.
+- `customNodeDefinition`: legacy-only metadata retained so old hidden `TEMPLATE` nodes can still load.
 - `routines`: preset-owned routine definitions with stable identities, input interfaces, independent versions, and embedded graphs.
 
-`NodeGraphPersistence.saveNodeGraphForPreset` writes live nodes and connections to the preset file returned by `PresetManager.getPresetPath`. During save it also rebuilds `customNodeDefinition`, including discovered custom-node inputs, outputs, signature, and version.
+`NodeGraphPersistence.saveNodeGraphForPreset` writes live nodes and connections to the preset file returned by `PresetManager.getPresetPath`. New saves do not generate custom-node metadata. Existing metadata is preserved only for the hidden Template compatibility adapter.
 
 `NodeGraphPersistence.loadNodeGraphForPreset` reads the preset JSON. If disk load fails but the graph was recently saved in-process, it can fall back to an in-memory JSON cache keyed by preset name.
 
@@ -49,7 +49,11 @@ Routine definitions remain inside their owning preset. Each routine and input ha
 
 `NodeGraphPersistence.sanitizeRoutineDefinitions` repairs missing or duplicate IDs, missing graphs, invalid versions, unknown value kinds, traits, and ordering. Its interface signature excludes editable labels but includes stable input IDs, kinds, traits, required/default state, and order. Its implementation signature includes names, labels, and graph structure, but deliberately excludes node coordinates. This means moving nodes does not version a routine; renaming only advances the implementation revision; and adding, removing, reordering, or changing an input advances the interface version while stable IDs preserve compatible bindings.
 
-`ROUTINE_CALL` is the generated invocation node for a definition. Its argument slots are snapshotted with stable routine input IDs, and parameter attachments persist both their display slot and that input ID. On load or definition refresh, bindings are remapped by input ID, so renames and reorders do not move values to the wrong argument. Removed inputs remain visible as orphan repair slots; incompatible type changes retain the attached node and surface a validation error instead of silently discarding user work. Defaults satisfy an otherwise required empty slot. Runtime call-frame evaluation remains owned by the routine-execution pass.
+`ROUTINE_CALL` is the generated invocation node for a definition. Its argument slots are snapshotted with stable routine input IDs, and parameter attachments persist both their display slot and that input ID. On load or definition refresh, bindings are remapped by input ID, so renames and reorders do not move values to the wrong argument. Removed inputs remain visible as orphan repair slots; incompatible type changes retain the attached node and surface a validation error instead of silently discarding user work. Defaults satisfy an otherwise required empty slot.
+
+Routine execution is coordinated by `ExecutionManager`, not by a second scheduler. A `ROUTINE_CALL` snapshots its bound parameter nodes, creates an immutable `RoutineCallFrame` keyed by stable input ID, clones the definition graph, replaces definition-local input reporters with value snapshots, and runs the cloned `ROUTINE_ENTRY` synchronously before the caller continues. Nested calls allocate child execution IDs while sharing the caller's `ChainController`, so chain variables remain rooted in the original START tree and explicit global variables still use the shared global maps. Frames and cloned graphs are removed on completion or cancellation. Existing pause/stop futures apply to nested work, and the shared call-depth and branch budgets cap recursion and runaway forks.
+
+Cross-preset reuse is explicit through `RoutineLibraryManager`. The library lives in `pathmind/routine-library.json`, separate from presets. Copying creates an independent local definition; linking stores a local executable snapshot with library provenance and baseline signatures. Compatible implementation updates require an explicit action, while interface changes or local divergence block replacement. Stable input IDs survive both paths, ID/name conflicts are resolved without overwriting local definitions, and referenced routine dependencies travel with the shared routine.
 
 Attachments are not normal flow connections. Sensors, child action nodes, and parameter nodes are restored after all nodes are created so id references can be resolved.
 
@@ -206,7 +210,7 @@ Explicit `CHAIN` and `GLOBAL` reads never fall through to one another. Nodes loa
 
 Editor-created variable and Create List nodes default to `CHAIN`. Their top-right button uses a contained-value icon for local scope and a globe for global scope. Other list operations inherit the scope of the matching Create List declaration, so they do not show redundant scope controls. Clicking a visible scope button records undo state and saves through normal graph persistence. The runtime overlay labels values as local or global, and validation keeps type inference separate for equal names in different scopes.
 
-This scope is why `RUN_PRESET`, `CUSTOM_NODE`, and `TEMPLATE` can start nested graphs without simply merging all state into the top-level editor graph.
+This scope is why `RUN_PRESET` and the legacy `TEMPLATE` adapter can start nested graphs without simply merging all state into the top-level editor graph.
 
 ## Command Dispatch
 
@@ -218,7 +222,7 @@ Execution routing is declared in `NodeCatalog` and consumed through `NodeCommand
 - `NodeGuiCommandExecutor`: UI Utils integration and player GUI open/close.
 - `NodeNavigationCommandExecutor`: Baritone/pathing commands and navigation guards.
 - `NodeTextIoCommandExecutor`: message, book, and sign writing.
-- `NodeFlowCommandExecutor`: waits, control flow, start/stop chain, run preset/custom/template, stop all.
+- `NodeFlowCommandExecutor`: waits, control flow, start/stop chain, run preset/template, stop all.
 - `NodeMovementCommandExecutor`: look, walk, jump, key press, crawl, crouch, sprint, fly.
 - `NodeEntityActionCommandExecutor`: interact, trade, swing, armor/hand equip, break.
 - `NodeWorldActionCommandExecutor`: use/place/build/explore/follow style world actions.
@@ -229,20 +233,15 @@ Execution routing is declared in `NodeCatalog` and consumed through `NodeCommand
 
 Adding a command node should generally mean adding catalog metadata plus one focused executor implementation, not adding more logic to `Node.java`.
 
-## Presets As Custom Nodes
+## Reusable Behavior
 
-Saved presets can expose `customNodeDefinition`. `NodeGraphPersistence` discovers:
+Routines are the only user-facing synchronous reusable blocks. They are embedded in their owning preset, receive typed per-invocation inputs through `RoutineCallFrame`, and wait for completion before their caller continues. The explicit Routine Library is the cross-preset sharing boundary.
 
-- inputs from eligible `VARIABLE` nodes and initialization patterns;
-- outputs from graph output/value usage;
-- a signature based on graph contents;
-- a monotonically increasing version when the signature changes.
+`RUN_PRESET` is the user-facing preset launcher. It loads another preset, launches every `START` node externally, and lets the caller continue immediately without waiting. Its workspace selector includes a direct open action for the selected preset.
 
-`RUN_PRESET` loads another preset and starts its `START` nodes externally.
+The old Custom Node type and preset-wide input editor have been removed. When a saved graph containing `CUSTOM_NODE` is loaded, persistence migrates it to `RUN_PRESET`. `TEMPLATE` and serialized `customNodeDefinition` remain hidden legacy adapters so old saves can load; new presets never generate that metadata.
 
-`CUSTOM_NODE` and `TEMPLATE` also load preset graph data, but they wait for nested execution completion and use template/custom-node metadata to behave more like reusable subgraphs. Their node data can include `templateName`, `templateVersion`, `customNodeInstance`, and embedded `templateGraph`.
-
-The planned replacement for this overlapping preset/function/custom-node model is documented in [`routines-redesign-roadmap.md`](routines-redesign-roadmap.md). Implement that roadmap one reviewed pass at a time while retaining the compatibility behavior described here.
+The completed migration contract is documented in [`routines-redesign-roadmap.md`](routines-redesign-roadmap.md).
 
 ## Current Refactor Guidance
 
@@ -283,7 +282,7 @@ Use this checklist for most node changes.
 
 5. Validate graph rules.
 
-   Update `GraphValidator` when the node changes graph-level correctness, dependency requirements, required slots, event semantics, or custom-node behavior.
+   Update `GraphValidator` when the node changes graph-level correctness, dependency requirements, required slots, event semantics, routine behavior, or a legacy adapter.
 
 6. Persist only special state.
 
@@ -324,6 +323,7 @@ Common UI helper ownership:
 - `PathmindSettingsRowRenderer`: settings rows and selector rows.
 - `PathmindValidationPanelRenderer`: validation button and validation panel rows.
 - `PathmindIconRenderer`: small shared icons.
+- `NodeGraph` node-header button helpers: shared frame, hover, zoom, and hitbox behavior for top-right node actions.
 - `PathmindPresetPopupController`: create/rename/delete/publish preset popups.
 - `PathmindSettingsPopupController`: settings popup rendering and settings-node selection.
 - `PathmindMarketplacePopupController`: marketplace detail, publish, confirm, and account popups.
@@ -398,4 +398,6 @@ Use this map when tracing a bug:
 - Node category/sidebar/color/trait behavior is wrong: inspect `NodeCatalog`.
 - Validation warning/error is wrong: inspect `GraphValidator`.
 - Node runs but does the wrong action: inspect `NodeCommandDispatcher`, then the executor for that node family.
-- Nested preset/custom-node behavior is wrong: inspect `NodeFlowCommandExecutor.executeRunPresetNode`, `ExecutionManager.executeExternalBranch*`, and `NodeGraphPersistence.resolveCustomNodeDefinition`.
+- Nested routine behavior is wrong: inspect `ExecutionManager.executeRoutineCall`, `RoutineCallFrame`, and routine branch cloning.
+- Nested preset behavior is wrong: inspect `NodeFlowCommandExecutor.executeRunPresetNode` and `ExecutionManager.executeExternalBranch*`.
+- An old Template save is wrong: inspect the hidden `TEMPLATE` adapter and `NodeGraphPersistence.resolveCustomNodeDefinition`.

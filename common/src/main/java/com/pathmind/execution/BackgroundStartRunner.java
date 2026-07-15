@@ -63,12 +63,12 @@ public final class BackgroundStartRunner {
             if (mode == StartLaunchMode.SCREEN_OPENED && !node.getStartScreenTarget().matches(screenKey)) {
                 continue;
             }
-            launchStart(presetName, node, nodes, connections, mode);
+            launchStart(presetName, node, nodes, connections, data.getRoutines(), mode);
         }
     }
 
     private void launchStart(String presetName, Node startNode, List<Node> nodes, List<NodeConnection> connections,
-                             StartLaunchMode mode) {
+                             List<NodeGraphData.RoutineDefinitionData> routines, StartLaunchMode mode) {
         String key = launchKey(presetName, startNode, mode);
         CompletableFuture<Void> existing = activeLaunches.get(key);
         if (existing != null && !existing.isDone()) {
@@ -79,7 +79,8 @@ public final class BackgroundStartRunner {
             startNode,
             nodes,
             connections,
-            presetName
+            presetName,
+            routines
         );
         if (future == null) {
             LOGGER.debug("Background START {} in preset {} did not launch", startNode.getStartNodeNumber(), presetName);

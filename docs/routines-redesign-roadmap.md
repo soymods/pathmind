@@ -39,14 +39,14 @@ Routine inputs are local to one invocation. Ordinary variables retain their decl
 - **Global variable**: a variable intentionally shared by all active execution chains.
 - **Interface version**: changes only when a routine's public inputs or flow contract changes.
 - **Implementation revision**: changes when the internal routine graph changes.
-- **Legacy custom node**: the current preset-backed `CUSTOM_NODE` behavior.
+- **Legacy custom node**: an old preset-backed node that now loads as Run Preset.
 
 ## Non-Negotiable Behavior
 
 These rules apply to every pass:
 
 1. Existing preset files must continue to load.
-2. Existing `EVENT_FUNCTION`, `EVENT_CALL`, `CUSTOM_NODE`, `TEMPLATE`, and `RUN_PRESET` nodes must not silently change behavior before their migration pass.
+2. Existing `EVENT_FUNCTION`, `EVENT_CALL`, `TEMPLATE`, and `RUN_PRESET` nodes must not silently change behavior before their migration pass. Old `CUSTOM_NODE` data migrates to `RUN_PRESET` on load.
 3. A routine invocation must wait for its routine to finish before continuing.
 4. Two simultaneous invocations of the same routine must not share input values.
 5. Recursive invocations must receive independent call frames and obey an execution-depth safety limit.
@@ -408,6 +408,16 @@ Make routines safe to evolve after they have been used throughout a preset.
 - Validation covers both definition and invocation graphs.
 - Routine UI meets the quality level of built-in nodes.
 
+### Implemented
+
+- The routine row menu now opens editing/renaming, duplicates definitions with new stable IDs, finds usages, and deletes only unused routines.
+- Deleting an in-use routine guides the user to the first invocation instead of breaking calls.
+- Routine validation now covers missing definitions/entries, duplicate IDs, invalid input reporters, recursion risk, required inputs, orphan arguments, and incompatible values.
+- Validation issues can open the owning routine and focus the affected node.
+- Routines are alphabetized, included in workspace node search, and expose a compact ownership/input/usage inspector.
+- Empty and broken-definition states are visible, and all compatibility screen variants share the same lifecycle behavior.
+- Lifecycle cloning, usage protection, routine validation, persistence-facing IDs, and all supported build targets are covered by automated verification.
+
 ---
 
 ## Pass 8: Separate Run Preset from Reusable Behavior
@@ -434,6 +444,18 @@ Make `Run Preset` the only user-facing mechanism for launching complete presets 
 - Creating a preset does not automatically create a reusable node.
 - Creating a Routine does not create a user-visible preset.
 
+### Implemented
+
+- `Run Preset` is now a normal Flow node and is the only new node for launching complete presets.
+- Its dropdown remains intact, its help text states that every `START` launches independently, and `↗` opens the selected preset directly.
+- Presets are no longer automatically exposed through the Custom Nodes sidebar or context menu.
+- Old `CUSTOM_NODE` data migrates to `RUN_PRESET` on load; its node type and creation UI have been removed. `TEMPLATE` remains a hidden legacy adapter.
+- The Run Preset open action appears as a separate top-right header button only after a preset is selected.
+- Run Preset targets are selection-only; the dropdown value cannot be typed or edited manually.
+- Routine calls remain embedded, typed routine references with no preset selector or preset graph preview.
+- Missing/renamed preset targets and direct or indirect Run Preset launch loops are validation errors.
+- Routine definitions remain embedded in their owning preset and do not enter the normal preset list.
+
 ---
 
 ## Pass 9: Legacy Migration
@@ -447,7 +469,6 @@ Move existing Function/Call, Custom Node, and Template users to the new model wi
 - Inventory every current use of:
   - `EVENT_FUNCTION`
   - `EVENT_CALL`
-  - `CUSTOM_NODE`
   - `TEMPLATE`
   - external event-triggered function names
 - Keep external event handlers separate from synchronous routines. Do not accidentally convert game/chat event entry points into callable routines.
@@ -510,6 +531,16 @@ Make routines powerful across presets without reverting to “every preset is a 
 - A user understands whether a routine is local, copied, or linked.
 - Updating a library routine cannot silently corrupt existing invocation bindings.
 
+### Implemented
+
+- `Add to Library` writes explicit shared definitions to `pathmind/routine-library.json`, outside every preset.
+- Library entries offer separate **Link to this preset** and **Copy to this preset** actions.
+- Linked routines retain a local executable snapshot plus source identity, versions, and baseline signatures.
+- The routine sidebar labels copied, linked, update-available, incompatible, missing, and locally diverged definitions; invocation nodes stay uncluttered.
+- Compatible implementation updates are opt-in. Interface changes and local divergence block replacement.
+- Routine/input IDs remain stable. Duplicate local IDs are safely remapped, duplicate names are suffixed, and called routine dependencies are packaged and imported recursively.
+- Marketplace publishing remains deferred; sharing is local and never automatic.
+
 ---
 
 ## Pass 11: Cleanup, Documentation, and Release Hardening
@@ -564,9 +595,9 @@ The redesign is complete only when all of the following are true:
 - [x] Pass 3: Routine persistence
 - [x] Pass 4: Definition workspace
 - [x] Pass 5: Invocation nodes
-- [ ] Pass 6: Routine execution
-- [ ] Pass 7: Lifecycle and polish
-- [ ] Pass 8: Run Preset separation
-- [ ] Pass 9: Legacy migration
-- [ ] Pass 10: Shared routine library
-- [ ] Pass 11: Cleanup and release hardening
+- [x] Pass 6: Routine execution
+- [x] Pass 7: Lifecycle and polish
+- [x] Pass 8: Run Preset separation
+- [x] Pass 9: Lightweight legacy compatibility and Custom Node migration
+- [x] Pass 10: Shared routine library
+- [x] Pass 11: Cleanup and release hardening

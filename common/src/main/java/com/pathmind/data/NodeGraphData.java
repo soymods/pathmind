@@ -73,6 +73,7 @@ public class NodeGraphData {
         private Integer implementationRevision;
         private String interfaceSignature;
         private String implementationSignature;
+        private String libraryRoutineId;
         private List<RoutineInputData> inputs;
         private NodeGraphData graph;
 
@@ -93,6 +94,8 @@ public class NodeGraphData {
         public void setInterfaceSignature(String interfaceSignature) { this.interfaceSignature = interfaceSignature; }
         public String getImplementationSignature() { return implementationSignature; }
         public void setImplementationSignature(String implementationSignature) { this.implementationSignature = implementationSignature; }
+        public String getLibraryRoutineId() { return libraryRoutineId; }
+        public void setLibraryRoutineId(String libraryRoutineId) { this.libraryRoutineId = libraryRoutineId; }
         public List<RoutineInputData> getInputs() {
             if (inputs == null) {
                 inputs = new ArrayList<>();
@@ -236,7 +239,6 @@ public class NodeGraphData {
         private Boolean keyPressedActivatesInGuis;
         private String templateName;
         private Integer templateVersion;
-        private Boolean customNodeInstance;
         private NodeGraphData templateGraph;
 
         public NodeData() {
@@ -453,14 +455,6 @@ public class NodeGraphData {
 
         public void setTemplateVersion(Integer templateVersion) {
             this.templateVersion = templateVersion;
-        }
-
-        public Boolean getCustomNodeInstance() {
-            return customNodeInstance;
-        }
-
-        public void setCustomNodeInstance(Boolean customNodeInstance) {
-            this.customNodeInstance = customNodeInstance;
         }
 
         public NodeGraphData getTemplateGraph() {

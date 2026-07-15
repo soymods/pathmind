@@ -109,7 +109,7 @@ final class NodeGraphClipboardSupport {
                     && newNode.getParameter("StartNumber") == null) {
                     newNode.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
                 }
-                if ((newNode.getType() == NodeType.RUN_PRESET || newNode.getType() == NodeType.TEMPLATE || newNode.getType() == NodeType.CUSTOM_NODE)
+                if ((newNode.getType() == NodeType.RUN_PRESET || newNode.getType() == NodeType.TEMPLATE)
                     && newNode.getParameter("Preset") == null) {
                     newNode.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 }
@@ -271,15 +271,13 @@ final class NodeGraphClipboardSupport {
                 nodeData.setStickyNoteWidth(null);
                 nodeData.setStickyNoteHeight(null);
             }
-            if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+            if (node.getType() == NodeType.TEMPLATE) {
                 nodeData.setTemplateName(node.getTemplateName());
                 nodeData.setTemplateVersion(node.getTemplateVersion());
-                nodeData.setCustomNodeInstance(node.isCustomNodeInstance());
                 nodeData.setTemplateGraph(node.getTemplateGraphData());
             } else {
                 nodeData.setTemplateName(null);
                 nodeData.setTemplateVersion(null);
-                nodeData.setCustomNodeInstance(null);
                 nodeData.setTemplateGraph(null);
             }
             if (node.getType() == NodeType.SENSOR_KEY_PRESSED) {

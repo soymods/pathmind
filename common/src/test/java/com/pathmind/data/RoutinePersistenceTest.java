@@ -10,6 +10,7 @@ import com.pathmind.routines.RoutineValueKind;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -213,6 +214,43 @@ class RoutinePersistenceTest {
         assertNotNull(normalized);
         assertEquals(1, normalized.getRoutines().size());
         assertEquals(source.getRoutines().get(0).getId(), normalized.getRoutines().get(0).getId());
+    }
+
+    @Test
+    void marketplaceFileRoundTripPreservesRoutineAndInvocation() throws Exception {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Greet");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData input = builder.addInput("Message", RoutineValueKind.TEXT);
+        Node reporter = builder.createInputReporter(input.getId(), 320, 180);
+        routine.getGraph().getNodes().addAll(
+            NodeGraphPersistence.createGraphData(List.of(reporter), List.of()).getNodes());
+
+        Node call = Node.createRoutineCall(routine, 80, 100);
+        NodeGraphData preset = NodeGraphPersistence.createGraphData(List.of(call), List.of());
+        preset.setRoutines(List.of(routine));
+
+        Path localPreset = tempDir.resolve("local-preset.json");
+        Path downloadedPreset = tempDir.resolve("downloaded-preset.json");
+        Path importedPreset = tempDir.resolve("imported-preset.json");
+        assertTrue(NodeGraphPersistence.saveNodeGraphDataToPath(preset, localPreset));
+
+        // Marketplace storage uploads and downloads the preset JSON as-is.
+        Files.write(downloadedPreset, Files.readAllBytes(localPreset));
+        assertTrue(NodeGraphPersistence.normalizeNodeGraphToPath(downloadedPreset, importedPreset));
+
+        NodeGraphData restored = NodeGraphPersistence.loadNodeGraphFromPath(importedPreset);
+        assertNotNull(restored);
+        assertEquals(1, restored.getRoutines().size());
+        NodeGraphData.RoutineDefinitionData restoredRoutine = restored.getRoutines().get(0);
+        assertEquals(routine.getId(), restoredRoutine.getId());
+        assertEquals(input.getId(), restoredRoutine.getInputs().get(0).getId());
+        assertTrue(restoredRoutine.getGraph().getNodes().stream()
+            .anyMatch(node -> node.getType() == NodeType.ROUTINE_INPUT
+                && input.getId().equals(node.getRoutineInputId())));
+        NodeGraphData.NodeData restoredCall = restored.getNodes().stream()
+            .filter(node -> node.getType() == NodeType.ROUTINE_CALL).findFirst().orElseThrow();
+        assertEquals(routine.getId(), restoredCall.getRoutineId());
+        assertEquals(input.getId(), restoredCall.getRoutineArguments().get(0).getInputId());
     }
 
     private NodeGraphData presetWithTwoInputRoutine() {

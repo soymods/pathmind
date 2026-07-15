@@ -5,12 +5,18 @@ public final class GraphValidationIssue {
     private final String code;
     private final String message;
     private final String nodeId;
+    private final String routineId;
 
     public GraphValidationIssue(GraphValidationSeverity severity, String code, String message, String nodeId) {
+        this(severity, code, message, nodeId, null);
+    }
+
+    public GraphValidationIssue(GraphValidationSeverity severity, String code, String message, String nodeId, String routineId) {
         this.severity = severity;
         this.code = code == null ? "" : code;
         this.message = message == null ? "" : message;
         this.nodeId = nodeId;
+        this.routineId = routineId;
     }
 
     public GraphValidationSeverity getSeverity() {
@@ -31,5 +37,13 @@ public final class GraphValidationIssue {
 
     public boolean hasNodeTarget() {
         return nodeId != null && !nodeId.isBlank();
+    }
+
+    public String getRoutineId() {
+        return routineId;
+    }
+
+    public boolean hasRoutineTarget() {
+        return routineId != null && !routineId.isBlank();
     }
 }

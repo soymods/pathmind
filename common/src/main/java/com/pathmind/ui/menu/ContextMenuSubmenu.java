@@ -108,9 +108,6 @@ public class ContextMenuSubmenu {
         if (hoveredItem == null) {
             return null;
         }
-        if (hoveredItem.customNodePresetName != null) {
-            return ContextMenuSelection.forCustomNode(hoveredItem.customNodePresetName);
-        }
         return hoveredItem.nodeType != null ? ContextMenuSelection.forNode(hoveredItem.nodeType) : null;
     }
 
@@ -168,14 +165,6 @@ public class ContextMenuSubmenu {
                         item.nodeType.getDisplayName(), color,
                         hovered, item.indented
                     );
-                } else if (item.customNodePresetName != null) {
-                    boolean hovered = (item == hoveredItem);
-                    ContextMenuRenderer.renderNodeItem(
-                        context, textRenderer,
-                        submenuX, itemY, MENU_WIDTH, ITEM_HEIGHT,
-                        item.customNodePresetName, NodeType.CUSTOM_NODE.getColor(),
-                        hovered, item.indented
-                    );
                 }
             }
             itemY += ITEM_HEIGHT;
@@ -196,13 +185,6 @@ public class ContextMenuSubmenu {
      * Builds the list of submenu items from sidebar data.
      */
     private void buildItems(Sidebar sidebar) {
-        if (category == NodeCategory.CUSTOM) {
-            for (String presetName : sidebar.getCustomNodePresetNames()) {
-                items.add(new SubmenuItem(presetName, false));
-            }
-            return;
-        }
-
         List<Sidebar.NodeGroup> groups = sidebar.getGroupedNodesForCategory(category);
 
         if (groups != null && !groups.isEmpty()) {
@@ -294,7 +276,6 @@ public class ContextMenuSubmenu {
         final boolean isGroupHeader;
         final String groupName;
         final NodeType nodeType;
-        final String customNodePresetName;
         final boolean indented;
 
         // Group header constructor
@@ -302,7 +283,6 @@ public class ContextMenuSubmenu {
             this.isGroupHeader = true;
             this.groupName = groupName;
             this.nodeType = null;
-            this.customNodePresetName = null;
             this.indented = false;
         }
 
@@ -311,21 +291,11 @@ public class ContextMenuSubmenu {
             this.isGroupHeader = false;
             this.groupName = null;
             this.nodeType = nodeType;
-            this.customNodePresetName = null;
-            this.indented = indented;
-        }
-
-        // Custom node preset constructor
-        SubmenuItem(String customNodePresetName, boolean indented) {
-            this.isGroupHeader = false;
-            this.groupName = null;
-            this.nodeType = null;
-            this.customNodePresetName = customNodePresetName;
             this.indented = indented;
         }
 
         boolean isSelectable() {
-            return nodeType != null || customNodePresetName != null;
+            return nodeType != null;
         }
     }
 }

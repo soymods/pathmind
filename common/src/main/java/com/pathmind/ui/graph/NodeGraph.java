@@ -88,7 +88,7 @@ public class NodeGraph {
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
     private static final int GRID_SNAP_SIZE = 20;
     private static final int TEMPLATE_PREVIEW_MARGIN = 6;
-    private static final int RUNTIME_SCOPE_BUTTON_SIZE = 12;
+    private static final int NODE_HEADER_BUTTON_SIZE = 12;
 
     private static String tr(String key) {
         return Text.translatable(key).getString();
@@ -231,6 +231,7 @@ public class NodeGraph {
 
     private String activePreset;
     private List<NodeGraphData.RoutineDefinitionData> routineRegistry = new ArrayList<>();
+    private List<NodeGraphData.RoutineDefinitionData> routineValidationRegistry = List.of();
     private String activeRoutineWorkspaceId = "";
     private final Set<Node> cascadeDeletionPreviewNodes;
 
@@ -2755,19 +2756,9 @@ public class NodeGraph {
         return addNodeAtPosition(type, contextMenuWorldX, contextMenuWorldY);
     }
 
-    public Node addCustomNodeFromContextMenu(String presetName) {
-        String normalizedPreset = presetName != null ? presetName.trim() : "";
-        Node node = new Node(NodeType.CUSTOM_NODE, 0, 0);
-        if (node.getParameter("Preset") != null) {
-            node.getParameter("Preset").setStringValue(normalizedPreset);
-        }
-        NodeGraphData data = NodeGraphPersistence.loadNodeGraphForPreset(normalizedPreset);
-        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(normalizedPreset, data);
-        node.setTemplateName(definition != null ? definition.getName() : normalizedPreset);
-        node.setTemplateVersion(definition != null && definition.getVersion() != null ? definition.getVersion() : 0);
-        node.setTemplateGraphData(data);
-        node.recalculateDimensions();
-        positionNewNode(node, contextMenuWorldX, contextMenuWorldY);
+    public Node addRoutineFromContextMenu(NodeGraphData.RoutineDefinitionData routine) {
+        if (routine == null) return null;
+        Node node = Node.createRoutineCall(routine, contextMenuWorldX, contextMenuWorldY);
         addNode(node);
         selectNode(node);
         return node;
@@ -3683,7 +3674,7 @@ public class NodeGraph {
             } else if (!isOperator) {
                 int contentLeft = x + MINIMAL_NODE_TAB_WIDTH;
                 int contentWidth = Math.max(0, width - MINIMAL_NODE_TAB_WIDTH);
-                int reservedWidth = node.supportsRuntimeValueScope() ? RUNTIME_SCOPE_BUTTON_SIZE + 4 : 0;
+                int reservedWidth = node.supportsRuntimeValueScope() ? NODE_HEADER_BUTTON_SIZE + 4 : 0;
                 String displayLabel = trimTextToWidth(label, textRenderer,
                     Math.max(0, contentWidth - 8 - reservedWidth));
                 int textWidth = textRenderer.getWidth(displayLabel);
@@ -3702,7 +3693,6 @@ public class NodeGraph {
             && node.getType() != NodeType.ROUTINE_ENTRY
             && node.getType() != NodeType.VARIABLE
             && node.getType() != NodeType.TEMPLATE
-            && node.getType() != NodeType.CUSTOM_NODE
             && node.getType() != NodeType.OPERATOR_EQUALS
             && node.getType() != NodeType.OPERATOR_NOT
             && node.getType() != NodeType.OPERATOR_BOOLEAN_OR
@@ -3721,7 +3711,7 @@ public class NodeGraph {
             Text displayName = node.getDisplayName();
             if (node.supportsRuntimeValueScope()) {
                 displayName = Text.literal(trimTextToWidth(displayName.getString(), textRenderer,
-                    Math.max(0, width - RUNTIME_SCOPE_BUTTON_SIZE - 10)));
+                    Math.max(0, width - NODE_HEADER_BUTTON_SIZE - 10)));
             }
             drawNodeText(
                 context,
@@ -4152,8 +4142,6 @@ public class NodeGraph {
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         } else if (node.getType() == NodeType.TEMPLATE) {
             renderTemplateNodeContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-        } else if (node.getType() == NodeType.CUSTOM_NODE) {
-            renderCustomNodeContent(context, textRenderer, node, isOverSidebar);
         } else {
             if (rendersInlineParameters(node)) {
                 if (shouldShowParameters(node)) {
@@ -4612,10 +4600,33 @@ public class NodeGraph {
         if (node.supportsRuntimeValueScope()) {
             renderRuntimeScopeButton(context, node, isOverSidebar, mouseX, mouseY);
         }
+        if (hasRunPresetSelection(node)) {
+            renderRunPresetOpenButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+    }
+
+    private boolean hasRunPresetSelection(Node node) {
+        return node != null && node.getType() == NodeType.RUN_PRESET
+            && !getSelectedPresetName(node).isBlank();
+    }
+
+    private int getRunPresetOpenButtonWorldX(Node node) {
+        return node.getX() + node.getWidth() - NODE_HEADER_BUTTON_SIZE - 2;
+    }
+
+    private int getRunPresetOpenButtonWorldY(Node node) {
+        return node.getY() + 2;
+    }
+
+    private void renderRunPresetOpenButton(DrawContext context, TextRenderer textRenderer, Node node,
+                                           boolean dimmed, int mouseX, int mouseY) {
+        renderNodeHeaderTextButton(context, textRenderer, getRunPresetOpenButtonWorldX(node),
+            getRunPresetOpenButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, "↗", dimmed, true,
+            getSelectedNodeAccentColor(), mouseX, mouseY);
     }
 
     private int getRuntimeScopeButtonWorldX(Node node) {
-        return node.getX() + node.getWidth() - RUNTIME_SCOPE_BUTTON_SIZE - 2;
+        return node.getX() + node.getWidth() - NODE_HEADER_BUTTON_SIZE - 2;
     }
 
     private int getRuntimeScopeButtonWorldY(Node node) {
@@ -4626,36 +4637,66 @@ public class NodeGraph {
         if (node == null || !node.supportsRuntimeValueScope()) {
             return false;
         }
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int left = getRuntimeScopeButtonWorldX(node);
-        int top = getRuntimeScopeButtonWorldY(node);
-        return worldX >= left && worldX < left + RUNTIME_SCOPE_BUTTON_SIZE
-            && worldY >= top && worldY < top + RUNTIME_SCOPE_BUTTON_SIZE;
+        return isPointInsideNodeHeaderButton(getRuntimeScopeButtonWorldX(node),
+            getRuntimeScopeButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, screenX, screenY);
     }
 
     private void renderRuntimeScopeButton(DrawContext context, Node node, boolean dimmed, int mouseX, int mouseY) {
-        // Node bodies are batched on modern versions, so move the control to a later root layer.
-        DrawContextBridge.startNewRootLayer(context);
-        int left = getRuntimeScopeButtonWorldX(node) - cameraX;
-        int top = getRuntimeScopeButtonWorldY(node) - cameraY;
-        boolean hovered = isPointInsideRuntimeScopeButton(node, mouseX, mouseY);
-        int baseFill = dimmed ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
-        int fill = hovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
-        int border = hovered ? getSelectedNodeAccentColor()
-            : dimmed ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int iconColor = dimmed ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        context.fill(left, top, left + RUNTIME_SCOPE_BUTTON_SIZE, top + RUNTIME_SCOPE_BUTTON_SIZE, fill);
-        DrawContextBridge.drawBorderInLayer(context, left, top, RUNTIME_SCOPE_BUTTON_SIZE,
-            RUNTIME_SCOPE_BUTTON_SIZE, border);
-        int iconX = left + 3;
-        int iconY = top + 3;
+        NodeHeaderButtonVisual visual = renderNodeHeaderButtonFrame(context, getRuntimeScopeButtonWorldX(node),
+            getRuntimeScopeButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, dimmed, true,
+            getSelectedNodeAccentColor(), mouseX, mouseY);
+        int iconX = visual.left() + 3;
+        int iconY = visual.top() + 3;
         if (node.getRuntimeValueScope() == RuntimeValueScope.GLOBAL) {
-            PathmindIconRenderer.drawGlobalScope(context, iconX, iconY, 7, iconColor);
+            PathmindIconRenderer.drawGlobalScope(context, iconX, iconY, 7, visual.iconColor());
         } else {
-            PathmindIconRenderer.drawLocalScope(context, iconX, iconY, 7, iconColor);
+            PathmindIconRenderer.drawLocalScope(context, iconX, iconY, 7, visual.iconColor());
         }
     }
+
+    private NodeHeaderButtonVisual renderNodeHeaderButtonFrame(DrawContext context, int worldLeft, int worldTop,
+                                                                int size, boolean dimmed, boolean enabled,
+                                                                int hoverBorder, int mouseX, int mouseY) {
+        // Node bodies are batched on modern versions, so header controls render in a later root layer.
+        DrawContextBridge.startNewRootLayer(context);
+        int left = worldLeft - cameraX;
+        int top = worldTop - cameraY;
+        boolean hovered = enabled && !dimmed
+            && isPointInsideNodeHeaderButton(worldLeft, worldTop, size, mouseX, mouseY);
+        int baseFill = dimmed ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
+        int fill = hovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
+        int border = hovered ? hoverBorder : dimmed ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+        int iconColor = !enabled ? UITheme.NODE_LABEL_DIMMED
+            : dimmed ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        context.fill(left, top, left + size, top + size, fill);
+        DrawContextBridge.drawBorderInLayer(context, left, top, size, size, border);
+        return new NodeHeaderButtonVisual(left, top, iconColor);
+    }
+
+    private void renderNodeHeaderTextButton(DrawContext context, TextRenderer textRenderer,
+                                            int worldLeft, int worldTop, int size, String label,
+                                            boolean dimmed, boolean enabled, int hoverBorder,
+                                            int mouseX, int mouseY) {
+        NodeHeaderButtonVisual visual = renderNodeHeaderButtonFrame(context, worldLeft, worldTop, size,
+            dimmed, enabled, hoverBorder, mouseX, mouseY);
+        int textX = visual.left() + (size - textRenderer.getWidth(label)) / 2;
+        int textY = visual.top() + (size - textRenderer.fontHeight) / 2 + 1;
+        drawNodeText(context, textRenderer, Text.literal(label), textX, textY, visual.iconColor());
+    }
+
+    private boolean isPointInsideNodeHeaderButton(int worldLeft, int worldTop, int size,
+                                                   int screenX, int screenY) {
+        return isPointInsideNodeHeaderButtonWorld(worldLeft, worldTop, size,
+            screenToWorldX(screenX), screenToWorldY(screenY));
+    }
+
+    private static boolean isPointInsideNodeHeaderButtonWorld(int worldLeft, int worldTop, int size,
+                                                              int worldX, int worldY) {
+        return worldX >= worldLeft && worldX < worldLeft + size
+            && worldY >= worldTop && worldY < worldTop + size;
+    }
+
+    private record NodeHeaderButtonVisual(int left, int top, int iconColor) {}
 
     private void renderRuntimeScopeTooltip(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
         Node node = getNodeAt(mouseX, mouseY);
@@ -5573,18 +5614,14 @@ public class NodeGraph {
         if (node == null || !node.hasMessageInputFields()) {
             return false;
         }
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
         int size = node.getMessageButtonSize();
         int top = node.getMessageButtonTop();
         int addLeft = node.getMessageAddButtonLeft();
         int removeLeft = node.getMessageRemoveButtonLeft();
         boolean handled = false;
 
-        boolean overAdd = worldMouseX >= addLeft && worldMouseX <= addLeft + size
-            && worldMouseY >= top && worldMouseY <= top + size;
-        boolean overRemove = worldMouseX >= removeLeft && worldMouseX <= removeLeft + size
-            && worldMouseY >= top && worldMouseY <= top + size;
+        boolean overAdd = isPointInsideNodeHeaderButton(addLeft, top, size, mouseX, mouseY);
+        boolean overRemove = isPointInsideNodeHeaderButton(removeLeft, top, size, mouseX, mouseY);
 
         if (overAdd) {
             stopMessageEditing(true);
@@ -5614,17 +5651,13 @@ public class NodeGraph {
         if (node == null || !node.isExpandableBooleanOperator()) {
             return false;
         }
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
         int size = node.getBooleanOperatorButtonSize();
         int top = node.getBooleanOperatorButtonTop();
         int addLeft = node.getBooleanOperatorAddButtonLeft();
         int removeLeft = node.getBooleanOperatorRemoveButtonLeft();
 
-        boolean overAdd = worldMouseX >= addLeft && worldMouseX <= addLeft + size
-            && worldMouseY >= top && worldMouseY <= top + size;
-        boolean overRemove = worldMouseX >= removeLeft && worldMouseX <= removeLeft + size
-            && worldMouseY >= top && worldMouseY <= top + size;
+        boolean overAdd = isPointInsideNodeHeaderButton(addLeft, top, size, mouseX, mouseY);
+        boolean overRemove = isPointInsideNodeHeaderButton(removeLeft, top, size, mouseX, mouseY);
 
         if (overAdd) {
             if (node.addBooleanOperatorSlot()) {
@@ -6818,7 +6851,6 @@ public class NodeGraph {
                 collectCalculateOutputNames(graphNode, names);
             }
         }
-        collectActivePresetInputNames(names);
         cachedBaseRuntimeVariableNames = names;
         return cachedBaseRuntimeVariableNames;
     }
@@ -6832,30 +6864,6 @@ public class NodeGraph {
             String outputName = getCalculateOutputName(node, i);
             if (outputName != null && !outputName.isBlank()) {
                 names.add(outputName.trim());
-            }
-        }
-    }
-
-    private void collectActivePresetInputNames(Set<String> names) {
-        if (names == null) {
-            return;
-        }
-        String presetName = activePreset == null ? "" : activePreset.trim();
-        if (presetName.isEmpty()) {
-            return;
-        }
-        NodeGraphData snapshot = exportGraphDataSnapshot();
-        NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(presetName, snapshot);
-        if (definition == null || definition.getInputs() == null || definition.getInputs().isEmpty()) {
-            return;
-        }
-        for (NodeGraphData.CustomNodePort port : definition.getInputs()) {
-            if (port == null || port.getName() == null) {
-                continue;
-            }
-            String trimmed = port.getName().trim();
-            if (!trimmed.isEmpty()) {
-                names.add(trimmed);
             }
         }
     }
@@ -7210,88 +7218,28 @@ public class NodeGraph {
 
     private void renderMessageButtons(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
         int size = node.getMessageButtonSize();
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
         int worldTop = node.getMessageButtonTop();
         int worldAddLeft = node.getMessageAddButtonLeft();
         int worldRemoveLeft = node.getMessageRemoveButtonLeft();
-        int top = worldTop - cameraY;
-        int addLeft = worldAddLeft - cameraX;
-        int removeLeft = worldRemoveLeft - cameraX;
 
         boolean canRemove = node.getMessageFieldCount() > 1;
-        boolean addHovered = worldMouseX >= worldAddLeft && worldMouseX <= worldAddLeft + size
-            && worldMouseY >= worldTop && worldMouseY <= worldTop + size;
-        boolean removeHovered = worldMouseX >= worldRemoveLeft && worldMouseX <= worldRemoveLeft + size
-            && worldMouseY >= worldTop && worldMouseY <= worldTop + size && canRemove;
-
-        int baseFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
-        int baseBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-
-        // Add button
-        int addFill = addHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
-        int addBorder = addHovered ? getSelectedNodeAccentColor() : baseBorder;
-        context.fill(addLeft, top, addLeft + size, top + size, addFill);
-        DrawContextBridge.drawBorderInLayer(context, addLeft, top, size, size, addBorder);
-        int addTextX = addLeft + (size - textRenderer.getWidth("+")) / 2;
-        int addTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, UITheme.TEXT_PRIMARY);
-
-        // Remove button
-        int removeFill = canRemove
-            ? (removeHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill)
-            : UITheme.BACKGROUND_PRIMARY;
-        int removeBorder = canRemove
-            ? (removeHovered ? UITheme.BORDER_DANGER : baseBorder)
-            : UITheme.BORDER_DEFAULT;
-        context.fill(removeLeft, top, removeLeft + size, top + size, removeFill);
-        DrawContextBridge.drawBorderInLayer(context, removeLeft, top, size, size, removeBorder);
-        int removeTextX = removeLeft + (size - textRenderer.getWidth("-")) / 2;
-        int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
-        int removeTextColor = canRemove ? UITheme.TEXT_PRIMARY : UITheme.NODE_LABEL_DIMMED;
-        drawNodeText(context, textRenderer, Text.literal("-"), removeTextX, removeTextY, removeTextColor);
+        renderNodeHeaderTextButton(context, textRenderer, worldAddLeft, worldTop, size, "+",
+            isOverSidebar, true, getSelectedNodeAccentColor(), mouseX, mouseY);
+        renderNodeHeaderTextButton(context, textRenderer, worldRemoveLeft, worldTop, size, "-",
+            isOverSidebar, canRemove, UITheme.BORDER_DANGER, mouseX, mouseY);
     }
 
     private void renderBooleanOperatorButtons(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
         int size = node.getBooleanOperatorButtonSize();
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
         int worldTop = node.getBooleanOperatorButtonTop();
         int worldAddLeft = node.getBooleanOperatorAddButtonLeft();
         int worldRemoveLeft = node.getBooleanOperatorRemoveButtonLeft();
-        int top = worldTop - cameraY;
-        int addLeft = worldAddLeft - cameraX;
-        int removeLeft = worldRemoveLeft - cameraX;
 
         boolean canRemove = node.getParameterSlotCount() > 2;
-        boolean addHovered = worldMouseX >= worldAddLeft && worldMouseX <= worldAddLeft + size
-            && worldMouseY >= worldTop && worldMouseY <= worldTop + size;
-        boolean removeHovered = worldMouseX >= worldRemoveLeft && worldMouseX <= worldRemoveLeft + size
-            && worldMouseY >= worldTop && worldMouseY <= worldTop + size && canRemove;
-
-        int baseFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
-        int baseBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-
-        int addFill = addHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
-        int addBorder = addHovered ? getSelectedNodeAccentColor() : baseBorder;
-        context.fill(addLeft, top, addLeft + size, top + size, addFill);
-        DrawContextBridge.drawBorderInLayer(context, addLeft, top, size, size, addBorder);
-        int addTextX = addLeft + (size - textRenderer.getWidth("+")) / 2;
-        int addTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Text.literal("+"), addTextX, addTextY, UITheme.TEXT_PRIMARY);
-
-        int removeFill = canRemove
-            ? (removeHovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill)
-            : UITheme.BACKGROUND_PRIMARY;
-        int removeBorder = canRemove
-            ? (removeHovered ? UITheme.BORDER_DANGER : baseBorder)
-            : UITheme.BORDER_DEFAULT;
-        context.fill(removeLeft, top, removeLeft + size, top + size, removeFill);
-        DrawContextBridge.drawBorderInLayer(context, removeLeft, top, size, size, removeBorder);
-        int removeTextX = removeLeft + (size - textRenderer.getWidth("-")) / 2;
-        int removeTextY = top + (size - textRenderer.fontHeight) / 2 + 1;
-        int removeTextColor = canRemove ? UITheme.TEXT_PRIMARY : UITheme.NODE_LABEL_DIMMED;
-        drawNodeText(context, textRenderer, Text.literal("-"), removeTextX, removeTextY, removeTextColor);
+        renderNodeHeaderTextButton(context, textRenderer, worldAddLeft, worldTop, size, "+",
+            isOverSidebar, true, getSelectedNodeAccentColor(), mouseX, mouseY);
+        renderNodeHeaderTextButton(context, textRenderer, worldRemoveLeft, worldTop, size, "-",
+            isOverSidebar, canRemove, UITheme.BORDER_DANGER, mouseX, mouseY);
     }
 
     private void renderMessageScopeToggle(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
@@ -7468,12 +7416,11 @@ public class NodeGraph {
         NodeGraphData.CustomNodeDefinition definition = getTemplateDefinition(node);
         String headerName = definition != null && definition.getName() != null && !definition.getName().isBlank()
             ? definition.getName().trim()
-            : "Custom Node";
+            : "Preset";
         String versionLabel = definition != null && definition.getVersion() != null && definition.getVersion() > 0
             ? " v" + definition.getVersion()
             : "";
-        boolean lockedCustomNode = node.isCustomNodeInstance();
-        String badge = lockedCustomNode ? "LOCKED" : "LINK";
+        String badge = "LINK";
         int badgeWidth = textRenderer.getWidth(badge) + 8;
         int badgeLeft = x + width - badgeWidth - 6;
         int badgeTop = y + 2;
@@ -7486,11 +7433,7 @@ public class NodeGraph {
         String name = trimTextToWidth(headerName + versionLabel, textRenderer, Math.max(0, width - badgeWidth - 20));
         drawNodeText(context, textRenderer, name, x + 6, y + 4, isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
 
-        if (lockedCustomNode) {
-            renderLockedCustomNodeBinding(context, textRenderer, node, isOverSidebar);
-        } else {
-            renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-        }
+        renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
 
         int previewLeft = getTemplatePreviewLeft(node) - cameraX;
         int previewTop = getTemplatePreviewTop(node) - cameraY;
@@ -7502,91 +7445,7 @@ public class NodeGraph {
             isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT);
 
         renderTemplatePreviewGraph(context, textRenderer, node, previewLeft, previewTop, previewWidth, previewHeight, isOverSidebar);
-        if (!lockedCustomNode) {
-            renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-        }
-    }
-
-    private void renderCustomNodeContent(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
-        int x = node.getX() - cameraX;
-        int y = node.getY() - cameraY;
-        int width = node.getWidth();
-        int height = node.getHeight();
-        int accent = node.getColor();
-
-        int headerColor = isOverSidebar ? UITheme.NODE_HEADER_DIMMED : (accent & UITheme.NODE_HEADER_ALPHA_MASK);
-        int bodyColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(accent, 0.2f);
-        int panelColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY;
-        int chipFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(accent, 0.55f);
-        int chipBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(accent, 1.15f);
-        int primaryText = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int secondaryText = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
-
-        context.fill(x + 1, y + 1, x + width - 1, y + 18, headerColor);
-        context.fill(x + 1, y + 19, x + width - 1, y + height - 1, panelColor);
-
-        NodeGraphData.CustomNodeDefinition definition = getTemplateDefinition(node);
-        String title = definition != null && definition.getName() != null && !definition.getName().isBlank()
-            ? definition.getName().trim()
-            : node.getTemplateName();
-        String version = definition != null && definition.getVersion() != null && definition.getVersion() > 0
-            ? "v" + definition.getVersion()
-            : "";
-        drawNodeText(context, textRenderer, trimTextToWidth(title, textRenderer, width - 48), x + 6, y + 4, primaryText);
-        if (!version.isEmpty()) {
-            int versionWidth = textRenderer.getWidth(version) + 8;
-            int versionLeft = x + width - versionWidth - 6;
-            context.fill(versionLeft, y + 3, versionLeft + versionWidth, y + 14, chipFill);
-            DrawContextBridge.drawBorderInLayer(context, versionLeft, y + 3, versionWidth, 11, chipBorder);
-            drawNodeText(context, textRenderer, version, versionLeft + 4, y + 5, primaryText);
-        }
-
-        int bindingLeft = x + 6;
-        int bindingTop = y + 24;
-        int bindingWidth = width - 12;
-        context.fill(bindingLeft, bindingTop, bindingLeft + bindingWidth, bindingTop + 18, bodyColor);
-        DrawContextBridge.drawBorderInLayer(context, bindingLeft, bindingTop, bindingWidth, 18, chipBorder);
-        drawNodeText(context, textRenderer, Text.translatable("pathmind.field.preset").getString(), bindingLeft + 4, bindingTop + 5, secondaryText);
-        String presetName = trimTextToWidth(getSelectedPresetName(node), textRenderer, Math.max(24, bindingWidth - 48));
-        drawNodeText(context, textRenderer, presetName, bindingLeft + 42, bindingTop + 5, primaryText);
-
-        int previewLeft = getTemplatePreviewLeft(node) - cameraX;
-        int previewTop = y + 48;
-        int previewWidth = getTemplatePreviewWidth(node);
-        int previewHeight = Math.max(18, y + height - TEMPLATE_PREVIEW_BOTTOM_MARGIN - previewTop);
-        context.fill(previewLeft, previewTop, previewLeft + previewWidth, previewTop + previewHeight,
-            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR);
-        DrawContextBridge.drawBorderInLayer(context, previewLeft, previewTop, previewWidth, previewHeight,
-            isOverSidebar ? UITheme.BORDER_SUBTLE : chipBorder);
-        renderTemplatePreviewGraph(context, textRenderer, node, previewLeft, previewTop, previewWidth, previewHeight, isOverSidebar);
-    }
-
-    private void renderLockedCustomNodeBinding(DrawContext context, TextRenderer textRenderer, Node node, boolean isOverSidebar) {
-        int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
-        int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
-        int fieldWidth = node.getStopTargetFieldWidth();
-        int fieldHeight = node.getStopTargetFieldHeight();
-        int fieldBottom = fieldTop + fieldHeight;
-
-        int labelY = fieldTop - textRenderer.fontHeight - 2;
-        if (labelY >= node.getY() - cameraY + 14) {
-            drawNodeText(context, textRenderer, Text.translatable("pathmind.node.type.customNode"), fieldLeft, labelY,
-                isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR);
-        }
-
-        int fill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : adjustColorBrightness(node.getColor(), 0.55f);
-        int border = isOverSidebar ? UITheme.BORDER_SUBTLE : adjustColorBrightness(node.getColor(), 1.12f);
-        context.fill(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldBottom, fill);
-        DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, border);
-
-        String presetLine = trimTextToWidth(getSelectedPresetName(node), textRenderer, Math.max(0, fieldWidth - 34));
-        drawNodeText(context, textRenderer, Text.literal(presetLine), fieldLeft + 4, fieldTop + 4,
-            isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
-
-        String lockGlyph = "[]";
-        int lockX = fieldLeft + fieldWidth - textRenderer.getWidth(lockGlyph) - 5;
-        drawNodeText(context, textRenderer, Text.literal(lockGlyph), lockX, fieldTop + 4,
-            isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY);
+        renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderTemplatePreviewGraph(DrawContext context, TextRenderer textRenderer, Node node,
@@ -7773,7 +7632,7 @@ public class NodeGraph {
     }
 
     private NodeGraphData getPresetPreviewGraphData(Node node) {
-        if (node == null || (node.getType() != NodeType.TEMPLATE && node.getType() != NodeType.CUSTOM_NODE)) {
+        if (node == null || node.getType() != NodeType.TEMPLATE) {
             return null;
         }
         String normalized = getSelectedPresetName(node);
@@ -8048,7 +7907,7 @@ public class NodeGraph {
         int labelY = fieldTop + (fieldHeight - textRenderer.fontHeight) / 2;
         drawNodeText(context, textRenderer, Text.literal(inlineLabel), labelX, labelY, labelColor);
         int valueTextX = labelX + textRenderer.getWidth(inlineLabel) + 6;
-        int maxValueWidth = Math.max(0, fieldLeft + fieldWidth - valueTextX - 4);
+        int maxValueWidth = Math.max(0, fieldLeft + fieldWidth - valueTextX - 16);
 
         String value;
         if (editing) {
@@ -9057,7 +8916,7 @@ public class NodeGraph {
     }
 
     public void startStopTargetEditing(Node node) {
-        if (node == null || !node.hasStopTargetInputField()) {
+        if (node == null || !node.hasStopTargetInputField() || isPresetSelectorNode(node)) {
             stopStopTargetEditing(false);
             return;
         }
@@ -13695,7 +13554,7 @@ public class NodeGraph {
         if (isPresetSelectorNode(clickedNode)
             && isPointInsideRunPresetField(clickedNode, screenX, screenY)) {
             selectNode(clickedNode);
-            startStopTargetEditing(clickedNode);
+            stopStopTargetEditing(true);
             openRunPresetDropdown(clickedNode);
             return true;
         }
@@ -14073,6 +13932,17 @@ public class NodeGraph {
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
     }
 
+    public boolean isPointInsideRunPresetOpenButton(Node node, int screenX, int screenY) {
+        if (!hasRunPresetSelection(node)) return false;
+        int left = getRunPresetOpenButtonWorldX(node);
+        int top = getRunPresetOpenButtonWorldY(node);
+        return isPointInsideNodeHeaderButton(left, top, NODE_HEADER_BUTTON_SIZE, screenX, screenY);
+    }
+
+    public String getSelectedPresetNameForNode(Node node) {
+        return getSelectedPresetName(node);
+    }
+
     private boolean isPointInsideSchematicDropdownList(Node node, int screenX, int screenY) {
         if (node == null || !schematicDropdownOpen || schematicDropdownNode != node) {
             return false;
@@ -14346,7 +14216,7 @@ public class NodeGraph {
             resetStopTargetCaretBlink();
             updateStopTargetFieldContentWidth(getClientTextRenderer());
         }
-        if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+        if (node.getType() == NodeType.TEMPLATE) {
             NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphForPreset(value);
             NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(value, loaded);
             node.setTemplateName(definition != null ? definition.getName() : value);
@@ -15409,28 +15279,22 @@ public class NodeGraph {
 
         if (node.isExpandableBooleanOperator()) {
             int buttonTop = node.getBooleanOperatorButtonTop();
-            int buttonBottom = buttonTop + node.getBooleanOperatorButtonSize();
             int addLeft = node.getBooleanOperatorAddButtonLeft();
             int removeLeft = node.getBooleanOperatorRemoveButtonLeft();
             int buttonSize = node.getBooleanOperatorButtonSize();
-            if ((worldX >= addLeft && worldX <= addLeft + buttonSize
-                && worldY >= buttonTop && worldY <= buttonBottom)
-                || (worldX >= removeLeft && worldX <= removeLeft + buttonSize
-                && worldY >= buttonTop && worldY <= buttonBottom)) {
+            if (isPointInsideNodeHeaderButtonWorld(addLeft, buttonTop, buttonSize, worldX, worldY)
+                || isPointInsideNodeHeaderButtonWorld(removeLeft, buttonTop, buttonSize, worldX, worldY)) {
                 return true;
             }
         }
 
         if (node.hasMessageInputFields()) {
             int buttonTop = node.getMessageButtonTop();
-            int buttonBottom = buttonTop + node.getMessageButtonSize();
             int addLeft = node.getMessageAddButtonLeft();
             int removeLeft = node.getMessageRemoveButtonLeft();
             int buttonSize = node.getMessageButtonSize();
-            if ((worldX >= addLeft && worldX <= addLeft + buttonSize
-                && worldY >= buttonTop && worldY <= buttonBottom)
-                || (worldX >= removeLeft && worldX <= removeLeft + buttonSize
-                && worldY >= buttonTop && worldY <= buttonBottom)) {
+            if (isPointInsideNodeHeaderButtonWorld(addLeft, buttonTop, buttonSize, worldX, worldY)
+                || isPointInsideNodeHeaderButtonWorld(removeLeft, buttonTop, buttonSize, worldX, worldY)) {
                 return true;
             }
         }
@@ -15472,6 +15336,7 @@ public class NodeGraph {
         hoveredStartNode = startNode;
 
         ExecutionManager manager = ExecutionManager.getInstance();
+        manager.setWorkspaceGraph(nodes, connections, routineRegistry);
         if (manager.isChainActive(startNode)) {
             return manager.requestStopForStart(startNode);
         }
@@ -15635,7 +15500,7 @@ public class NodeGraph {
         if (node == null) {
             return;
         }
-        if (node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) {
+        if (node.getType() == NodeType.TEMPLATE) {
             NodeParameter presetParam = node.getParameter("Preset");
             String presetName = presetParam != null ? presetParam.getStringValue() : "";
             String normalizedPreset = presetName == null ? "" : presetName.trim();
@@ -15656,7 +15521,10 @@ public class NodeGraph {
 
     public GraphValidationResult getValidationResult(boolean baritoneAvailable, boolean uiUtilsAvailable) {
         if (validationDirty) {
-            cachedValidationResult = GraphValidator.validate(nodes, connections, activePreset, baritoneAvailable, uiUtilsAvailable);
+            List<NodeGraphData.RoutineDefinitionData> validationRoutines = routineValidationRegistry.isEmpty()
+                ? routineRegistry : routineValidationRegistry;
+            cachedValidationResult = GraphValidator.validate(nodes, connections, activePreset, baritoneAvailable,
+                uiUtilsAvailable, validationRoutines, activeRoutineWorkspaceId);
             validationDirty = false;
         }
         return cachedValidationResult;
@@ -15672,7 +15540,7 @@ public class NodeGraph {
         }
         String normalizedPreset = presetName == null ? "" : presetName.trim();
         for (Node candidate : nodes) {
-            if (candidate == null || (candidate.getType() != NodeType.TEMPLATE && candidate.getType() != NodeType.CUSTOM_NODE)) {
+            if (candidate == null || candidate.getType() != NodeType.TEMPLATE) {
                 continue;
             }
             NodeParameter presetParam = candidate.getParameter("Preset");
@@ -15691,7 +15559,7 @@ public class NodeGraph {
             return;
         }
         for (Node candidate : nodes) {
-            if (candidate != null && (candidate.getType() == NodeType.TEMPLATE || candidate.getType() == NodeType.CUSTOM_NODE)) {
+            if (candidate != null && candidate.getType() == NodeType.TEMPLATE) {
                 candidate.setTemplateGraphData(null);
             }
         }
@@ -15797,7 +15665,7 @@ public class NodeGraph {
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
             }
-            if ((node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE || node.getType() == NodeType.CUSTOM_NODE) && node.getParameter("Preset") == null) {
+            if ((node.getType() == NodeType.RUN_PRESET || node.getType() == NodeType.TEMPLATE) && node.getParameter("Preset") == null) {
                 node.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
             }
             node.ensureVillagerTradeNumberParameter();
@@ -15880,10 +15748,9 @@ public class NodeGraph {
                     );
                 }
             }
-            if (textNode != null && (textNode.getType() == NodeType.TEMPLATE || textNode.getType() == NodeType.CUSTOM_NODE)) {
+            if (textNode != null && textNode.getType() == NodeType.TEMPLATE) {
                 textNode.setTemplateName(nodeData.getTemplateName());
                 textNode.setTemplateVersion(nodeData.getTemplateVersion() != null ? nodeData.getTemplateVersion() : 0);
-                textNode.setCustomNodeInstance(Boolean.TRUE.equals(nodeData.getCustomNodeInstance()));
                 textNode.setTemplateGraphData(nodeData.getTemplateGraph());
             }
             if (textNode != null && textNode.getType() == NodeType.SENSOR_KEY_PRESSED) {
@@ -16030,11 +15897,25 @@ public class NodeGraph {
     }
 
     public void setActiveRoutineWorkspaceId(String routineId) {
-        activeRoutineWorkspaceId = routineId == null ? "" : routineId;
+        String resolved = routineId == null ? "" : routineId;
+        if (!resolved.equals(activeRoutineWorkspaceId)) invalidateValidation();
+        activeRoutineWorkspaceId = resolved;
     }
 
     public String getActiveRoutineWorkspaceId() {
         return activeRoutineWorkspaceId;
+    }
+
+    public List<NodeGraphData.RoutineDefinitionData> getRoutineDefinitions() {
+        return List.copyOf(routineRegistry);
+    }
+
+    public void setRoutineValidationContext(List<NodeGraphData.RoutineDefinitionData> routines) {
+        List<NodeGraphData.RoutineDefinitionData> resolved = routines == null ? List.of() : List.copyOf(routines);
+        if (!resolved.equals(routineValidationRegistry)) {
+            routineValidationRegistry = resolved;
+            invalidateValidation();
+        }
     }
 
     /** Mirrors live routine card edits into sidebar metadata, including the current uncommitted text buffer. */

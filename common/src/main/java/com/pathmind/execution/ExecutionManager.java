@@ -2512,8 +2512,6 @@ public class ExecutionManager {
             executionNodePausedDurations.clear();
             executionNodePauseStartTimes.clear();
             primaryExecutionId = null;
-            globalRuntimeVariables.clear();
-            globalRuntimeLists.clear();
         }
     }
 

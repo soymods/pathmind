@@ -44,6 +44,37 @@ class RoutineLibraryManagerTest {
     }
 
     @Test
+    void libraryRoutineCanBeRenamedWithoutChangingItsIdentity() {
+        Path libraryPath = tempDir.resolve("routine-library.json");
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Before");
+        NodeGraphData.RoutineDefinitionData other = RoutineBuilderModel.createRoutine("Taken");
+        assertTrue(RoutineLibraryManager.share(libraryPath, routine));
+        assertTrue(RoutineLibraryManager.share(libraryPath, other));
+
+        assertTrue(RoutineLibraryManager.rename(libraryPath, routine.getId(), "After"));
+        NodeGraphData.RoutineDefinitionData renamed = RoutineLibraryManager.list(libraryPath).stream()
+            .filter(candidate -> candidate.getId().equals(routine.getId())).findFirst().orElseThrow();
+        assertEquals("After", renamed.getName());
+        assertFalse(RoutineLibraryManager.rename(libraryPath, routine.getId(), "Taken"));
+    }
+
+    @Test
+    void editedLibraryRoutineSavesBackWithoutTouchingPresetData() {
+        Path libraryPath = tempDir.resolve("routine-library.json");
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Reusable");
+        assertTrue(RoutineLibraryManager.share(libraryPath, routine));
+        NodeGraphData preset = new NodeGraphData();
+
+        new RoutineBuilderModel(routine).addInput("amount", RoutineValueKind.NUMBER);
+        assertTrue(RoutineLibraryManager.save(libraryPath, routine));
+
+        NodeGraphData.RoutineDefinitionData saved = RoutineLibraryManager.list(libraryPath).get(0);
+        assertEquals(1, saved.getInputs().size());
+        assertEquals("amount", saved.getInputs().get(0).getLabel());
+        assertTrue(preset.getRoutines().isEmpty());
+    }
+
+    @Test
     void importHandlesIdAndNameConflictsWithoutChangingInputIds() {
         Path libraryPath = tempDir.resolve("routine-library.json");
         NodeGraphData.RoutineDefinitionData source = RoutineBuilderModel.createRoutine("Build");

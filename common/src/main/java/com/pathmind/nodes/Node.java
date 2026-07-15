@@ -772,7 +772,7 @@ public class Node {
         return routineArguments.stream().map(Node::copyRoutineArgument).toList();
     }
 
-    /** Refreshes the public signature while retaining removed inputs as repairable orphan slots. */
+    /** Refreshes the public signature while preserving bindings for inputs that still exist. */
     public void syncRoutineCallDefinition(NodeGraphData.RoutineDefinitionData routine) {
         if (type != NodeType.ROUTINE_CALL || routine == null || !getRoutineId().equals(routine.getId())) return;
         Map<String, Node> boundArguments = new java.util.LinkedHashMap<>();
@@ -783,8 +783,6 @@ public class Node {
         }
         NodeParameter name = getParameter("Name");
         if (name != null) name.setStringValue(routine.getName() == null ? "Routine" : routine.getName());
-        Map<String, NodeGraphData.RoutineArgumentData> previous = new java.util.LinkedHashMap<>();
-        for (NodeGraphData.RoutineArgumentData argument : routineArguments) previous.put(argument.getInputId(), argument);
         ArrayList<NodeGraphData.RoutineInputData> inputs = new ArrayList<>(routine.getInputs());
         inputs.sort(java.util.Comparator.comparingInt(input -> input.getOrder() == null ? Integer.MAX_VALUE : input.getOrder()));
         routineArguments.clear();
@@ -798,12 +796,6 @@ public class Node {
             argument.setDefaultValue(input.getDefaultValue());
             argument.setOrphaned(false);
             routineArguments.add(argument);
-            previous.remove(input.getId());
-        }
-        for (NodeGraphData.RoutineArgumentData removed : previous.values()) {
-            NodeGraphData.RoutineArgumentData orphan = copyRoutineArgument(removed);
-            orphan.setOrphaned(true);
-            routineArguments.add(orphan);
         }
         for (Map.Entry<String, Node> binding : boundArguments.entrySet()) {
             int slot = getRoutineSlotForInputId(binding.getKey());
@@ -938,7 +930,8 @@ public class Node {
 
     public boolean usesMinimalNodePresentation() {
         return NodeCatalog.usesMinimalNodePresentation(type)
-            || type == NodeType.ROUTINE_CALL && routineArguments.isEmpty();
+            || type == NodeType.ROUTINE_CALL && routineArguments.isEmpty()
+            || type == NodeType.ROUTINE_ENTRY;
     }
 
     public boolean canAcceptParameterAt(int slotIndex) {

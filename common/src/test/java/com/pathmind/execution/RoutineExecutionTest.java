@@ -90,6 +90,34 @@ class RoutineExecutionTest {
     }
 
     @Test
+    void standaloneRoutinePreviewUsesRoutineDefaults() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Preview");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData input = builder.addInput("amount", RoutineValueKind.NUMBER);
+        builder.updateInput(input.getId(), "amount", RoutineValueKind.NUMBER, true, "12");
+
+        List<Node> nodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(routine.getGraph()));
+        Node entry = nodes.stream().filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+        Node set = new Node(NodeType.SET_VARIABLE, 160, 0);
+        Node variable = new Node(NodeType.VARIABLE, 0, 0);
+        variable.getParameter("Variable").setStringValue("preview_result");
+        variable.setRuntimeValueScope(RuntimeValueScope.GLOBAL);
+        Node reporter = builder.createInputReporter(input.getId(), 0, 0);
+        assertTrue(set.attachParameter(variable, 0));
+        assertTrue(set.attachParameter(reporter, 1));
+        nodes.addAll(List.of(set, variable, reporter));
+        routine.setGraph(NodeGraphPersistence.createGraphData(
+            nodes, List.of(new NodeConnection(entry, set, 0, 0))));
+
+        var future = manager.executeRoutineAndWait(routine, List.of(routine), "RoutinePreviewTest");
+        assertNotNull(future);
+        assertDoesNotThrow(() -> future.get(5, TimeUnit.SECONDS));
+
+        assertNotNull(manager.getGlobalRuntimeVariable("preview_result"));
+        assertEquals("12", manager.getGlobalRuntimeVariable("preview_result").getValues().get("Amount"));
+    }
+
+    @Test
     void routineReporterFeedsChainAndGlobalVariablesAndCancellationUnwindsCall() throws Exception {
         NodeGraphData.RoutineDefinitionData helper = RoutineBuilderModel.createRoutine("Yield");
         NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Store");

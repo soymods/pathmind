@@ -55,8 +55,42 @@ public final class RoutineLibraryManager {
         return share(getLibraryPath(), routine);
     }
 
+    /** Saves edits to a routine that already belongs to the global library. */
+    public static boolean save(NodeGraphData.RoutineDefinitionData routine) {
+        if (routine == null || blank(routine.getId())) return false;
+        return save(getLibraryPath(), routine);
+    }
+
+    static boolean save(Path path, NodeGraphData.RoutineDefinitionData routine) {
+        if (routine == null || blank(routine.getId())) return false;
+        return share(path, routine);
+    }
+
     public static boolean delete(String routineId) {
         return delete(getLibraryPath(), routineId);
+    }
+
+    public static boolean rename(String routineId, String name) {
+        return rename(getLibraryPath(), routineId, name);
+    }
+
+    static boolean rename(Path path, String routineId, String name) {
+        if (path == null || blank(routineId) || blank(name) || !Files.exists(path)) return false;
+        NodeGraphData library = NodeGraphPersistence.loadNodeGraphFromPath(path);
+        if (library == null) return false;
+        NodeGraphPersistence.sanitizeRoutineDefinitions(library);
+        NodeGraphData.RoutineDefinitionData target = find(library.getRoutines(), routineId);
+        String requested = name.trim();
+        if (target == null || library.getRoutines().stream().filter(Objects::nonNull)
+            .anyMatch(routine -> !routineId.equals(routine.getId())
+                && requested.equalsIgnoreCase(safe(routine.getName()).trim()))) return false;
+        new RoutineBuilderModel(target).renameRoutine(requested);
+        boolean saved = NodeGraphPersistence.saveNodeGraphDataToPath(library, path);
+        if (saved && path.equals(getLibraryPath())) {
+            cachedModified = Long.MIN_VALUE;
+            lastCacheCheckNanos = Long.MIN_VALUE;
+        }
+        return saved;
     }
 
     static boolean delete(Path path, String routineId) {

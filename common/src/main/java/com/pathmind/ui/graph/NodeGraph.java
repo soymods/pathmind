@@ -3634,7 +3634,8 @@ public class NodeGraph {
             borderColor = UITheme.BORDER_SUBTLE;
         } else if (node.getType() == NodeType.START) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_START_BORDER, 0.75f) : UITheme.NODE_START_BORDER; // Darker green for START
-        } else if (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY) {
+        } else if (!simpleStyle
+            && (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY)) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_BORDER, 0.75f) : UITheme.NODE_EVENT_BORDER; // Darker pink for event functions
         } else if (node.getType() == NodeType.EVENT_CALL) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_BG, 0.75f) : UITheme.NODE_EVENT_CALL_BG;
@@ -3660,7 +3661,10 @@ public class NodeGraph {
                 || node.getType() == NodeType.OPERATOR_BOOLEAN_OR
                 || node.getType() == NodeType.OPERATOR_BOOLEAN_AND
                 || node.getType() == NodeType.OPERATOR_BOOLEAN_XOR;
-            String label = node.getType().getDisplayName().toUpperCase(Locale.ROOT);
+            boolean isRoutineNode = node.getType() == NodeType.ROUTINE_ENTRY || node.getType() == NodeType.ROUTINE_CALL;
+            String label = isRoutineNode
+                ? node.getDisplayName().getString()
+                : node.getType().getDisplayName().toUpperCase(Locale.ROOT);
             boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
             int titleColor = (isStopControl || isActivateNode)
                 ? UITheme.TEXT_PRIMARY
@@ -3794,7 +3798,8 @@ public class NodeGraph {
             renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
             renderStartModeButton(context, node, x, y, isOverSidebar, mouseX, mouseY);
             
-        } else if (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY) {
+        } else if (!simpleStyle
+            && (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY)) {
             int baseColor = lowDetail
                 ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
                 : (isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_BG, 0.7f) : UITheme.NODE_EVENT_BG);

@@ -973,6 +973,32 @@ public class ExecutionManager {
         return startExternalBranch(startNode, nodes, connections, presetName, routines) != null;
     }
 
+    /** Executes one routine as a standalone preview using the same call path as a routine node. */
+    public boolean executeRoutine(NodeGraphData.RoutineDefinitionData routine,
+                                  List<NodeGraphData.RoutineDefinitionData> routines,
+                                  String presetName) {
+        return executeRoutineAndWait(routine, routines, presetName) != null;
+    }
+
+    public CompletableFuture<Void> executeRoutineAndWait(NodeGraphData.RoutineDefinitionData routine,
+                                                         List<NodeGraphData.RoutineDefinitionData> routines,
+                                                         String presetName) {
+        if (routine == null || routine.getId() == null || routine.getId().isBlank()) {
+            LOGGER.warn("Cannot execute routine preview - missing routine definition");
+            return null;
+        }
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node invocation = Node.createRoutineCall(routine, 160, 0);
+        return executeExternalBranchAndWait(
+            start,
+            List.of(start, invocation),
+            List.of(new NodeConnection(start, invocation, 0, 0)),
+            presetName,
+            routines
+        );
+    }
+
     public CompletableFuture<Void> executeExternalBranchAndWait(Node startNode, List<Node> nodes,
                                                                 List<NodeConnection> connections, String presetName) {
         return startExternalBranch(startNode, nodes, connections, presetName, workspaceRoutines);

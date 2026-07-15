@@ -60,7 +60,7 @@ class RoutineBuilderModelTest {
     }
 
     @Test
-    void definitionChangesPreserveBindingsByInputIdAndRetainRemovedInputs() {
+    void definitionChangesPreserveBindingsByInputIdAndRemoveDeletedInputs() {
         NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Move");
         RoutineBuilderModel builder = new RoutineBuilderModel(routine);
         NodeGraphData.RoutineInputData first = builder.addInput("first", RoutineValueKind.NUMBER);
@@ -76,9 +76,13 @@ class RoutineBuilderModelTest {
 
         builder.removeInput(first.getId());
         call.syncRoutineCallDefinition(routine);
-        assertTrue(call.isRoutineArgumentOrphaned(1));
-        assertEquals(amount, call.getAttachedParameter(1));
+        assertEquals(1, call.getParameterSlotCount());
         assertEquals(second.getId(), call.getRoutineInputIdForSlot(0));
+
+        builder.removeInput(second.getId());
+        call.syncRoutineCallDefinition(routine);
+        assertEquals(0, call.getParameterSlotCount());
+        assertTrue(call.usesMinimalNodePresentation());
     }
 
     @Test

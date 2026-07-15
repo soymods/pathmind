@@ -710,6 +710,7 @@
   "pathmind.routine.library.empty": "Drag routines here",
   "pathmind.routine.dropHere": "Drop here",
   "pathmind.routine.library.inspector": "%s inputs • drag into workspace",
+  "pathmind.routine.tooltip": "%s • Entrées : %s",
   "pathmind.routine.inspector": "This preset • %s inputs • %s usages", "pathmind.routine.broken": "Broken definition",
   "pathmind.validation.missingRoutineDefinition": "Routine %s no longer exists.", "pathmind.validation.missingRoutineEntry": "This routine has no entry node.",
   "pathmind.validation.missingRoutineEntryNamed": "Routine %s has no entry node.", "pathmind.validation.invalidRoutineReporter": "This input does not belong to the open routine.",

@@ -19,6 +19,10 @@ public final class PathmindRoutineUi {
             Math.max(0f, Math.min(1f, openProgress)) * 0.04f);
     }
 
+    public static int subtleRoutineAccent(int routineColor) {
+        return AnimationHelper.lerpColor(UITheme.BORDER_HIGHLIGHT, routineColor, 0.58f);
+    }
+
     public static boolean renderReturnButton(DrawContext context, int x, int y, int size,
                                              int mouseX, int mouseY, float hoverProgress,
                                              int routineColor) {

@@ -52,6 +52,26 @@ class NodeGraphTest {
     }
 
     @Test
+    void routineEntryAlwaysUsesTheSameMinimalPresentation() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Simple");
+        NodeGraph graph = new NodeGraph();
+        graph.setActiveRoutineWorkspaceId(routine.getId());
+        graph.setRoutineValidationContext(java.util.List.of(routine));
+
+        assertTrue(graph.applyGraphDataSnapshot(routine.getGraph(), false));
+        Node entry = graph.getNodes().stream()
+            .filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+
+        assertTrue(entry.usesMinimalNodePresentation());
+        assertEquals(32, entry.getHeight());
+
+        new RoutineBuilderModel(routine).addInput("value", RoutineValueKind.TEXT);
+        graph.setRoutineValidationContext(java.util.List.of(routine));
+        assertTrue(entry.usesMinimalNodePresentation());
+        assertEquals(32, entry.getHeight());
+    }
+
+    @Test
     void sidebarDropPrefersDeepestHoveredParameterHost() {
         NodeGraph graph = new NodeGraph();
 

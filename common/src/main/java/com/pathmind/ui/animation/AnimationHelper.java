@@ -190,6 +190,23 @@ public final class AnimationHelper {
         return withAlpha(color, (int) (clamp01(alpha) * 255));
     }
 
+    /**
+     * Multiplies a color's existing alpha by an opacity value.
+     *
+     * <p>This differs from {@link #withAlpha(int, float)}, which replaces the
+     * alpha channel. Use this helper when fading colors that may already be
+     * translucent.</p>
+     *
+     * @param color The base color (ARGB format)
+     * @param opacity Opacity multiplier 0.0-1.0
+     * @return Color with its existing alpha scaled by the opacity
+     */
+    public static int multiplyAlpha(int color, float opacity) {
+        int baseAlpha = (color >>> 24) & 0xFF;
+        int alpha = Math.round(baseAlpha * clamp01(opacity));
+        return (alpha << 24) | (color & 0x00FFFFFF);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // VALUE INTERPOLATION
     // ═══════════════════════════════════════════════════════════════════════════

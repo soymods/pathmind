@@ -65,11 +65,11 @@ public final class PathmindWorkspaceChrome {
     }
 
     public static boolean contains(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+        return UiHitTest.contains(mouseX, mouseY, x, y, width, height);
     }
 
     public static boolean primaryClickInBounds(int mouseX, int mouseY, int button, int x, int y, int width, int height) {
-        return button == 0 && contains(mouseX, mouseY, x, y, width, height);
+        return UiHitTest.primaryClick(mouseX, mouseY, button, x, y, width, height);
     }
 
     public static boolean renderButtonFrame(DrawContext context, int x, int y, int width, int height,

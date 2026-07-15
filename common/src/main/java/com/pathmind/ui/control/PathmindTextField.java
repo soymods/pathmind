@@ -2,6 +2,7 @@ package com.pathmind.ui.control;
 
 import com.pathmind.mixin.TextFieldWidgetAccessor;
 import com.pathmind.ui.theme.UIStyleHelper;
+import com.pathmind.ui.theme.UITheme;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.TextFieldWidget;
@@ -20,6 +21,42 @@ public class PathmindTextField extends TextFieldWidget {
     public PathmindTextField(TextRenderer textRenderer, int x, int y, int width, int height, Text text) {
         super(textRenderer, x, y, width, height, text);
         this.pathmindTextRenderer = textRenderer;
+        applyPathmindDefaults();
+    }
+
+    /** Creates a standard Pathmind field with a configured maximum length. */
+    public static PathmindTextField create(TextRenderer textRenderer, int x, int y, int width, int height,
+                                           Text text, int maxLength) {
+        PathmindTextField field = new PathmindTextField(textRenderer, x, y, width, height, text);
+        field.setMaxLength(maxLength);
+        return field;
+    }
+
+    /**
+     * Creates a standard field that starts hidden and non-editable, as popup
+     * and transient editor fields do before they are opened.
+     */
+    public static PathmindTextField createInactive(TextRenderer textRenderer, int x, int y, int width, int height,
+                                                   Text text, int maxLength) {
+        PathmindTextField field = create(textRenderer, x, y, width, height, text, maxLength);
+        deactivate(field);
+        return field;
+    }
+
+    /** Hides a transient field and clears its interactive state. */
+    public static void deactivate(TextFieldWidget field) {
+        if (field == null) {
+            return;
+        }
+        field.setFocused(false);
+        field.setVisible(false);
+        field.setEditable(false);
+    }
+
+    private void applyPathmindDefaults() {
+        this.setDrawsBackground(false);
+        this.setEditableColor(UITheme.TEXT_PRIMARY);
+        this.setUneditableColor(UITheme.TEXT_TERTIARY);
     }
 
     @Override

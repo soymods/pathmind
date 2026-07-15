@@ -87,9 +87,9 @@ public class ToggleSwitch {
             y,
             WIDTH,
             HEIGHT,
-            applyAlpha(trackColor, clampedAlpha),
-            applyAlpha(UITheme.BORDER_DEFAULT, clampedAlpha),
-            applyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
+            AnimationHelper.multiplyAlpha(trackColor, clampedAlpha),
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, clampedAlpha),
+            AnimationHelper.multiplyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
         );
 
         // Red indicator (left side) - bright when OFF, dim when ON
@@ -107,9 +107,9 @@ public class ToggleSwitch {
             redY,
             INDICATOR_SIZE,
             INDICATOR_SIZE,
-            applyAlpha(redColor, clampedAlpha),
-            applyAlpha(redBorder, clampedAlpha),
-            applyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
+            AnimationHelper.multiplyAlpha(redColor, clampedAlpha),
+            AnimationHelper.multiplyAlpha(redBorder, clampedAlpha),
+            AnimationHelper.multiplyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
         );
 
         // Green indicator (right side) - bright when ON, dim when OFF
@@ -127,9 +127,9 @@ public class ToggleSwitch {
             greenY,
             INDICATOR_SIZE,
             INDICATOR_SIZE,
-            applyAlpha(greenColor, clampedAlpha),
-            applyAlpha(greenBorder, clampedAlpha),
-            applyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
+            AnimationHelper.multiplyAlpha(greenColor, clampedAlpha),
+            AnimationHelper.multiplyAlpha(greenBorder, clampedAlpha),
+            AnimationHelper.multiplyAlpha(UITheme.PANEL_INNER_BORDER, clampedAlpha)
         );
     }
 
@@ -183,8 +183,7 @@ public class ToggleSwitch {
      * Checks if the given coordinates are within the toggle bounds.
      */
     public boolean contains(int mouseX, int mouseY) {
-        return mouseX >= x && mouseX <= x + WIDTH &&
-               mouseY >= y && mouseY <= y + HEIGHT;
+        return UiHitTest.contains(mouseX, mouseY, x, y, WIDTH, HEIGHT);
     }
 
     /**
@@ -220,9 +219,4 @@ public class ToggleSwitch {
         this.onBorderColor = AnimationHelper.brighten(onColor, 1.1f);
     }
 
-    private static int applyAlpha(int color, float alpha) {
-        int baseAlpha = (color >>> 24) & 0xFF;
-        int resolvedAlpha = Math.max(0, Math.min(255, Math.round(baseAlpha * alpha)));
-        return (resolvedAlpha << 24) | (color & 0x00FFFFFF);
-    }
 }

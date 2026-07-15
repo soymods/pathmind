@@ -119,10 +119,10 @@ public final class NodeErrorNotificationOverlay {
             float progress = entry.visibility.getValue();
             int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
             int x = screenWidth - CARD_WIDTH - MARGIN + slideOffset;
-            int borderColor = applyAlpha(entry.nodeColor, progress);
-            int backgroundColor = applyAlpha(UITheme.BACKGROUND_SECONDARY, progress);
-            int innerShadeColor = applyAlpha(AnimationHelper.darken(UITheme.BACKGROUND_TERTIARY, 0.72f), progress);
-            int accentColor = applyAlpha(AnimationHelper.brighten(entry.nodeColor, 1.08f), progress);
+            int borderColor = AnimationHelper.multiplyAlpha(entry.nodeColor, progress);
+            int backgroundColor = AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SECONDARY, progress);
+            int innerShadeColor = AnimationHelper.multiplyAlpha(AnimationHelper.darken(UITheme.BACKGROUND_TERTIARY, 0.72f), progress);
+            int accentColor = AnimationHelper.multiplyAlpha(AnimationHelper.brighten(entry.nodeColor, 1.08f), progress);
 
             context.fill(x, y, x + CARD_WIDTH, y + cardHeight, backgroundColor);
             context.fill(x + 1, y + 1, x + CARD_WIDTH - 1, y + cardHeight - 1, innerShadeColor);
@@ -140,8 +140,8 @@ public final class NodeErrorNotificationOverlay {
                 int barY = y + PADDING_Y + textHeight + PROGRESS_BAR_TOP_MARGIN;
                 int barWidth = CARD_WIDTH - textStartX - PADDING_X;
                 int barFillWidth = Math.max(0, Math.min(barWidth, Math.round(barWidth * entry.getProgress())));
-                int barBackground = applyAlpha(AnimationHelper.darken(UITheme.BACKGROUND_TERTIARY, 0.88f), progress);
-                int barFill = applyAlpha(accentColor, progress);
+                int barBackground = AnimationHelper.multiplyAlpha(AnimationHelper.darken(UITheme.BACKGROUND_TERTIARY, 0.88f), progress);
+                int barFill = AnimationHelper.multiplyAlpha(accentColor, progress);
                 context.fill(barX, barY, barX + barWidth, barY + PROGRESS_BAR_HEIGHT, barBackground);
                 if (barFillWidth > 0) {
                     context.fill(barX, barY, barX + barFillWidth, barY + PROGRESS_BAR_HEIGHT, barFill);
@@ -151,12 +151,6 @@ public final class NodeErrorNotificationOverlay {
 
             y -= CARD_SPACING;
         }
-    }
-
-    private int applyAlpha(int color, float alpha) {
-        int baseAlpha = (color >>> 24) & 0xFF;
-        int adjustedAlpha = (int) (baseAlpha * AnimationHelper.clamp01(alpha));
-        return (adjustedAlpha << 24) | (color & 0x00FFFFFF);
     }
 
     private static final class NotificationEntry {

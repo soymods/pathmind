@@ -5,6 +5,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
@@ -69,7 +70,7 @@ public final class NavigatorDebugOverlay {
             overlayY,
             overlayX + OVERLAY_WIDTH,
             overlayY + overlayHeight,
-            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress)
+            AnimationHelper.multiplyAlpha(UITheme.OVERLAY_BACKGROUND, progress)
         );
         DrawContextBridge.drawBorder(
             context,
@@ -77,7 +78,7 @@ public final class NavigatorDebugOverlay {
             overlayY,
             OVERLAY_WIDTH,
             overlayHeight,
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress)
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress)
         );
 
         int textX = overlayX + PADDING;
@@ -90,7 +91,7 @@ public final class NavigatorDebugOverlay {
                 Text.literal(line),
                 textX,
                 textY + i * lineHeight,
-                applyAlpha(color, progress)
+                AnimationHelper.multiplyAlpha(color, progress)
             );
         }
     }
@@ -141,26 +142,7 @@ public final class NavigatorDebugOverlay {
     }
 
     private String trimTextToWidth(String text, TextRenderer textRenderer, int maxWidth) {
-        if (textRenderer.getWidth(text) <= maxWidth) {
-            return text;
-        }
-        String ellipsis = "...";
-        int ellipsisWidth = textRenderer.getWidth(ellipsis);
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            builder.append(c);
-            if (textRenderer.getWidth(builder.toString()) + ellipsisWidth > maxWidth) {
-                builder.setLength(Math.max(0, builder.length() - 1));
-                return builder + ellipsis;
-            }
-        }
-        return text;
+        return TextRenderUtil.trimWithEllipsis(textRenderer, text, maxWidth);
     }
 
-    private int applyAlpha(int color, float alpha) {
-        int baseAlpha = (color >>> 24) & 0xFF;
-        int adjustedAlpha = (int) (baseAlpha * AnimationHelper.clamp01(alpha));
-        return (adjustedAlpha << 24) | (color & 0x00FFFFFF);
-    }
 }

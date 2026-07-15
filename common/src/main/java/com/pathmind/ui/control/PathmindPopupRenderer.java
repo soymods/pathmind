@@ -220,7 +220,7 @@ public final class PathmindPopupRenderer {
         context.drawTextWithShadow(textRenderer, Text.literal(label == null ? "" : label), x, y,
             animatedColor(animation, UITheme.TEXT_LABEL));
         int fieldY = y + 11;
-        boolean hovered = mouseX >= x && mouseY >= fieldY && mouseX < x + width && mouseY < fieldY + 18;
+        boolean hovered = UiHitTest.containsHalfOpen(mouseX, mouseY, x, fieldY, width, 18);
         boolean focused = field != null && field.isFocused();
         drawPopupFieldFrame(context, x, fieldY, width, 18, hovered, focused, accentColor, animation);
         if (field != null) {

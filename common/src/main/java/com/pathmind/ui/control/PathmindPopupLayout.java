@@ -191,7 +191,7 @@ public final class PathmindPopupLayout {
 
     public record Rect(int x, int y, int width, int height) {
         public boolean contains(int mouseX, int mouseY) {
-            return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+            return UiHitTest.contains(mouseX, mouseY, x, y, width, height);
         }
     }
 

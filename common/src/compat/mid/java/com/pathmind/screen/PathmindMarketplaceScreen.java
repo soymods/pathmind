@@ -18,6 +18,7 @@ import com.pathmind.ui.control.PathmindDropdownRenderer;
 import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.ToggleSwitch;
+import com.pathmind.ui.control.UiHitTest;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
@@ -209,36 +210,20 @@ public class PathmindMarketplaceScreen extends Screen {
         super.init();
         ensureCustomCursorHidden();
         if (searchField == null) {
-            searchField = new PathmindTextField(this.textRenderer, 0, 0, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT, Text.translatable("pathmind.marketplace.searchPresets"));
-            searchField.setMaxLength(64);
-            searchField.setDrawsBackground(false);
-            searchField.setEditableColor(UITheme.TEXT_PRIMARY);
-            searchField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            searchField = PathmindTextField.create(this.textRenderer, 0, 0, SEARCH_FIELD_WIDTH, SEARCH_FIELD_HEIGHT, Text.translatable("pathmind.marketplace.searchPresets"), 64);
             searchField.setChangedListener(value -> applyFilters());
             this.addSelectableChild(searchField);
         }
         if (publishNameField == null) {
-            publishNameField = new PathmindTextField(this.textRenderer, 0, 0, 240, 18, Text.translatable("pathmind.field.presetName"));
-            publishNameField.setMaxLength(64);
-            publishNameField.setDrawsBackground(false);
-            publishNameField.setEditableColor(UITheme.TEXT_PRIMARY);
-            publishNameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishNameField = PathmindTextField.create(this.textRenderer, 0, 0, 240, 18, Text.translatable("pathmind.field.presetName"), 64);
             this.addSelectableChild(publishNameField);
         }
         if (publishDescriptionField == null) {
-            publishDescriptionField = new PathmindTextField(this.textRenderer, 0, 0, 240, 18, Text.translatable("pathmind.field.description"));
-            publishDescriptionField.setMaxLength(180);
-            publishDescriptionField.setDrawsBackground(false);
-            publishDescriptionField.setEditableColor(UITheme.TEXT_PRIMARY);
-            publishDescriptionField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishDescriptionField = PathmindTextField.create(this.textRenderer, 0, 0, 240, 18, Text.translatable("pathmind.field.description"), 180);
             this.addSelectableChild(publishDescriptionField);
         }
         if (publishTagsField == null) {
-            publishTagsField = new PathmindTextField(this.textRenderer, 0, 0, 240, 18, Text.translatable("pathmind.field.tags"));
-            publishTagsField.setMaxLength(96);
-            publishTagsField.setDrawsBackground(false);
-            publishTagsField.setEditableColor(UITheme.TEXT_PRIMARY);
-            publishTagsField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishTagsField = PathmindTextField.create(this.textRenderer, 0, 0, 240, 18, Text.translatable("pathmind.field.tags"), 96);
             this.addSelectableChild(publishTagsField);
         }
         if (!initialFetchStarted && !editorPopupMode) {
@@ -3335,7 +3320,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     static boolean isPointInRect(int x, int y, int rectX, int rectY, int width, int height) {
-        return x >= rectX && y >= rectY && x < rectX + width && y < rectY + height;
+        return UiHitTest.containsHalfOpen(x, y, rectX, rectY, width, height);
     }
 
     private int getSectionHeaderHeight() {

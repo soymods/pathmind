@@ -11,6 +11,7 @@ import com.pathmind.nodes.RuntimeValueScope;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
@@ -77,7 +78,7 @@ public class VariablesOverlay {
             overlayY,
             overlayX + OVERLAY_WIDTH,
             overlayY + overlayHeight,
-            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress)
+            AnimationHelper.multiplyAlpha(UITheme.OVERLAY_BACKGROUND, progress)
         );
         DrawContextBridge.drawBorder(
             context,
@@ -85,7 +86,7 @@ public class VariablesOverlay {
             overlayY,
             OVERLAY_WIDTH,
             overlayHeight,
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress)
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress)
         );
 
         int textX = overlayX + PADDING;
@@ -98,7 +99,7 @@ public class VariablesOverlay {
                 Text.literal(line),
                 textX,
                 textY + i * lineHeight,
-                applyAlpha(color, progress)
+                AnimationHelper.multiplyAlpha(color, progress)
             );
         }
     }
@@ -428,22 +429,7 @@ public class VariablesOverlay {
     }
 
     private String trimTextToWidth(String text, TextRenderer textRenderer, int maxWidth) {
-        if (text == null || textRenderer == null) {
-            return "";
-        }
-        if (textRenderer.getWidth(text) <= maxWidth) {
-            return text;
-        }
-        String trimmed = text;
-        while (trimmed.length() > 0 && textRenderer.getWidth(trimmed + "...") > maxWidth) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1);
-        }
-        return trimmed + "...";
+        return TextRenderUtil.trimWithEllipsis(textRenderer, text, maxWidth);
     }
 
-    private int applyAlpha(int color, float alpha) {
-        int baseAlpha = (color >>> 24) & 0xFF;
-        int adjustedAlpha = (int) (baseAlpha * AnimationHelper.clamp01(alpha));
-        return (adjustedAlpha << 24) | (color & 0x00FFFFFF);
-    }
 }

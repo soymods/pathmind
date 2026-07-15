@@ -10,7 +10,6 @@ import com.pathmind.util.DropdownLayoutHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.util.math.MathHelper;
 import net.minecraft.text.Text;
 
 import java.util.ArrayList;
@@ -116,7 +115,7 @@ public class InventorySlotSelector {
             Text.translatable("pathmind.inventorySlot.interfaceMode"),
             x,
             sectionY,
-            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         sectionY += textRenderer.fontHeight + 4;
 
@@ -132,16 +131,16 @@ public class InventorySlotSelector {
         int buttonBg = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, UITheme.BACKGROUND_TERTIARY, hoverProgress);
         int borderColor = AnimationHelper.lerpColor(UITheme.BORDER_SUBTLE, UITheme.BORDER_HIGHLIGHT, hoverProgress);
         int textColor = AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, hoverProgress);
-        context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, applyAlpha(buttonBg, alpha));
-        DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonWidth, buttonHeight, applyAlpha(borderColor, alpha));
+        context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, AnimationHelper.multiplyAlpha(buttonBg, alpha));
+        DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonWidth, buttonHeight, AnimationHelper.multiplyAlpha(borderColor, alpha));
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(mode.getDisplayName()),
             buttonX + MODE_BUTTON_TEXT_PADDING,
             buttonY + 6,
-            applyAlpha(textColor, alpha)
+            AnimationHelper.multiplyAlpha(textColor, alpha)
         );
-        UIStyleHelper.drawChevron(context, buttonX + buttonWidth - 9, buttonY + buttonHeight / 2, dropdownOpen, applyAlpha(textColor, alpha));
+        UIStyleHelper.drawChevron(context, buttonX + buttonWidth - 9, buttonY + buttonHeight / 2, dropdownOpen, AnimationHelper.multiplyAlpha(textColor, alpha));
         sectionY += MODE_BUTTON_HEIGHT + SECTION_SPACING;
 
         int gridHeight = renderGrid(context, textRenderer, sectionY, width, mouseX, mouseY, alpha);
@@ -157,7 +156,7 @@ public class InventorySlotSelector {
             Text.literal(selectionText),
             x,
             sectionY,
-            applyAlpha(UITheme.TEXT_SECONDARY, alpha)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_SECONDARY, alpha)
         );
         sectionY += textRenderer.fontHeight;
 
@@ -183,8 +182,8 @@ public class InventorySlotSelector {
         int backgroundHeight = layout.height + GRID_PADDING * 2;
         int left = renderX;
 
-        context.fill(left, top, left + backgroundWidth, top + backgroundHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
-        DrawContextBridge.drawBorder(context, left, top, backgroundWidth, backgroundHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
+        context.fill(left, top, left + backgroundWidth, top + backgroundHeight, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, left, top, backgroundWidth, backgroundHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         slotBoxes.clear();
         int slotLeft = left + GRID_PADDING;
@@ -208,21 +207,21 @@ public class InventorySlotSelector {
             if (selected) {
                 fill = UITheme.ACCENT_DEFAULT;
             }
-            context.fill(slotX, slotY, slotX + SLOT_SIZE, slotY + SLOT_SIZE, applyAlpha(fill, alpha));
+            context.fill(slotX, slotY, slotX + SLOT_SIZE, slotY + SLOT_SIZE, AnimationHelper.multiplyAlpha(fill, alpha));
             DrawContextBridge.drawBorder(
                 context,
                 slotX,
                 slotY,
                 SLOT_SIZE,
                 SLOT_SIZE,
-                applyAlpha(selected ? UITheme.TEXT_PRIMARY : UITheme.BORDER_SUBTLE, alpha)
+                AnimationHelper.multiplyAlpha(selected ? UITheme.TEXT_PRIMARY : UITheme.BORDER_SUBTLE, alpha)
             );
 
             String label = String.valueOf(position.slotId);
             int textWidth = textRenderer.getWidth(label);
             int textX = slotX + (SLOT_SIZE - textWidth) / 2;
             int textY = slotY + 4;
-            context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, applyAlpha(UITheme.TEXT_PRIMARY, alpha));
+            context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha));
         }
 
         return backgroundHeight;
@@ -265,9 +264,9 @@ public class InventorySlotSelector {
 
         DropdownLayoutHelper.enableRevealScissor(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, animProgress, 1);
         float dropdownAlpha = alpha * animProgress;
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
+        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
 
         float smoothScrollOffset = DropdownLayoutHelper.updateSmoothScroll(dropdownSmoothScroll, dropdownScrollIndex, layout.maxScrollOffset);
         DropdownLayoutHelper.ScrollWindow scrollWindow = DropdownLayoutHelper.getSmoothScrollWindow(
@@ -294,13 +293,13 @@ public class InventorySlotSelector {
             if (hovered) {
                 bg = UITheme.BACKGROUND_TERTIARY;
             }
-            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, dropdownAlpha));
+            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, AnimationHelper.multiplyAlpha(bg, dropdownAlpha));
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(option.getDisplayName()),
                 dropdownX + MODE_BUTTON_TEXT_PADDING,
                 optionTop + 5,
-                applyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
             );
         }
 
@@ -314,8 +313,8 @@ public class InventorySlotSelector {
             layout.visibleCount,
             Math.round(smoothScrollOffset),
             layout.maxScrollOffset,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha),
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, dropdownAlpha)
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha),
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, dropdownAlpha)
         );
         DropdownLayoutHelper.drawOutline(
             context,
@@ -323,18 +322,9 @@ public class InventorySlotSelector {
             dropdownY,
             dropdownWidth,
             dropdownHeight,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha)
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha)
         );
         context.disableScissor();
-    }
-
-    private int applyAlpha(int color, float alpha) {
-        int a = (color >>> 24) & 0xFF;
-        int r = (color >> 16) & 0xFF;
-        int g = (color >> 8) & 0xFF;
-        int b = color & 0xFF;
-        int outA = MathHelper.clamp(Math.round(a * alpha), 0, 255);
-        return (outA << 24) | (r << 16) | (g << 8) | b;
     }
 
     public boolean mouseClicked(double mouseX, double mouseY) {
@@ -491,7 +481,7 @@ public class InventorySlotSelector {
         }
 
         boolean contains(int px, int py) {
-            return px >= x && px <= x + SLOT_SIZE && py >= y && py <= y + SLOT_SIZE;
+            return UiHitTest.contains(px, py, x, y, SLOT_SIZE, SLOT_SIZE);
         }
     }
 

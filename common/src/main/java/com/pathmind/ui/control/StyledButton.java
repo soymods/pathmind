@@ -148,8 +148,7 @@ public class StyledButton {
      * Checks if coordinates are within button bounds.
      */
     public boolean contains(int mouseX, int mouseY) {
-        return mouseX >= x && mouseX <= x + width &&
-               mouseY >= y && mouseY <= y + height;
+        return UiHitTest.contains(mouseX, mouseY, x, y, width, height);
     }
 
     private int getBackgroundColor() {

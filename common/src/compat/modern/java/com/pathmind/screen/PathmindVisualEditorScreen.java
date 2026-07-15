@@ -30,6 +30,7 @@ import com.pathmind.ui.control.PathmindIconRenderer;
 import com.pathmind.ui.control.PathmindRoutineUi;
 import com.pathmind.ui.control.PathmindWorkspaceChrome;
 import com.pathmind.ui.control.ToggleSwitch;
+import com.pathmind.ui.control.UiHitTest;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.onboarding.FirstRunTutorialOverlay;
@@ -491,77 +492,37 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.setActivePreset(activePresetName);
 
         if (createPresetField == null) {
-            createPresetField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.presetName"));
-            createPresetField.setMaxLength(64);
-            createPresetField.setDrawsBackground(false);
-            createPresetField.setVisible(false);
-            createPresetField.setEditable(false);
-            createPresetField.setEditableColor(UITheme.TEXT_PRIMARY);
-            createPresetField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            createPresetField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.presetName"), 64);
             createPresetField.setChangedListener(value -> clearCreatePresetStatus());
             this.addSelectableChild(createPresetField);
         }
         if (publishPresetNameField == null) {
-            publishPresetNameField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.presetName"));
-            publishPresetNameField.setMaxLength(64);
-            publishPresetNameField.setDrawsBackground(false);
-            publishPresetNameField.setVisible(false);
-            publishPresetNameField.setEditable(false);
-            publishPresetNameField.setEditableColor(UITheme.TEXT_PRIMARY);
-            publishPresetNameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishPresetNameField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.presetName"), 64);
             publishPresetNameField.setChangedListener(value -> clearPublishPresetStatus());
             this.addSelectableChild(publishPresetNameField);
         }
         if (publishPresetDescriptionField == null) {
-            publishPresetDescriptionField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.description"));
-            publishPresetDescriptionField.setMaxLength(180);
-            publishPresetDescriptionField.setDrawsBackground(false);
-            publishPresetDescriptionField.setVisible(false);
-            publishPresetDescriptionField.setEditable(false);
-            publishPresetDescriptionField.setEditableColor(UITheme.TEXT_PRIMARY);
-            publishPresetDescriptionField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishPresetDescriptionField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.description"), 180);
             publishPresetDescriptionField.setChangedListener(value -> clearPublishPresetStatus());
             this.addSelectableChild(publishPresetDescriptionField);
         }
         if (publishPresetTagsField == null) {
-            publishPresetTagsField = new PathmindTextField(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.tags"));
-            publishPresetTagsField.setMaxLength(96);
-            publishPresetTagsField.setDrawsBackground(false);
-            publishPresetTagsField.setVisible(false);
-            publishPresetTagsField.setEditable(false);
-            publishPresetTagsField.setEditableColor(UITheme.TEXT_PRIMARY);
-            publishPresetTagsField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            publishPresetTagsField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 240, 20, Text.translatable("pathmind.field.tags"), 96);
             publishPresetTagsField.setChangedListener(value -> clearPublishPresetStatus());
             this.addSelectableChild(publishPresetTagsField);
         }
 
         if (renamePresetField == null) {
-            renamePresetField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
-            renamePresetField.setMaxLength(64);
-            renamePresetField.setDrawsBackground(false);
-            renamePresetField.setVisible(false);
-            renamePresetField.setEditable(false);
-            renamePresetField.setEditableColor(UITheme.TEXT_PRIMARY);
-            renamePresetField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            renamePresetField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"), 64);
             renamePresetField.setChangedListener(value -> clearRenamePresetStatus());
             this.addSelectableChild(renamePresetField);
         }
         if (inlinePresetRenameField == null) {
-            inlinePresetRenameField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
-            inlinePresetRenameField.setMaxLength(64);
-            inlinePresetRenameField.setDrawsBackground(false);
-            inlinePresetRenameField.setVisible(false);
-            inlinePresetRenameField.setEditable(false);
-            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
-            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            inlinePresetRenameField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"), 64);
             this.addSelectableChild(inlinePresetRenameField);
         }
         if (nodeDelayField == null) {
-            nodeDelayField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.delay"));
-            nodeDelayField.setMaxLength(6);
-            nodeDelayField.setDrawsBackground(false);
-            nodeDelayField.setVisible(false);
-            nodeDelayField.setEditable(false);
+            nodeDelayField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.delay"), 6);
             nodeDelayField.setEditableColor(UITheme.TEXT_HEADER);
             nodeDelayField.setUneditableColor(UITheme.TEXT_HEADER);
             nodeDelayField.setTextPredicate(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
@@ -576,11 +537,7 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(nodeDelayField);
         }
         if (createListRadiusField == null) {
-            createListRadiusField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.radius"));
-            createListRadiusField.setMaxLength(6);
-            createListRadiusField.setDrawsBackground(false);
-            createListRadiusField.setVisible(false);
-            createListRadiusField.setEditable(false);
+            createListRadiusField = PathmindTextField.createInactive(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.radius"), 6);
             createListRadiusField.setEditableColor(UITheme.TEXT_HEADER);
             createListRadiusField.setUneditableColor(UITheme.TEXT_HEADER);
             createListRadiusField.setTextPredicate(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
@@ -595,25 +552,13 @@ public class PathmindVisualEditorScreen extends Screen {
             this.addSelectableChild(createListRadiusField);
         }
         if (nodeSearchField == null) {
-            nodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.translatable("pathmind.search.nodes"));
-            nodeSearchField.setMaxLength(64);
-            nodeSearchField.setDrawsBackground(false);
-            nodeSearchField.setVisible(false);
-            nodeSearchField.setEditable(false);
-            nodeSearchField.setEditableColor(UITheme.TEXT_PRIMARY);
-            nodeSearchField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            nodeSearchField = PathmindTextField.createInactive(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.translatable("pathmind.search.nodes"), 64);
             nodeSearchField.setHeight(Math.max(10, NODE_SEARCH_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
             nodeSearchField.setChangedListener(value -> updateNodeSearchMatch());
             this.addSelectableChild(nodeSearchField);
         }
         if (settingsNodeSearchField == null) {
-            settingsNodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Text.translatable("pathmind.search.nodeSettings"));
-            settingsNodeSearchField.setMaxLength(64);
-            settingsNodeSearchField.setDrawsBackground(false);
-            settingsNodeSearchField.setVisible(false);
-            settingsNodeSearchField.setEditable(false);
-            settingsNodeSearchField.setEditableColor(UITheme.TEXT_PRIMARY);
-            settingsNodeSearchField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            settingsNodeSearchField = PathmindTextField.createInactive(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Text.translatable("pathmind.search.nodeSettings"), 64);
             settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
             settingsNodeSearchField.setHeight(Math.max(10, SETTINGS_NODE_TYPE_SEARCH_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
             settingsNodeSearchField.setChangedListener(value -> settingsNodeSelectorScrollOffset = 0);
@@ -3113,7 +3058,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 Text.literal("+"),
                 addTabX + PRESET_TAB_ADD_WIDTH / 2,
                 y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1,
-                applyAlpha(hovered ? getAccentColor() : UITheme.ICON_MUTED_BRIGHT, plusAlpha)
+                AnimationHelper.multiplyAlpha(hovered ? getAccentColor() : UITheme.ICON_MUTED_BRIGHT, plusAlpha)
             );
         }
         renderInlinePresetRenameField(context, mouseX, mouseY, tabs, tabWidths, tabXs, y, dragIndex);
@@ -3865,16 +3810,16 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         float appear = dragging ? 1f : getPresetTabAppearProgress(label);
-        int fillColor = applyAlpha(fill, appear);
-        int borderColor = applyAlpha(border, appear);
-        int textColor = applyAlpha(active ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY, appear);
+        int fillColor = AnimationHelper.multiplyAlpha(fill, appear);
+        int borderColor = AnimationHelper.multiplyAlpha(border, appear);
+        int textColor = AnimationHelper.multiplyAlpha(active ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY, appear);
         if (hovered && !active) {
-            textColor = applyAlpha(UITheme.TEXT_PRIMARY, appear);
+            textColor = AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, appear);
         }
 
         context.fill(x, y, x + tabWidth, y + TAB_HEIGHT, fillColor);
         if (groupColor != 0) {
-            context.fill(x + 1, y + 1, x + tabWidth - 1, y + 3, applyAlpha(groupColor, appear));
+            context.fill(x + 1, y + 1, x + tabWidth - 1, y + 3, AnimationHelper.multiplyAlpha(groupColor, appear));
         }
         DrawContextBridge.drawBorderInLayer(context, x, y, tabWidth, TAB_HEIGHT, borderColor);
         boolean deletable = !isPresetDeleteDisabled(label);
@@ -3896,7 +3841,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 closeHitboxSize, closeHitboxSize
             );
             int closeColor = closeHovered ? UITheme.STATE_ERROR : UITheme.ICON_MUTED;
-            drawCloseXIcon(context, closeLeft, closeTop, PRESET_TAB_CLOSE_ICON_SIZE, applyAlpha(closeColor, appear));
+            drawCloseXIcon(context, closeLeft, closeTop, PRESET_TAB_CLOSE_ICON_SIZE, AnimationHelper.multiplyAlpha(closeColor, appear));
         }
     }
 
@@ -3909,14 +3854,14 @@ public class PathmindVisualEditorScreen extends Screen {
         int squareSize = 8;
         int squareX = x + (tabWidth - squareSize) / 2;
         int squareY = y + (TAB_HEIGHT - squareSize) / 2;
-        context.fill(squareX + 1, squareY + 1, squareX + squareSize + 1, squareY + squareSize + 1, applyAlpha(UITheme.BACKGROUND_SECONDARY, appear * 0.75f));
+        context.fill(squareX + 1, squareY + 1, squareX + squareSize + 1, squareY + squareSize + 1, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SECONDARY, appear * 0.75f));
         if (expanded) {
-            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, applyAlpha(UITheme.BACKGROUND_SECONDARY, appear));
-            context.fill(squareX + 3, squareY + 3, squareX + squareSize - 3, squareY + squareSize - 3, applyAlpha(groupColor, appear));
+            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SECONDARY, appear));
+            context.fill(squareX + 3, squareY + 3, squareX + squareSize - 3, squareY + squareSize - 3, AnimationHelper.multiplyAlpha(groupColor, appear));
         } else {
-            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, applyAlpha(groupColor, appear));
+            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, AnimationHelper.multiplyAlpha(groupColor, appear));
         }
-        DrawContextBridge.drawBorderInLayer(context, squareX, squareY, squareSize, squareSize, applyAlpha(groupColor, appear));
+        DrawContextBridge.drawBorderInLayer(context, squareX, squareY, squareSize, squareSize, AnimationHelper.multiplyAlpha(groupColor, appear));
     }
 
     private String getPresetTabDisplayLabel(String label) {
@@ -4100,9 +4045,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         inlinePresetRenameName = "";
         if (inlinePresetRenameField != null) {
-            inlinePresetRenameField.setFocused(false);
-            inlinePresetRenameField.setVisible(false);
-            inlinePresetRenameField.setEditable(false);
+            PathmindTextField.deactivate(inlinePresetRenameField);
         }
     }
 
@@ -4136,8 +4079,6 @@ public class PathmindVisualEditorScreen extends Screen {
             DrawContextBridge.drawBorderInLayer(context, frameX, frameY, frameWidth, frameHeight, getAccentColor());
             inlinePresetRenameField.setVisible(true);
             inlinePresetRenameField.setEditable(true);
-            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
-            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
             inlinePresetRenameField.setPosition(fieldX, fieldY);
             inlinePresetRenameField.setWidth(fieldWidth);
             inlinePresetRenameField.setHeight(fieldHeight);
@@ -4175,12 +4116,6 @@ public class PathmindVisualEditorScreen extends Screen {
         AnimatedValue animation = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
         animation.tick();
         return MathHelper.clamp(animation.getValue(), 0f, 1f);
-    }
-
-    private int applyAlpha(int color, float alpha) {
-        int targetAlpha = (color >>> 24) & 0xFF;
-        int appliedAlpha = MathHelper.clamp(Math.round(targetAlpha * MathHelper.clamp(alpha, 0f, 1f)), 0, 255);
-        return (color & 0x00FFFFFF) | (appliedAlpha << 24);
     }
 
     private int getPresetTabStartX() {
@@ -5014,7 +4949,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = x + PRESET_MENU_BUTTON_SIZE / 2;
         int centerY = y + PRESET_MENU_BUTTON_SIZE / 2;
         int lineHalfWidth = 4;
-        int alphaColor = applyAlpha(iconColor, MathHelper.clamp(0.75f + hoverProgress * 0.25f, 0f, 1f));
+        int alphaColor = AnimationHelper.multiplyAlpha(iconColor, MathHelper.clamp(0.75f + hoverProgress * 0.25f, 0f, 1f));
         for (int i = -1; i <= 1; i++) {
             int lineY = centerY + i * 3;
             context.drawHorizontalLine(centerX - lineHalfWidth, centerX + lineHalfWidth, lineY, alphaColor);
@@ -5027,10 +4962,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void drawPopupCenteredTextWithEllipsis(DrawContext context, String text, int centerX, int y, int maxWidth, int color) {
         PathmindPopupRenderer.drawCenteredTextWithEllipsis(context, this.textRenderer, text, centerX, y, maxWidth, color);
-    }
-
-    private String trimWithEllipsis(TextRenderer renderer, String text, int availableWidth) {
-        return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
     }
 
     boolean enablePopupScissor(DrawContext context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
@@ -6123,9 +6054,7 @@ public class PathmindVisualEditorScreen extends Screen {
         createPresetPopupAnimation.hide();
         clearCreatePresetStatus();
         if (createPresetField != null) {
-            createPresetField.setFocused(false);
-            createPresetField.setVisible(false);
-            createPresetField.setEditable(false);
+            PathmindTextField.deactivate(createPresetField);
         }
     }
 
@@ -6229,19 +6158,13 @@ public class PathmindVisualEditorScreen extends Screen {
         publishPresetEditingPreset = null;
         clearPublishPresetStatus();
         if (publishPresetNameField != null) {
-            publishPresetNameField.setFocused(false);
-            publishPresetNameField.setVisible(false);
-            publishPresetNameField.setEditable(false);
+            PathmindTextField.deactivate(publishPresetNameField);
         }
         if (publishPresetDescriptionField != null) {
-            publishPresetDescriptionField.setFocused(false);
-            publishPresetDescriptionField.setVisible(false);
-            publishPresetDescriptionField.setEditable(false);
+            PathmindTextField.deactivate(publishPresetDescriptionField);
         }
         if (publishPresetTagsField != null) {
-            publishPresetTagsField.setFocused(false);
-            publishPresetTagsField.setVisible(false);
-            publishPresetTagsField.setEditable(false);
+            PathmindTextField.deactivate(publishPresetTagsField);
         }
     }
 
@@ -6271,9 +6194,7 @@ public class PathmindVisualEditorScreen extends Screen {
         pendingPresetRenameName = "";
         clearRenamePresetStatus();
         if (renamePresetField != null) {
-            renamePresetField.setFocused(false);
-            renamePresetField.setVisible(false);
-            renamePresetField.setEditable(false);
+            PathmindTextField.deactivate(renamePresetField);
         }
     }
 
@@ -6305,9 +6226,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeSearchResults.clear();
         nodeSearchHoverIndex = -1;
         if (nodeSearchField != null) {
-            nodeSearchField.setFocused(false);
-            nodeSearchField.setVisible(false);
-            nodeSearchField.setEditable(false);
+            PathmindTextField.deactivate(nodeSearchField);
             nodeSearchField.setSuggestion(null);
         }
     }
@@ -6492,13 +6411,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private String trimToWidth(String value, int maxWidth) {
-        if (value == null || value.isEmpty() || this.textRenderer == null || maxWidth <= 0) {
-            return value == null ? "" : value;
-        }
-        if (this.textRenderer.getWidth(value) <= maxWidth) {
-            return value;
-        }
-        return this.textRenderer.trimToWidth(value, Math.max(0, maxWidth - this.textRenderer.getWidth("..."))) + "...";
+        return TextRenderUtil.trimWithEllipsis(this.textRenderer, value, maxWidth);
     }
 
     private boolean isPointInNodeSearchField(int mouseX, int mouseY) {
@@ -7612,8 +7525,7 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsPopupScrollDragging = false;
         settingsPopupScrollDragOffset = 0;
         if (createListRadiusField != null) {
-            createListRadiusField.setFocused(false);
-            createListRadiusField.setVisible(false);
+            PathmindTextField.deactivate(createListRadiusField);
         }
         settingsNodeListView = false;
         settingsNodeTargetType = null;
@@ -7625,9 +7537,7 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsLastScrollConsumer = 0;
         if (settingsNodeSearchField != null) {
             settingsNodeSearchField.setText("");
-            settingsNodeSearchField.setFocused(false);
-            settingsNodeSearchField.setVisible(false);
-            settingsNodeSearchField.setEditable(false);
+            PathmindTextField.deactivate(settingsNodeSearchField);
             settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
         }
         settingsPopupAnimation.hide();
@@ -8160,7 +8070,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     boolean isPointInRect(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+        return UiHitTest.contains(mouseX, mouseY, x, y, width, height);
     }
 
 }

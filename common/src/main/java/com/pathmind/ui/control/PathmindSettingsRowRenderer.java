@@ -328,6 +328,6 @@ public final class PathmindSettingsRowRenderer {
     }
 
     private static boolean isPointInRect(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+        return UiHitTest.contains(mouseX, mouseY, x, y, width, height);
     }
 }

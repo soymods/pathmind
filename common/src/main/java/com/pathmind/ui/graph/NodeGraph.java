@@ -24,6 +24,7 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.control.PathmindDropdownRenderer;
 import com.pathmind.ui.control.PathmindIconRenderer;
+import com.pathmind.ui.control.UiHitTest;
 import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
@@ -15136,8 +15137,8 @@ public class NodeGraph {
         int transformedMouseY = toStartDropdownSpaceY(mouseY, y, layout.scale());
         int rowIndex = StartLaunchMode.SCREEN_OPENED.ordinal();
         int rowY = y + START_MODE_DROPDOWN_PADDING + rowIndex * START_MODE_DROPDOWN_ROW_HEIGHT;
-        return transformedMouseX >= x && transformedMouseX <= x + START_MODE_DROPDOWN_WIDTH
-            && transformedMouseY >= rowY && transformedMouseY <= rowY + START_MODE_DROPDOWN_ROW_HEIGHT;
+        return UiHitTest.contains(transformedMouseX, transformedMouseY,
+            x, rowY, START_MODE_DROPDOWN_WIDTH, START_MODE_DROPDOWN_ROW_HEIGHT);
     }
 
     private boolean isMouseOverStartScreenTargetSubmenu(int mouseX, int mouseY) {
@@ -15146,8 +15147,8 @@ public class NodeGraph {
         int transformedMouseY = toStartDropdownSpaceY(mouseY, layout.y(), layout.scale());
         int x = layout.submenuX();
         int y = layout.submenuY();
-        return transformedMouseX >= x && transformedMouseX <= x + START_MODE_DROPDOWN_WIDTH
-            && transformedMouseY >= y && transformedMouseY <= y + getStartScreenTargetSubmenuHeight();
+        return UiHitTest.contains(transformedMouseX, transformedMouseY,
+            x, y, START_MODE_DROPDOWN_WIDTH, getStartScreenTargetSubmenuHeight());
     }
 
     private int getStartScreenTargetSubmenuX() {

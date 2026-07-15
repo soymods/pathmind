@@ -174,7 +174,7 @@ public class VillagerTradeSelector {
             Text.translatable("pathmind.villagerTrade.profession"),
             x,
             sectionY,
-            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         sectionY += textRenderer.fontHeight + 4;
 
@@ -187,8 +187,8 @@ public class VillagerTradeSelector {
                               mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
         int buttonBg = hoverButton ? UITheme.BUTTON_DEFAULT_BG : UITheme.BACKGROUND_SECONDARY;
         int borderColor = dropdownOpen ? UITheme.ACCENT_DEFAULT : (hoverButton ? UITheme.TEXT_SECONDARY : UITheme.BORDER_SUBTLE);
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(buttonBg, alpha));
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(borderColor, alpha));
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(buttonBg, alpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, AnimationHelper.multiplyAlpha(borderColor, alpha));
         String professionLabel = selectedProfession != null
             ? selectedProfession.displayName
             : Text.translatable("pathmind.option.none").getString();
@@ -197,14 +197,14 @@ public class VillagerTradeSelector {
             Text.literal(professionLabel),
             dropdownX + TEXT_PADDING,
             dropdownY + 6,
-            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         context.drawTextWithShadow(
             textRenderer,
             Text.literal("▼"),
             dropdownX + dropdownWidth - 12,
             dropdownY + 6,
-            applyAlpha(UITheme.TEXT_PRIMARY, alpha)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
         sectionY += DROPDOWN_HEIGHT + SECTION_SPACING;
 
@@ -216,8 +216,8 @@ public class VillagerTradeSelector {
         boolean isSearchFocused = searchFocused;
         int searchBg = isSearchFocused ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
         int searchBorder = isSearchFocused ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
-        context.fill(searchX, searchY, searchX + searchWidth, searchY + searchHeight, applyAlpha(searchBg, alpha));
-        DrawContextBridge.drawBorder(context, searchX, searchY, searchWidth, searchHeight, applyAlpha(searchBorder, alpha));
+        context.fill(searchX, searchY, searchX + searchWidth, searchY + searchHeight, AnimationHelper.multiplyAlpha(searchBg, alpha));
+        DrawContextBridge.drawBorder(context, searchX, searchY, searchWidth, searchHeight, AnimationHelper.multiplyAlpha(searchBorder, alpha));
         String displayText = searchQuery;
         boolean showPlaceholder = displayText == null || displayText.isEmpty();
         int textY = searchY + (searchHeight - textRenderer.fontHeight) / 2 + 1;
@@ -227,7 +227,7 @@ public class VillagerTradeSelector {
                 Text.translatable("pathmind.villagerTrade.searchTrades"),
                 searchX + TEXT_PADDING,
                 textY,
-                applyAlpha(UITheme.TEXT_TERTIARY, alpha)
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_TERTIARY, alpha)
             );
         } else {
             String trimmed = searchFocused
@@ -242,7 +242,7 @@ public class VillagerTradeSelector {
                     selStartX = MathHelper.clamp(selStartX, searchX + 2, searchX + searchWidth - 2);
                     selEndX = MathHelper.clamp(selEndX, searchX + 2, searchX + searchWidth - 2);
                     context.fill(selStartX, searchY + 3, selEndX, searchY + searchHeight - 3,
-                        applyAlpha(UITheme.TEXT_SELECTION_BG, alpha));
+                        AnimationHelper.multiplyAlpha(UITheme.TEXT_SELECTION_BG, alpha));
                 }
             }
             context.drawTextWithShadow(
@@ -250,7 +250,7 @@ public class VillagerTradeSelector {
                 Text.literal(trimmed),
                 searchX + TEXT_PADDING,
                 textY,
-                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -268,7 +268,7 @@ public class VillagerTradeSelector {
                     caretTopY,
                     caretBottomY,
                     searchX + searchWidth - 2,
-                    applyAlpha(UITheme.CARET_COLOR, alpha)
+                    AnimationHelper.multiplyAlpha(UITheme.CARET_COLOR, alpha)
                 );
             }
         }
@@ -279,8 +279,8 @@ public class VillagerTradeSelector {
         listWidth = width;
         listHeight = LIST_ROW_HEIGHT * LIST_VISIBLE_ROWS + LIST_PADDING * 2;
 
-        context.fill(listX, listY, listX + listWidth, listY + listHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
-        DrawContextBridge.drawBorder(context, listX, listY, listWidth, listHeight, applyAlpha(UITheme.BORDER_DEFAULT, alpha));
+        context.fill(listX, listY, listX + listWidth, listY + listHeight, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, listX, listY, listWidth, listHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, alpha));
 
         int visibleRows = LIST_VISIBLE_ROWS;
         int maxScroll = Math.max(0, filteredTrades.size() - visibleRows);
@@ -301,14 +301,14 @@ public class VillagerTradeSelector {
             if (hovered) {
                 rowBg = adjustColor(rowBg, 1.15f);
             }
-            context.fill(listX + 1, rowY, listX + listWidth - 1, rowY + LIST_ROW_HEIGHT, applyAlpha(rowBg, alpha));
+            context.fill(listX + 1, rowY, listX + listWidth - 1, rowY + LIST_ROW_HEIGHT, AnimationHelper.multiplyAlpha(rowBg, alpha));
             String rowText = trimDisplayString(textRenderer, entry.displayText, listWidth - TEXT_PADDING * 2);
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(rowText),
                 listX + TEXT_PADDING,
                 rowY + 5,
-                applyAlpha(UITheme.TEXT_PRIMARY, alpha)
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
             );
         }
 
@@ -321,7 +321,7 @@ public class VillagerTradeSelector {
             int emptyTextX = listX + TEXT_PADDING;
             int emptyTextY = listY + LIST_PADDING + 4;
             renderWrappedText(context, textRenderer, emptyMessage, emptyTextX, emptyTextY, maxTextWidth,
-                applyAlpha(UITheme.TEXT_TERTIARY, alpha));
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_TERTIARY, alpha));
         }
 
         DropdownLayoutHelper.drawScrollBar(
@@ -334,8 +334,8 @@ public class VillagerTradeSelector {
             visibleRows,
             listScrollIndex,
             maxScroll,
-            applyAlpha(UITheme.BORDER_DEFAULT, alpha),
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, alpha),
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
         );
 
         sectionY += listHeight + SECTION_SPACING;
@@ -346,7 +346,7 @@ public class VillagerTradeSelector {
             Text.literal(selectedText),
             x,
             sectionY,
-            applyAlpha(UITheme.TEXT_SECONDARY, alpha)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_SECONDARY, alpha)
         );
         sectionY += textRenderer.fontHeight;
 
@@ -1115,9 +1115,9 @@ public class VillagerTradeSelector {
 
         DropdownLayoutHelper.enableRevealScissor(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, animProgress, 1);
         float dropdownAlpha = alpha * animProgress;
-        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
-        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
+        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
 
         float smoothScrollOffset = DropdownLayoutHelper.updateSmoothScroll(dropdownSmoothScroll, dropdownScrollIndex, layout.maxScrollOffset);
         DropdownLayoutHelper.ScrollWindow scrollWindow = DropdownLayoutHelper.getSmoothScrollWindow(
@@ -1142,13 +1142,13 @@ public class VillagerTradeSelector {
             if (hovered) {
                 bg = adjustColor(bg, 1.2f);
             }
-            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, applyAlpha(bg, dropdownAlpha));
+            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, AnimationHelper.multiplyAlpha(bg, dropdownAlpha));
             context.drawTextWithShadow(
                 textRenderer,
                 Text.literal(option.displayName),
                 dropdownX + TEXT_PADDING,
                 optionTop + 5,
-                applyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
             );
         }
 
@@ -1162,8 +1162,8 @@ public class VillagerTradeSelector {
             layout.visibleCount,
             Math.round(smoothScrollOffset),
             layout.maxScrollOffset,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha),
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, dropdownAlpha)
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha),
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, dropdownAlpha)
         );
         DropdownLayoutHelper.drawOutline(
             context,
@@ -1171,15 +1171,9 @@ public class VillagerTradeSelector {
             dropdownY,
             dropdownWidth,
             dropdownHeight,
-            applyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha)
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha)
         );
         context.disableScissor();
-    }
-
-    private int applyAlpha(int color, float alpha) {
-        int baseAlpha = (color >>> 24) & 0xFF;
-        int applied = Math.round(baseAlpha * MathHelper.clamp(alpha, 0f, 1f));
-        return (applied << 24) | (color & 0x00FFFFFF);
     }
 
     private boolean handleDropdownClick(double mouseX, double mouseY) {

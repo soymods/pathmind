@@ -11,6 +11,7 @@ import net.minecraft.client.font.TextRenderer;
 import net.minecraft.text.Text;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.PathmindI18n;
+import com.pathmind.util.TextRenderUtil;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -75,9 +76,9 @@ public class ActiveNodeOverlay {
             int overlayY = MARGIN + (i * (OVERLAY_HEIGHT + cardSpacing));
 
             context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT,
-                applyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
+                AnimationHelper.multiplyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
             DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT,
-                applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+                AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
 
             int textRightX = overlayX + OVERLAY_WIDTH - 8;
 
@@ -88,7 +89,7 @@ public class ActiveNodeOverlay {
                 Text.literal(titleText),
                 textRightX - titleWidth,
                 overlayY + 6,
-                applyAlpha(UITheme.ACCENT_SKY, progress)
+                AnimationHelper.multiplyAlpha(UITheme.ACCENT_SKY, progress)
             );
 
             String nodeTypeName;
@@ -112,7 +113,7 @@ public class ActiveNodeOverlay {
                 Text.literal(nodeTypeName),
                 textRightX - nodeTypeWidth,
                 overlayY + 18,
-                applyAlpha(nodeColor, progress)
+                AnimationHelper.multiplyAlpha(nodeColor, progress)
             );
 
             String timeText = i == 0
@@ -124,7 +125,7 @@ public class ActiveNodeOverlay {
                 Text.literal(timeText),
                 textRightX - timeWidth,
                 overlayY + 30,
-                applyAlpha(UITheme.TEXT_HEADER, progress)
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_HEADER, progress)
             );
 
             String statusText = showingCompletion ? tr("pathmind.overlay.finished") : tr("pathmind.overlay.executing");
@@ -134,13 +135,13 @@ public class ActiveNodeOverlay {
                 Text.literal(statusText),
                 textRightX - statusWidth,
                 overlayY + 42,
-                applyAlpha(showingCompletion ? UITheme.STATE_ERROR : UITheme.ACCENT_SKY, progress)
+                AnimationHelper.multiplyAlpha(showingCompletion ? UITheme.STATE_ERROR : UITheme.ACCENT_SKY, progress)
             );
 
             int dotX = overlayX + 8;
             int dotY = overlayY + 8;
-            context.fill(dotX, dotY, dotX + 8, dotY + 8, applyAlpha(nodeColor, progress));
-            DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+            context.fill(dotX, dotY, dotX + 8, dotY + 8, AnimationHelper.multiplyAlpha(nodeColor, progress));
+            DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
         }
 
         if (navigatorSnapshot != null && cardCount < maxCards) {
@@ -190,16 +191,16 @@ public class ActiveNodeOverlay {
         int overlayY = MARGIN;
 
         context.fill(overlayX, overlayY, overlayX + overlayWidth, overlayY + COMPACT_HEIGHT,
-            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
+            AnimationHelper.multiplyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
         DrawContextBridge.drawBorder(context, overlayX, overlayY, overlayWidth, COMPACT_HEIGHT,
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
-        context.fill(overlayX + 5, overlayY + 5, overlayX + 10, overlayY + 10, applyAlpha(nodeColor, progress));
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+        context.fill(overlayX + 5, overlayY + 5, overlayX + 10, overlayY + 10, AnimationHelper.multiplyAlpha(nodeColor, progress));
         context.drawTextWithShadow(
             textRenderer,
             Text.literal(text),
             overlayX + 14,
             overlayY + 5,
-            applyAlpha(UITheme.TEXT_HEADER, progress)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_HEADER, progress)
         );
     }
 
@@ -218,12 +219,6 @@ public class ActiveNodeOverlay {
         }
     }
 
-    private int applyAlpha(int color, float alpha) {
-        int baseAlpha = (color >>> 24) & 0xFF;
-        int adjustedAlpha = (int) (baseAlpha * AnimationHelper.clamp01(alpha));
-        return (adjustedAlpha << 24) | (color & 0x00FFFFFF);
-    }
-
     private void renderNavigatorCard(DrawContext context, TextRenderer textRenderer, int screenWidth, float progress,
                                      int cardIndex, int cardSpacing, PathmindNavigator.Snapshot snapshot) {
         int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
@@ -231,9 +226,9 @@ public class ActiveNodeOverlay {
         int overlayY = MARGIN + (cardIndex * (OVERLAY_HEIGHT + cardSpacing));
 
         context.fill(overlayX, overlayY, overlayX + OVERLAY_WIDTH, overlayY + OVERLAY_HEIGHT,
-            applyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
+            AnimationHelper.multiplyAlpha(UITheme.OVERLAY_BACKGROUND, progress));
         DrawContextBridge.drawBorder(context, overlayX, overlayY, OVERLAY_WIDTH, OVERLAY_HEIGHT,
-            applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
 
         int textRightX = overlayX + OVERLAY_WIDTH - 8;
         String titleText = tr("pathmind.navigator.title");
@@ -242,7 +237,7 @@ public class ActiveNodeOverlay {
             Text.literal(titleText),
             textRightX - textRenderer.getWidth(titleText),
             overlayY + 6,
-            applyAlpha(UITheme.ACCENT_SKY, progress)
+            AnimationHelper.multiplyAlpha(UITheme.ACCENT_SKY, progress)
         );
 
         String targetText = formatTarget(snapshot.targetPos());
@@ -251,7 +246,7 @@ public class ActiveNodeOverlay {
             Text.literal(targetText),
             textRightX - textRenderer.getWidth(targetText),
             overlayY + 18,
-            applyAlpha(UITheme.TEXT_HEADER, progress)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_HEADER, progress)
         );
 
         String distanceText = snapshot.distance() >= 0.0D
@@ -262,7 +257,7 @@ public class ActiveNodeOverlay {
             Text.literal(distanceText),
             textRightX - textRenderer.getWidth(distanceText),
             overlayY + 30,
-            applyAlpha(UITheme.TEXT_PRIMARY, progress)
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, progress)
         );
 
         String statusText = switch (snapshot.state()) {
@@ -281,13 +276,13 @@ public class ActiveNodeOverlay {
             Text.literal(statusText),
             textRightX - textRenderer.getWidth(statusText),
             overlayY + 42,
-            applyAlpha(statusColor, progress)
+            AnimationHelper.multiplyAlpha(statusColor, progress)
         );
 
         int dotX = overlayX + 8;
         int dotY = overlayY + 8;
-        context.fill(dotX, dotY, dotX + 8, dotY + 8, applyAlpha(UITheme.ACCENT_SKY, progress));
-        DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, applyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
+        context.fill(dotX, dotY, dotX + 8, dotY + 8, AnimationHelper.multiplyAlpha(UITheme.ACCENT_SKY, progress));
+        DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
     }
 
     private String formatTarget(net.minecraft.util.math.BlockPos targetPos) {
@@ -298,22 +293,7 @@ public class ActiveNodeOverlay {
     }
 
     private String trimToWidth(TextRenderer textRenderer, String value, int maxWidth) {
-        if (value == null || value.isEmpty() || textRenderer.getWidth(value) <= maxWidth) {
-            return value;
-        }
-
-        String ellipsis = "...";
-        int ellipsisWidth = textRenderer.getWidth(ellipsis);
-        int allowedWidth = Math.max(0, maxWidth - ellipsisWidth);
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char next = value.charAt(i);
-            if (textRenderer.getWidth(builder.toString() + next) > allowedWidth) {
-                break;
-            }
-            builder.append(next);
-        }
-        return builder + ellipsis;
+        return TextRenderUtil.trimWithEllipsis(textRenderer, value, maxWidth);
     }
 
     private static String tr(String key, Object... args) {

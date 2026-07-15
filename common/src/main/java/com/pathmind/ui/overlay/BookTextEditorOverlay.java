@@ -1,5 +1,6 @@
 package com.pathmind.ui.overlay;
 
+import com.pathmind.ui.control.UiHitTest;
 import com.pathmind.nodes.Node;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
@@ -626,8 +627,8 @@ public class BookTextEditorOverlay {
     }
 
     private boolean isOverButton(ButtonWidget button, double mouseX, double mouseY) {
-        return mouseX >= button.getX() && mouseX <= button.getX() + button.getWidth() &&
-               mouseY >= button.getY() && mouseY <= button.getY() + button.getHeight();
+        return UiHitTest.contains(mouseX, mouseY,
+            button.getX(), button.getY(), button.getWidth(), button.getHeight());
     }
 
     public boolean handleMouseScroll(double mouseX, double mouseY, double amount) {

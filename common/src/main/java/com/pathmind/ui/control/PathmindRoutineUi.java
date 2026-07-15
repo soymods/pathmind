@@ -73,7 +73,7 @@ public final class PathmindRoutineUi {
     public static void renderDropTarget(DrawContext context, TextRenderer textRenderer, int x, int y,
                                         int width, int height, int mouseX, int mouseY,
                                         Object animationKey, String label, int routineColor) {
-        boolean hovered = mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
+        boolean hovered = UiHitTest.containsHalfOpen(mouseX, mouseY, x, y, width, height);
         float progress = HoverAnimator.getProgress(animationKey, hovered, UITheme.HOVER_ANIM_MS);
         int background = AnimationHelper.lerpColor(UITheme.BACKGROUND_SIDEBAR, UITheme.BACKGROUND_TERTIARY, progress * 0.65f);
         int border = AnimationHelper.lerpColor(UITheme.BORDER_DEFAULT, routineColor, progress);

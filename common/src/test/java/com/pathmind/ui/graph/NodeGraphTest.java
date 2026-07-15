@@ -1,8 +1,11 @@
 package com.pathmind.ui.graph;
 
+import com.pathmind.data.NodeGraphData;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.routines.RoutineBuilderModel;
+import com.pathmind.routines.RoutineValueKind;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,6 +16,40 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeGraphTest {
+
+    @Test
+    void applyingRootSnapshotKeepsNewRoutineOnImmediateResave() {
+        NodeGraph graph = new NodeGraph();
+        NodeGraphData root = new NodeGraphData();
+        root.getRoutines().add(RoutineBuilderModel.createRoutine("Mine"));
+
+        assertTrue(graph.applyGraphDataSnapshot(root, false));
+        NodeGraphData savedAgain = graph.exportGraphDataSnapshot();
+
+        assertEquals(1, savedAgain.getRoutines().size());
+        assertEquals("Mine", savedAgain.getRoutines().get(0).getName());
+    }
+
+    @Test
+    void liveRoutineInputLabelSyncsIntoSidebarMetadata() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Mine");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData input = builder.addInput("block", RoutineValueKind.BLOCK);
+        Node reporter = builder.createInputReporter(input.getId(), 20, 20);
+        routine.getGraph().getNodes().addAll(com.pathmind.data.NodeGraphPersistence
+            .createGraphData(java.util.List.of(reporter), java.util.List.of()).getNodes());
+
+        NodeGraph graph = new NodeGraph();
+        graph.setActiveRoutineWorkspaceId(routine.getId());
+        assertTrue(graph.applyGraphDataSnapshot(routine.getGraph(), false));
+        graph.setActiveRoutineWorkspaceId(routine.getId());
+        Node liveReporter = graph.getNodes().stream().filter(node -> node.getType() == NodeType.ROUTINE_INPUT).findFirst().orElseThrow();
+        liveReporter.getParameter("Label").setStringValue("target block");
+
+        graph.syncRoutineDefinitionMetadata(routine);
+
+        assertEquals("target block", routine.getInputs().get(0).getLabel());
+    }
 
     @Test
     void sidebarDropPrefersDeepestHoveredParameterHost() {

@@ -562,7 +562,7 @@ The redesign is complete only when all of the following are true:
 - [x] Pass 1: Variable scope foundation
 - [x] Pass 2: Variable scope UX
 - [x] Pass 3: Routine persistence
-- [ ] Pass 4: Definition workspace
+- [x] Pass 4: Definition workspace
 - [ ] Pass 5: Invocation nodes
 - [ ] Pass 6: Routine execution
 - [ ] Pass 7: Lifecycle and polish

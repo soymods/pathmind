@@ -29,6 +29,8 @@ import org.slf4j.LoggerFactory;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
+import com.pathmind.routines.RoutineInputDefinition;
+import com.pathmind.routines.RoutineValueKind;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.execution.PreciseCompletionTracker;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
@@ -340,6 +342,8 @@ public class Node {
     private boolean customNodeInstance;
     private NodeGraphData templateGraphData;
     private RuntimeValueScope runtimeValueScope;
+    private String routineId;
+    private String routineInputId;
 
     private boolean usesTemplateBacking() {
         return type == NodeType.TEMPLATE || type == NodeType.CUSTOM_NODE;
@@ -375,6 +379,8 @@ public class Node {
         this.customNodeInstance = type == NodeType.CUSTOM_NODE;
         this.templateGraphData = null;
         this.runtimeValueScope = RuntimeValueScope.GLOBAL;
+        this.routineId = "";
+        this.routineInputId = "";
         initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -566,6 +572,13 @@ public class Node {
     }
 
     public EnumSet<NodeValueTrait> getProvidedTraits() {
+        if (type == NodeType.ROUTINE_INPUT) {
+            NodeParameter valueKind = getParameter("ValueKind");
+            RoutineValueKind kind = RoutineValueKind.fromSerialized(valueKind == null ? null : valueKind.getStringValue());
+            return kind.getDefaultTraits().isEmpty()
+                ? EnumSet.of(NodeValueTrait.ANY)
+                : EnumSet.copyOf(kind.getDefaultTraits());
+        }
         if (type == NodeType.LIST_ITEM) {
             NodeType resolved = getResolvedValueType();
             if (resolved != NodeType.LIST_ITEM) {
@@ -680,7 +693,60 @@ public class Node {
     }
 
     public Text getDisplayName() {
+        if (type == NodeType.ROUTINE_ENTRY || type == NodeType.ROUTINE_CALL || type == NodeType.ROUTINE_INPUT) {
+            NodeParameter label = getParameter(type == NodeType.ROUTINE_ENTRY ? "Name" : "Label");
+            if (type == NodeType.ROUTINE_CALL) label = getParameter("Name");
+            if (label != null && !label.getStringValue().isBlank()) {
+                return Text.literal(label.getStringValue());
+            }
+        }
         return Text.literal(type.getDisplayName());
+    }
+
+    public boolean isProtectedRoutineEntry() {
+        return type == NodeType.ROUTINE_ENTRY;
+    }
+
+    public String getRoutineId() {
+        return routineId == null ? "" : routineId;
+    }
+
+    public String getRoutineInputId() {
+        return routineInputId == null ? "" : routineInputId;
+    }
+
+    public void setRoutineIdentity(String routineId, String inputId) {
+        this.routineId = routineId == null ? "" : routineId;
+        this.routineInputId = inputId == null ? "" : inputId;
+    }
+
+    public static Node createRoutineEntry(String routineId, String label, int x, int y) {
+        Node node = new Node(NodeType.ROUTINE_ENTRY, x, y);
+        node.setRoutineIdentity(routineId, "");
+        node.getParameter("Name").setStringValue(label == null ? "Routine" : label);
+        node.recalculateDimensions();
+        return node;
+    }
+
+    public static Node createRoutineInput(String routineId, RoutineInputDefinition input, int x, int y) {
+        Node node = new Node(NodeType.ROUTINE_INPUT, x, y);
+        node.setRoutineIdentity(routineId, input == null ? "" : input.getId());
+        if (input != null) {
+            node.getParameter("Label").setStringValue(input.getLabel());
+            node.getParameter("ValueKind").setStringValue(input.getValueKind().name());
+            node.getParameter("Default").setStringValue(input.getDefaultValue());
+            node.getParameter("Required").setStringValue(Boolean.toString(input.isRequired()));
+        }
+        node.recalculateDimensions();
+        return node;
+    }
+
+    public static Node createRoutineCall(String routineId, String name, int x, int y) {
+        Node node = new Node(NodeType.ROUTINE_CALL, x, y);
+        node.setRoutineIdentity(routineId, "");
+        node.getParameter("Name").setStringValue(name == null || name.isBlank() ? "Routine" : name.trim());
+        node.recalculateDimensions();
+        return node;
     }
 
     public boolean isSensorNode() {
@@ -1024,7 +1090,7 @@ public class Node {
     }
 
     public int getInputSocketCount() {
-        if (type == NodeType.START || type == NodeType.EVENT_FUNCTION || isSensorNode() || isParameterNode() || isStickyNote()) {
+        if (type == NodeType.START || type == NodeType.EVENT_FUNCTION || type == NodeType.ROUTINE_ENTRY || isSensorNode() || isParameterNode() || isStickyNote()) {
             return 0;
         }
         if (type == NodeType.CONTROL_JOIN_ANY || type == NodeType.CONTROL_JOIN_ALL) {
@@ -1072,7 +1138,7 @@ public class Node {
             socketIndex,
             isInput ? getInputSocketCount() : getOutputSocketCount(),
             12,
-            type == NodeType.START || type == NodeType.EVENT_FUNCTION,
+            type == NodeType.START || type == NodeType.EVENT_FUNCTION || type == NodeType.ROUTINE_ENTRY,
             usesMinimalNodePresentation(),
             14,
             6);
@@ -2515,8 +2581,9 @@ public class Node {
      * Get a specific parameter by name
      */
     public NodeParameter getParameter(String name) {
+        String normalizedId = NodeParameter.createDefaultId(name);
         for (NodeParameter param : parameters) {
-            if (param.getName().equals(name)) {
+            if (param.getName().equals(name) || param.getId().equals(normalizedId)) {
                 return param;
             }
         }

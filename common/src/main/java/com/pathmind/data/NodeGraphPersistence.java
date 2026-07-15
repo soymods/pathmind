@@ -52,9 +52,19 @@ public class NodeGraphPersistence {
     }
 
     public static boolean saveNodeGraphForPreset(String presetName, List<Node> nodes, List<NodeConnection> connections) {
+        return saveNodeGraphForPreset(presetName, nodes, connections, null);
+    }
+
+    /** Saves a graph with the editor's current preset-scoped routine registry. */
+    public static boolean saveNodeGraphForPreset(String presetName, List<Node> nodes, List<NodeConnection> connections,
+                                                  List<NodeGraphData.RoutineDefinitionData> routines) {
         Path savePath = PresetManager.getPresetPath(presetName);
         NodeGraphData existingData = loadNodeGraphFromPath(savePath);
         NodeGraphData data = buildNodeGraphData(presetName, nodes, connections, existingData);
+        if (routines != null) {
+            data.setRoutines(new ArrayList<>(routines));
+            sanitizeRoutineDefinitions(data);
+        }
         cachePresetGraph(presetName, data);
         return writeNodeGraphDataToPath(data, savePath);
     }
@@ -62,6 +72,12 @@ public class NodeGraphPersistence {
     public static boolean saveNodeGraphToPath(List<Node> nodes, List<NodeConnection> connections, Path savePath) {
         NodeGraphData data = buildNodeGraphData(null, nodes, connections, null);
         return writeNodeGraphDataToPath(data, savePath);
+    }
+
+    /** Creates an in-memory graph snapshot without reading or writing a preset. */
+    public static NodeGraphData createGraphData(List<Node> nodes, List<NodeConnection> connections) {
+        return buildNodeGraphData(null, nodes == null ? List.of() : nodes,
+            connections == null ? List.of() : connections, null);
     }
 
     public static boolean saveNodeGraphDataForPreset(String presetName, NodeGraphData data) {
@@ -295,6 +311,7 @@ public class NodeGraphPersistence {
             }
 
             restoreParameters(node, nodeData.getParameters());
+            node.setRoutineIdentity(nodeData.getRoutineId(), nodeData.getRoutineInputId());
             if (node.supportsRuntimeValueScope()) {
                 node.setRuntimeValueScope(nodeData.getRuntimeValueScope());
             }
@@ -912,6 +929,8 @@ public class NodeGraphPersistence {
             nodeData.setStartLaunchMode(node.getStartLaunchMode());
             nodeData.setStartScreenTarget(node.getStartScreenTarget());
             nodeData.setRuntimeValueScope(node.supportsRuntimeValueScope() ? node.getRuntimeValueScope() : null);
+            nodeData.setRoutineId(node.getRoutineId().isBlank() ? null : node.getRoutineId());
+            nodeData.setRoutineInputId(node.getRoutineInputId().isBlank() ? null : node.getRoutineInputId());
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
                 nodeData.setMessageClientSide(node.hasMessageScopeToggle() ? node.isMessageClientSide() : null);

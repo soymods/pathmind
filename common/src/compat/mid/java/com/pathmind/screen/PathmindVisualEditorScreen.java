@@ -111,6 +111,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final String[] PRESET_GROUP_COLOR_KEYS = {"sky", "mint", "amber", "rose", "violet"};
     private static final int[] PRESET_GROUP_COLORS = {0xFF38BDF8, 0xFF34D399, 0xFFF59E0B, 0xFFFB7185, 0xFFA78BFA};
     private static final String PRESET_GROUP_TAB_PREFIX = "__pathmind_preset_group__:";
+    private static final String ROUTINE_WORKSPACE_PREFIX = "__pathmind_routine__:";
     private static final int PRESET_GROUP_TAB_WIDTH = 10;
     private static final boolean IS_MAC_OS = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT)
@@ -595,10 +596,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Workspace utilities should sit beneath the sidebar when it expands
         renderWorkspaceButtons(context, mouseX, mouseY);
+        renderRoutineWorkspaceBanner(context, mouseX, mouseY);
 
         // Always render sidebar after node graph/buttons so expanded categories sit on top
         boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
         boolean allowSidebarTooltips = showWorkspaceTooltips && !nodeGraph.isAnyNodeBeingDragged();
+        refreshRoutineSidebarContext();
         sidebar.render(
             context,
             this.textRenderer,
@@ -844,7 +847,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
     
     private boolean shouldShowExecutionControls() {
-        return true;
+        return getActiveRoutineWorkspace() == null;
     }
 
     private boolean handleNodeDoubleClickExecution(Node clickedNode) {
@@ -1139,7 +1142,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private void renderNodeGraph(DrawContext context, int mouseX, int mouseY, float delta, boolean onlyDragged) {
         if (!onlyDragged) {
             // Node graph background
-            context.fill(Sidebar.getCollapsedWidth(), TITLE_BAR_HEIGHT, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
+            int workspaceBackground = getActiveRoutineWorkspace() == null
+                ? UITheme.BACKGROUND_PRIMARY
+                : AnimationHelper.lerpColor(UITheme.BACKGROUND_PRIMARY, NodeCategory.ROUTINES.getColor(), 0.10f);
+            context.fill(Sidebar.getCollapsedWidth(), TITLE_BAR_HEIGHT, this.width, this.height, workspaceBackground);
             
             // Render grid pattern for better visual organization
             if (showGrid) {
@@ -1449,9 +1455,33 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (button == 0 && isRoutineReturnButtonClicked((int) mouseX, (int) mouseY)) {
+            switchToWorkspaceTab(0);
+            return true;
+        }
+
         // Check if clicking in sidebar to add nodes
         if (mouseX < sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
             if (sidebar.mouseClicked(mouseX, mouseY, button)) {
+                int routineInputAction = sidebar.consumeRoutineInputAction();
+                String routineInputActionId = sidebar.consumeRoutineInputActionId();
+                if (routineInputAction != 0 && routineInputActionId != null) {
+                    editActiveRoutineInput(routineInputActionId, routineInputAction);
+                    return true;
+                }
+                if (sidebar.consumeCreateRoutineRequested()) {
+                    createRoutineFromSidebar();
+                    return true;
+                }
+                if (sidebar.consumeAddRoutineInputRequested()) {
+                    addInputToActiveRoutine();
+                    return true;
+                }
+                String requestedRoutineId = sidebar.consumeOpenRoutineRequested();
+                if (requestedRoutineId != null) {
+                    openRoutineWorkspaceTab(requestedRoutineId);
+                    return true;
+                }
                 // Check if we should start dragging a node from sidebar
                 if (sidebar.isHoveringNode()) {
                     NodeType hoveredType = sidebar.getHoveredNodeType();
@@ -2037,6 +2067,10 @@ public class PathmindVisualEditorScreen extends Screen {
                     if (newNode != null) {
                         nodeGraph.selectNode(newNode);
                     }
+                } else if (draggingSidebarNode != null
+                    && draggingSidebarNode.getType() == NodeType.ROUTINE_CALL
+                    && !draggingSidebarNode.getRoutineId().isBlank()) {
+                    openRoutineWorkspaceTab(draggingSidebarNode.getRoutineId());
                 }
                 // Reset drag state
                 isDraggingFromSidebar = false;
@@ -3892,6 +3926,124 @@ public class PathmindVisualEditorScreen extends Screen {
         switchToWorkspaceTab(workspaceTabs.size() - 1);
     }
 
+    private void refreshRoutineSidebarContext() {
+        if (workspaceTabs.isEmpty() || workspaceTabs.get(0).graphData == null) {
+            sidebar.setRoutineContext(List.of(), "");
+            return;
+        }
+        String activeId = "";
+        WorkspaceTab active = workspaceTabs.get(activeWorkspaceTabIndex);
+        if (active.hostTemplateNodeId != null && active.hostTemplateNodeId.startsWith(ROUTINE_WORKSPACE_PREFIX)) {
+            activeId = active.hostTemplateNodeId.substring(ROUTINE_WORKSPACE_PREFIX.length());
+        }
+        if (!activeId.isBlank() && (nodeGraph.isEditingParameterField() || nodeGraph.isEditingEventNameField())) {
+            String routineId = activeId;
+            workspaceTabs.get(0).graphData.getRoutines().stream()
+                .filter(routine -> routineId.equals(routine.getId())).findFirst()
+                .ifPresent(nodeGraph::syncRoutineDefinitionMetadata);
+        }
+        sidebar.setRoutineContext(workspaceTabs.get(0).graphData.getRoutines(), activeId);
+    }
+
+    private NodeGraphData.RoutineDefinitionData getActiveRoutineWorkspace() {
+        if (workspaceTabs.isEmpty() || activeWorkspaceTabIndex < 0 || activeWorkspaceTabIndex >= workspaceTabs.size()) return null;
+        WorkspaceTab active = workspaceTabs.get(activeWorkspaceTabIndex);
+        if (active.hostTemplateNodeId == null || !active.hostTemplateNodeId.startsWith(ROUTINE_WORKSPACE_PREFIX)) return null;
+        String routineId = active.hostTemplateNodeId.substring(ROUTINE_WORKSPACE_PREFIX.length());
+        return workspaceTabs.get(0).graphData.getRoutines().stream()
+            .filter(routine -> routineId.equals(routine.getId())).findFirst().orElse(null);
+    }
+
+    private void renderRoutineWorkspaceBanner(DrawContext context, int mouseX, int mouseY) {
+        if (getActiveRoutineWorkspace() == null || isPopupObscuringWorkspace()) return;
+        int x = getPlayButtonX();
+        int y = getPlayButtonY();
+        boolean hovered = isPointInRect(mouseX, mouseY, x, y, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
+        UIStyleHelper.drawBeveledPanel(context, x, y, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE,
+            hovered ? NodeCategory.ROUTINES.getColor() : UITheme.BACKGROUND_SECONDARY,
+            NodeCategory.ROUTINES.getColor(), UITheme.PANEL_INNER_BORDER);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("×"),
+            x + PLAY_BUTTON_SIZE / 2, y + (PLAY_BUTTON_SIZE - this.textRenderer.fontHeight) / 2 + 1, 0xFFFFFFFF);
+    }
+
+    private boolean isRoutineReturnButtonClicked(int mouseX, int mouseY) {
+        if (getActiveRoutineWorkspace() == null) return false;
+        return isPointInRect(mouseX, mouseY, getPlayButtonX(), getPlayButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
+    }
+
+    private void createRoutineFromSidebar() {
+        persistActiveWorkspaceToTabs();
+        WorkspaceTab root = workspaceTabs.get(0);
+        int suffix = root.graphData.getRoutines().size() + 1;
+        String name = suffix == 1 ? "Routine" : "Routine " + suffix;
+        NodeGraphData.RoutineDefinitionData routine = com.pathmind.routines.RoutineBuilderModel.createRoutine(name);
+        root.graphData.getRoutines().add(routine);
+        if (activeWorkspaceTabIndex == 0) {
+            // Keep NodeGraph's in-memory registry aligned before openRoutineWorkspaceTab
+            // persists the main tab again.
+            nodeGraph.applyGraphDataSnapshot(root.graphData, false);
+        }
+        openRoutineWorkspaceTab(routine.getId());
+    }
+
+    private void addInputToActiveRoutine() {
+        if (workspaceTabs.isEmpty()) return;
+        WorkspaceTab active = workspaceTabs.get(activeWorkspaceTabIndex);
+        if (active.hostTemplateNodeId == null || !active.hostTemplateNodeId.startsWith(ROUTINE_WORKSPACE_PREFIX)) return;
+        persistActiveWorkspaceToTabs();
+        String routineId = active.hostTemplateNodeId.substring(ROUTINE_WORKSPACE_PREFIX.length());
+        NodeGraphData.RoutineDefinitionData routine = workspaceTabs.get(0).graphData.getRoutines().stream()
+            .filter(candidate -> routineId.equals(candidate.getId())).findFirst().orElse(null);
+        if (routine == null) return;
+        com.pathmind.routines.RoutineBuilderModel builder = new com.pathmind.routines.RoutineBuilderModel(routine);
+        int number = routine.getInputs().size() + 1;
+        NodeGraphData.RoutineInputData input = builder.addInput(number == 1 ? "input" : "input " + number, com.pathmind.routines.RoutineValueKind.TEXT);
+        Node reporter = builder.createInputReporter(input.getId(), 420, 140 + (number - 1) * 80);
+        if (reporter != null) nodeGraph.addNode(reporter);
+        active.graphData = routine.getGraph();
+        nodeGraph.markWorkspaceDirty();
+    }
+
+    private void editActiveRoutineInput(String inputId, int action) {
+        if (workspaceTabs.isEmpty()) return;
+        WorkspaceTab active = workspaceTabs.get(activeWorkspaceTabIndex);
+        if (active.hostTemplateNodeId == null || !active.hostTemplateNodeId.startsWith(ROUTINE_WORKSPACE_PREFIX)) return;
+        persistActiveWorkspaceToTabs();
+        String routineId = active.hostTemplateNodeId.substring(ROUTINE_WORKSPACE_PREFIX.length());
+        NodeGraphData.RoutineDefinitionData routine = workspaceTabs.get(0).graphData.getRoutines().stream()
+            .filter(candidate -> routineId.equals(candidate.getId())).findFirst().orElse(null);
+        if (routine == null) return;
+        com.pathmind.routines.RoutineBuilderModel builder = new com.pathmind.routines.RoutineBuilderModel(routine);
+        if (action == 2) {
+            builder.removeInput(inputId);
+            for (Node node : new ArrayList<>(nodeGraph.getNodes())) {
+                if (node.getType() == NodeType.ROUTINE_INPUT && inputId.equals(node.getRoutineInputId())) nodeGraph.removeNode(node);
+            }
+        } else {
+            builder.moveInput(inputId, action);
+        }
+        nodeGraph.markWorkspaceDirty();
+    }
+
+    private void openRoutineWorkspaceTab(String routineId) {
+        if (routineId == null || workspaceTabs.isEmpty()) return;
+        persistActiveWorkspaceToTabs();
+        WorkspaceTab root = workspaceTabs.get(0);
+        NodeGraphData.RoutineDefinitionData routine = root.graphData.getRoutines().stream()
+            .filter(candidate -> routineId.equals(candidate.getId())).findFirst().orElse(null);
+        if (routine == null) return;
+        new com.pathmind.routines.RoutineBuilderModel(routine).ensureDefinitionGraph();
+        String hostId = ROUTINE_WORKSPACE_PREFIX + routineId;
+        for (int i = 0; i < workspaceTabs.size(); i++) {
+            if (hostId.equals(workspaceTabs.get(i).hostTemplateNodeId)) {
+                switchToWorkspaceTab(i);
+                return;
+            }
+        }
+        workspaceTabs.add(new WorkspaceTab(routine.getName(), routine.getGraph(), 0, hostId));
+        switchToWorkspaceTab(workspaceTabs.size() - 1);
+    }
+
     private void switchToWorkspaceTab(int targetIndex) {
         if (targetIndex < 0 || targetIndex >= workspaceTabs.size() || targetIndex == activeWorkspaceTabIndex) {
             return;
@@ -3903,6 +4055,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (target == null) {
             return;
         }
+        String routineWorkspaceId = target.hostTemplateNodeId != null && target.hostTemplateNodeId.startsWith(ROUTINE_WORKSPACE_PREFIX)
+            ? target.hostTemplateNodeId.substring(ROUTINE_WORKSPACE_PREFIX.length()) : "";
+        nodeGraph.setActiveRoutineWorkspaceId(routineWorkspaceId);
         NodeGraphData data = target.graphData != null ? target.graphData : createDefaultTemplateGraphData();
         nodeGraph.applyGraphDataSnapshot(data, false);
         activeWorkspaceTabIndex = targetIndex;
@@ -3916,6 +4071,39 @@ public class PathmindVisualEditorScreen extends Screen {
         tab.graphData = nodeGraph.exportGraphDataSnapshot();
         if (tab.parentTabIndex != null && tab.parentTabIndex >= 0 && tab.parentTabIndex < workspaceTabs.size()) {
             WorkspaceTab parent = workspaceTabs.get(tab.parentTabIndex);
+            if (tab.hostTemplateNodeId != null && tab.hostTemplateNodeId.startsWith(ROUTINE_WORKSPACE_PREFIX)) {
+                String routineId = tab.hostTemplateNodeId.substring(ROUTINE_WORKSPACE_PREFIX.length());
+                for (NodeGraphData.RoutineDefinitionData routine : parent.graphData.getRoutines()) {
+                    if (routineId.equals(routine.getId())) {
+                        for (NodeGraphData.NodeData nodeData : tab.graphData.getNodes()) {
+                            if (nodeData != null && nodeData.getType() == NodeType.ROUTINE_ENTRY) {
+                                for (NodeGraphData.ParameterData parameter : nodeData.getParameters()) {
+                                    if (parameter != null && "Name".equals(parameter.getName()) && parameter.getValue() != null && !parameter.getValue().isBlank()) {
+                                        routine.setName(parameter.getValue().trim());
+                                    }
+                                }
+                            }
+                            if (nodeData != null && nodeData.getType() == NodeType.ROUTINE_INPUT
+                                && routineId.equals(nodeData.getRoutineId())) {
+                                NodeGraphData.RoutineInputData input = routine.getInputs().stream()
+                                    .filter(candidate -> candidate.getId().equals(nodeData.getRoutineInputId())).findFirst().orElse(null);
+                                if (input != null) {
+                                    for (NodeGraphData.ParameterData parameter : nodeData.getParameters()) {
+                                        if (parameter == null || parameter.getValue() == null) continue;
+                                        if ("Label".equals(parameter.getName()) && !parameter.getValue().isBlank()) input.setLabel(parameter.getValue().trim());
+                                        if ("valuekind".equals(parameter.getId())) input.setValueKind(com.pathmind.routines.RoutineValueKind.fromSerialized(parameter.getValue()).name());
+                                        if ("Default".equals(parameter.getName())) input.setDefaultValue(parameter.getValue());
+                                        if ("Required".equals(parameter.getName())) input.setRequired(Boolean.parseBoolean(parameter.getValue()));
+                                    }
+                                }
+                            }
+                        }
+                        routine.setGraph(tab.graphData);
+                        tab.label = routine.getName();
+                        return;
+                    }
+                }
+            }
             if (parent != null && parent.graphData != null && parent.graphData.getNodes() != null) {
                 for (NodeGraphData.NodeData nodeData : parent.graphData.getNodes()) {
                     if (nodeData != null && tab.hostTemplateNodeId != null && tab.hostTemplateNodeId.equals(nodeData.getId())) {
@@ -3967,6 +4155,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (root == null || root.graphData == null) {
             return;
         }
+        nodeGraph.setActiveRoutineWorkspaceId("");
         nodeGraph.applyGraphDataSnapshot(root.graphData, false);
         activeWorkspaceTabIndex = 0;
     }
@@ -5115,6 +5304,9 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getValidationButtonY() {
+        if (getActiveRoutineWorkspace() != null) {
+            return getPlayButtonY() + PLAY_BUTTON_SIZE + CONTROL_BUTTON_GAP;
+        }
         if (shouldShowExecutionControls()) {
             return getPlayButtonY() + PLAY_BUTTON_SIZE + CONTROL_BUTTON_GAP;
         }
@@ -5856,6 +6048,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void switchPreset(String presetName) {
         stopInlinePresetRename(false);
+        nodeGraph.stopEventNameEditing(true);
+        nodeGraph.stopParameterEditing(true);
+        persistActiveWorkspaceToTabs();
+        syncAllTemplateTabsIntoParents();
+        restoreRootWorkspaceIfNeeded();
         nodeGraph.save();
         PresetManager.setActivePreset(presetName);
         refreshAvailablePresets();

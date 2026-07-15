@@ -114,6 +114,7 @@ final class NodeGraphClipboardSupport {
                     newNode.getParameters().add(new NodeParameter("Preset", ParameterType.STRING, ""));
                 }
             }
+            newNode.setRoutineIdentity(nodeData.getRoutineId(), nodeData.getRoutineInputId());
             newNode.ensureVillagerTradeNumberParameter();
             if (newNode.supportsRuntimeValueScope()) {
                 newNode.setRuntimeValueScope(nodeData.getRuntimeValueScope());
@@ -246,6 +247,8 @@ final class NodeGraphClipboardSupport {
             nodeData.setStartLaunchMode(node.getStartLaunchMode());
             nodeData.setStartScreenTarget(node.getStartScreenTarget());
             nodeData.setRuntimeValueScope(node.supportsRuntimeValueScope() ? node.getRuntimeValueScope() : null);
+            nodeData.setRoutineId(node.getRoutineId().isBlank() ? null : node.getRoutineId());
+            nodeData.setRoutineInputId(node.getRoutineInputId().isBlank() ? null : node.getRoutineInputId());
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
                 nodeData.setMessageClientSide(node.isMessageClientSide());

@@ -232,7 +232,7 @@ final class NodeDimensionCalculator {
             contentHeight = applyInlineParameterHeight(node, contentHeight, hasSlots);
         } else if (node.shouldRenderInlineParameters()) {
             contentHeight = applyRenderedInlineParameterHeight(node, contentHeight, hasSlots);
-        } else if (type == NodeType.EVENT_FUNCTION || type == NodeType.EVENT_CALL) {
+        } else if (type == NodeType.EVENT_FUNCTION || type == NodeType.EVENT_CALL || type == NodeType.ROUTINE_ENTRY) {
             contentHeight += Node.EVENT_NAME_FIELD_TOP_MARGIN + Node.EVENT_NAME_FIELD_HEIGHT + Node.EVENT_NAME_FIELD_BOTTOM_MARGIN;
         } else if (node.hasParameterSlot()) {
             contentHeight = applyParameterSlotHeight(node, contentHeight, hasSlots);
@@ -296,7 +296,7 @@ final class NodeDimensionCalculator {
 
         int minHeight = node.usesMinimalNodePresentation() ? 32 : Node.MIN_HEIGHT;
         int computedHeight = Math.max(minHeight, contentHeight);
-        if (type == NodeType.EVENT_FUNCTION || type == NodeType.VARIABLE) {
+        if (type == NodeType.EVENT_FUNCTION || type == NodeType.ROUTINE_ENTRY || type == NodeType.VARIABLE) {
             return Math.max(Node.EVENT_FUNCTION_MIN_HEIGHT, contentHeight);
         }
         return computedHeight;

@@ -230,6 +230,8 @@ public class NodeGraph {
     private int visibleRootsViewportHeight = Integer.MIN_VALUE;
 
     private String activePreset;
+    private List<NodeGraphData.RoutineDefinitionData> routineRegistry = new ArrayList<>();
+    private String activeRoutineWorkspaceId = "";
     private final Set<Node> cascadeDeletionPreviewNodes;
 
     private static final long COORDINATE_CARET_BLINK_INTERVAL_MS = 500;
@@ -738,6 +740,10 @@ public class NodeGraph {
 
 
     public void addNode(Node node) {
+        if (node != null && node.getType() == NodeType.ROUTINE_INPUT
+            && (!activeRoutineWorkspaceId.equals(node.getRoutineId()) || activeRoutineWorkspaceId.isBlank())) {
+            return;
+        }
         if (node != null && node.getType() == NodeType.START && node.getStartNodeNumber() <= 0) {
             assignNewStartNodeNumber(node);
         }
@@ -746,7 +752,7 @@ public class NodeGraph {
     }
 
     public void removeNode(Node node) {
-        if (node == null) {
+        if (node == null || node.isProtectedRoutineEntry()) {
             return;
         }
         pushUndoState();
@@ -1442,7 +1448,10 @@ public class NodeGraph {
         if (selectedNodes.isEmpty()) {
             return false;
         }
-        List<Node> targets = new ArrayList<>(selectedNodes);
+        List<Node> targets = selectedNodes.stream().filter(node -> !node.isProtectedRoutineEntry()).toList();
+        if (targets.isEmpty()) {
+            return false;
+        }
         pushUndoState();
         for (Node node : targets) {
             removeNodeCascade(node, false);
@@ -2022,6 +2031,10 @@ public class NodeGraph {
         resetDropTargets();
         insertionPreviewConnection = null;
         if (newNode == null) {
+            return null;
+        }
+        if (newNode.getType() == NodeType.ROUTINE_INPUT
+            && (activeRoutineWorkspaceId.isBlank() || !activeRoutineWorkspaceId.equals(newNode.getRoutineId()))) {
             return null;
         }
         positionNewNode(newNode, worldMouseX, worldMouseY);
@@ -3053,6 +3066,9 @@ public class NodeGraph {
     }
 
     private void removeNodeCascade(Node node, boolean captureUndo) {
+        if (node == null || node.isProtectedRoutineEntry()) {
+            return;
+        }
         if (node == null) {
             return;
         }
@@ -3627,7 +3643,7 @@ public class NodeGraph {
             borderColor = UITheme.BORDER_SUBTLE;
         } else if (node.getType() == NodeType.START) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_START_BORDER, 0.75f) : UITheme.NODE_START_BORDER; // Darker green for START
-        } else if (node.getType() == NodeType.EVENT_FUNCTION) {
+        } else if (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_BORDER, 0.75f) : UITheme.NODE_EVENT_BORDER; // Darker pink for event functions
         } else if (node.getType() == NodeType.EVENT_CALL) {
             borderColor = isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_CALL_BG, 0.75f) : UITheme.NODE_EVENT_CALL_BG;
@@ -3683,6 +3699,7 @@ public class NodeGraph {
             }
         } else if (node.getType() != NodeType.START
             && node.getType() != NodeType.EVENT_FUNCTION
+            && node.getType() != NodeType.ROUTINE_ENTRY
             && node.getType() != NodeType.VARIABLE
             && node.getType() != NodeType.TEMPLATE
             && node.getType() != NodeType.CUSTOM_NODE
@@ -3787,7 +3804,7 @@ public class NodeGraph {
             renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
             renderStartModeButton(context, node, x, y, isOverSidebar, mouseX, mouseY);
             
-        } else if (node.getType() == NodeType.EVENT_FUNCTION) {
+        } else if (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY) {
             int baseColor = lowDetail
                 ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
                 : (isOverSidebar ? toGrayscale(UITheme.NODE_EVENT_BG, 0.7f) : UITheme.NODE_EVENT_BG);
@@ -9849,7 +9866,7 @@ public class NodeGraph {
     }
 
     public void startEventNameEditing(Node node) {
-        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL)) {
+        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL && node.getType() != NodeType.ROUTINE_ENTRY)) {
             stopEventNameEditing(false);
             return;
         }
@@ -13715,7 +13732,7 @@ public class NodeGraph {
     }
 
     public boolean isPointInsideEventNameField(Node node, int screenX, int screenY) {
-        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL)) {
+        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL && node.getType() != NodeType.ROUTINE_ENTRY)) {
             return false;
         }
 
@@ -15554,7 +15571,7 @@ public class NodeGraph {
     public boolean save() {
         deferredStickyNoteSaveAtMillis = 0L;
         commitStickyNoteEditBuffer(false);
-        boolean saved = NodeGraphPersistence.saveNodeGraphForPreset(activePreset, nodes, connections);
+        boolean saved = NodeGraphPersistence.saveNodeGraphForPreset(activePreset, nodes, connections, routineRegistry);
         if (saved) {
             workspaceDirty = false;
             invalidateTemplatePreviewCachesForPreset(activePreset);
@@ -15741,6 +15758,7 @@ public class NodeGraph {
     }
 
     private boolean applyLoadedData(NodeGraphData data) {
+        routineRegistry = new ArrayList<>(data.getRoutines());
         nodes.clear();
         connections.clear();
         invalidateRenderCaches();
@@ -15773,6 +15791,7 @@ public class NodeGraph {
             }
 
             NodeGraphPersistence.restoreParameters(node, nodeData.getParameters());
+            node.setRoutineIdentity(nodeData.getRoutineId(), nodeData.getRoutineInputId());
             if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -15965,7 +15984,9 @@ public class NodeGraph {
     }
 
     public NodeGraphData exportGraphDataSnapshot() {
-        return buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
+        NodeGraphData snapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
+        snapshot.setRoutines(new ArrayList<>(routineRegistry));
+        return snapshot;
     }
 
     public boolean applyGraphDataSnapshot(NodeGraphData data, boolean markDirty) {
@@ -16000,5 +16021,52 @@ public class NodeGraph {
 
     public String getActivePreset() {
         return activePreset;
+    }
+
+    public void setActiveRoutineWorkspaceId(String routineId) {
+        activeRoutineWorkspaceId = routineId == null ? "" : routineId;
+    }
+
+    public String getActiveRoutineWorkspaceId() {
+        return activeRoutineWorkspaceId;
+    }
+
+    /** Mirrors live routine card edits into sidebar metadata, including the current uncommitted text buffer. */
+    public void syncRoutineDefinitionMetadata(NodeGraphData.RoutineDefinitionData routine) {
+        if (routine == null || routine.getId() == null || !routine.getId().equals(activeRoutineWorkspaceId)) {
+            return;
+        }
+        for (Node node : nodes) {
+            if (node == null || !routine.getId().equals(node.getRoutineId())) continue;
+            if (node.getType() == NodeType.ROUTINE_ENTRY) {
+                String name = liveRoutineParameterValue(node, "Name");
+                if (!name.isBlank()) routine.setName(name.trim());
+                continue;
+            }
+            if (node.getType() != NodeType.ROUTINE_INPUT || node.getRoutineInputId().isBlank()) continue;
+            NodeGraphData.RoutineInputData input = routine.getInputs().stream()
+                .filter(candidate -> node.getRoutineInputId().equals(candidate.getId())).findFirst().orElse(null);
+            if (input == null) continue;
+            String label = liveRoutineParameterValue(node, "Label");
+            if (!label.isBlank()) input.setLabel(label.trim());
+            input.setValueKind(com.pathmind.routines.RoutineValueKind.fromSerialized(
+                liveRoutineParameterValue(node, "ValueKind")).name());
+            input.setDefaultValue(liveRoutineParameterValue(node, "Default"));
+            input.setRequired(Boolean.parseBoolean(liveRoutineParameterValue(node, "Required")));
+        }
+    }
+
+    private String liveRoutineParameterValue(Node node, String parameterName) {
+        NodeParameter parameter = node.getParameter(parameterName);
+        String value = parameter == null ? "" : parameter.getStringValue();
+        if (parameterEditingNode == node && parameterEditingIndex >= 0
+            && parameterEditingIndex < node.getParameters().size()
+            && node.getParameters().get(parameterEditingIndex) == parameter) {
+            value = parameterEditBuffer;
+        }
+        if (eventNameEditingNode == node && "Name".equals(parameterName)) {
+            value = eventNameEditBuffer;
+        }
+        return value == null ? "" : value;
     }
 }

@@ -39,6 +39,8 @@ public final class NodeCatalog {
             NodeType.START_CHAIN,
             NodeType.EVENT_FUNCTION,
             NodeType.EVENT_CALL,
+            NodeType.ROUTINE_ENTRY,
+            NodeType.ROUTINE_CALL,
             NodeType.RUN_PRESET,
             NodeType.WAIT,
             NodeType.TEMPLATE,
@@ -168,6 +170,7 @@ public final class NodeCatalog {
             NodeType.OPERATOR_MOD,
             NodeType.OPERATOR_RANDOM);
 
+        define(NodeCategory.ROUTINES, NodeType.ROUTINE_INPUT, NodeType.ROUTINE_CALL);
         define(NodeCategory.CUSTOM, NodeType.CUSTOM_NODE);
 
         define(NodeCategory.PARAMETERS,
@@ -295,6 +298,9 @@ public final class NodeCatalog {
             NodeType.LIST_LENGTH);
 
         tag(NodeFlag.HIDDEN_FROM_SIDEBAR,
+            NodeType.ROUTINE_ENTRY,
+            NodeType.ROUTINE_INPUT,
+            NodeType.ROUTINE_CALL,
             NodeType.STOP,
             NodeType.PLACE_HAND,
             NodeType.RUN_PRESET,
@@ -459,6 +465,9 @@ public final class NodeCatalog {
             NodeType.PARAM_INVENTORY_SLOT,
             NodeType.PARAM_KEY,
             NodeType.PARAM_VILLAGER_TRADE);
+
+        tag(NodeFlag.PARAMETER_NODE, NodeType.ROUTINE_INPUT);
+        tag(NodeFlag.RENDER_INLINE_PARAMETERS, NodeType.ROUTINE_INPUT);
 
         sidebar(NodeCategory.FLOW, "pathmind.sidebar.group.entryPoints",
             NodeType.START,
@@ -719,6 +728,7 @@ public final class NodeCatalog {
             NodeValueTrait.SCHEMATIC);
         provided(NodeType.LIST_LENGTH, NodeValueTrait.NUMBER);
         provided(NodeType.VARIABLE, NodeValueTrait.VARIABLE, NodeValueTrait.ANY);
+        provided(NodeType.ROUTINE_INPUT, NodeValueTrait.ANY);
 
         parameterHost(NodeType.WALK,
             slot("Direction", true,
@@ -1005,6 +1015,14 @@ public final class NodeCatalog {
         typeParameters(NodeType.CONTROL_REPEAT, of("Count", ParameterType.INTEGER, "10"));
         typeParameters(NodeType.EVENT_FUNCTION, of("Name", ParameterType.STRING, "function"));
         typeParameters(NodeType.EVENT_CALL, of("Name", ParameterType.STRING, "function"));
+        typeParameters(NodeType.ROUTINE_ENTRY,
+            of("Name", ParameterType.STRING, "Routine"));
+        typeParameters(NodeType.ROUTINE_CALL, of("Name", ParameterType.STRING, "Routine"));
+        typeParameters(NodeType.ROUTINE_INPUT,
+            of("Label", ParameterType.STRING, "Input"),
+            of("ValueKind", "Type", ParameterType.STRING, "ANY"),
+            of("Default", ParameterType.STRING, ""),
+            of("Required", ParameterType.BOOLEAN, "false"));
         typeParameters(NodeType.VARIABLE, of("Variable", ParameterType.STRING, "variable"));
         typeParameters(NodeType.CREATE_LIST,
             of("List", ParameterType.STRING, "list"),
@@ -1441,6 +1459,9 @@ public final class NodeCatalog {
             case START_CHAIN -> "pathmind.node.type.startChain";
             case EVENT_FUNCTION -> "pathmind.node.type.eventFunction";
             case EVENT_CALL -> "pathmind.node.type.eventCall";
+            case ROUTINE_ENTRY -> "pathmind.node.type.routineEntry";
+            case ROUTINE_CALL -> "pathmind.node.type.routineCall";
+            case ROUTINE_INPUT -> "pathmind.node.type.routineInput";
             case VARIABLE -> "pathmind.node.type.variable";
             case SET_VARIABLE -> "pathmind.node.type.setVariable";
             case CHANGE_VARIABLE -> "pathmind.node.type.changeVariable";
@@ -1589,6 +1610,9 @@ public final class NodeCatalog {
             case START_CHAIN -> "pathmind.node.type.startChain.desc";
             case EVENT_FUNCTION -> "pathmind.node.type.eventFunction.desc";
             case EVENT_CALL -> "pathmind.node.type.eventCall.desc";
+            case ROUTINE_ENTRY -> "pathmind.node.type.routineEntry.desc";
+            case ROUTINE_CALL -> "pathmind.node.type.routineCall.desc";
+            case ROUTINE_INPUT -> "pathmind.node.type.routineInput.desc";
             case VARIABLE -> "pathmind.node.type.variable.desc";
             case SET_VARIABLE -> "pathmind.node.type.setVariable.desc";
             case CHANGE_VARIABLE -> "pathmind.node.type.changeVariable.desc";
@@ -1737,6 +1761,7 @@ public final class NodeCatalog {
             case START_CHAIN -> 0xFF4CAF50;
             case EVENT_FUNCTION -> 0xFFE91E63;
             case EVENT_CALL -> 0xFFE91E63;
+            case ROUTINE_ENTRY, ROUTINE_INPUT, ROUTINE_CALL -> 0xFFEC407A;
             case VARIABLE -> 0xFFFF9800;
             case SET_VARIABLE -> 0xFFFF9800;
             case CHANGE_VARIABLE -> 0xFFFF9800;

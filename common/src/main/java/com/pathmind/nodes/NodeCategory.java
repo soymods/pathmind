@@ -15,6 +15,7 @@ public enum NodeCategory {
     DATA("pathmind.node.category.data", 0xFFFF9800, "pathmind.node.category.data.desc", "Σ"),
     SENSORS("pathmind.node.category.sensors", 0xFF64B5F6, "pathmind.node.category.sensors.desc", "📡"),
     PARAMETERS("pathmind.node.category.parameters", 0xFF8BC34A, "pathmind.node.category.parameters.desc", "🧩"),
+    ROUTINES("pathmind.node.category.routines", 0xFFEC407A, "pathmind.node.category.routines.desc", "↻"),
     CUSTOM("pathmind.node.category.custom", 0xFF26A69A, "pathmind.node.category.custom.desc", "◈");
 
     private final String translationKey;

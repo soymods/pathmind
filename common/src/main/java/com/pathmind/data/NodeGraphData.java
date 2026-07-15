@@ -222,6 +222,8 @@ public class NodeGraphData {
         private StartScreenTarget startScreenTarget;
         private String runtimeSourceNodeId;
         private RuntimeValueScope runtimeValueScope;
+        private String routineId;
+        private String routineInputId;
         private List<String> messageLines;
         private Boolean messageClientSide;
         private String bookText;
@@ -344,6 +346,10 @@ public class NodeGraphData {
         public void setRuntimeValueScope(RuntimeValueScope runtimeValueScope) {
             this.runtimeValueScope = runtimeValueScope;
         }
+        public String getRoutineId() { return routineId; }
+        public void setRoutineId(String routineId) { this.routineId = routineId; }
+        public String getRoutineInputId() { return routineInputId; }
+        public void setRoutineInputId(String routineInputId) { this.routineInputId = routineInputId; }
 
         public String getRuntimeSourceNodeId() {
             return runtimeSourceNodeId;

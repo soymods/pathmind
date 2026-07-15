@@ -10,6 +10,8 @@ public enum NodeType {
     START_CHAIN,
     EVENT_FUNCTION,
     EVENT_CALL,
+    ROUTINE_ENTRY,
+    ROUTINE_CALL,
 
     // Variable nodes
     VARIABLE,
@@ -176,7 +178,8 @@ public enum NodeType {
     PARAM_BLOCK_FACE,
     PARAM_ROTATION,
     PARAM_PLACE_TARGET,
-    PARAM_CLOSEST;
+    PARAM_CLOSEST,
+    ROUTINE_INPUT;
 
 
     public String getDisplayName() {

@@ -709,5 +709,16 @@
   "pathmind.status.loadedPresets.other": "%s presets carregados.",
   "pathmind.runtimeScope.local.short": "Local",
   "pathmind.runtimeScope.global.short": "Global",
-  "pathmind.runtimeScope.overlay.title": "Valores de execução"
+  "pathmind.runtimeScope.overlay.title": "Valores de execução",
+  "pathmind.node.category.routines": "Routines",
+  "pathmind.node.category.routines.desc": "Create and edit reusable behavior",
+  "pathmind.node.type.routineEntry": "Routine",
+  "pathmind.node.type.routineEntry.desc": "The single starting point for this routine",
+  "pathmind.node.type.routineCall": "Run Routine",
+  "pathmind.node.type.routineCall.desc": "Runs this reusable routine",
+  "pathmind.node.type.routineInput": "Routine Input",
+  "pathmind.node.type.routineInput.desc": "A typed value supplied by this routine's caller",
+  "pathmind.routine.create": "Create Routine",
+  "pathmind.routine.editing": "Editing routine: %s",
+  "pathmind.routine.backToMain": "← Main"
 }

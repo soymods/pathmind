@@ -3124,7 +3124,9 @@ public class ExecutionManager {
                 for (Integer slotIndex : slotIndices) {
                     Node parameterNode = attachedParameters.get(slotIndex);
                     if (parameterNode != null) {
-                        attachmentData.add(new NodeGraphData.ParameterAttachmentData(slotIndex, parameterNode.getId()));
+                        NodeGraphData.ParameterAttachmentData attachment = new NodeGraphData.ParameterAttachmentData(slotIndex, parameterNode.getId());
+                        if (node.getType() == NodeType.ROUTINE_CALL) attachment.setRoutineInputId(node.getRoutineInputIdForSlot(slotIndex));
+                        attachmentData.add(attachment);
                     }
                 }
             }
@@ -3142,6 +3144,9 @@ public class ExecutionManager {
                 nodeData.setStartNodeNumber(node.getStartNodeNumber());
             }
             nodeData.setRuntimeValueScope(node.supportsRuntimeValueScope() ? node.getRuntimeValueScope() : null);
+            nodeData.setRoutineId(node.getRoutineId().isBlank() ? null : node.getRoutineId());
+            nodeData.setRoutineInputId(node.getRoutineInputId().isBlank() ? null : node.getRoutineInputId());
+            nodeData.setRoutineArguments(node.getRoutineArguments());
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
                 nodeData.setMessageClientSide(node.hasMessageScopeToggle() ? node.isMessageClientSide() : null);

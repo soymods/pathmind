@@ -38,6 +38,47 @@ class RoutineBuilderModelTest {
     }
 
     @Test
+    void generatedRoutineCallUsesTypedStableInputSlots() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Break");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData block = builder.addInput("block", RoutineValueKind.BLOCK);
+        NodeGraphData.RoutineInputData range = builder.addInput("range", RoutineValueKind.NUMBER);
+        builder.updateInput(range.getId(), "range", RoutineValueKind.NUMBER, true, "5");
+
+        Node call = Node.createRoutineCall(routine, 10, 20);
+
+        assertEquals(2, call.getParameterSlotCount());
+        assertEquals(block.getId(), call.getRoutineInputIdForSlot(0));
+        assertEquals(range.getId(), call.getRoutineInputIdForSlot(1));
+        assertEquals("block", call.getParameterSlotLabel(0));
+        assertTrue(call.getAcceptedTraitsForParameterSlot(0).contains(NodeValueTrait.BLOCK));
+        assertEquals("5", call.getRoutineArgumentDefaultValue(1));
+        assertFalse(call.isParameterSlotRequired(1), "a default satisfies a required input");
+    }
+
+    @Test
+    void definitionChangesPreserveBindingsByInputIdAndRetainRemovedInputs() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Move");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData first = builder.addInput("first", RoutineValueKind.NUMBER);
+        NodeGraphData.RoutineInputData second = builder.addInput("second", RoutineValueKind.TEXT);
+        Node call = Node.createRoutineCall(routine, 0, 0);
+        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        assertTrue(call.attachParameter(amount, 0));
+
+        builder.moveInput(first.getId(), 1);
+        call.syncRoutineCallDefinition(routine);
+        assertEquals(first.getId(), call.getRoutineInputIdForSlot(1));
+        assertEquals(amount, call.getAttachedParameter(1));
+
+        builder.removeInput(first.getId());
+        call.syncRoutineCallDefinition(routine);
+        assertTrue(call.isRoutineArgumentOrphaned(1));
+        assertEquals(amount, call.getAttachedParameter(1));
+        assertEquals(second.getId(), call.getRoutineInputIdForSlot(0));
+    }
+
+    @Test
     void editsDefaultsTypesAndOrderWithUndoRedo() {
         RoutineBuilderModel builder = new RoutineBuilderModel(RoutineBuilderModel.createRoutine("Move"));
         NodeGraphData.RoutineInputData target = builder.addInput("target", RoutineValueKind.ENTITY);

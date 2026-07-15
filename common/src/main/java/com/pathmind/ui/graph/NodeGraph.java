@@ -15792,6 +15792,7 @@ public class NodeGraph {
 
             NodeGraphPersistence.restoreParameters(node, nodeData.getParameters());
             node.setRoutineIdentity(nodeData.getRoutineId(), nodeData.getRoutineInputId());
+            node.setRoutineArguments(nodeData.getRoutineArguments());
             if ((node.getType() == NodeType.STOP_CHAIN || node.getType() == NodeType.START_CHAIN)
                 && node.getParameter("StartNumber") == null) {
                 node.getParameters().add(new NodeParameter("StartNumber", ParameterType.INTEGER, ""));
@@ -15910,7 +15911,10 @@ public class NodeGraph {
                     for (NodeGraphData.ParameterAttachmentData attachment : attachments) {
                         Node parameter = nodeMap.get(attachment.getParameterNodeId());
                         if (parameter != null) {
-                            host.attachParameter(parameter, attachment.getSlotIndex());
+                            int slot = host.getType() == NodeType.ROUTINE_CALL && attachment.getRoutineInputId() != null
+                                && !attachment.getRoutineInputId().isBlank()
+                                ? host.getRoutineSlotForInputId(attachment.getRoutineInputId()) : attachment.getSlotIndex();
+                            if (slot >= 0) host.attachParameter(parameter, slot);
                         }
                     }
                 }
@@ -15939,6 +15943,8 @@ public class NodeGraph {
         }
 
         NodeGraphPersistence.recoverMissingNestedAttachments(nodes);
+
+        syncRoutineInvocations();
 
         // Load connections
         for (NodeGraphData.ConnectionData connData : data.getConnections()) {
@@ -16053,6 +16059,16 @@ public class NodeGraph {
                 liveRoutineParameterValue(node, "ValueKind")).name());
             input.setDefaultValue(liveRoutineParameterValue(node, "Default"));
             input.setRequired(Boolean.parseBoolean(liveRoutineParameterValue(node, "Required")));
+        }
+        syncRoutineInvocations();
+    }
+
+    private void syncRoutineInvocations() {
+        if (activeRoutineWorkspaceId != null && !activeRoutineWorkspaceId.isBlank()) return;
+        for (Node node : nodes) {
+            if (node == null || node.getType() != NodeType.ROUTINE_CALL) continue;
+            routineRegistry.stream().filter(routine -> node.getRoutineId().equals(routine.getId())).findFirst()
+                .ifPresent(node::syncRoutineCallDefinition);
         }
     }
 

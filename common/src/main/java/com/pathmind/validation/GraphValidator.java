@@ -149,7 +149,7 @@ public final class GraphValidator {
         }
         int slotCount = node.getParameterSlotCount();
         for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-            if (!NodeTraitRegistry.isParameterSlotAlwaysRequired(node.getType(), slotIndex)) {
+            if (!node.isParameterSlotRequired(slotIndex)) {
                 continue;
             }
             if (node.getAttachedParameter(slotIndex) != null) {
@@ -157,6 +157,18 @@ public final class GraphValidator {
             }
             issues.add(issue(GraphValidationSeverity.ERROR, "missing_parameter_slot",
                 tr("pathmind.validation.missingParameterSlot", node.getType().getDisplayName()), node));
+        }
+        if (node.getType() == NodeType.ROUTINE_CALL) {
+            for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+                Node attached = node.getAttachedParameter(slotIndex);
+                if (node.isRoutineArgumentOrphaned(slotIndex)) {
+                    issues.add(issue(GraphValidationSeverity.WARNING, "orphan_routine_argument",
+                        tr("pathmind.validation.orphanRoutineArgument", node.getParameterSlotLabel(slotIndex)), node));
+                } else if (attached != null && !node.canAcceptParameterNode(attached, slotIndex)) {
+                    issues.add(issue(GraphValidationSeverity.ERROR, "incompatible_routine_argument",
+                        tr("pathmind.validation.incompatibleRoutineArgument", node.getParameterSlotLabel(slotIndex)), node));
+                }
+            }
         }
     }
 

@@ -226,6 +226,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
     // Drag and drop state
     private boolean isDraggingFromSidebar = false;
+    private boolean sidebarDragActivated = false;
+    private int sidebarDragStartX = -1;
+    private int sidebarDragStartY = -1;
     private NodeType draggingNodeType = null;
     private Node draggingSidebarNode = null;
 
@@ -796,7 +799,7 @@ public class PathmindVisualEditorScreen extends Screen {
         renderNodeSearchField(context, mouseX, mouseY, delta);
         DrawContextBridge.startNewRootLayer(context);
         renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
-        if (isDraggingFromSidebar && (draggingNodeType != null || draggingSidebarNode != null)) {
+        if (isDraggingFromSidebar && sidebarDragActivated && (draggingNodeType != null || draggingSidebarNode != null)) {
             renderDraggingNode(context, mouseX, mouseY);
         }
         renderDraggedPresetDropdownTab(context, mouseX, mouseY);
@@ -992,7 +995,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.isConnectionCutActive()) {
             return PathmindCursor.CUT_TEXTURE;
         }
-        if (isDraggingFromSidebar
+        if ((isDraggingFromSidebar && sidebarDragActivated)
             || nodeGraph.isAnyNodeBeingDragged()
             || nodeGraph.isPanning()) {
             return PathmindCursor.GRABBING_TEXTURE;
@@ -1115,7 +1118,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (isDraggingFromSidebar) {
-            if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
+            if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
                 int worldMouseX = nodeGraph.screenToWorldX(mouseX);
                 int worldMouseY = nodeGraph.screenToWorldY(mouseY);
                 Node newNode = draggingSidebarNode != null
@@ -1126,6 +1129,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
             }
             isDraggingFromSidebar = false;
+            sidebarDragActivated = false;
             draggingNodeType = null;
             draggingSidebarNode = null;
             nodeGraph.resetDropTargets();
@@ -1371,7 +1375,7 @@ public class PathmindVisualEditorScreen extends Screen {
             // Node graph background
             int workspaceBackground = getActiveRoutineWorkspace() == null
                 ? UITheme.BACKGROUND_PRIMARY
-                : AnimationHelper.lerpColor(UITheme.BACKGROUND_PRIMARY, NodeCategory.ROUTINES.getColor(), 0.10f);
+                : AnimationHelper.lerpColor(UITheme.BACKGROUND_PRIMARY, NodeCategory.ROUTINES.getColor(), 0.04f);
             context.fill(Sidebar.getCollapsedWidth(), TITLE_BAR_HEIGHT, this.width, this.height, workspaceBackground);
             
             // Render grid pattern for better visual organization
@@ -1730,6 +1734,9 @@ public class PathmindVisualEditorScreen extends Screen {
                         return true;
                     }
                     isDraggingFromSidebar = true;
+                    sidebarDragActivated = false;
+                    sidebarDragStartX = (int) mouseX;
+                    sidebarDragStartY = (int) mouseY;
                     draggingNodeType = hoveredType;
                     draggingSidebarNode = sidebar.createNodeFromSidebar(0, 0);
                     nodeGraph.resetDropTargets();
@@ -2021,6 +2028,10 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 boolean doubleClick = nodeGraph.handleNodeClick(clickedNode, (int)mouseX, (int)mouseY);
+                if (doubleClick && clickedNode.getType() == NodeType.ROUTINE_CALL && !clickedNode.getRoutineId().isBlank()) {
+                    openRoutineWorkspaceTab(clickedNode.getRoutineId());
+                    return true;
+                }
                 if (doubleClick && handleNodeDoubleClickExecution(clickedNode)) {
                     return true;
                 }
@@ -2196,6 +2207,10 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Handle dragging from sidebar
         if (isDraggingFromSidebar && button == 0) {
+            sidebarDragActivated = sidebarDragActivated
+                || Math.abs((int) mouseX - sidebarDragStartX) > CLICK_THRESHOLD
+                || Math.abs((int) mouseY - sidebarDragStartY) > CLICK_THRESHOLD;
+            if (!sidebarDragActivated) return true;
             if ((draggingNodeType != null || draggingSidebarNode != null) && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
                 int worldMouseX = nodeGraph.screenToWorldX((int) mouseX);
                 int worldMouseY = nodeGraph.screenToWorldY((int) mouseY);
@@ -2341,7 +2356,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (button == 0) {
             // Handle dropping node from sidebar
             if (isDraggingFromSidebar) {
-                if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
+                if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
                     int worldMouseX = nodeGraph.screenToWorldX((int) mouseX);
                     int worldMouseY = nodeGraph.screenToWorldY((int) mouseY);
                     Node newNode = draggingSidebarNode != null
@@ -2350,13 +2365,14 @@ public class PathmindVisualEditorScreen extends Screen {
                     if (newNode != null) {
                         nodeGraph.selectNode(newNode);
                     }
-                } else if (draggingSidebarNode != null
+                } else if (!sidebarDragActivated && draggingSidebarNode != null
                     && draggingSidebarNode.getType() == NodeType.ROUTINE_CALL
                     && !draggingSidebarNode.getRoutineId().isBlank()) {
                     openRoutineWorkspaceTab(draggingSidebarNode.getRoutineId());
                 }
                 // Reset drag state
                 isDraggingFromSidebar = false;
+                sidebarDragActivated = false;
                 draggingNodeType = null;
                 draggingSidebarNode = null;
                 nodeGraph.resetDropTargets();

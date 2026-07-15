@@ -5,6 +5,7 @@ import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.NodeValueTrait;
 import com.pathmind.routines.RoutineDefinition;
 import com.pathmind.routines.RoutineInputDefinition;
+import com.pathmind.routines.RoutineBuilderModel;
 import com.pathmind.routines.RoutineValueKind;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,6 +24,26 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RoutinePersistenceTest {
+
+    @Test
+    void invocationAttachmentFollowsStableInputIdAfterReorder() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Use");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData first = builder.addInput("first", RoutineValueKind.NUMBER);
+        builder.addInput("second", RoutineValueKind.TEXT);
+        Node call = Node.createRoutineCall(routine, 0, 0);
+        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        assertTrue(call.attachParameter(amount, 0));
+        NodeGraphData data = NodeGraphPersistence.createGraphData(List.of(call, amount), List.of());
+        data.setRoutines(List.of(routine));
+
+        builder.moveInput(first.getId(), 1);
+        List<Node> restored = NodeGraphPersistence.convertToNodes(data);
+        Node restoredCall = restored.stream().filter(node -> node.getType() == NodeType.ROUTINE_CALL).findFirst().orElseThrow();
+
+        assertEquals(first.getId(), restoredCall.getRoutineInputIdForSlot(1));
+        assertNotNull(restoredCall.getAttachedParameter(1));
+    }
     @TempDir
     Path tempDir;
 

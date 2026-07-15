@@ -224,6 +224,7 @@ public class NodeGraphData {
         private RuntimeValueScope runtimeValueScope;
         private String routineId;
         private String routineInputId;
+        private List<RoutineArgumentData> routineArguments;
         private List<String> messageLines;
         private Boolean messageClientSide;
         private String bookText;
@@ -350,6 +351,13 @@ public class NodeGraphData {
         public void setRoutineId(String routineId) { this.routineId = routineId; }
         public String getRoutineInputId() { return routineInputId; }
         public void setRoutineInputId(String routineInputId) { this.routineInputId = routineInputId; }
+        public List<RoutineArgumentData> getRoutineArguments() {
+            if (routineArguments == null) routineArguments = new ArrayList<>();
+            return routineArguments;
+        }
+        public void setRoutineArguments(List<RoutineArgumentData> routineArguments) {
+            this.routineArguments = routineArguments == null ? new ArrayList<>() : routineArguments;
+        }
 
         public String getRuntimeSourceNodeId() {
             return runtimeSourceNodeId;
@@ -534,6 +542,7 @@ public class NodeGraphData {
     public static class ParameterAttachmentData {
         private int slotIndex;
         private String parameterNodeId;
+        private String routineInputId;
 
         public ParameterAttachmentData() {
         }
@@ -558,5 +567,30 @@ public class NodeGraphData {
         public void setParameterNodeId(String parameterNodeId) {
             this.parameterNodeId = parameterNodeId;
         }
+        public String getRoutineInputId() { return routineInputId; }
+        public void setRoutineInputId(String routineInputId) { this.routineInputId = routineInputId; }
+        }
+
+    /** Snapshot of one invocation argument, retained when its definition input changes or is removed. */
+    public static class RoutineArgumentData {
+        private String inputId;
+        private String label;
+        private String valueKind;
+        private Boolean required;
+        private String defaultValue;
+        private Boolean orphaned;
+
+        public String getInputId() { return inputId; }
+        public void setInputId(String inputId) { this.inputId = inputId; }
+        public String getLabel() { return label; }
+        public void setLabel(String label) { this.label = label; }
+        public String getValueKind() { return valueKind; }
+        public void setValueKind(String valueKind) { this.valueKind = valueKind; }
+        public Boolean getRequired() { return required; }
+        public void setRequired(Boolean required) { this.required = required; }
+        public String getDefaultValue() { return defaultValue; }
+        public void setDefaultValue(String defaultValue) { this.defaultValue = defaultValue; }
+        public Boolean getOrphaned() { return orphaned; }
+        public void setOrphaned(Boolean orphaned) { this.orphaned = orphaned; }
     }
 }

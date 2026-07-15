@@ -71,7 +71,7 @@ public final class NodeCompatibility {
         }
 
         NodeType candidateType = candidate.getType();
-        EnumSet<NodeValueTrait> accepted = NodeTraitRegistry.getAcceptedTraits(host.getType(), slotIndex);
+        EnumSet<NodeValueTrait> accepted = host.getAcceptedTraitsForParameterSlot(slotIndex);
         if (accepted.isEmpty()) {
             return false;
         }

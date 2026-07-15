@@ -434,7 +434,7 @@ public class Sidebar {
                             }
                             context.drawTextWithShadow(textRenderer, Text.literal("    [" + input.getLabel() + "]"), indicatorX, contentY + 5,
                                 inputHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_SECONDARY);
-                            context.drawTextWithShadow(textRenderer, Text.literal("↑ ↓ ×"), Math.max(labelX, nodeBackgroundRight - 34), contentY + 5,
+                            context.drawTextWithShadow(textRenderer, Text.literal("↑ ↓ ×"), Math.max(labelX, nodeBackgroundRight - 42), contentY + 5,
                                 inputHovered ? NodeCategory.ROUTINES.getColor() : UITheme.TEXT_TERTIARY);
                             contentY += NODE_HEIGHT;
                         }
@@ -684,9 +684,9 @@ public class Sidebar {
             }
             if (hoveredRoutineInput != null && button == 0) {
                 int distanceFromRight = currentRenderedWidth - (int) mouseX;
-                if (distanceFromRight <= 14) routineInputAction = 3;
-                else if (distanceFromRight <= 26) routineInputAction = 2;
-                else if (distanceFromRight <= 38) routineInputAction = 1;
+                if (distanceFromRight >= 8 && distanceFromRight <= 22) routineInputAction = 3;
+                else if (distanceFromRight > 22 && distanceFromRight <= 34) routineInputAction = 2;
+                else if (distanceFromRight > 34 && distanceFromRight <= 46) routineInputAction = 1;
                 if (routineInputAction != 0) {
                     routineInputActionId = hoveredRoutineInput.getId();
                     return true;
@@ -736,7 +736,7 @@ public class Sidebar {
     
     public Node createNodeFromSidebar(int x, int y) {
         if (hoveredRoutine != null && activeRoutineId.isBlank() && openRoutineRequested == null) {
-            return Node.createRoutineCall(hoveredRoutine.getId(), hoveredRoutine.getName(), x, y);
+            return Node.createRoutineCall(hoveredRoutine, x, y);
         }
         if (hoveredRoutineInput != null) {
             NodeGraphData.RoutineDefinitionData routine = findRoutine(activeRoutineId);

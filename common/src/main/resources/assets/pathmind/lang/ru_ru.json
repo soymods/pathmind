@@ -702,5 +702,7 @@
   "pathmind.node.type.routineInput.desc": "A typed value supplied by this routine's caller",
   "pathmind.routine.create": "Create Routine",
   "pathmind.routine.editing": "Editing routine: %s",
-  "pathmind.routine.backToMain": "← Main"
+  "pathmind.routine.backToMain": "← Main",
+  "pathmind.validation.orphanRoutineArgument": "%s no longer exists in the routine. Remove or repair this input.",
+  "pathmind.validation.incompatibleRoutineArgument": "%s has an incompatible attached value."
 }

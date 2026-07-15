@@ -312,6 +312,7 @@ public class NodeGraphPersistence {
 
             restoreParameters(node, nodeData.getParameters());
             node.setRoutineIdentity(nodeData.getRoutineId(), nodeData.getRoutineInputId());
+            node.setRoutineArguments(nodeData.getRoutineArguments());
             if (node.supportsRuntimeValueScope()) {
                 node.setRuntimeValueScope(nodeData.getRuntimeValueScope());
             }
@@ -434,7 +435,9 @@ public class NodeGraphPersistence {
                     for (NodeGraphData.ParameterAttachmentData attachment : validAttachments) {
                         Node parameter = nodeMap.get(attachment.getParameterNodeId());
                         if (parameter != null) {
-                            host.attachParameter(parameter, attachment.getSlotIndex());
+                            int slot = host.getType() == NodeType.ROUTINE_CALL && !isBlank(attachment.getRoutineInputId())
+                                ? host.getRoutineSlotForInputId(attachment.getRoutineInputId()) : attachment.getSlotIndex();
+                            if (slot >= 0) host.attachParameter(parameter, slot);
                         }
                     }
                 }
@@ -469,6 +472,12 @@ public class NodeGraphPersistence {
 
         if (requiresLegacyAttachmentRecovery(data)) {
             recoverMissingNestedAttachments(nodes);
+        }
+
+        for (Node node : nodes) {
+            if (node == null || node.getType() != NodeType.ROUTINE_CALL) continue;
+            data.getRoutines().stream().filter(routine -> node.getRoutineId().equals(routine.getId())).findFirst()
+                .ifPresent(node::syncRoutineCallDefinition);
         }
 
         java.util.Set<Integer> usedStartNumbers = new java.util.HashSet<>();
@@ -906,7 +915,9 @@ public class NodeGraphPersistence {
                 for (Integer slotIndex : slotIndices) {
                     Node parameterNode = node.getAttachedParameter(slotIndex);
                     if (parameterNode != null) {
-                        attachmentData.add(new NodeGraphData.ParameterAttachmentData(slotIndex, parameterNode.getId()));
+                        NodeGraphData.ParameterAttachmentData attachment = new NodeGraphData.ParameterAttachmentData(slotIndex, parameterNode.getId());
+                        if (node.getType() == NodeType.ROUTINE_CALL) attachment.setRoutineInputId(node.getRoutineInputIdForSlot(slotIndex));
+                        attachmentData.add(attachment);
                     }
                 }
                 if (!attachmentData.isEmpty()) {
@@ -931,6 +942,7 @@ public class NodeGraphPersistence {
             nodeData.setRuntimeValueScope(node.supportsRuntimeValueScope() ? node.getRuntimeValueScope() : null);
             nodeData.setRoutineId(node.getRoutineId().isBlank() ? null : node.getRoutineId());
             nodeData.setRoutineInputId(node.getRoutineInputId().isBlank() ? null : node.getRoutineInputId());
+            nodeData.setRoutineArguments(node.getRoutineArguments());
             if (node.hasMessageInputFields()) {
                 nodeData.setMessageLines(new ArrayList<>(node.getMessageLines()));
                 nodeData.setMessageClientSide(node.hasMessageScopeToggle() ? node.isMessageClientSide() : null);

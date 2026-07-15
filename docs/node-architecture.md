@@ -49,6 +49,8 @@ Routine definitions remain inside their owning preset. Each routine and input ha
 
 `NodeGraphPersistence.sanitizeRoutineDefinitions` repairs missing or duplicate IDs, missing graphs, invalid versions, unknown value kinds, traits, and ordering. Its interface signature excludes editable labels but includes stable input IDs, kinds, traits, required/default state, and order. Its implementation signature includes names, labels, and graph structure, but deliberately excludes node coordinates. This means moving nodes does not version a routine; renaming only advances the implementation revision; and adding, removing, reordering, or changing an input advances the interface version while stable IDs preserve compatible bindings.
 
+`ROUTINE_CALL` is the generated invocation node for a definition. Its argument slots are snapshotted with stable routine input IDs, and parameter attachments persist both their display slot and that input ID. On load or definition refresh, bindings are remapped by input ID, so renames and reorders do not move values to the wrong argument. Removed inputs remain visible as orphan repair slots; incompatible type changes retain the attached node and surface a validation error instead of silently discarding user work. Defaults satisfy an otherwise required empty slot. Runtime call-frame evaluation remains owned by the routine-execution pass.
+
 Attachments are not normal flow connections. Sensors, child action nodes, and parameter nodes are restored after all nodes are created so id references can be resolved.
 
 When loading, `NodeGraphPersistence.convertToNodes`:

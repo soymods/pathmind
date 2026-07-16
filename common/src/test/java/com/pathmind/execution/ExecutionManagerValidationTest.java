@@ -1015,7 +1015,7 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
-    void repeatUntilFinishesBodyBeforeRecheckingCondition() throws Exception {
+    void repeatUntilInterruptsRemainingBodyWhenConditionBecomesTrue() throws Exception {
         AtomicInteger conditionCount = new AtomicInteger();
         AtomicInteger firstActionCount = new AtomicInteger();
         AtomicInteger secondActionCount = new AtomicInteger();
@@ -1041,7 +1041,7 @@ class ExecutionManagerValidationTest {
 
         future.get(1, TimeUnit.SECONDS);
         assertEquals(1, firstActionCount.get());
-        assertEquals(1, secondActionCount.get());
+        assertEquals(0, secondActionCount.get());
     }
 
     @Test

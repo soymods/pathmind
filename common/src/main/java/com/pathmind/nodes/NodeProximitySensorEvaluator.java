@@ -18,8 +18,11 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 final class NodeProximitySensorEvaluator {
+    private static final double BLOCK_CONTACT_EPSILON = 0.001D;
+
     private final Node owner;
 
     NodeProximitySensorEvaluator(Node owner) {
@@ -113,23 +116,50 @@ final class NodeProximitySensorEvaluator {
         if (world == null) {
             return false;
         }
-        AABB box = client.player.getBoundingBox().inflate(0.05);
-        int minX = Mth.floor(box.minX);
-        int maxX = Mth.floor(box.maxX);
-        int minY = Mth.floor(box.minY);
-        int maxY = Mth.floor(box.maxY);
-        int minZ = Mth.floor(box.minZ);
-        int maxZ = Mth.floor(box.maxZ);
+        AABB contactBox = client.player.getBoundingBox().inflate(BLOCK_CONTACT_EPSILON);
+        int minX = Mth.floor(contactBox.minX);
+        int maxX = Mth.floor(contactBox.maxX);
+        int minY = Mth.floor(contactBox.minY);
+        int maxY = Mth.floor(contactBox.maxY);
+        int minZ = Mth.floor(contactBox.minZ);
+        int maxZ = Mth.floor(contactBox.maxZ);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         for (int bx = minX; bx <= maxX; bx++) {
             for (int by = minY; by <= maxY; by++) {
                 for (int bz = minZ; bz <= maxZ; bz++) {
                     mutable.set(bx, by, bz);
                     BlockState state = world.getBlockState(mutable);
-                    if (matchesAnyBlock(selections, state)) {
+                    if (!matchesAnyBlock(selections, state)) {
+                        continue;
+                    }
+                    VoxelShape shape = state.getCollisionShape(world, mutable);
+                    if (shape.isEmpty()) {
+                        shape = state.getShape(world, mutable);
+                    }
+                    if (shape.isEmpty()) {
+                        // Blocks without collision or an outline (for example fluids) still
+                        // count when the player's body occupies their block space.
+                        if (contactBox.intersects(new AABB(mutable))) {
+                            return true;
+                        }
+                        continue;
+                    }
+                    if (touchesShape(contactBox, mutable, shape)) {
                         return true;
                     }
                 }
+            }
+        }
+        return false;
+    }
+
+    static boolean touchesShape(AABB contactBox, BlockPos blockPos, VoxelShape shape) {
+        if (contactBox == null || blockPos == null || shape == null || shape.isEmpty()) {
+            return false;
+        }
+        for (AABB localBox : shape.toAabbs()) {
+            if (contactBox.intersects(localBox.move(blockPos))) {
+                return true;
             }
         }
         return false;

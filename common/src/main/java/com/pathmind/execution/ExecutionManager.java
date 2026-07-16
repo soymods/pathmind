@@ -2341,7 +2341,10 @@ public class ExecutionManager {
 
                             @Override
                             public Node guardForIteration(Node controlNode, Node outerRepeatUntilGuard) {
-                                return outerRepeatUntilGuard;
+                                // The Repeat Until condition guards the body while it is running,
+                                // not only between completed iterations. Long-running actions poll
+                                // this guard and release their input as soon as it becomes true.
+                                return controlNode;
                             }
                         }
                     ).thenCompose(ignored ->

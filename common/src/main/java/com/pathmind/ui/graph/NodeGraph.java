@@ -3554,6 +3554,7 @@ public class NodeGraph {
             return true;
         }
         return node.isParameterNode()
+            && node.getType() != NodeType.ROUTINE_INPUT
             && node.getType() != NodeType.CREATE_LIST
             && node.getType() != NodeType.LIST_LENGTH
             && node.getType() != NodeType.OPERATOR_MOD
@@ -3662,7 +3663,9 @@ public class NodeGraph {
                 || node.getType() == NodeType.OPERATOR_BOOLEAN_OR
                 || node.getType() == NodeType.OPERATOR_BOOLEAN_AND
                 || node.getType() == NodeType.OPERATOR_BOOLEAN_XOR;
-            boolean isRoutineNode = node.getType() == NodeType.ROUTINE_ENTRY || node.getType() == NodeType.ROUTINE_CALL;
+            boolean isRoutineNode = node.getType() == NodeType.ROUTINE_ENTRY
+                || node.getType() == NodeType.ROUTINE_CALL
+                || node.getType() == NodeType.ROUTINE_INPUT;
             String label = isRoutineNode
                 ? node.getDisplayName().getString()
                 : node.getType().getDisplayName().toUpperCase(Locale.ROOT);
@@ -3697,6 +3700,7 @@ public class NodeGraph {
             && node.getType() != NodeType.EVENT_FUNCTION
             && node.getType() != NodeType.ROUTINE_ENTRY
             && node.getType() != NodeType.VARIABLE
+            && node.getType() != NodeType.ROUTINE_INPUT
             && node.getType() != NodeType.TEMPLATE
             && node.getType() != NodeType.OPERATOR_EQUALS
             && node.getType() != NodeType.OPERATOR_NOT
@@ -3921,19 +3925,21 @@ public class NodeGraph {
                 UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
             }
             renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-        } else if (node.getType() == NodeType.VARIABLE) {
+        } else if (node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
+            boolean routineInput = node.getType() == NodeType.ROUTINE_INPUT;
             int baseColor = lowDetail
                 ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
-                : (isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_BG, 0.7f) : UITheme.NODE_VARIABLE_BG);
+                : (isOverSidebar ? toGrayscale(routineInput ? node.getColor() : UITheme.NODE_VARIABLE_BG, 0.7f)
+                    : (routineInput ? node.getColor() : UITheme.NODE_VARIABLE_BG));
             context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
 
             int titleColor = isOverSidebar
-                ? toGrayscale(UITheme.NODE_VARIABLE_TITLE, 0.9f)
-                : (lowDetail ? UITheme.TEXT_SECONDARY : UITheme.NODE_VARIABLE_TITLE);
+                ? toGrayscale(routineInput ? UITheme.NODE_EVENT_TITLE : UITheme.NODE_VARIABLE_TITLE, 0.9f)
+                : (lowDetail ? UITheme.TEXT_SECONDARY : (routineInput ? UITheme.NODE_EVENT_TITLE : UITheme.NODE_VARIABLE_TITLE));
             drawNodeText(
                 context,
                 textRenderer,
-                Text.translatable("pathmind.node.type.variable"),
+                routineInput ? Text.literal("Input") : Text.translatable("pathmind.node.type.variable"),
                 x + 6,
                 y + 4,
                 titleColor
@@ -3954,7 +3960,7 @@ public class NodeGraph {
                 ? UITheme.NODE_INPUT_BG_DIMMED
                 : (lowDetail ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_INPUT);
             int inputBorder = isOverSidebar
-                ? toGrayscale(UITheme.NODE_VARIABLE_INPUT_BORDER, 0.8f)
+                ? toGrayscale(routineInput ? UITheme.NODE_EVENT_INPUT_BORDER : UITheme.NODE_VARIABLE_INPUT_BORDER, 0.8f)
                 : (lowDetail ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
             if (editingThis) {
                 inputBorder = getSelectedNodeAccentColor();
@@ -3962,7 +3968,7 @@ public class NodeGraph {
             context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
             DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
-            NodeParameter nameParam = node.getParameter("Variable");
+            NodeParameter nameParam = node.getParameter(routineInput ? "Label" : "Variable");
             String value = editingThis
                 ? parameterEditBuffer
                 : (nameParam != null ? nameParam.getStringValue() : "");
@@ -3971,7 +3977,7 @@ public class NodeGraph {
             }
             String display;
             if (!editingThis && value.isEmpty()) {
-                display = "enter variable";
+                display = routineInput ? "input" : "enter variable";
             } else {
                 display = value;
             }
@@ -3981,7 +3987,8 @@ public class NodeGraph {
             int textY = boxTop + (boxHeight - textRenderer.fontHeight) / 2 + 1;
             int textColor = editingThis
                 ? UITheme.TEXT_EDITING
-                : (isOverSidebar ? toGrayscale(UITheme.NODE_VARIABLE_TEXT, 0.85f) : (lowDetail ? UITheme.TEXT_PRIMARY : UITheme.NODE_VARIABLE_TEXT));
+                : (isOverSidebar ? toGrayscale(routineInput ? UITheme.NODE_EVENT_TEXT : UITheme.NODE_VARIABLE_TEXT, 0.85f)
+                    : (lowDetail ? UITheme.TEXT_PRIMARY : (routineInput ? UITheme.NODE_EVENT_TEXT : UITheme.NODE_VARIABLE_TEXT)));
             if (editingThis && hasParameterSelection()) {
                 int start = MathHelper.clamp(parameterSelectionStart, 0, display.length());
                 int end = MathHelper.clamp(parameterSelectionEnd, 0, display.length());
@@ -8003,7 +8010,7 @@ public class NodeGraph {
         String display;
         if (!editing && value.isEmpty()) {
             String keyName = node.getVariableFieldParameterKey();
-            display = "List".equalsIgnoreCase(keyName) ? "list" : "variable";
+            display = "List".equalsIgnoreCase(keyName) ? "list" : "Label".equalsIgnoreCase(keyName) ? "input" : "variable";
             valueColor = UITheme.TEXT_TERTIARY;
         } else {
             display = value;
@@ -13646,7 +13653,7 @@ public class NodeGraph {
         }
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
-        if (node.getType() == NodeType.VARIABLE) {
+        if (node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
             int boxHeight = 16;
             int boxLeft = node.getX() + 6;
             int boxRight = node.getX() + node.getWidth() - 6;
@@ -13679,7 +13686,13 @@ public class NodeGraph {
     }
 
     private boolean canEditInlineParameterFields(Node node) {
-        if (node == null || !rendersInlineParameters(node)) {
+        if (node == null) {
+            return false;
+        }
+        if (node.getType() == NodeType.ROUTINE_INPUT) {
+            return true;
+        }
+        if (!rendersInlineParameters(node)) {
             return false;
         }
         return !node.hasPopupEditButton() || node.getType() == NodeType.PARAM_INVENTORY_SLOT;

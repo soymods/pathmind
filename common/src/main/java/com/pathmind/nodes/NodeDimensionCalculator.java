@@ -37,11 +37,15 @@ final class NodeDimensionCalculator {
 
     private static int computeWidth(Node node, NodeLayoutState layoutState) {
         NodeType type = node.getType();
-        int maxTextLength = Math.max(
-            type == NodeType.ROUTINE_ENTRY || type == NodeType.ROUTINE_CALL
-                ? node.getDisplayName().getString().length()
-                : type.getDisplayName().length(),
-            1);
+        int baseTextLength;
+        if (type == NodeType.ROUTINE_INPUT) {
+            baseTextLength = NodeType.VARIABLE.getDisplayName().length();
+        } else if (type == NodeType.ROUTINE_ENTRY || type == NodeType.ROUTINE_CALL) {
+            baseTextLength = node.getDisplayName().getString().length();
+        } else {
+            baseTextLength = type.getDisplayName().length();
+        }
+        int maxTextLength = Math.max(baseTextLength, 1);
         if (node.isInlineParameterNode() || node.shouldRenderInlineParameters()) {
             for (NodeParameter param : node.getParameters()) {
                 String paramText = node.getParameterWidthLabel(param);
@@ -115,7 +119,7 @@ final class NodeDimensionCalculator {
                 + 2 * Node.STOP_TARGET_FIELD_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, requiredWidth);
         }
-        if (node.hasVariableInputField()) {
+        if (node.hasVariableInputField() || type == NodeType.ROUTINE_INPUT) {
             int requiredWidth = Math.max(Node.VARIABLE_FIELD_MIN_WIDTH, layoutState.getVariableFieldWidthOverride())
                 + 2 * Node.VARIABLE_FIELD_MARGIN_HORIZONTAL;
             computedWidth = Math.max(computedWidth, requiredWidth);
@@ -264,6 +268,8 @@ final class NodeDimensionCalculator {
             }
         } else if (hasSlots) {
             contentHeight += Node.SLOT_AREA_PADDING_TOP;
+        } else if (type == NodeType.ROUTINE_INPUT) {
+            contentHeight += node.getVariableFieldDisplayHeight();
         } else if (node.hasMessageInputFields()) {
             contentHeight += node.getMessageFieldDisplayHeight();
         } else if (node.hasBookTextInput()) {
@@ -303,7 +309,7 @@ final class NodeDimensionCalculator {
         int minHeight = node.usesMinimalNodePresentation() ? 32 : Node.MIN_HEIGHT;
         int computedHeight = Math.max(minHeight, contentHeight);
         if (((type == NodeType.EVENT_FUNCTION || type == NodeType.ROUTINE_ENTRY)
-            && !node.usesMinimalNodePresentation()) || type == NodeType.VARIABLE) {
+            && !node.usesMinimalNodePresentation()) || type == NodeType.VARIABLE || type == NodeType.ROUTINE_INPUT) {
             return Math.max(Node.EVENT_FUNCTION_MIN_HEIGHT, contentHeight);
         }
         return computedHeight;

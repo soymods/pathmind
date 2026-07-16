@@ -464,7 +464,6 @@ public final class NodeCatalog {
             NodeType.PARAM_VILLAGER_TRADE);
 
         tag(NodeFlag.PARAMETER_NODE, NodeType.ROUTINE_INPUT);
-        tag(NodeFlag.RENDER_INLINE_PARAMETERS, NodeType.ROUTINE_INPUT);
 
         sidebar(NodeCategory.FLOW, "pathmind.sidebar.group.entryPoints",
             NodeType.START,
@@ -1314,6 +1313,7 @@ public final class NodeCatalog {
 
     public static boolean isInlineParameterNode(NodeType type) {
         return isParameterNode(type)
+            && type != NodeType.ROUTINE_INPUT
             && type != NodeType.OPERATOR_MOD
             && type != NodeType.PARAM_DURATION
             && type != NodeType.SENSOR_POSITION_OF

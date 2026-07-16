@@ -2067,7 +2067,7 @@ public class Node {
     }
 
     public int getVariableFieldDisplayHeight() {
-        if (!hasVariableInputField()) {
+        if (!hasVariableInputField() && type != NodeType.ROUTINE_INPUT) {
             return 0;
         }
         return VARIABLE_FIELD_TOP_MARGIN + VARIABLE_FIELD_HEIGHT + VARIABLE_FIELD_BOTTOM_MARGIN;

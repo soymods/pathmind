@@ -124,6 +124,23 @@ class NodeGraphTest {
     }
 
     @Test
+    void focusingInteractiveControlOnSelectedNodePreservesMultiSelection() {
+        NodeGraph graph = new NodeGraph();
+        Node first = new Node(NodeType.STICKY_NOTE, 100, 100);
+        Node second = new Node(NodeType.MESSAGE, 260, 100);
+        graph.addNode(first);
+        graph.addNode(second);
+        graph.selectNodes(java.util.List.of(first, second));
+
+        graph.focusSelectedNode(first);
+
+        assertEquals(2, graph.getSelectedNodes().size());
+        assertTrue(graph.isNodeSelected(first));
+        assertTrue(graph.isNodeSelected(second));
+        assertSame(first, graph.getSelectedNode());
+    }
+
+    @Test
     void cutSelectedNodeCopiesThenDeletesAndCanPaste() {
         NodeGraph graph = new NodeGraph();
 

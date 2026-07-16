@@ -888,7 +888,8 @@ public class PathmindVisualEditorScreen extends Screen {
             case EXAMPLE_INTRO -> getFirstRunTutorialNodeBounds("tutorial-1-intro");
             case EXAMPLE_LOOK -> getFirstRunTutorialNodeBounds("tutorial-1-look");
             case EXAMPLE_WALK -> getFirstRunTutorialNodeBounds("tutorial-1-walk");
-            case EXAMPLE_ACTIONS -> getFirstRunTutorialNodeBounds("tutorial-1-jump", "tutorial-1-wait");
+            case EXAMPLE_ACTIONS -> getFirstRunTutorialNodeBounds(
+                "tutorial-1-jump", "tutorial-1-wait", "tutorial-1-finish");
             case RUN_CONTROLS -> new int[]{
                 getStopButtonX() - 4,
                 getStopButtonY() - 4,
@@ -1841,7 +1842,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (button == 0) { // Left click - select node or start dragging
                 if (clickedNode.getType() == NodeType.TEMPLATE
                     && nodeGraph.isPointInsideTemplateEditButton(clickedNode, (int) mouseX, (int) mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     openTemplateWorkspaceTab(clickedNode);
                     return true;
                 }
@@ -1884,102 +1885,102 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 if (nodeGraph.handleStickyNoteResizeHandleClick(clickedNode, (int) mouseX, (int) mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.isPointInsideStickyNoteTextArea(clickedNode, (int) mouseX, (int) mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     nodeGraph.startStickyNoteEditing(clickedNode);
                     return true;
                 }
 
                 int coordinateAxis = nodeGraph.getCoordinateFieldAxisAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (coordinateAxis != -1) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     nodeGraph.startCoordinateEditing(clickedNode, coordinateAxis);
                     return true;
                 }
 
                 if (nodeGraph.isPointInsideStopTargetField(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     nodeGraph.startStopTargetEditing(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.isPointInsideVariableField(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     nodeGraph.startVariableEditing(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleRandomRoundingToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleRandomRoundingDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleAmountToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (button == 0 && nodeGraph.handleAmountSignDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleDirectionModeTabClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleBooleanModeTabClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleMessageScopeToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleBooleanLiteralDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.handleModeFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
                 if (nodeGraph.isPointInsideAmountField(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     nodeGraph.startAmountEditing(clickedNode);
                     return true;
                 }
 
                 int messageIndex = nodeGraph.getMessageFieldIndexAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (messageIndex != -1) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     nodeGraph.startMessageEditing(clickedNode, messageIndex);
                     return true;
                 }
 
                 int parameterIndex = nodeGraph.getParameterFieldIndexAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (parameterIndex != -1) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     nodeGraph.startParameterEditing(clickedNode, parameterIndex);
                     return true;
                 }
 
                 if (nodeGraph.handleEventNameFieldClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }
 
@@ -1999,7 +2000,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 if (clickedNode.isParameterNode() && nodeGraph.isPointInsidePopupEditButton(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     openParameterOverlay(clickedNode);
                     return true;
                 }
@@ -2033,7 +2034,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 } else {
                     // Normal click: select only this node or focus if already selected
                     if (!nodeGraph.isNodeSelected(clickedNode)) {
-                        nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                     } else {
                         nodeGraph.focusSelectedNode(clickedNode);
                     }
@@ -2413,7 +2414,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 if (isClick && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
                     Node clickedNode = nodeGraph.getNodeAt(rightClickStartX, rightClickStartY);
                     if (clickedNode != null) {
-                        nodeGraph.selectNode(clickedNode);
+                    nodeGraph.focusSelectedNode(clickedNode);
                         nodeGraph.showNodeContextMenu(rightClickStartX, rightClickStartY, clickedNode, width, height);
                     } else {
                         // Show context menu at the right-click position

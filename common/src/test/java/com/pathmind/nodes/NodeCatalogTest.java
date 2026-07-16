@@ -131,6 +131,14 @@ class NodeCatalogTest {
     }
 
     @Test
+    void startPathCanUseCurrentGoalWithoutAParameterCard() {
+        Node path = new Node(NodeType.PATH, 0, 0);
+
+        assertTrue(path.hasParameterSlot());
+        assertFalse(path.isParameterSlotRequired(0));
+    }
+
+    @Test
     void sidebarLayoutDoesNotDuplicateVisibleNodes() {
         assertNoDuplicates(NodeCatalog.sidebarGroupsForAllCategories(false, true));
         assertNoDuplicates(NodeCatalog.sidebarGroupsForAllCategories(true, true));

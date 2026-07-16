@@ -2,8 +2,10 @@ package com.pathmind.nodes;
 
 import static com.pathmind.util.PathmindI18n.tr;
 
-import com.pathmind.util.PlayerInventoryBridge;
+import com.pathmind.PathmindCommon;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.util.ClientMessageSender;
+import com.pathmind.util.PlayerInventoryBridge;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -679,20 +681,20 @@ final class NodeTextIoCommandExecutor {
                 Node.MESSAGE_SCHEDULER.schedule(() -> {
                     Minecraft.getInstance().execute(() -> {
                         Minecraft currentClient = Minecraft.getInstance();
-                        if (currentClient.player != null) {
-                            if (isMessageClientSide()) {
-                                currentClient.player.displayClientMessage(Component.literal(sendText), false);
-                            } else if (currentClient.player.connection != null) {
-                                boolean isCommand = sendText.startsWith("/");
-                                if (isCommand) {
-                                    String cmd = sendText.length() > 1 ? sendText.substring(1) : "";
-                                    if (!cmd.isEmpty()) {
-                                        currentClient.player.connection.sendCommand(cmd);
-                                    }
+                        try {
+                            if (currentClient.player != null) {
+                                if (isMessageClientSide()) {
+                                    currentClient.player.displayClientMessage(Component.literal(sendText), false);
                                 } else {
-                                    currentClient.player.connection.sendChat(sendText);
+                                    // Dispatch through the same client message events as typed chat. Mods such as
+                                    // Baritone intercept commands like "#goto" there before they reach the server.
+                                    ClientMessageSender.send(currentClient, sendText);
                                 }
                             }
+                        } catch (RuntimeException | LinkageError error) {
+                            PathmindCommon.LOGGER.warn("Send Message node failed to dispatch a message", error);
+                            sendNodeErrorMessage(currentClient, "Failed to send message: " + describeFailure(error));
+                            NodeExecutionCompletion.completeExceptionally(future, error);
                         }
                     });
                 }, scheduledDelay, TimeUnit.MILLISECONDS);
@@ -706,6 +708,11 @@ final class NodeTextIoCommandExecutor {
             System.err.println("Unable to send message: client or player not available");
             future.complete(null);
         }
+    }
+
+    private static String describeFailure(Throwable error) {
+        String message = error.getMessage();
+        return message == null || message.isBlank() ? error.getClass().getSimpleName() : message;
     }
 
     String resolveRuntimeVariablesInText(String raw) {

@@ -7,6 +7,22 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeDimensionCalculatorTest {
+
+    @Test
+    void lookDirectionUsesHeaderLayoutWhenDisplayingAxisControl() {
+        Node node = new Node(NodeType.SENSOR_LOOK_DIRECTION, 0, 0);
+
+        assertFalse(node.usesMinimalNodePresentation());
+        assertTrue(node.showsModeFieldAboveParameterSlot());
+        assertTrue(node.getModeFieldTop() >= node.getY() + Node.HEADER_HEIGHT);
+    }
+
+    @Test
+    void expandableBooleanOperatorsKeepAVisibleHeader() {
+        assertFalse(new Node(NodeType.OPERATOR_BOOLEAN_OR, 0, 0).usesMinimalNodePresentation());
+        assertFalse(new Node(NodeType.OPERATOR_BOOLEAN_AND, 0, 0).usesMinimalNodePresentation());
+    }
+
     @Test
     void zeroInputRoutineCallUsesCompactPresentation() {
         com.pathmind.data.NodeGraphData.RoutineDefinitionData routine =

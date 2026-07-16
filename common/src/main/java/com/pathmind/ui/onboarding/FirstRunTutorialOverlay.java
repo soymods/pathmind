@@ -315,20 +315,51 @@ public final class FirstRunTutorialOverlay {
         DrawContextBridge.drawBorder(context, x - 1, y - 1, width + 2, height + 2, AnimationHelper.withAlpha(color, 0.45f * alpha));
     }
 
-    private int[] choosePanelPosition(int screenWidth, int screenHeight, int[] spotlight, int width, int height) {
+    static int[] choosePanelPosition(int screenWidth, int screenHeight, int[] spotlight, int width, int height) {
+        int minX = 12;
+        int minY = 28;
+        int maxX = Math.max(minX, screenWidth - width - 12);
+        int maxY = Math.max(minY, screenHeight - height - 12);
         int targetCenterX = spotlight[0] + spotlight[2] / 2;
         int targetCenterY = spotlight[1] + spotlight[3] / 2;
-        int preferredX = targetCenterX < screenWidth / 2 ? spotlight[0] + spotlight[2] + PANEL_GAP : spotlight[0] - width - PANEL_GAP;
-        int preferredY = targetCenterY - height / 2;
+        int centeredX = targetCenterX - width / 2;
+        int centeredY = targetCenterY - height / 2;
+        int[][] candidates = {
+            {spotlight[0] + spotlight[2] + PANEL_GAP, centeredY},
+            {spotlight[0] - width - PANEL_GAP, centeredY},
+            {centeredX, spotlight[1] + spotlight[3] + PANEL_GAP},
+            {centeredX, spotlight[1] - height - PANEL_GAP},
+            {minX, minY},
+            {maxX, minY},
+            {minX, maxY},
+            {maxX, maxY}
+        };
 
-        if (preferredX < 12 || preferredX + width > screenWidth - 12) {
-            preferredX = Mth.clamp(screenWidth / 2 - width / 2, 12, Math.max(12, screenWidth - width - 12));
-            preferredY = spotlight[1] > screenHeight / 2 ? spotlight[1] - height - PANEL_GAP : spotlight[1] + spotlight[3] + PANEL_GAP;
+        int[] best = null;
+        long bestScore = Long.MAX_VALUE;
+        for (int[] candidate : candidates) {
+            int x = Mth.clamp(candidate[0], minX, maxX);
+            int y = Mth.clamp(candidate[1], minY, maxY);
+            long score = panelPlacementScore(x, y, width, height, spotlight);
+            if (score < bestScore) {
+                bestScore = score;
+                best = new int[]{x, y};
+            }
         }
+        return best != null ? best : new int[]{minX, minY};
+    }
 
-        int x = Mth.clamp(preferredX, 12, Math.max(12, screenWidth - width - 12));
-        int y = Mth.clamp(preferredY, 28, Math.max(28, screenHeight - height - 12));
-        return new int[]{x, y};
+    private static long panelPlacementScore(int x, int y, int width, int height, int[] spotlight) {
+        int exclusionX = spotlight[0] - PANEL_GAP;
+        int exclusionY = spotlight[1] - PANEL_GAP;
+        int exclusionWidth = spotlight[2] + PANEL_GAP * 2;
+        int exclusionHeight = spotlight[3] + PANEL_GAP * 2;
+        int overlapWidth = Math.max(0, Math.min(x + width, exclusionX + exclusionWidth) - Math.max(x, exclusionX));
+        int overlapHeight = Math.max(0, Math.min(y + height, exclusionY + exclusionHeight) - Math.max(y, exclusionY));
+        long overlapArea = (long) overlapWidth * overlapHeight;
+        long deltaX = (long) x + width / 2 - (spotlight[0] + spotlight[2] / 2);
+        long deltaY = (long) y + height / 2 - (spotlight[1] + spotlight[3] / 2);
+        return overlapArea * 1_000_000L + deltaX * deltaX + deltaY * deltaY;
     }
 
     private void renderConnector(GuiGraphics context, int x, int y, int width, int height, int[] spotlight, int accentColor, float alpha) {

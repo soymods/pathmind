@@ -942,7 +942,9 @@ public class Node {
                 && Boolean.TRUE.equals(argument.getRequired())
                 && (argument.getDefaultValue() == null || argument.getDefaultValue().isBlank());
         }
-        return slotIndex == 0;
+        // Requiredness is catalog-owned. Any slot that reaches this point was explicitly
+        // declared optional and has no node-specific rule making it conditional.
+        return false;
     }
 
 

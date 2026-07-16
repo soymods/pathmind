@@ -427,14 +427,11 @@ public final class NodeCatalog {
             NodeType.SENSOR_TARGETED_BLOCK_FACE,
             NodeType.SENSOR_TARGETED_BLOCK,
             NodeType.SENSOR_TARGETED_ENTITY,
-            NodeType.SENSOR_LOOK_DIRECTION,
             NodeType.SENSOR_CURRENT_HAND,
             NodeType.SENSOR_CURRENT_GUI,
             NodeType.SENSOR_IS_ON_GROUND,
             NodeType.OPERATOR_EQUALS,
             NodeType.OPERATOR_NOT,
-            NodeType.OPERATOR_BOOLEAN_OR,
-            NodeType.OPERATOR_BOOLEAN_AND,
             NodeType.OPERATOR_BOOLEAN_XOR,
             NodeType.OPERATOR_GREATER,
             NodeType.OPERATOR_LESS,
@@ -830,7 +827,7 @@ public final class NodeCatalog {
         parameterHost(NodeType.GOTO, movementTargetTraits());
         parameterHost(NodeType.TRAVEL, movementTargetTraits());
         parameterHost(NodeType.GOAL, movementTargetTraits());
-        parameterHost(NodeType.PATH, movementTargetTraits());
+        parameterHost(NodeType.PATH, slot("Parameter", false, movementTargetTraits()));
         parameterHost(NodeType.EXPLORE, movementTargetTraits());
         parameterHost(NodeType.FOLLOW, movementTargetTraits());
         parameterHost(NodeType.COLLECT, NodeValueTrait.BLOCK, NodeValueTrait.NUMBER);

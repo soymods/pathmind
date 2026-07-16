@@ -3702,8 +3702,6 @@ public class NodeGraph {
             && node.getType() != NodeType.TEMPLATE
             && node.getType() != NodeType.OPERATOR_EQUALS
             && node.getType() != NodeType.OPERATOR_NOT
-            && node.getType() != NodeType.OPERATOR_BOOLEAN_OR
-            && node.getType() != NodeType.OPERATOR_BOOLEAN_AND
             && node.getType() != NodeType.OPERATOR_BOOLEAN_XOR) {
             if (!lowDetail) {
                 int headerColor = node.getColor() & UITheme.NODE_HEADER_ALPHA_MASK;
@@ -8433,7 +8431,7 @@ public class NodeGraph {
         if (!isPointInsideScreenCoordinatePickerButton(node, mouseX, mouseY)) {
             return false;
         }
-        selectNode(node);
+        focusSelectedNode(node);
         startScreenCoordinateCapture(node);
         return true;
     }
@@ -13537,7 +13535,7 @@ public class NodeGraph {
                 && node.hasStopTargetInputField()
                 && !isPresetSelectorNode(node)
                 && isPointInsideStopTargetField(node, screenX, screenY)) {
-                selectNode(node);
+                focusSelectedNode(node);
                 startStopTargetEditing(node);
                 return true;
             }
@@ -13564,7 +13562,7 @@ public class NodeGraph {
 
         if (isPresetSelectorNode(clickedNode)
             && isPointInsideRunPresetField(clickedNode, screenX, screenY)) {
-            selectNode(clickedNode);
+            focusSelectedNode(clickedNode);
             stopStopTargetEditing(true);
             openRunPresetDropdown(clickedNode);
             return true;
@@ -13593,7 +13591,7 @@ public class NodeGraph {
         for (int i = nodes.size() - 1; i >= 0; i--) {
             Node node = nodes.get(i);
             if (node != null && node.hasVariableInputField() && isPointInsideVariableField(node, screenX, screenY)) {
-                selectNode(node);
+                focusSelectedNode(node);
                 startVariableEditing(node);
                 return true;
             }

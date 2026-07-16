@@ -15,6 +15,14 @@
 /neoforge/.gradle/
 /neoforge/build/
 /neoforge/run/
+/mc26/.gradle/
+/mc26/build/
+/mc26/fabric/.gradle/
+/mc26/fabric/build/
+/mc26/fabric/run/
+/mc26/neoforge/.gradle/
+/mc26/neoforge/build/
+/mc26/neoforge/run/
 
 # IDE / editor files
 *.iml

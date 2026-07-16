@@ -73,9 +73,18 @@ val defaultMinecraftVersion = manifestValue("default_version")
 val supportedMinecraftVersionIds = manifestValue("supported_versions")
     .split(',')
     .map(String::trim)
+val fastVerificationVersionIds = manifestValue("fast_verification_versions")
+    .split(',')
+    .map(String::trim)
 
 if (supportedMinecraftVersionIds.size != supportedMinecraftVersionIds.toSet().size) {
     throw GradleException("Duplicate versions found in supported_versions")
+}
+if (fastVerificationVersionIds.size != fastVerificationVersionIds.toSet().size) {
+    throw GradleException("Duplicate versions found in fast_verification_versions")
+}
+if (!supportedMinecraftVersionIds.containsAll(fastVerificationVersionIds)) {
+    throw GradleException("fast_verification_versions contains unsupported targets")
 }
 
 val supportedMinecraftVersions = linkedMapOf<String, MinecraftVersionSpec>().apply {
@@ -316,6 +325,7 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         layout.projectDirectory.file("neoforge/src/main/resources/META-INF/neoforge.mods.toml"),
         layout.projectDirectory.file("README.md"),
         layout.projectDirectory.file("docs/build-generations.md"),
+        layout.projectDirectory.file("docs/compatibility-maintenance.md"),
         layout.projectDirectory.file("gradle/minecraft-version-templates/26.x.properties"),
         layout.projectDirectory.file(".github/workflows/build.yml")
     )
@@ -329,7 +339,7 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
     doLast {
         fun fail(message: String): Nothing = throw GradleException("Compatibility manifest drift: $message")
 
-        val expectedKeys = mutableSetOf("default_version", "supported_versions")
+        val expectedKeys = mutableSetOf("default_version", "supported_versions", "fast_verification_versions")
         supportedMinecraftVersionIds.forEach { version ->
             compatibilityManifestFields.forEach { field -> expectedKeys.add("version.$version.$field") }
         }
@@ -365,6 +375,16 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         }
         if (supportedMinecraftVersionIds != numericallySortedVersions) {
             fail("supported_versions must be ordered oldest to newest")
+        }
+        if (fastVerificationVersionIds != supportedMinecraftVersionIds.filter(fastVerificationVersionIds::contains)) {
+            fail("fast_verification_versions must follow supported_versions order")
+        }
+        val requiredFastFamilies = supportedMinecraftVersions.values.map { it.compatibilityFamily }.toSet()
+        val representedFastFamilies = fastVerificationVersionIds
+            .map { supportedMinecraftVersions.getValue(it).compatibilityFamily }
+            .toSet()
+        if (!representedFastFamilies.containsAll(requiredFastFamilies)) {
+            fail("fast_verification_versions misses compatibility families ${requiredFastFamilies - representedFastFamilies}")
         }
 
         supportedMinecraftVersions.forEach { (version, spec) ->
@@ -456,6 +476,8 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         if (documentedVersions != supportedMinecraftVersionIds) {
             fail("README supported targets $documentedVersions do not match $supportedMinecraftVersionIds")
         }
+        if (!readme.contains("Minecraft-1.21.x%20%7C%2026.1--26.2")) fail("README Minecraft support badge is stale")
+        if (!readme.contains("`1.21 - 1.21.11`, `26.1 - 26.2`")) fail("README version summary is stale")
 
         val fabricMetadata = layout.projectDirectory.file("fabric/src/main/resources/fabric.mod.json").asFile.readText()
         if (!fabricMetadata.contains("\${minecraft_version}")) fail("Fabric metadata must expand minecraft_version")
@@ -470,11 +492,17 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         if (!workflow.contains("matrix.java_version")) fail("CI does not select Java from the manifest-derived matrix")
         if (!workflow.contains("matrix.packaging_generation")) fail("CI caches are not separated by build generation")
         if (!workflow.contains("buildSelectedTarget")) fail("CI bypasses generation-aware release task selection")
+        if (!workflow.contains("fast_verification_versions")) fail("CI fast tier is not discovered from the manifest")
+        if (!workflow.contains("verifySelectedCompatibilityArtifacts")) fail("CI bypasses release artifact verification")
 
         val generationDocs = layout.projectDirectory.file("docs/build-generations.md").asFile.readText()
         buildGenerations.keys.forEach { generation ->
             if (!generationDocs.contains("`$generation`")) fail("build generation '$generation' is undocumented")
         }
+        val maintenanceDocs = layout.projectDirectory.file("docs/compatibility-maintenance.md").asFile.readText()
+        if (!maintenanceDocs.contains("## Adding a Minecraft target")) fail("new-version playbook is undocumented")
+        if (!maintenanceDocs.contains("## Deprecation policy")) fail("compatibility deprecation policy is undocumented")
+        if (!maintenanceDocs.contains("## Minecraft 26.2 graphics smoke test")) fail("26.2 graphics smoke procedure is undocumented")
 
         println("Compatibility manifest verified for ${supportedMinecraftVersionIds.size} Minecraft targets.")
     }
@@ -504,12 +532,15 @@ tasks.register("compatibilityReport") {
     group = "help"
     description = "Prints the configured Minecraft compatibility matrix"
     doLast {
-        println("Minecraft | Family | Java | Packaging | Loaders | Fabric Loader (build/min) | Fabric API | NeoForge")
-        println("-".repeat(132))
+        println("Minecraft | Fast | Compatibility | Common/Fabric | NeoForge UI | Java | Packaging | Loaders | Fabric Loader (build/min) | Fabric API | NeoForge")
+        println("-".repeat(188))
         supportedMinecraftVersions.forEach { (version, spec) ->
             println(listOf(
                 version,
+                if (version in fastVerificationVersionIds) "yes" else "no",
                 spec.compatibilityFamily,
+                spec.commonSourceFamily,
+                spec.neoForgeUiFamily,
                 spec.javaVersion,
                 spec.packagingGeneration,
                 spec.releaseLoaders.joinToString(","),
@@ -654,19 +685,19 @@ tasks.register("configureMc26BuildGeneration") {
     group = "build setup"
     description = "Resolves the Java 25 and unobfuscated packaging contract used by 26.x targets"
     val generation = buildGenerations.getValue("mc26-unobfuscated")
-    val placeholder = layout.projectDirectory.file("gradle/minecraft-version-templates/26.x.properties")
-    inputs.file(placeholder)
+    val generationTemplate = layout.projectDirectory.file("gradle/minecraft-version-templates/26.x.properties")
+    inputs.file(generationTemplate)
     val javaToolchains = project.extensions.getByType<JavaToolchainService>()
     val launcher = javaToolchains.launcherFor {
         languageVersion.set(JavaLanguageVersion.of(generation.javaVersion))
     }
     doLast {
-        val placeholderProperties = Properties().apply {
-            placeholder.asFile.inputStream().use(::load)
+        val templateProperties = Properties().apply {
+            generationTemplate.asFile.inputStream().use(::load)
         }
-        check(placeholderProperties.getProperty("java_version") == generation.javaVersion.toString())
-        check(placeholderProperties.getProperty("packaging_generation") == "mc26-unobfuscated")
-        check(placeholderProperties.getProperty("mappings") == "none")
+        check(templateProperties.getProperty("java_version") == generation.javaVersion.toString())
+        check(templateProperties.getProperty("packaging_generation") == "mc26-unobfuscated")
+        check(templateProperties.getProperty("mappings") == "none")
         val selectedLauncher = launcher.get()
         println("generation=mc26-unobfuscated")
         println("java=${selectedLauncher.metadata.languageVersion}")
@@ -796,6 +827,90 @@ val buildAllTargets = tasks.register("buildAllTargets") {
     multiVersionBuildTasks.forEach { dependsOn(it) }
 }
 
+fun verifyCompatibilityJar(jar: File, version: String, spec: MinecraftVersionSpec, loader: String) {
+    if (!jar.isFile) {
+        throw GradleException("Missing compatibility artifact: ${jar.relativeTo(projectDir)}")
+    }
+    if (jar.name.contains("-dev") || jar.name.contains("-sources") || jar.name.contains("-shadow") || jar.name.contains("-all")) {
+        throw GradleException("Development classifier is not a release artifact: ${jar.name}")
+    }
+
+    ZipFile(jar).use { zip ->
+        val entries = zip.entries().asSequence().toList()
+        val duplicateEntries = entries.groupingBy { it.name }.eachCount().filterValues { it > 1 }.keys
+        if (duplicateEntries.isNotEmpty()) {
+            throw GradleException("${jar.name} contains duplicate entries: ${duplicateEntries.sorted()}")
+        }
+        val entryNames = entries.map { it.name }.toSet()
+        val metadataPath = if (loader == "fabric") "fabric.mod.json" else "META-INF/neoforge.mods.toml"
+        val oppositeMetadataPath = if (loader == "fabric") "META-INF/neoforge.mods.toml" else "fabric.mod.json"
+        val metadataEntry = zip.getEntry(metadataPath)
+            ?: throw GradleException("${jar.name} is missing $metadataPath")
+        if (oppositeMetadataPath in entryNames) {
+            throw GradleException("${jar.name} accidentally contains $oppositeMetadataPath")
+        }
+        if ("architectury.common.json" in entryNames) {
+            throw GradleException("${jar.name} contains the development-only Architectury common marker")
+        }
+        val nestedJars = entryNames.filter { it.endsWith(".jar") }
+        if (nestedJars.isNotEmpty()) {
+            throw GradleException("${jar.name} unexpectedly embeds dependency jars: ${nestedJars.sorted()}")
+        }
+
+        val requiredEntries = buildSet {
+            add("com/pathmind/PathmindCommon.class")
+            add("pathmind.mixins.json")
+            if (loader == "fabric") {
+                add("com/pathmind/PathmindMod.class")
+                add("pathmind-fabric.mixins.json")
+            } else {
+                add("com/pathmind/neoforge/PathmindNeoForge.class")
+            }
+        }
+        val missingEntries = requiredEntries - entryNames
+        if (missingEntries.isNotEmpty()) {
+            throw GradleException("${jar.name} is missing required release entries: ${missingEntries.sorted()}")
+        }
+        if (loader == "neoforge" && "pathmind-fabric.mixins.json" in entryNames) {
+            throw GradleException("${jar.name} contains the Fabric-only Mixin configuration")
+        }
+
+        val metadata = zip.getInputStream(metadataEntry).bufferedReader().use { it.readText() }
+        if (!metadata.contains(version)) throw GradleException("${jar.name} metadata does not mention Minecraft $version")
+        if (loader == "fabric") {
+            if (!metadata.contains("\"minecraft\": \"$version\"")) throw GradleException("${jar.name} does not require exact Minecraft $version")
+            if (!metadata.contains("\"java\": \">=${spec.javaVersion}\"")) throw GradleException("${jar.name} has stale Java metadata")
+            if (!metadata.contains("\"fabricloader\": \">=${spec.fabricLoaderMinimumVersion}\"")) throw GradleException("${jar.name} has stale Fabric Loader metadata")
+            if (!metadata.contains("pathmind.mixins.json") || !metadata.contains("pathmind-fabric.mixins.json")) {
+                throw GradleException("${jar.name} metadata has stale Mixin configuration")
+            }
+        } else {
+            if (!metadata.contains("versionRange = \"[$version]\"")) throw GradleException("${jar.name} does not require exact Minecraft $version")
+            if (!metadata.contains(spec.neoforgeVersion ?: "unsupported")) throw GradleException("${jar.name} has stale NeoForge metadata")
+            if (!metadata.contains("pathmind.mixins.json")) throw GradleException("${jar.name} metadata has stale Mixin configuration")
+        }
+    }
+}
+
+val verifySelectedCompatibilityArtifacts = tasks.register("verifySelectedCompatibilityArtifacts") {
+    group = "verification"
+    description = "Checks the selected target's release jars and embedded metadata"
+    mustRunAfter("buildSelectedTarget")
+    doLast {
+        val modVersion = rootProject.property("mod_version") as String
+        val generationRoot = if (requestedSpec.packagingGeneration == "mc26-unobfuscated") {
+            layout.projectDirectory.dir("mc26").asFile
+        } else {
+            projectDir
+        }
+        requestedSpec.releaseLoaders.forEach { loader ->
+            val jar = generationRoot.resolve("$loader/build/libs/pathmind-$loader-$modVersion+mc$requestedMinecraftVersion.jar")
+            verifyCompatibilityJar(jar, requestedMinecraftVersion, requestedSpec, loader)
+        }
+        println("Verified ${requestedSpec.releaseLoaders.size} release artifacts for Minecraft $requestedMinecraftVersion.")
+    }
+}
+
 val verifyBuiltCompatibilityArtifacts = tasks.register("verifyBuiltCompatibilityArtifacts") {
     group = "verification"
     description = "Checks staged multi-version jars against the compatibility manifest and metadata contract"
@@ -828,21 +943,7 @@ val verifyBuiltCompatibilityArtifacts = tasks.register("verifyBuiltCompatibility
                 val jar = layout.buildDirectory
                     .file("multiVersion/$version/pathmind-$loader-$modVersion+mc$version.jar")
                     .get().asFile
-                ZipFile(jar).use { zip ->
-                    val metadataPath = if (loader == "fabric") "fabric.mod.json" else "META-INF/neoforge.mods.toml"
-                    val entry = zip.getEntry(metadataPath)
-                        ?: throw GradleException("${jar.name} is missing $metadataPath")
-                    val metadata = zip.getInputStream(entry).bufferedReader().use { it.readText() }
-                    if (!metadata.contains(version)) throw GradleException("${jar.name} metadata does not mention Minecraft $version")
-                    if (loader == "fabric") {
-                        if (!metadata.contains("\"minecraft\": \"$version\"")) throw GradleException("${jar.name} does not require exact Minecraft $version")
-                        if (!metadata.contains("\"java\": \">=${spec.javaVersion}\"")) throw GradleException("${jar.name} has stale Java metadata")
-                        if (!metadata.contains("\"fabricloader\": \">=${spec.fabricLoaderMinimumVersion}\"")) throw GradleException("${jar.name} has stale Fabric Loader metadata")
-                    } else {
-                        if (!metadata.contains("versionRange = \"[$version]\"")) throw GradleException("${jar.name} does not require exact Minecraft $version")
-                        if (!metadata.contains(spec.neoforgeVersion ?: "unsupported")) throw GradleException("${jar.name} has stale NeoForge metadata")
-                    }
-                }
+                verifyCompatibilityJar(jar, version, spec, loader)
             }
         }
         println("Verified ${expectedFiles.size} staged compatibility artifacts.")

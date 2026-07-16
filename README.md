@@ -150,6 +150,7 @@ Contributor documentation:
 - [`docs/node-architecture.md`](docs/node-architecture.md) maps the node system, execution routing, UI helpers, localization rules, and current compat source sets.
 - [`docs/minecraft-compatibility-baseline.md`](docs/minecraft-compatibility-baseline.md) records the protected `1.21.x` matrix, artifact contract, source inventory, and smoke-test procedure.
 - [`docs/build-generations.md`](docs/build-generations.md) explains the stable build commands and the Java 21/remapped versus Java 25/unobfuscated boundary.
+- [`docs/compatibility-maintenance.md`](docs/compatibility-maintenance.md) is the new-version, verification-tier, graphics-smoke, deprecation, and release playbook.
 - [`docs/minecraft-multiversion-roadmap.md`](docs/minecraft-multiversion-roadmap.md) defines the staged transition to clean `1.21.x` and `26.x` support.
 
 ### Build From Source
@@ -160,7 +161,7 @@ cd pathmind
 ./gradlew buildSelectedTarget "-Pmc_version=1.21.11"
 ```
 
-Fabric jars are written to `fabric/build/libs/`, NeoForge jars to `neoforge/build/libs/`.
+For 1.21.x, jars are written to `fabric/build/libs/` and `neoforge/build/libs/`. The root tasks route 26.x through the isolated build, whose jars are written to `mc26/fabric/build/libs/` and `mc26/neoforge/build/libs/`.
 
 ### Run In Dev
 
@@ -197,13 +198,14 @@ Unqualified `runClient` and `runServer` default to Fabric because Fabric is the 
 Convenience tasks:
 
 - `./gradlew buildMc1_21_11` - builds both platforms for 1.21.11
-- `./gradlew buildAllTargets` - builds all 13 declared MC targets
+- `./gradlew buildAllTargets` - builds all 14 declared Minecraft targets and verifies all 28 release jars
 
 Compatibility tasks:
 
 - `./gradlew compatibilityReport` - prints dependency, Java, loader, and source-family selection for every target
 - `./gradlew verifyCompatibilityManifest` - checks the manifest against runtime support, metadata, docs, and CI
 - `./gradlew verifyCompatibilityStructure` - rejects ambiguous family names and loader-level product mirrors
+- `./gradlew verifySelectedCompatibilityArtifacts` - validates the selected target's release filenames, metadata, Mixins, and archive contents
 - `./gradlew configureMc26BuildGeneration` - validates the Java 25, mapping-free 26.x generation contract
 
 The machine-readable version source of truth is [`gradle/minecraft-versions.properties`](gradle/minecraft-versions.properties).

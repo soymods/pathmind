@@ -81,7 +81,7 @@ Version-family directories should contain only files that genuinely differ. Shar
 
 ## Pass 1: Freeze the compatibility contract and establish a trustworthy baseline
 
-**Status:** Implemented July 16, 2026. The manifest, drift checks, source/artifact inventory, 24-jar verification, Java-toolchain enforcement, and focused loader launch checks are in place. Interactive editor/world checks remain part of release validation rather than routine migration work.
+**Status:** Implemented July 16, 2026. The manifest, drift checks, source/artifact inventory, 28-jar verification, Java-toolchain enforcement, and focused loader launch checks are in place. Interactive editor/world checks remain part of release validation rather than routine migration work.
 
 ### Goal
 
@@ -160,7 +160,7 @@ No new Yarn-named production source may be added. Yarn may remain an implementat
 
 ## Pass 3: Split build generations and centralize version selection
 
-**Status:** Implemented July 16, 2026; user-run verification pending. Build-generation contracts, stable root tasks, generation-aware packaging, Java selection, CI discovery/cache separation, unknown-target checks, and a non-release 26.x Java 25 placeholder are in place.
+**Status:** Implemented and verified July 16, 2026. Build-generation contracts, stable root tasks, generation-aware packaging, Java selection, CI discovery/cache separation, unknown-target checks, and the production 26.x Java 25 build are in place.
 
 ### Goal
 
@@ -265,7 +265,7 @@ Add production-quality `26.1` support on both loaders using the new unobfuscated
 
 ## Pass 6: Implement Minecraft 26.2 and harden the rendering boundary
 
-**Status:** In progress July 16, 2026. The verified `26.2` Fabric/NeoForge pins, Gradle 9.5.1 and Loom 1.17 toolchain, manifest/build routing, shared `mc-26.1-26.2` families, version-scoped GUI ownership transform, and structural raw-OpenGL guard are implemented. Fabric compilation is the next checkpoint before porting any additional concrete API deltas.
+**Status:** Build implementation complete July 16, 2026. Fabric and NeoForge `26.2` production jars compile successfully with the verified dependency pins, Gradle 9.5.1/Loom 1.17 toolchain, shared `mc-26.1-26.2` families, version-scoped GUI/camera/gizmo/singleplayer deltas, and structural raw-OpenGL guard. Generated caches and transformed source trees were removed from version control and are now explicitly ignored. The documented packaged OpenGL/Vulkan smoke procedure remains release validation.
 
 ### Goal
 
@@ -291,6 +291,8 @@ Add `26.2` on both loaders while treating its GUI/HUD reorganization and render-
 - The complete `1.21.x`, `26.1`, and `26.2` compilation matrix passes.
 
 ## Pass 7: Make multi-version verification and releases routine
+
+**Status:** Implemented July 16, 2026. The manifest now owns the representative fast tier, CI runs fast and complete matrices at the appropriate events, selected and full builds share archive/metadata verification, publishing validates the complete expected artifact set, and the contributor playbook documents version additions, graphics smoke testing, deprecation, and release policy.
 
 ### Goal
 

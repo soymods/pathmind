@@ -20,7 +20,7 @@ val mc26VersionSourceTransforms = rootProject.extra["mc26VersionSourceTransforms
 val mc26SourceTransformRevision = rootProject.extra["mc26SourceTransformRevision"] as Int
 
 // Minecraft 26.x ships unobfuscated names directly. Keep the authored shared
-// sources on the 1.21.x baseline for now and adapt mechanical API deltas at the
+// sources on Pathmind's canonical 1.21.x API baseline and adapt mechanical API deltas at the
 // mc26 build boundary. Version-specific transforms are declared once in the
 // mc26 root build. The generated tree lives under build/ and is never an
 // authored or published source of truth.

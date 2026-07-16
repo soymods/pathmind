@@ -81,6 +81,7 @@ val versionSourceTransforms: Map<String, String> = when (minecraftVersion) {
         "releaseClient.screen" to "releaseClient.gui.screen()",
         "client.screen" to "client.gui.screen()",
         "minecraft.screen" to "minecraft.gui.screen()",
+        ".isSingleplayer()" to ".hasSingleplayerServer()",
         ".getMainCamera()" to ".mainCamera()",
         ".collectPerFrameGizmos()" to ".collectPerFrameRenderThreadGizmos()",
         "EntityType.VILLAGER" to "net.minecraft.world.entity.EntityTypes.VILLAGER"
@@ -90,7 +91,7 @@ val versionSourceTransforms: Map<String, String> = when (minecraftVersion) {
 extra["mc26SharedSourceTransforms"] = sharedSourceTransforms
 extra["mc26VersionSourceTransforms"] = versionSourceTransforms
 extra["mc26SourceTransforms"] = sharedSourceTransforms + versionSourceTransforms
-extra["mc26SourceTransformRevision"] = 8
+extra["mc26SourceTransformRevision"] = 9
 
 subprojects {
     group = repositoryProperties.getProperty("maven_group")

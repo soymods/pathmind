@@ -3,6 +3,9 @@ name: Build
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 8 * * *'
 
 permissions:
   contents: write
@@ -13,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
+      tier: ${{ steps.targets.outputs.tier }}
 
     steps:
       - name: Check out repository
@@ -22,8 +26,22 @@ jobs:
         id: targets
         shell: bash
         run: |
+          set -euo pipefail
           MANIFEST=gradle/minecraft-versions.properties
-          TARGETS="$(sed -n 's/^supported_versions=//p' "$MANIFEST" | tr ',' '\n' | while read -r version; do
+          FULL_VERSIONS="$(sed -n 's/^supported_versions=//p' "$MANIFEST")"
+          FAST_VERSIONS="$(sed -n 's/^fast_verification_versions=//p' "$MANIFEST")"
+          DEFAULT_BRANCH="$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")"
+
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || \
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; }; then
+            VERSIONS="$FULL_VERSIONS"
+            TIER=full
+          else
+            VERSIONS="$FAST_VERSIONS"
+            TIER=fast
+          fi
+
+          TARGETS="$(printf '%s' "$VERSIONS" | tr ',' '\n' | while read -r version; do
             java_version="$(awk -F= -v key="version.${version}.java_version" '$1 == key { print $2 }' "$MANIFEST")"
             generation="$(awk -F= -v key="version.${version}.packaging_generation" '$1 == key { print $2 }' "$MANIFEST")"
             jq -cn \
@@ -34,6 +52,7 @@ jobs:
           done | jq -sc '{include: .}')"
 
           echo "matrix=${TARGETS}" >> "$GITHUB_OUTPUT"
+          echo "tier=${TIER}" >> "$GITHUB_OUTPUT"
 
   test:
     runs-on: ubuntu-latest
@@ -63,7 +82,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Verify compatibility manifest
-        run: ./gradlew verifyCompatibilityManifest verifyBuildGenerationRouting -Pmc_version=1.21.11
+        run: ./gradlew verifyCompatibilityManifest verifyCompatibilityStructure verifyBuildGenerationRouting -Pmc_version=1.21.11
 
       - name: Verify unknown targets fail during configuration
         shell: bash
@@ -85,6 +104,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover-targets.outputs.matrix) }}
+
+    name: Build ${{ matrix.minecraft_version }} (${{ needs.discover-targets.outputs.tier }})
 
     steps:
       - name: Check out repository
@@ -111,7 +132,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build mod jars for Minecraft ${{ matrix.minecraft_version }}
-        run: ./gradlew buildSelectedTarget -Pmc_version=${{ matrix.minecraft_version }}
+        run: ./gradlew buildSelectedTarget verifySelectedCompatibilityArtifacts -Pmc_version=${{ matrix.minecraft_version }}
 
       - name: Stage release jars
         shell: bash
@@ -292,6 +313,27 @@ jobs:
           mapfile -t jars < <(find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort)
           if [ "${#jars[@]}" -eq 0 ]; then
             echo "No release jars were downloaded."
+            exit 1
+          fi
+
+          MANIFEST=gradle/minecraft-versions.properties
+          MOD_VERSION="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          EXPECTED_COUNT=0
+          while read -r version; do
+            LOADERS="$(awk -F= -v key="version.${version}.release_loaders" '$1 == key { print $2 }' "$MANIFEST")"
+            IFS=',' read -ra EXPECTED_LOADERS <<< "$LOADERS"
+            for loader in "${EXPECTED_LOADERS[@]}"; do
+              expected="build/release-assets/pathmind-${loader}-${MOD_VERSION}+mc${version}.jar"
+              if [ ! -f "$expected" ]; then
+                echo "Complete release matrix is missing $expected"
+                exit 1
+              fi
+              EXPECTED_COUNT=$((EXPECTED_COUNT + 1))
+            done
+          done < <(sed -n 's/^supported_versions=//p' "$MANIFEST" | tr ',' '\n')
+
+          if [ "${#jars[@]}" -ne "$EXPECTED_COUNT" ]; then
+            echo "Complete release matrix expected $EXPECTED_COUNT jars, found ${#jars[@]}."
             exit 1
           fi
 

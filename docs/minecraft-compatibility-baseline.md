@@ -145,6 +145,10 @@ Record manual runs in this table when a compatibility-changing pass is prepared 
 | `1.21.9` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `1.21.11` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `1.21.11` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.2` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.2` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 
 ## Automated verification commands
 
@@ -161,4 +165,4 @@ Before merging compatibility, mapping, build, source-set, metadata, or release c
 ./gradlew buildAllTargets -q
 ```
 
-The full command builds 24 public jars: one Fabric and one NeoForge artifact for each of the 12 baseline Minecraft targets.
+The full command builds and validates 28 public jars: one Fabric and one NeoForge artifact for each of the 14 supported Minecraft targets.

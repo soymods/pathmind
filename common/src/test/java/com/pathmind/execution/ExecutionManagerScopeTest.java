@@ -35,6 +35,7 @@ class ExecutionManagerScopeTest {
     @AfterEach
     void tearDown() {
         manager.requestStopAll();
+        manager.setWorkspaceGraph(List.of(), List.of(), List.of());
     }
 
     @Test

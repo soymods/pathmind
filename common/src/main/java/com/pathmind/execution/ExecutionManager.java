@@ -1913,7 +1913,8 @@ public class ExecutionManager {
                         }
                         return CompletableFuture.completedFuture(null);
                     })
-                    .thenCompose(pausedIgnored -> currentNode.execute(executionId))
+                    .thenCompose(pausedIgnored -> executeNodeWithRepeatUntilGuard(
+                        currentNode, controller, executionId, repeatUntilGuard))
                     .thenCompose(ignoredFuture -> handleRoutineCallIfNeeded(currentNode, controller, executionId, repeatUntilGuard))
                     .thenCompose(ignoredFuture -> {
                         if (cancelRequested || controller.cancelRequested) {
@@ -2480,6 +2481,46 @@ public class ExecutionManager {
         }
         controller.pendingRepeatUntilExitControl = repeatUntilGuard;
         return true;
+    }
+
+    private CompletableFuture<Void> executeNodeWithRepeatUntilGuard(Node currentNode, ChainController controller,
+                                                                    int executionId, Node repeatUntilGuard) {
+        CompletableFuture<Void> nodeFuture = currentNode.execute(executionId);
+        if (repeatUntilGuard != null && isCancellableNavigationNode(currentNode)) {
+            monitorNavigationRepeatUntilGuard(nodeFuture, controller, repeatUntilGuard);
+        }
+        return nodeFuture;
+    }
+
+    private void monitorNavigationRepeatUntilGuard(CompletableFuture<Void> nodeFuture,
+                                                   ChainController controller, Node repeatUntilGuard) {
+        if (nodeFuture == null || nodeFuture.isDone() || controller == null || repeatUntilGuard == null) {
+            return;
+        }
+        CompletableFuture.runAsync(() -> {
+            if (nodeFuture.isDone() || cancelRequested || controller.cancelRequested) {
+                return;
+            }
+            if (repeatUntilGuard.isRepeatUntilConditionMetForPolling()) {
+                controller.pendingRepeatUntilExitControl = repeatUntilGuard;
+                // Complete first so cancellation of a tracked Baritone task is a normal loop exit,
+                // not an execution error. The underlying navigation is stopped immediately after.
+                nodeFuture.complete(null);
+                cancelAllNavigationCommands();
+                return;
+            }
+            monitorNavigationRepeatUntilGuard(nodeFuture, controller, repeatUntilGuard);
+        }, CompletableFuture.delayedExecutor(25L, TimeUnit.MILLISECONDS));
+    }
+
+    private boolean isCancellableNavigationNode(Node node) {
+        if (node == null) {
+            return false;
+        }
+        return switch (node.getType()) {
+            case GOTO, TRAVEL, COLLECT, BUILD, EXPLORE, FOLLOW, FARM, PATH, COME, SURFACE, TUNNEL -> true;
+            default -> false;
+        };
     }
 
     private void handleChainCompletion(ChainController controller, Throwable throwable, int executionId) {

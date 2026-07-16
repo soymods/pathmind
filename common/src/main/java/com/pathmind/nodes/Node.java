@@ -3281,13 +3281,9 @@ public class Node {
         return RuntimeValueScope.orGlobal(runtimeValueScope);
     }
 
-    /** Creates a user-facing editor node, where named runtime values default to local scope. */
+    /** Creates a user-facing editor node. Named runtime values default to global scope. */
     public static Node createForEditor(NodeType type, int x, int y) {
-        Node node = new Node(type, x, y);
-        if (node.supportsRuntimeValueScope()) {
-            node.setRuntimeValueScope(RuntimeValueScope.CHAIN);
-        }
-        return node;
+        return new Node(type, x, y);
     }
 
     public void setRuntimeValueScope(RuntimeValueScope runtimeValueScope) {

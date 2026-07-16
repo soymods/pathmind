@@ -415,6 +415,7 @@ public class PathmindVisualEditorScreen extends Screen {
         this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
         this.uiUtilsAvailable = UiUtilsProxy.isAvailable();
         this.nodeGraph = new NodeGraph();
+        this.nodeGraph.setWorkspaceSaveHandler(this::saveRootPresetWorkspace);
         this.sidebar = new Sidebar(baritoneAvailable, uiUtilsAvailable);
         refreshAvailablePresets();
         this.nodeGraph.setActivePreset(activePresetName);

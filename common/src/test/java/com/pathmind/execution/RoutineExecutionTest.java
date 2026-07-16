@@ -118,6 +118,67 @@ class RoutineExecutionTest {
     }
 
     @Test
+    void routineCalculateCanIncrementMainPresetGlobalVariableAcrossCalls() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Timer");
+        List<Node> routineNodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(routine.getGraph()));
+        Node entry = routineNodes.stream()
+            .filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 200, 0);
+        calculate.setMessageLine(0, "A = $variable+1");
+        Node update = new Node(NodeType.SET_VARIABLE, 400, 0);
+        Node updateTarget = new Node(NodeType.VARIABLE, 0, 0);
+        updateTarget.getParameter("Variable").setStringValue("variable");
+        updateTarget.setRuntimeValueScope(RuntimeValueScope.GLOBAL);
+        Node calculatedValue = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        calculatedValue.getParameter("Amount").setStringValue("$A");
+        assertTrue(update.attachParameter(updateTarget, 0));
+        assertTrue(update.attachParameter(calculatedValue, 1));
+        routineNodes.addAll(List.of(calculate, update, updateTarget, calculatedValue));
+        routine.setGraph(NodeGraphPersistence.createGraphData(routineNodes, List.of(
+            new NodeConnection(entry, calculate, 0, 0),
+            new NodeConnection(calculate, update, 0, 0))));
+
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node initialize = new Node(NodeType.SET_VARIABLE, 100, 0);
+        Node initializeTarget = new Node(NodeType.VARIABLE, 0, 0);
+        initializeTarget.getParameter("Variable").setStringValue("variable");
+        initializeTarget.setRuntimeValueScope(RuntimeValueScope.GLOBAL);
+        Node zero = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        zero.getParameter("Amount").setStringValue("0");
+        assertTrue(initialize.attachParameter(initializeTarget, 0));
+        assertTrue(initialize.attachParameter(zero, 1));
+        Node forever = new Node(NodeType.CONTROL_FOREVER, 300, 0);
+        Node invocation = Node.createRoutineCall(routine, 0, 0);
+        assertTrue(forever.attachActionNode(invocation));
+        List<Node> rootNodes = List.of(start, initialize, initializeTarget, zero, forever, invocation);
+        List<NodeConnection> rootConnections = List.of(
+            new NodeConnection(start, initialize, 0, 0),
+            new NodeConnection(initialize, forever, 0, 0));
+        manager.setWorkspaceGraph(rootNodes, rootConnections, List.of(routine));
+
+        var future = manager.executeExternalBranchAndWait(
+            start, rootNodes, rootConnections, "RoutineCalculateTest");
+
+        assertNotNull(future);
+        long deadline = System.currentTimeMillis() + 5000L;
+        String amount = null;
+        while (System.currentTimeMillis() < deadline) {
+            ExecutionManager.RuntimeVariable value = manager.getRuntimeVariable(
+                start, "variable", RuntimeValueScope.GLOBAL);
+            amount = value == null ? null : value.getValues().get("Amount");
+            if (amount != null && Double.parseDouble(amount) >= 3.0) {
+                break;
+            }
+            Thread.onSpinWait();
+        }
+        assertNotNull(amount);
+        assertTrue(Double.parseDouble(amount) >= 3.0, "routine loop stopped at " + amount);
+        manager.requestStopAll();
+        assertDoesNotThrow(() -> future.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
     void routineReporterFeedsChainAndGlobalVariablesAndCancellationUnwindsCall() throws Exception {
         NodeGraphData.RoutineDefinitionData helper = RoutineBuilderModel.createRoutine("Yield");
         NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Store");

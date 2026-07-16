@@ -8,6 +8,8 @@ import com.pathmind.routines.RoutineBuilderModel;
 import com.pathmind.routines.RoutineValueKind;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -16,6 +18,22 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeGraphTest {
+
+    @Test
+    void autosaveDelegatesToOwningWorkspace() {
+        NodeGraph graph = new NodeGraph();
+        AtomicInteger saves = new AtomicInteger();
+        graph.setWorkspaceSaveHandler(() -> {
+            saves.incrementAndGet();
+            return true;
+        });
+        graph.setActiveRoutineWorkspaceId("routine-id");
+
+        graph.markWorkspaceDirty();
+
+        assertEquals(1, saves.get());
+        assertFalse(graph.isWorkspaceDirty());
+    }
 
     @Test
     void applyingRootSnapshotKeepsNewRoutineOnImmediateResave() {

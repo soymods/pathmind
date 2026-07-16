@@ -21,6 +21,7 @@ import java.lang.reflect.Constructor;
 import java.nio.file.Files;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -1045,6 +1046,33 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void repeatUntilCancelsRunningNavigationWhenConditionBecomesTrue() throws Exception {
+        AtomicBoolean conditionMet = new AtomicBoolean(false);
+        RepeatUntilCountingNode repeatUntil = new RepeatUntilCountingNode(conditionMet::get);
+        PendingNavigationNode travel = new PendingNavigationNode();
+        assertTrue(repeatUntil.attachActionNode(travel));
+        repeatUntil.setNextOutputSocket(0);
+
+        CompletableFuture<Void> loopFuture = invokeContinueFromNode(
+            repeatUntil,
+            List.of(repeatUntil, travel),
+            List.of()
+        );
+        long startDeadline = System.currentTimeMillis() + 1000L;
+        while (!travel.hasStarted() && System.currentTimeMillis() < startDeadline) {
+            Thread.onSpinWait();
+        }
+        assertTrue(travel.hasStarted());
+        assertFalse(travel.executionFuture().isDone());
+
+        conditionMet.set(true);
+
+        loopFuture.get(1, TimeUnit.SECONDS);
+        assertTrue(travel.executionFuture().isDone());
+        assertFalse(travel.executionFuture().isCompletedExceptionally());
+    }
+
+    @Test
     void chainExecutionBudgetRejectsRunawayForkFanOut() throws Exception {
         Node start = new Node(NodeType.START, 0, 0);
         Object controller = newChainController(start, 1);
@@ -1212,6 +1240,29 @@ class ExecutionManagerValidationTest {
         @Override
         public boolean isRepeatUntilConditionMetForPolling() {
             return condition.getAsBoolean();
+        }
+    }
+
+    private static final class PendingNavigationNode extends Node {
+        private final CompletableFuture<Void> executionFuture = new CompletableFuture<>();
+        private final AtomicBoolean started = new AtomicBoolean(false);
+
+        PendingNavigationNode() {
+            super(NodeType.TRAVEL, 0, 0);
+        }
+
+        CompletableFuture<Void> executionFuture() {
+            return executionFuture;
+        }
+
+        boolean hasStarted() {
+            return started.get();
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(int executionId) {
+            started.set(true);
+            return executionFuture;
         }
     }
 

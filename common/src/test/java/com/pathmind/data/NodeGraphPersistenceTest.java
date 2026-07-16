@@ -27,10 +27,10 @@ class NodeGraphPersistenceTest {
     Path tempDir;
 
     @Test
-    void newlyCreatedRuntimeValuesDefaultToChainScope() {
-        assertEquals(RuntimeValueScope.CHAIN,
+    void newlyCreatedRuntimeValuesDefaultToGlobalScope() {
+        assertEquals(RuntimeValueScope.GLOBAL,
             Node.createForEditor(NodeType.VARIABLE, 0, 0).getRuntimeValueScope());
-        assertEquals(RuntimeValueScope.CHAIN,
+        assertEquals(RuntimeValueScope.GLOBAL,
             Node.createForEditor(NodeType.CREATE_LIST, 0, 0).getRuntimeValueScope());
     }
 

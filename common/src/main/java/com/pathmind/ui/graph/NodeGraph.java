@@ -229,6 +229,7 @@ public class NodeGraph {
     private int visibleRootsViewportHeight = Integer.MIN_VALUE;
 
     private String activePreset;
+    private java.util.function.BooleanSupplier workspaceSaveHandler;
     private List<NodeGraphData.RoutineDefinitionData> routineRegistry = new ArrayList<>();
     private List<NodeGraphData.RoutineDefinitionData> routineValidationRegistry = List.of();
     private String activeRoutineWorkspaceId = "";
@@ -15451,12 +15452,18 @@ public class NodeGraph {
     public boolean save() {
         deferredStickyNoteSaveAtMillis = 0L;
         commitStickyNoteEditBuffer(false);
-        boolean saved = NodeGraphPersistence.saveNodeGraphForPreset(activePreset, nodes, connections, routineRegistry);
+        boolean saved = workspaceSaveHandler != null
+            ? workspaceSaveHandler.getAsBoolean()
+            : NodeGraphPersistence.saveNodeGraphForPreset(activePreset, nodes, connections, routineRegistry);
         if (saved) {
             workspaceDirty = false;
             invalidateTemplatePreviewCachesForPreset(activePreset);
         }
         return saved;
+    }
+
+    public void setWorkspaceSaveHandler(java.util.function.BooleanSupplier workspaceSaveHandler) {
+        this.workspaceSaveHandler = workspaceSaveHandler;
     }
 
     /**

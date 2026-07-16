@@ -35,20 +35,53 @@ public final class PathmindValidationPanelRenderer {
                                                  boolean active, boolean disabled,
                                                  float hoverProgress, int accentColor,
                                                  GraphValidationResult validationResult) {
+        return renderValidationButton(
+            context,
+            textRenderer,
+            buttonX,
+            buttonY,
+            buttonSize,
+            mouseX,
+            mouseY,
+            active,
+            disabled,
+            hoverProgress,
+            0f,
+            accentColor,
+            validationResult
+        );
+    }
+
+    public static boolean renderValidationButton(GuiGraphics context,
+                                                 Font textRenderer,
+                                                 int buttonX, int buttonY, int buttonSize,
+                                                 int mouseX, int mouseY,
+                                                 boolean active, boolean disabled,
+                                                 float hoverProgress, float panelProgress,
+                                                 int accentColor,
+                                                 GraphValidationResult validationResult) {
         boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, buttonSize, buttonSize);
-        PathmindWorkspaceChrome.drawToolbarButtonFrame(context, buttonX, buttonY, buttonSize, buttonSize, hovered, active, disabled, hoverProgress, accentColor);
+        float buttonOpacity = 1f - AnimationHelper.easeOutQuad(panelProgress);
+        if (buttonOpacity <= 0.01f) {
+            return hovered;
+        }
+
+        drawFadingToolbarButtonFrame(context, buttonX, buttonY, buttonSize, buttonSize, hovered, active, disabled,
+            hoverProgress, accentColor, buttonOpacity);
 
         int statusColor = getValidationStatusColor(validationResult, hovered, active, disabled, accentColor);
         if (!disabled && validationResult != null && validationResult.hasIssues() && !active) {
             int severityBorder = validationResult.hasErrors() ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
-            DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonSize, buttonSize, severityBorder);
+            DrawContextBridge.drawBorder(context, buttonX, buttonY, buttonSize, buttonSize,
+                AnimationHelper.multiplyAlpha(severityBorder, buttonOpacity));
         }
 
+        int fadedStatusColor = AnimationHelper.multiplyAlpha(statusColor, buttonOpacity);
         if (validationResult != null && validationResult.hasIssues()) {
-            drawAlertIcon(context, buttonX, buttonY, buttonSize, statusColor);
-            drawCountBadge(context, textRenderer, validationResult, buttonX, buttonY, buttonSize, disabled);
+            drawAlertIcon(context, buttonX, buttonY, buttonSize, fadedStatusColor);
+            drawCountBadge(context, textRenderer, validationResult, buttonX, buttonY, buttonSize, disabled, buttonOpacity);
         } else {
-            drawConsoleIcon(context, buttonX, buttonY, statusColor);
+            drawConsoleIcon(context, buttonX, buttonY, fadedStatusColor);
         }
 
         return hovered;
@@ -246,6 +279,27 @@ public final class PathmindValidationPanelRenderer {
         return statusColor;
     }
 
+    private static void drawFadingToolbarButtonFrame(GuiGraphics context, int x, int y, int width, int height,
+                                                     boolean hovered, boolean active, boolean disabled,
+                                                     float hoverProgress, int accentColor, float opacity) {
+        UIStyleHelper.ToolbarButtonPalette palette = UIStyleHelper.getToolbarButtonPalette(
+            accentColor,
+            hoverProgress,
+            active || hovered,
+            disabled
+        );
+        UIStyleHelper.drawToolbarButtonFrame(
+            context,
+            x,
+            y,
+            width,
+            height,
+            AnimationHelper.multiplyAlpha(palette.backgroundColor(), opacity),
+            AnimationHelper.multiplyAlpha(palette.borderColor(), opacity),
+            AnimationHelper.multiplyAlpha(palette.innerBorderColor(), opacity)
+        );
+    }
+
     private static void drawConsoleIcon(GuiGraphics context, int buttonX, int buttonY, int color) {
         int left = buttonX + 4;
         int top = buttonY + 4;
@@ -268,6 +322,12 @@ public final class PathmindValidationPanelRenderer {
     private static void drawCountBadge(GuiGraphics context, Font textRenderer,
                                        GraphValidationResult validationResult, int buttonX, int buttonY,
                                        int buttonSize, boolean disabled) {
+        drawCountBadge(context, textRenderer, validationResult, buttonX, buttonY, buttonSize, disabled, 1f);
+    }
+
+    private static void drawCountBadge(GuiGraphics context, Font textRenderer,
+                                       GraphValidationResult validationResult, int buttonX, int buttonY,
+                                       int buttonSize, boolean disabled, float opacity) {
         int count = validationResult.getErrorCount() > 0 ? validationResult.getErrorCount() : validationResult.getWarningCount();
         int badgeColor = validationResult.getErrorCount() > 0 ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
         if (disabled) {
@@ -278,10 +338,12 @@ public final class PathmindValidationPanelRenderer {
         int badgeSize = Math.max(9, textWidth + 4);
         int badgeX = buttonX + buttonSize - badgeSize + 1;
         int badgeY = buttonY - 2;
-        context.fill(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize, badgeColor);
-        DrawContextBridge.drawBorder(context, badgeX, badgeY, badgeSize, badgeSize, UITheme.BORDER_HIGHLIGHT);
+        context.fill(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize,
+            AnimationHelper.multiplyAlpha(badgeColor, opacity));
+        DrawContextBridge.drawBorder(context, badgeX, badgeY, badgeSize, badgeSize,
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, opacity));
         context.drawString(textRenderer, Component.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1,
-            UITheme.TEXT_PRIMARY);
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, opacity));
     }
 
     private static boolean contains(int mouseX, int mouseY, int x, int y, int width, int height) {

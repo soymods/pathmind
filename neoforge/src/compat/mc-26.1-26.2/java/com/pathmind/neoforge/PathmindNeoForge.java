@@ -172,7 +172,7 @@ public class PathmindNeoForge {
         NeoForge.EVENT_BUS.addListener(this::onScreenInitPost);
         NeoForge.EVENT_BUS.addListener(this::onScreenKeyPressedPost);
         NeoForge.EVENT_BUS.addListener(this::onRenderGuiPost);
-        registerRenderLevelStageListener();
+        NeoForge.EVENT_BUS.addListener(this::onRenderLevelAfterLevel);
         NeoForge.EVENT_BUS.addListener(this::onClientChat);
         NeoForge.EVENT_BUS.addListener(this::onClientChatReceived);
         NeoForge.EVENT_BUS.addListener(this::onLeftClickBlock);
@@ -183,25 +183,6 @@ public class PathmindNeoForge {
         NeoForge.EVENT_BUS.addListener(this::onEntityInteractSpecific);
         NeoForge.EVENT_BUS.addListener(this::onClientPlayerLoggingIn);
         NeoForge.EVENT_BUS.addListener(this::onClientPlayerLoggingOut);
-    }
-
-    private void registerRenderLevelStageListener() {
-        registerRenderLevelStageListener(resolveRenderLevelStageEventClass());
-    }
-
-    private <T extends RenderLevelStageEvent> void registerRenderLevelStageListener(Class<T> eventClass) {
-        NeoForge.EVENT_BUS.addListener(eventClass, this::onRenderLevelStage);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Class<? extends RenderLevelStageEvent> resolveRenderLevelStageEventClass() {
-        try {
-            return (Class<? extends RenderLevelStageEvent>) Class
-                .forName("net.neoforged.neoforge.client.event.RenderLevelStageEvent$AfterEntities")
-                .asSubclass(RenderLevelStageEvent.class);
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-            return RenderLevelStageEvent.class;
-        }
     }
 
     private void onClientSetup(FMLClientSetupEvent event) {
@@ -463,6 +444,9 @@ public class PathmindNeoForge {
 
         try {
             Minecraft client = Minecraft.getInstance();
+            if (isVisualEditorScreen(client.screen)) {
+                return;
+            }
             renderHudOverlaysMethod.invoke(null, event.getGuiGraphics(), client);
             renderHudNotificationsMethod.invoke(null, event.getGuiGraphics(), client);
         } catch (ReflectiveOperationException | LinkageError e) {
@@ -471,10 +455,7 @@ public class PathmindNeoForge {
         }
     }
 
-    private void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (!isNavigatorOverlayCollectionStage(event)) {
-            return;
-        }
+    private void onRenderLevelAfterLevel(RenderLevelStageEvent.AfterLevel event) {
         fireLoaderEvent(EVT_NEOFORGE_RENDER_LEVEL_AFTER_ENTITIES);
         if (!commonBridgeReady || worldOverlayErrorLogged) {
             return;
@@ -1216,23 +1197,6 @@ public class PathmindNeoForge {
             return trimmed.substring(0, colon).trim();
         }
         return "Unknown";
-    }
-
-    private static boolean isNavigatorOverlayCollectionStage(RenderLevelStageEvent event) {
-        if (event == null) {
-            return false;
-        }
-        String simpleName = event.getClass().getSimpleName();
-        if ("AfterEntities".equals(simpleName)) {
-            return true;
-        }
-        try {
-            Method getStageMethod = event.getClass().getMethod("getStage");
-            Object stage = getStageMethod.invoke(event);
-            return "AFTER_ENTITIES".equals(String.valueOf(stage));
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-            return false;
-        }
     }
 
     private boolean isVisualEditorScreen(Screen screen) {

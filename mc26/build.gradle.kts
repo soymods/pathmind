@@ -46,6 +46,14 @@ val sharedSourceTransforms = linkedMapOf(
     ".vLine(" to ".verticalLine(",
     ".renderItem(" to ".item(",
     "renderWithTooltipAndSubtitles" to "extractRenderStateWithTooltipAndSubtitles",
+    "@Inject(method = \"render\", at = @At(\"HEAD\"), cancellable = true)" to
+        "@Inject(method = \"extractRenderState\", at = @At(\"HEAD\"), cancellable = true)",
+    "@Inject(method = \"render\", at = @At(\"TAIL\"))" to
+        "@Inject(method = \"extractRenderState\", at = @At(\"TAIL\"))",
+    "@Inject(method = \"renderSelectedItemName\", at = @At(\"TAIL\"))" to
+        "@Inject(method = \"extractSelectedItemName\", at = @At(\"TAIL\"))",
+    "method = \"renderItem(" to "method = \"item(",
+    "method = \"renderFakeItem(" to "method = \"fakeItem(",
     "public void renderWidget(GuiGraphicsExtractor" to "public void extractWidgetRenderState(GuiGraphicsExtractor",
     "protected void renderContents(GuiGraphicsExtractor" to "protected void extractContents(GuiGraphicsExtractor",
     "public void render(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta)" to
@@ -84,6 +92,9 @@ val versionSourceTransforms: Map<String, String> = when (minecraftVersion) {
         ".isSingleplayer()" to ".hasSingleplayerServer()",
         ".getMainCamera()" to ".mainCamera()",
         ".collectPerFrameGizmos()" to ".collectPerFrameRenderThreadGizmos()",
+        "\"collectPerFrameGizmos\"" to "\"collectPerFrameRenderThreadGizmos\"",
+        "@Mixin(net.minecraft.client.gui.Gui.class)" to "@Mixin(net.minecraft.client.gui.Hud.class)",
+        "method = \"renderLevel\"" to "method = \"render\"",
         "EntityType.VILLAGER" to "net.minecraft.world.entity.EntityTypes.VILLAGER"
     )
     else -> throw GradleException("No source-transform contract for Minecraft $minecraftVersion")
@@ -91,7 +102,7 @@ val versionSourceTransforms: Map<String, String> = when (minecraftVersion) {
 extra["mc26SharedSourceTransforms"] = sharedSourceTransforms
 extra["mc26VersionSourceTransforms"] = versionSourceTransforms
 extra["mc26SourceTransforms"] = sharedSourceTransforms + versionSourceTransforms
-extra["mc26SourceTransformRevision"] = 9
+extra["mc26SourceTransformRevision"] = 14
 
 subprojects {
     group = repositoryProperties.getProperty("maven_group")

@@ -19,6 +19,9 @@ public final class PathmindMixinPlugin implements IMixinConfigPlugin {
     // and NeoForge already draws Pathmind HUD/overlays
     // through RenderGuiEvent.Post, so skip this mixin entirely on NeoForge.
     private static final String GAME_RENDERER_MIXIN = "com.pathmind.mixin.GameRendererMixin";
+    // Fabric needs a mixin at the end of vanilla HUD extraction. NeoForge exposes
+    // the equivalent typed RenderGuiEvent.Post hook and must not render it twice.
+    private static final String MC26_HUD_OVERLAY_MIXIN = "com.pathmind.mixin.Mc26HudOverlayMixin";
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -35,6 +38,9 @@ public final class PathmindMixinPlugin implements IMixinConfigPlugin {
             return classExists(UI_UTILS_OVERLAY_TARGET);
         }
         if (GAME_RENDERER_MIXIN.equals(mixinClassName) && LoaderMetadata.isNeoForge()) {
+            return false;
+        }
+        if (MC26_HUD_OVERLAY_MIXIN.equals(mixinClassName) && LoaderMetadata.isNeoForge()) {
             return false;
         }
         return true;

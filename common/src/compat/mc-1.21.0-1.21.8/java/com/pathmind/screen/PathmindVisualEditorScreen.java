@@ -6449,6 +6449,7 @@ public class PathmindVisualEditorScreen extends Screen {
             active,
             disabled,
             hoverProgress,
+            validationPanelAnimation.getValue(),
             getAccentColor(),
             validationResult
         );

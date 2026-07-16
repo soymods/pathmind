@@ -202,12 +202,12 @@ class RoutineExecutionTest {
         NodeGraphData.RoutineInputData input = builder.addInput("value", RoutineValueKind.TEXT);
         List<Node> definitionNodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(routine.getGraph()));
         Node entry = definitionNodes.stream().filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
-        Node look = new Node(NodeType.LOOK, 160, 0);
+        Node set = new Node(NodeType.SET_VARIABLE, 160, 0);
         Node reporter = builder.createInputReporter(input.getId(), 0, 0);
-        assertTrue(look.attachParameter(reporter, 0));
-        definitionNodes.addAll(List.of(look, reporter));
+        assertTrue(set.attachParameter(reporter, 0));
+        definitionNodes.addAll(List.of(set, reporter));
         routine.setGraph(NodeGraphPersistence.createGraphData(definitionNodes,
-            List.of(new NodeConnection(entry, look, 0, 0))));
+            List.of(new NodeConnection(entry, set, 0, 0))));
 
         Node start = new Node(NodeType.START, 0, 0);
         start.setStartNodeNumber(1);

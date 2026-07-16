@@ -54,7 +54,8 @@ class RoutineBuilderModelTest {
         assertEquals(block.getId(), call.getRoutineInputIdForSlot(0));
         assertEquals(range.getId(), call.getRoutineInputIdForSlot(1));
         assertEquals("block", call.getParameterSlotLabel(0));
-        assertTrue(call.getAcceptedTraitsForParameterSlot(0).contains(NodeValueTrait.BLOCK));
+        assertEquals(RoutineValueKind.BLOCK.name(), call.getRoutineArgumentValueKind(0));
+        assertTrue(call.getAcceptedTraitsForParameterSlot(0).contains(NodeValueTrait.ANY));
         assertEquals("5", call.getRoutineArgumentDefaultValue(1));
         assertFalse(call.isParameterSlotRequired(1), "a default satisfies a required input");
     }

@@ -80,13 +80,14 @@ public final class NodeCompatibility {
         boolean isBooleanSensor = NodeCatalog.isBooleanSensor(candidateType);
         boolean isParameterLike = NodeCatalog.isParameterNode(candidateType)
             || !provided.isEmpty()
-            || candidateType == NodeType.VARIABLE;
+            || candidateType == NodeType.VARIABLE
+            || candidateType == NodeType.ROUTINE_INPUT;
         if (!isParameterLike) {
             return isBooleanSensor
                 && (accepted.contains(NodeValueTrait.BOOLEAN) || accepted.contains(NodeValueTrait.ANY));
         }
 
-        if (candidateType == NodeType.VARIABLE) {
+        if (candidateType == NodeType.VARIABLE || candidateType == NodeType.ROUTINE_INPUT) {
             return true;
         }
 

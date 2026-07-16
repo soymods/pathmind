@@ -2,6 +2,8 @@ package com.pathmind.nodes;
 
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.routines.RoutineBuilderModel;
+import com.pathmind.routines.RoutineValueKind;
 import com.pathmind.util.RecipeCompatibilityBridge;
 import org.junit.jupiter.api.Test;
 
@@ -145,6 +147,29 @@ class NodeCompatibilityTest {
 
         assertEquals(NodeType.PARAM_BLOCK, resolved.getType());
         assertTrue(Node.isCreateListCollectionTarget(resolved.getType()));
+    }
+
+    @Test
+    void routineInputCanAttachAnywhereVariableCan() {
+        Node dropSlot = new Node(NodeType.DROP_SLOT, 0, 0);
+        Node input = new Node(NodeType.ROUTINE_INPUT, 0, 0);
+        input.getParameter("ValueKind").setStringValue("BLOCK");
+
+        assertTrue(dropSlot.canAcceptParameterNode(input, 0));
+        assertTrue(dropSlot.attachParameter(input, 0));
+    }
+
+    @Test
+    void routineCallInputBoxAcceptsAnyParameterType() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Use");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData input = builder.addInput("message", RoutineValueKind.TEXT);
+        Node call = Node.createRoutineCall(routine, 0, 0);
+        Node block = new Node(NodeType.PARAM_BLOCK, 0, 0);
+
+        int slot = call.getRoutineSlotForInputId(input.getId());
+        assertTrue(call.canAcceptParameterNode(block, slot));
+        assertTrue(call.attachParameter(block, slot));
     }
 
     @Test

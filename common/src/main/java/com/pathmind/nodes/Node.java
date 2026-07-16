@@ -846,8 +846,7 @@ public class Node {
 
     public EnumSet<NodeValueTrait> getAcceptedTraitsForParameterSlot(int slotIndex) {
         if (type == NodeType.ROUTINE_CALL && slotIndex >= 0 && slotIndex < routineArguments.size()) {
-            RoutineValueKind kind = RoutineValueKind.fromSerialized(routineArguments.get(slotIndex).getValueKind());
-            return kind.getDefaultTraits().isEmpty() ? EnumSet.of(NodeValueTrait.ANY) : EnumSet.copyOf(kind.getDefaultTraits());
+            return EnumSet.of(NodeValueTrait.ANY);
         }
         return NodeTraitRegistry.getAcceptedTraits(type, slotIndex);
     }

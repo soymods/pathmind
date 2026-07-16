@@ -196,6 +196,37 @@ class RoutineExecutionTest {
     }
 
     @Test
+    void incompatibleRoutineInputValueFailsDuringSubstitution() {
+        NodeGraphData.RoutineDefinitionData routine = RoutineBuilderModel.createRoutine("Use");
+        RoutineBuilderModel builder = new RoutineBuilderModel(routine);
+        NodeGraphData.RoutineInputData input = builder.addInput("value", RoutineValueKind.TEXT);
+        List<Node> definitionNodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(routine.getGraph()));
+        Node entry = definitionNodes.stream().filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
+        Node look = new Node(NodeType.LOOK, 160, 0);
+        Node reporter = builder.createInputReporter(input.getId(), 0, 0);
+        assertTrue(look.attachParameter(reporter, 0));
+        definitionNodes.addAll(List.of(look, reporter));
+        routine.setGraph(NodeGraphPersistence.createGraphData(definitionNodes,
+            List.of(new NodeConnection(entry, look, 0, 0))));
+
+        Node start = new Node(NodeType.START, 0, 0);
+        start.setStartNodeNumber(1);
+        Node invocation = Node.createRoutineCall(routine, 100, 0);
+        Node block = new Node(NodeType.PARAM_BLOCK, 0, 0);
+        assertTrue(invocation.attachParameter(block, invocation.getRoutineSlotForInputId(input.getId())));
+        List<Node> rootNodes = List.of(start, invocation, block);
+        List<NodeConnection> rootConnections = List.of(new NodeConnection(start, invocation, 0, 0));
+        manager.setWorkspaceGraph(rootNodes, rootConnections, List.of(routine));
+
+        var future = manager.executeExternalBranchAndWait(start, rootNodes, rootConnections, "RoutineInputErrorTest");
+
+        assertNotNull(future);
+        Exception error = assertThrows(Exception.class, () -> future.get(5, TimeUnit.SECONDS));
+        assertTrue(error.toString().contains("Routine input")
+            || (error.getCause() != null && error.getCause().toString().contains("Routine input")));
+    }
+
+    @Test
     void manyDefinitionsAndSequentialInvocationsCompleteWithoutLeakingState() {
         List<NodeGraphData.RoutineDefinitionData> routines = new ArrayList<>();
         List<Node> rootNodes = new ArrayList<>();

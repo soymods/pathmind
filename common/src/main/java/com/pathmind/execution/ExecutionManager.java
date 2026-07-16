@@ -2056,10 +2056,18 @@ public class ExecutionManager {
             RuntimeVariable value = frame.inputs().get(reporter.getRoutineInputId());
             if (value == null) continue;
             Node snapshot = reporter.createRuntimeVariableSnapshot(value);
-            if (snapshot == null) continue;
+            if (snapshot == null) {
+                throw new IllegalStateException("Routine input " + reporter.getDisplayName().getString()
+                    + " could not be converted to a runtime value.");
+            }
             Node host = reporter.getParentParameterHost();
             int slot = reporter.getParentParameterSlotIndex();
-            if (host != null && slot >= 0) host.attachParameter(snapshot, slot);
+            if (host != null && slot >= 0 && !host.attachParameter(snapshot, slot)) {
+                throw new IllegalStateException("Routine input " + reporter.getDisplayName().getString()
+                    + " produced " + snapshot.getType().getDisplayName()
+                    + ", which cannot be used for " + host.getParameterSlotLabel(slot)
+                    + " on " + host.getType().getDisplayName() + ".");
+            }
             snapshot.setOwningStartNode(reporter.getOwningStartNode());
             nodes.add(snapshot);
             nodes.remove(reporter);
